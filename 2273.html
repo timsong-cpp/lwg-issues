@@ -1,0 +1,163 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2273: <tt>regex_match</tt> ambiguity</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2273" href="#2273">2273.</a> <tt>regex_match</tt> ambiguity</h3>
+<p><b>Section:</b> 28.11.2 [re.alg.match] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2013-07-14 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.alg.match">issues</a> in [re.alg.match].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+28.11.2 [re.alg.match] p2 in describing regex_match says:
+</p>
+<blockquote>
+<p>
+-2-  <i>Effects:</i> Determines whether there is a match between the regular expression <tt>e</tt>, and all of 
+the character sequence <tt>[first,last)</tt>. The parameter <tt>flags</tt> is used to control how the expression 
+is matched against the character sequence. Returns true if such a match exists, false otherwise.
+</p>
+</blockquote>
+
+<p>
+It has come to my attention that different people are interpreting the first sentence of p2 in different ways:
+</p>
+
+<ol>
+<li><p>
+If a search of the input string using the regular expression <tt>e</tt> matches the entire input string, 
+<tt>regex_match</tt> should return true.
+</p></li>
+<li><p>
+Search the input string using the regular expression <tt>e</tt>. Reject all matches that do not match the 
+entire input string. If a such a match is found, return true.
+</p></li>
+</ol>
+
+<p>
+The difference between these two subtly different interpretations is found using the following ECMAScript example:
+</p>
+
+<blockquote><pre>
+std::regex re("Get|GetValue");
+</pre></blockquote>
+
+<p>
+Using <tt>regex_search</tt>, this <tt>re</tt> can never match the input string <tt>"GetValue"</tt>, because ECMA 
+specifies that alternations are ordered, not greedy. As soon as <tt>"Get"</tt> is matched in the left alternation, 
+the matching algorithm stops.
+<p/>
+Using definition 1, <tt>regex_match</tt> would return false for an input string of <tt>"GetValue"</tt>.
+<p/>
+However definition 2 alters the grammar and appears equivalent to augmenting the regex with a trailing <tt>'$'</tt>, 
+which is an anchor that specifies, reject any matches which do not come at the end of the input sequence.
+So, using definition 2, <tt>regex_match</tt> would return true for an input string of <tt>"GetValue"</tt>.
+<p/>
+My opinion is that it would be strange to have <tt>regex_match</tt> return true for a <tt>string/regex</tt> 
+pair that <tt>regex_search</tt> could never find. I.e. I favor definition 1.
+<p/>
+John Maddock writes:
+<p/>
+The intention was always that <tt>regex_match</tt> would reject any match candidate which didn't match the entire 
+input string. So it would find <tt>GetValue</tt> in this case because the <tt>"Get"</tt> alternative had already 
+been rejected as not matching. Note that the comparison with ECMA script is somewhat moot, as ECMAScript defines 
+the regex grammar (the bit we've imported), it does not define anything like <tt>regex_match</tt>, nor do we import 
+from ECMAScript the behaviour of that function. So IMO the function should behave consistently regardless of the 
+regex dialect chosen. Saying "use awk regexes" doesn't cut it, because that changes the grammar in other ways.
+<p/>
+(John favors definition 2).
+<p/>
+We need to clarify 28.11.2 [re.alg.match]/p2 in one of these two directions.
+</p>
+
+<p><i>[2014-06-21, Rapperswil]</i></p>
+
+<p>
+AM: I think there's a clear direction and consensus we agree with John Maddock's position, and if noone else 
+thinks we need the other function I won't ask for it.
+<p/>
+Marshall Clow and STL to draft.
+</p>
+
+<p><i>[2015-06-10, Marshall suggests concrete wording]</i></p>
+
+
+<p><i>[2015-01-11, Telecom]</i></p>
+
+<p>Move to Tenatatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4527.
+</p>
+
+<ol>
+<li><p>Change 28.11.2 [re.alg.match]/2, as follows:</p>
+
+<blockquote><pre>
+template &lt;class BidirectionalIterator, class Allocator, class charT, class traits&gt;
+  bool regex_match(BidirectionalIterator first, BidirectionalIterator last,
+                   match_results&lt;BidirectionalIterator, Allocator&gt;&amp; m,
+                   const basic_regex&lt;charT, traits>&amp; e,
+                   regex_constants::match_flag_type flags =
+                     regex_constants::match_default);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires</i>: The type <tt>BidirectionalIterator</tt> shall satisfy the requirements of a Bidirectional Iterator
+(24.2.6).
+<p/>
+-2- <i>Effects</i>: Determines whether there is a match between the regular expression <tt>e</tt>, and all of the character
+sequence <tt>[first,last)</tt>. The parameter <tt>flags</tt> is used to control how the expression is matched against
+the character sequence. <ins>When determining if there is a match, only potential matches that match the entire character 
+sequence are considered.</ins> Returns <tt>true</tt> if such a match exists, <tt>false</tt> otherwise. <ins>[<i>Example</i>:</ins>
+</p>
+<blockquote>
+<pre>
+<ins>std::regex re("Get|GetValue");
+std::cmatch m;
+regex_search("GetValue", m, re);	// returns true, and m[0] contains "Get"
+regex_match ("GetValue", m, re);	// returns true, and m[0] contains "GetValue"
+regex_search("GetValues", m, re);	// returns true, and m[0] contains "Get"
+regex_match ("GetValues", m, re);	// returns false</ins>
+</pre>
+</blockquote>
+<p>
+<ins>&mdash; <i>end example</i>]</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

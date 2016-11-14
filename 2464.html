@@ -1,0 +1,473 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2464: <tt>try_emplace</tt> and <tt>insert_or_assign</tt> misspecified</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2464" href="#2464">2464.</a> <tt>try_emplace</tt> and <tt>insert_or_assign</tt> misspecified</h3>
+<p><b>Section:</b> 23.4.4.4 [map.modifiers], 23.5.4.4 [unord.map.modifiers] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Thomas Koeppe <b>Opened:</b> 2014-12-17 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#map.modifiers">issues</a> in [map.modifiers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of the <tt>try_emplace</tt> and <tt>insert_or_assign</tt> member functions in N4279 
+contains the following errors and omissions:
+</p>
+<ol>
+<li><p>In <tt>insert_or_assign</tt>, each occurrence of <tt>std::forward&lt;Args&gt;(args)...</tt> 
+should be <tt>std::forward&lt;M&gt;(obj)</tt>; this is was a mistake introduced in editing.</p></li>
+
+<li><p>In <tt>try_emplace</tt>, the construction of the <tt>value_type</tt> is misspecified, which 
+is a mistake that was introduced during the evolution from a one-parameter to a variadic form. 
+As written, <tt>value_type(k, std::forward&lt;Args&gt;(args)...)</tt> does not do the right thing; 
+it can only be used with a single argument, which moreover must be convertible to a <tt>mapped_type</tt>. 
+The intention is to allow direct-initialization from an argument pack, and the correct constructor 
+should be <tt>value_type(piecewise_construct, forward_as_tuple(k), 
+forward_as_tuple(std::forward&lt;Args&gt;(args)...)</tt>.</p></li>
+
+<li><p> Both <tt>try_emplace</tt> and <tt>insert_or_assign</tt> are missing requirements on the 
+argument types. Since the semantics of these functions are specified independent of other functions, 
+they need to include their requirements.</p></li>
+</ol>
+
+<p><i>[2015-02, Cologne]</i></p>
+
+<p>
+This issue is related to <a href="lwg-defects.html#2469">2469</a>.
+<p/>
+AM: The repeated references to "first and third forms" and "second and fourth forms" is a bit cumbersome. 
+Maybe split the four functions?<br/>
+GR: We don't have precendent for "EmplaceConstructible from a, b, c". I don't like the ambiguity between code commas and 
+text commas.<br/> 
+TK: What's the danger?<br/> 
+GR: It's difficult to follow standardese.<br/>
+AM: It seems fine with code commas. What's the problem?<br/> 
+GR: It will lead to difficulties when we use a similar construction that's not at the end of a sentence.<br/> 
+AM: That's premature generalization. DK: When that happens, let's look at this again.<br/>
+AM: Clean up "if the map does contain"<br/>
+TK: Can we call both containers "map"? DK/GR: yes.<br/>
+TK will send updated wording to DK.
+<p/>
+Conclusion: Update wording, then poll for tentatively ready
+</p> 
+
+<p><i>[2015-03-26, Thomas provides improved wording]</i></p>
+
+<p>
+The approach is to split the descriptions of the various blocks of four functions into two blocks each so as to make 
+the wording easier to follow.
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to N4296.</p>
+
+<ol>
+<li><p>Apply the following changes to section 23.4.4.4 [map.modifiers] p3:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(const key_type&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, const key_type&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: For the first and third forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into map
+from <tt>piecewise_construct</tt>, <tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.
+For the second and fourth forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into map
+from <tt>piecewise_construct</tt>, <tt>forward_as_tuple(move(k))</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins> 
+<p/>
+-3- <i>Effects</i>: <del>If the key <tt>k</tt> already exists in the map, there is no effect. Otherwise, inserts an element 
+into the map. In the first and third forms, the element is constructed from the arguments as <tt>value_type(k,
+std::forward&lt;Args&gt;(args)...)</tt>. In the second and fourth forms, the element is 
+constructed from the arguments as <tt>value_type(std::move(k), std::forward&lt;Args&gt;(args)...)</tt>. 
+In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only if the 
+insertion took place. The returned iterator points to the element of the map whose key is equivalent to <tt>k</tt></del>
+<ins>If the map does already contain an element whose key is equivalent to <tt>k</tt>, there is no effect.
+Otherwise for the first and third forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with
+<tt>piecewise_construct</tt>, <tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>,
+for the second and fourth forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with
+<tt>piecewise_construct</tt>, <tt>forward_as_tuple(move(k))</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> 
+if and only if the insertion took place. The returned iterator points to the map element whose key is equivalent to 
+<tt>k</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to section 23.4.4.4 [map.modifiers] p5:</p>
+
+<blockquote>
+<pre>
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(const key_type&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, const key_type&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;>::value</tt> shall be true.
+For the first and third forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into map from <tt>k</tt>, 
+<tt>forward&lt;M&gt;(obj)</tt>. For the second and fourth forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> 
+into map from <tt>move(k), forward&lt;M&gt;(obj)</tt>.</ins> 
+<p/>
+-5- <i>Effects</i>: <del>If the key <tt>k</tt> does not exist in the map, inserts an element into the map. In the first 
+and third forms, the element is constructed from the arguments as <tt>value_type(k, std::forward&lt;Args&gt;(args)...)</tt>. 
+In the second and fourth forms, the element is constructed from the arguments as <tt>value_type(std::move(k), 
+std::forward&lt;Args&gt;(args)...)</tt>. If the key already exists, <tt>std::forward&lt;M&gt;(obj)</tt> is assigned to the
+<tt>mapped_type</tt> corresponding to the key. In the first two overloads, the <tt>bool</tt> component of the returned
+value is true if and only if the insertion took place. The returned iterator points to the element that
+was inserted or updated</del>
+<ins>If the map does already contain an element whose key is equivalent to <tt>k</tt>,
+<tt>forward&lt;M&gt;(obj)</tt> is assigned to the <tt>mapped_type</tt> corresponding to the key.
+Otherwise the first and third forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with <tt>k</tt>, 
+<tt>forward&lt;M&gt;(obj)</tt>, the second and fourth forms inserts a <tt>value_type</tt> object <tt>t</tt> 
+constructed with <tt>move(k), forward&lt;M&gt;(obj)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> 
+if and only if the insertion took place. The returned iterator points to the element of the map whose key is equivalent to 
+<tt>k</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to section 23.5.4.4 [unord.map.modifiers] p5:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(const key_type&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, const key_type&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: For the first and third forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into unordered_map
+from <tt>piecewise_construct</tt>, <tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.
+For the second and fourth forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into unordered_map
+from <tt>piecewise_construct</tt>, <tt>forward_as_tuple(move(k))</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins> 
+<p/>
+-5- <i>Effects</i>: <del>If the key <tt>k</tt> already exists in the map, there is no effect. Otherwise, inserts an element 
+into the map. In the first and third forms, the element is constructed from the arguments as <tt>value_type(k,
+std::forward&lt;Args&gt;(args)...)</tt>. In the second and fourth forms, the element is 
+constructed from the arguments as <tt>value_type(std::move(k), std::forward&lt;Args&gt;(args)...)</tt>. 
+In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only if the 
+insertion took place. The returned iterator points to the element of the map whose key is equivalent to <tt>k</tt></del>
+<ins>If the unordered_map does already contain an element whose key is equivalent to <tt>k</tt>, there is no effect.
+Otherwise for the first and third forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with
+<tt>piecewise_construct</tt>, <tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>,
+for the second and fourth forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with
+<tt>piecewise_construct</tt>, <tt>forward_as_tuple(move(k))</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> 
+if and only if the insertion took place. The returned iterator points to the element of the unordered_map whose key is equivalent to 
+<tt>k</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to section 23.5.4.4 [unord.map.modifiers] p7:</p>
+
+<blockquote>
+<pre>
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(const key_type&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, const key_type&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;>::value</tt> shall be true.
+For the first and third forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into unordered_map from <tt>k</tt>, 
+<tt>forward&lt;M&gt;(obj)</tt>. For the second and fourth forms, <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> 
+into unordered_map from <tt>move(k), forward&lt;M&gt;(obj)</tt>.</ins> 
+<p/>
+-7- <i>Effects</i>: <del>If the key <tt>k</tt> does not exist in the map, inserts an element into the map. 
+In the first and third forms, the element is constructed from the arguments as <tt>value_type(k, std::forward&lt;Args&gt;(args)...)</tt>. 
+In the second and fourth forms, the element is constructed from the arguments as <tt>value_type(std::move(k), 
+std::forward&lt;Args&gt;(args)...)</tt>. If the key already exists, <tt>std::forward&lt;M&gt;(obj)</tt> is assigned to the
+<tt>mapped_type</tt> corresponding to the key. In the first two overloads, the <tt>bool</tt> component of the returned
+value is true if and only if the insertion took place. The returned iterator points to the element that
+was inserted or updated</del>
+<ins>If the unordered_map does already contain an element whose key is equivalent to <tt>k</tt>,
+<tt>forward&lt;M&gt;(obj)</tt> is assigned to the <tt>mapped_type</tt> corresponding to the key.
+Otherwise the first and third forms inserts a <tt>value_type</tt> object <tt>t</tt> constructed with <tt>k</tt>, 
+<tt>forward&lt;M&gt;(obj)</tt>, the second and fourth forms inserts a <tt>value_type</tt> object <tt>t</tt> 
+constructed with <tt>move(k), forward&lt;M&gt;(obj)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> 
+if and only if the insertion took place. The returned iterator points to the element of the unordered_map whose key is 
+equivalent to <tt>k</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+STL: existing wording is horrible, this is Thomas' wording and his issue<br/>
+STL: already implemented the piecewise part<br/>
+MC: ok with changes<br/>
+STL: changes are mechanical<br/>
+STL: believe this is P1, it must be fixed, we have wording<br/>
+PJP: functions are sensible<br/>
+STL: has been implemented<br/>
+MC: consensus is to move to ready 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4296.</p>
+
+<ol>
+<li><p>Apply the following changes to 23.4.4.4 [map.modifiers] p3+p4:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(const key_type&amp; k, Args&amp;&amp;... args);
+<del>template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);</del>
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, const key_type&amp; k, Args&amp;&amp;... args);
+<del>template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);</del>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from 
+<tt>piecewise_construct, forward_as_tuple(k), forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins> 
+<p/>
+-3- <i>Effects</i>: <del>If the key <tt>k</tt> already exists in the map, there is no effect. Otherwise, inserts an element 
+into the map. In the first and third forms, the element is constructed from the arguments as <tt>value_type(k,
+std::forward&lt;Args&gt;(args)...)</tt>. In the second and fourth forms, the element is 
+constructed from the arguments as <tt>value_type(std::move(k), std::forward&lt;Args&gt;(args)...)</tt>. 
+In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only if the 
+insertion took place. The returned iterator points to the element of the map whose key is equivalent to <tt>k</tt></del>
+<ins>If the map already contains an element whose key is equivalent to <tt>k</tt>, there is no effect. Otherwise inserts an 
+object of type <tt>value_type</tt> constructed with <tt>piecewise_construct, forward_as_tuple(k), 
+forward_as_tuple(forward&lt;Args&gt;(args)...)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only 
+if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+-4- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.
+</p>
+</blockquote>
+
+<pre>
+<ins>template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from 
+<tt>piecewise_construct, forward_as_tuple(move(k)), forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: If the map already contains an element whose key is equivalent to <tt>k</tt>, there is no effect. 
+Otherwise inserts an object of type <tt>value_type</tt> constructed with <tt>piecewise_construct, forward_as_tuple(move(k)), 
+forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only 
+if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to 23.4.4.4 [map.modifiers] p5+p6:</p>
+
+<blockquote>
+<pre>
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(const key_type&amp; k, M&amp;&amp; obj);
+<del>template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);</del>
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, const key_type&amp; k, M&amp;&amp; obj);
+<del>template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);</del>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;&gt;::value</tt> shall be <tt>true</tt>. 
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from <tt>k, forward&lt;M&gt;(obj)</tt>.</ins> 
+<p/>
+-5- <i>Effects</i>: <del>If the key <tt>k</tt> does not exist in the map, inserts an element into the map. In the first 
+and third forms, the element is constructed from the arguments as <tt>value_type(k, std::forward&lt;Args&gt;(args)...)</tt>. 
+In the second and fourth forms, the element is constructed from the arguments as <tt>value_type(std::move(k), 
+std::forward&lt;Args&gt;(args)...)</tt>. If the key already exists, <tt>std::forward&lt;M&gt;(obj)</tt> is assigned to the
+<tt>mapped_type</tt> corresponding to the key. In the first two overloads, the <tt>bool</tt> component of the returned
+value is true if and only if the insertion took place. The returned iterator points to the element that
+was inserted or updated</del>
+<ins>If the map already contains an element <tt>e</tt> whose key is equivalent to <tt>k</tt>, assigns <tt>forward&lt;M&gt;(obj)</tt> 
+to <tt>e.second</tt>. Otherwise inserts an object of type <tt>value_type</tt> constructed with <tt>k, forward&lt;M&gt;(obj)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and 
+only if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+-6- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;&gt;::value</tt> shall be <tt>true</tt>. 
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from <tt>move(k), forward&lt;M&gt;(obj)</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: If the map already contains an element <tt>e</tt> whose key is equivalent to <tt>k</tt>, 
+assigns <tt>forward&lt;M&gt;(obj)</tt> to <tt>e.second</tt>. Otherwise inserts an object of type <tt>value_type</tt> 
+constructed with <tt>move(k), forward&lt;M&gt;(obj)</tt>.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only 
+if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to 23.5.4.4 [unord.map.modifiers] p5+p6:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(const key_type&amp; k, Args&amp;&amp;... args);
+<del>template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);</del>
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, const key_type&amp; k, Args&amp;&amp;... args);
+<del>template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);</del>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>unordered_map</tt> from 
+<tt>piecewise_construct, forward_as_tuple(k), forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins> 
+<p/>
+-5- <i>Effects</i>: <del>If the key <tt>k</tt> already exists in the map, there is no effect. Otherwise, inserts an element 
+into the map. In the first and third forms, the element is constructed from the arguments as <tt>value_type(k,
+std::forward&lt;Args&gt;(args)...)</tt>. In the second and fourth forms, the element is 
+constructed from the arguments as <tt>value_type(std::move(k), std::forward&lt;Args&gt;(args)...)</tt>. 
+In the first two overloads, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only if the 
+insertion took place. The returned iterator points to the element of the map whose key is equivalent to <tt>k</tt></del>
+<ins>If the map already contains an element whose key is equivalent to <tt>k</tt>, there is no effect. Otherwise inserts 
+an object of type <tt>value_type</tt> constructed with <tt>piecewise_construct, forward_as_tuple(k), 
+forward_as_tuple(forward&lt;Args&gt;(args)...)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only 
+if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+-6- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class... Args&gt; pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);
+template &lt;class... Args&gt; iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>unordered_map</tt> from 
+<tt>piecewise_construct, forward_as_tuple(move(k)), forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: If the map already contains an element whose key is equivalent to <tt>k</tt>, there is no effect. 
+Otherwise inserts an object of type <tt>value_type</tt> constructed with <tt>piecewise_construct, forward_as_tuple(move(k)), 
+forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if and only 
+if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Apply the following changes to 23.5.4.4 [unord.map.modifiers] p7+p8:</p>
+
+<blockquote>
+<pre>
+template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(const key_type&amp; k, M&amp;&amp; obj);
+<del>template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);</del>
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, const key_type&amp; k, M&amp;&amp; obj);
+<del>template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);</del>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;&gt;::value</tt> shall be <tt>true</tt>. 
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>unordered_map</tt> from <tt>k, 
+forward&lt;M&gt;(obj)</tt>.</ins> 
+<p/>
+-7- <i>Effects</i>: <del>If the key <tt>k</tt> does not exist in the map, inserts an element into the map. 
+In the first and third forms, the element is constructed from the arguments as <tt>value_type(k, std::forward&lt;Args&gt;(args)...)</tt>. 
+In the second and fourth forms, the element is constructed from the arguments as <tt>value_type(std::move(k), 
+std::forward&lt;Args&gt;(args)...)</tt>. If the key already exists, <tt>std::forward&lt;M&gt;(obj)</tt> is assigned to the
+<tt>mapped_type</tt> corresponding to the key. In the first two overloads, the <tt>bool</tt> component of the returned
+value is true if and only if the insertion took place. The returned iterator points to the element that
+was inserted or updated</del>
+<ins>If the map already contains an element <tt>e</tt> whose key is equivalent to <tt>k</tt>, assigns <tt>forward&lt;M&gt;(obj)</tt> 
+to <tt>e.second</tt>. Otherwise inserts an object of type <tt>value_type</tt> constructed with <tt>k, forward&lt;M&gt;(obj)</tt></ins>.
+<p/>
+<ins>-?- <i>Returns</i>: In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is equivalent to <tt>k</tt>.</ins>
+<p/>
+-8- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class M&gt; pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);
+template &lt;class M&gt; iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_assignable&lt;mapped_type&amp;, M&amp;&amp;&gt;::value</tt> shall be <tt>true</tt>. 
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>unordered_map</tt> from <tt>move(k), 
+forward&lt;M&gt;(obj)</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: If the map already contains an element <tt>e</tt> whose key is equivalent to <tt>k</tt>, 
+assigns <tt>forward&lt;M&gt;(obj)</tt> to <tt>e.second</tt>. Otherwise inserts an object of type <tt>value_type</tt> 
+constructed with <tt>move(k), forward&lt;M&gt;(obj)</tt>.</ins>
+<p/>
+<ins>-?- <i>Returns</i>:  In the first overload, the <tt>bool</tt> component of the returned pair is <tt>true</tt> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is equivalent to 
+<tt>k</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: The same as <tt>emplace</tt> and <tt>emplace_hint</tt>, respectively.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

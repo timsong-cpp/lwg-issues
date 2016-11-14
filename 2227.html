@@ -1,0 +1,872 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2227: Stateful comparison objects in associative containers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2227" href="#2227">2227.</a> Stateful comparison objects in associative containers</h3>
+<p><b>Section:</b> 23.2.4 [associative.reqmts] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Juan Soulie <b>Opened:</b> 2012-12-19 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts">active issues</a> in [associative.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#associative.reqmts">issues</a> in [associative.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Table 102 in 23.2.4 [associative.reqmts]/8 states on expression <tt>a.key_comp()</tt> that it 
+"returns the comparison object out of which a was constructed". At the same time, 
+23.2.1 [container.requirements.general]/8 states (starting in the third line) that 
+"...Any <tt>Compare</tt>, <tt>Pred</tt>, or <tt>Hash</tt> objects belonging to <tt>a</tt> and <tt>b</tt> 
+shall be swappable and <em>shall be exchanged</em> by unqualified calls to non-member swap...". This is 
+problematic for any compliant implementation, since once swapped the container cannot return the comparison 
+object out of which it was constructed unless incurring in storing an otherwise needless object.
+<p/>
+The simple solution is to correct that statement in Table 102, but I believe this is part of a larger problem 
+of underspecified behavior: The new standard has made an effort in regards to allocators and now fully 
+specifies what happens to stateful allocator objects. It has even specified what happens to stateful <tt>hasher</tt> 
+and <tt>key_equal</tt> members of unordered containers (they propagate), but it says nothing about stateful 
+comparison objects of (ordered) associative containers, except for the statement in 
+23.2.1 [container.requirements.general]/8 referred above and only related to <tt>swap</tt>.
+<p/>
+For example, it is unclear to me what is specified to happen on an assignment: should the comparison object 
+be copied/moved along with the elements, or should the left-hand side object keep its own?
+Maybe this has been intentionally left unspecified with the purpose of compatibility with C++98, which I 
+understand it specified that comparison objects were kept for the entire life of the container (like allocators) 
+&mdash; an unfortunate choice. But anyway, the segment of 23.2.1 [container.requirements.general] quoted 
+above seems to break any possible backwards compatibility with C++98 in this regard.
+<p/>
+Therefore, taking into consideration consistency with how this is dealed with for unordered associative 
+containers, I propose that Table 102 is modified as follows:
+</p>
+<ul>
+<li>
+<p>
+The row for expression <tt>a.key_comp()</tt> is changed so that its "assertion/note pre-/post-condition" reads 
+"Returns <tt>a</tt>'s comparison object."
+</p>
+</li>
+
+<li>
+<p>
+A new row is added at the appropriate location (which I believe would be after "X(il)" row), with:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 102 &mdash; Associative container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td>
+<tt>X(b)<br/>
+X a(b)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+Copy constructor. In addition to<br/>
+the requirements of Table 96, copies<br/>
+the comparison object.
+</td>
+<td>
+Linear in <tt>b.size()</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a = b</tt>
+</td>
+<td>
+<tt>X&amp;</tt>
+</td>
+<td>
+Copy assignment operator. In addition to<br/>
+the requirements of Table 96, copies the<br/>
+comparison object.
+</td>
+<td>
+Linear in <tt>a.size()</tt> and <tt>b.size()</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+</ul>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Review.
+</p>
+
+<p><i>[2013-04-18, Bristol]</i></p>
+ 
+<p>
+STL: can't believe we don't specify this already. this is totally necessary
+<p/>
+Alisdair: how does it do this? copy construction? assignment?
+<p/>
+Also need it for move.
+<p/>
+STL: we already specify this for constructing from a comparator, not during copy construction though.
+<p/>
+Jonathan: don't like wording, should say "<tt>key_compare</tt> is <tt>CopyConstructible</tt>. Uses <tt>b.key_comp()</tt> 
+as a comparison object."
+<p/>
+STL: we get it right for unordered!
+<p/>
+Jonathan: can't wordsmith this now, but I think implementations do the right thing.
+<p/>
+Alisdair: not sure what right thing is for moves. Also we say nothing about propagating allocators to functors.
+</p>
+<p>
+Moved to Open.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+TK: There's no need for fine-grained propagate/not-propagate control. If you don't want to propagate the predicate, you can 
+simply construct or insert from an iterator range.
+<p/>
+VV: libstdc++ already implements the resolution of this issue.
+<p/>
+GR: There are a couple of other problems. We don't specify move constructor and move assignment for maps. Those are just general.
+<p/>
+TK: General container requirements already describe the semantics for {copy,move}-{construction,assignment}, so it doesn't 
+seem that there's room for choice in <tt>std::map</tt> assignments. <tt>unordered_map</tt> is different, though.
+<p/>
+[Note: Check what general container requirements say about container equality.]
+<p/>
+DK will draft wording. The decision is to unambiguously make all {copy,move}-{construction,assignment} operations endow the 
+LHS with the exact state of the RHS, including all predicates and hash function states.
+<p/>
+Conclusion: Update wording, revisit later. 
+</p>
+
+<p><i>[2015-05-06 Lenexa: Waiting for updated wording]</i></p>
+
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N3485.</p>
+
+<ol>
+<li><p>Change Table 102 as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 102 &mdash; Associative container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(il)</tt>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+Same as <tt>X(il.begin(), il.end())</tt>.
+</td>
+<td>
+same as <tt>X(il.begin(), il.end())</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>X(b)<br/>
+X a(b)</tt></ins>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+<ins>Copy constructor. In addition to<br/>
+the requirements of Table 96, copies<br/>
+the comparison object.</ins>
+</td>
+<td>
+<ins>Linear in <tt>b.size()</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>a = b</tt></ins>
+</td>
+<td>
+<ins><tt>X&amp;</tt></ins>
+</td>
+<td>
+<ins>Copy assignment operator. In addition to<br/>
+the requirements of Table 96, copies the<br/>
+comparison object.</ins>
+</td>
+<td>
+<ins>Linear in <tt>a.size()</tt> and <tt>b.size()</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.key_comp()</tt>
+</td>
+<td>
+<tt>X::key_compare</tt>
+</td>
+<td>
+<del>r</del><ins>R</ins>eturns <del>the</del><ins><tt>a</tt>'s</ins> comparison object<br/>
+<del>out of which a was constructed.</del>
+</td>
+<td>
+constant
+</td>
+</tr>
+
+
+</table>
+</blockquote>
+
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2015-10-19 Daniel comments and provides alternative wording]</i></p>
+
+<p>
+The current standard is especially unclear in regard to what effects move operations of unordered/associative
+containers should have. We have one example that is standardized exactly in this way by looking at 
+23.6.5.2 [priqueue.cons.alloc] p7:
+</p>
+<blockquote>
+<pre>
+template &lt;class Alloc&gt; priority_queue(priority_queue&amp;&amp; q, const Alloc&amp; a);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Initializes <tt>c</tt> with <tt>std::move(q.c)</tt> as the first argument and <tt>a</tt> as 
+the second argument, and initializes <tt>comp</tt> with <tt>std::move(q.comp)</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+A similarly comparable example are the move-operations of <tt>std::unique_ptr</tt> in regard to the deleter 
+(when this is no a reference), which also respect move-capabilities of that function object.
+<p/>
+We have wording from C++98 for associative containers (but <em>not</em> for unordered containers!) that was never
+adjusted to C++11 move-semantics in 23.2.4 [associative.reqmts] p12:
+</p>
+<blockquote><p>
+When an associative container is constructed by passing a comparison object the container shall not store
+a pointer or reference to the passed object, even if that object is passed by reference. When an associative
+container is copied, either through a copy constructor or an assignment operator, the target container shall
+then use the comparison object from the container being copied, as if that comparison object had been
+passed to the target container in its constructor.
+</p></blockquote>
+<p>
+The second sentence of this wording is problematic for several reasons:
+</p>
+<ol>
+<li><p>It only talks about copy operations, not about move operations, except that the term "assignment" without
+leading "copy" is a bit ambigious (albeit it seems clear in the complete context).</p></li>
+<li><p>It is not really clear how to interpret "as if that comparison object had been
+passed to the target container in its constructor" for an assignment operation. A possible but not conclusive
+interpretation could be that this is wording supporting a "copy-via-swap" idiom.</p></li>
+<li><p>There does not exist similar wording for unordered containers, except that Table 102 provides entries for
+copy construction and copy assignment of the containers whose wording just talks of "copies" in either case.</p></li>
+</ol>
+<p>
+Existing implementations differ already:
+</p>
+<ol>
+<li><p>Visual Studio 2015 uses copy construction and copy assignment for the two copy operations but uses swap operations
+for the move operations.</p></li>
+<li><p>GCC's libstdc++ performs copy construction and copy assignment for the two copy operations and for the two
+move operations, respectively</p></li>
+<li><p>clang++'s libc++ performs copy/move construction and copy/move assignment for the corresponding
+four copy/move operations</p></li>
+</ol>
+<p>
+The alternative wording provided below attempts to clarify that container copy/move operations perform the corresponding
+copy/move operations on the owned function objects.
+<p/>
+In addition the wording also resolves LWG <a href="lwg-active.html#2215">2215</a>: I believe that the current
+wording should require that container function objects should meet the <tt>CopyConstructible</tt> requirements. Adding
+this general requirement also fixes the underspecified requirements of the accessor functions <tt>key_comp()</tt> and
+<tt>value_comp()</tt>.
+<p/>
+I don't think that a general requirement for <tt>Swappable</tt> is needed, only the member <tt>swap</tt> function currently requires this.
+Nonetheless the wording below does <em>support</em> stateful functors that are <em>also</em> moveable or move-assignable,
+therefore the specified semantics in terms of move operations.
+<p/>
+I should add the following warning, though: If this proposed wording would be accepted, there is a little chance of
+code breakage, because the current wording <em>can</em> be read that in general there is no requirement that the
+container functors are <tt>CopyConstructible</tt>. The following code example is accepted by gcc + libstd++:
+</p>
+<blockquote><pre>
+#include &lt;map&gt;
+#include &lt;utility&gt;
+#include &lt;iostream&gt;
+
+struct Cmp {
+  Cmp() = default;
+  Cmp(const Cmp&amp;) = delete;
+  Cmp(Cmp&amp;&amp;) = delete;
+  Cmp&amp; operator=(const Cmp&amp;) = delete;
+  Cmp&amp; operator=(Cmp&amp;&amp;) = delete;
+  template&lt;class T&gt;
+  bool operator()(const T&amp; x, const T&amp; y) const
+  {
+    return x &lt; y;
+  }
+};
+
+typedef std::map&lt;int, int, Cmp&gt; MyMap;
+
+int main() {
+  MyMap m;
+  std::cout &lt;&lt; (m.find(12) == m.end()) &lt;&lt; std::endl;
+}
+</pre></blockquote>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N4527.</p>
+
+<ol>
+<li><p>Change 23.2.4 [associative.reqmts] p8 as indicated:</p>
+
+<blockquote><p>
+-8- In Table 101, <tt>X</tt> denotes an associative container class, <tt>a</tt> denotes a value of type <tt>X</tt>, 
+<ins><tt>b</tt> denotes a possibly <tt>const</tt> value of type <tt>X</tt>, <tt>rv</tt> denotes a non-<tt>const</tt> rvalue of 
+type <tt>X</tt>,</ins> <tt>u</tt> denotes the name of a variable being declared, [&hellip;]
+</p></blockquote>
+</li>
+
+<li><p>Change Table 101 as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 101 &mdash; Associative container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X::key_compare</tt>
+</td>
+<td>
+<tt>Compare</tt>
+</td>
+<td>
+<ins><i>Requires</i>: <tt>Compare</tt> is <tt>CopyConstructible</tt>.</ins><br/>
+defaults to <tt>less&lt;key_type&gt;</tt>
+</td>
+<td>
+compile time
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(c)<br/>
+X u(c);</tt>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+<del><i>Requires:</i> <tt>key_compare</tt> is <tt>CopyConstructible</tt>.<br/></del> 
+<i>Effects</i>: Constructs an empty container.<br/> 
+Uses a copy of <tt>c</tt> as a comparison object.
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i,j,c)<br/>
+X u(i,j,c);</tt>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+<i>Requires:</i> <del><tt>key_compare</tt> is <tt>CopyConstructible</tt>.<br/></del> 
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: Constructs an empty container and inserts elements<br/>
+from the range <tt>[i, j)</tt> into it; uses <tt>c</tt> as a comparison object.
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(il)</tt>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+Same as <tt>X(il.begin(), il.end())</tt>.
+</td>
+<td>
+same as <tt>X(il.begin(), il.end())</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>X(b)<br/>
+X a(b)</tt></ins>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95)<br/>
+<i>Effects:</i> Copy constructs the comparison object of <tt>a</tt> from<br/> 
+the comparison object of <tt>b</tt>.</ins>
+</td>
+<td>
+<ins>Linear in <tt>b.size()</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>X(rv)<br/>
+X a(rv)</tt></ins>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Effects:</i> Move constructs the comparison object of <tt>a</tt> from<br/> 
+the comparison object of <tt>rv</tt>.</ins>
+</td>
+<td>
+<ins>constant</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>a = b</tt></ins>
+</td>
+<td>
+<ins><tt>X&amp;</tt></ins>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Requires:</i> <tt>key_compare</tt> is <tt>CopyAssignable</tt>.<br/> 
+<i>Effects:</i> Copy assigns the comparison object of <tt>b</tt><br/>
+to the comparison object of <tt>a</tt>.</ins>
+</td>
+<td>
+<ins>Linear in <tt>a.size()</tt> and <tt>b.size()</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>a = rv</tt></ins>
+</td>
+<td>
+<ins><tt>X&amp;</tt></ins>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Requires:</i> <tt>key_compare</tt> is <tt>MoveAssignable</tt>.<br/> 
+<i>Effects:</i> Move assigns from the comparison object of <tt>rv</tt><br/>
+to the comparison object of <tt>a</tt>.</ins>
+</td>
+<td>
+<ins>Linear</ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.key_comp()</tt>
+</td>
+<td>
+<tt>X::key_compare</tt>
+</td>
+<td>
+<del>r</del><ins>R</ins>eturns <del>the</del><ins><tt>a</tt>'s</ins> comparison object<br/>
+<del>out of which a was constructed.</del>
+</td>
+<td>
+constant
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Change 23.2.4 [associative.reqmts] p12 as indicated:</p>
+
+<blockquote><p>
+-12- When an associative container is constructed by passing a comparison object the container shall not store
+a pointer or reference to the passed object, even if that object is passed by reference. <del>When an associative
+container is copied, either through a copy constructor or an assignment operator, the target container shall
+then use the comparison object from the container being copied, as if that comparison object had been
+passed to the target container in its constructor.</del>
+</p></blockquote>
+</li>
+
+
+<li><p>Change 23.2.5 [unord.req] p11 as indicated:</p>
+
+<blockquote><p>
+-11- In Table 102: <tt>X</tt> denotes an unordered associative container class, <tt>a</tt> denotes a value of type <tt>X</tt>, 
+<tt>b</tt> denotes a possibly <tt>const</tt> value of type <tt>X</tt>, <ins><tt>rv</tt> denotes a non-<tt>const</tt> rvalue 
+of type <tt>X</tt>,</ins> [&hellip;]
+</p></blockquote>
+</li>
+
+<li><p>Change Table 102 as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 102 &mdash; Unordered associative container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X::hasher</tt>
+</td>
+<td>
+<tt>Hash</tt>
+</td>
+<td>
+<ins><i>Requires</i>: <tt>Hash</tt> is <tt>CopyConstructible</tt>.<br/></ins>
+<tt>Hash</tt> shall be a unary function object type<br/> 
+such that the expression <tt>hf(k)</tt> has type <tt>std::size_t</tt>.
+</td>
+<td>
+compile time
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X::key_equal</tt>
+</td>
+<td>
+<tt>Pred</tt>
+</td>
+<td>
+<ins><i>Requires</i>: <tt>Pred</tt> is <tt>CopyConstructible</tt>.<br/></ins>
+<tt>Pred</tt> shall be a binary predicate that takes<br/> 
+two arguments of type <tt>Key</tt>.<br/> 
+<tt>Pred</tt> is an equivalence relation.
+</td>
+<td>
+compile time
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(n, hf, eq)<br/>
+X a(n, hf, eq)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<del><i>Requires</i>: <tt>hasher</tt> and <tt>key_equal</tt> are <tt>CopyConstructible</tt>.<br/></del>
+<i>Effects</i>: [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(n, hf)<br/>
+X a(n, hf)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> is <tt>CopyConstructible</tt> and<br/></del>
+<tt>key_equal</tt> is <tt>DefaultConstructible</tt>.<br/>
+<i>Effects</i>: [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i, j, n, hf, eq)<br/>
+X a(i, j, n, hf, eq)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> and <tt>key_equal</tt> are <tt>CopyConstructible</tt>.<br/></del>
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i, j, n, hf)<br/>
+X a(i, j, n, hf)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> is <tt>CopyConstructible</tt> and<br/></del>
+<tt>key_equal</tt> is <tt>DefaultConstructible</tt>.<br/> 
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(b)<br/>
+X a(b)</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<del>Copy constructor. In addition<br/>
+to the requirements of Table 95,<br/>
+copies the hash function,<br/>
+predicate, and maximum load<br/>
+factor.</del>
+<ins>(In addition to the requirements of Table 95)<br/>
+<i>Effects:</i> Copy constructs the hash function, predicate, and maximum load factor<br/> 
+of <tt>a</tt> from the corresponding objects of <tt>b</tt>.</ins>
+</td>
+<td>
+Average case linear in<br/> 
+<tt>b.size()</tt>,<br/>
+worst case quadratic.
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>X(rv)<br/>
+X a(rv)</tt></ins>
+</td>
+<td>
+<ins><tt>X</tt></ins>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Effects:</i> Move constructs the hash function, predicate, and maximum load factor<br/> 
+of <tt>a</tt> from the corresponding objects of <tt>rv</tt>.</ins>
+</td>
+<td>
+<ins>constant</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a = b</tt>
+</td>
+<td>
+<tt>X&amp;</tt>
+</td>
+<td>
+<del>Copy assignment operator. In<br/>
+addition to the requirements of<br/>
+Table 95, copies the hash<br/>
+function, predicate, and<br/>
+maximum load factor.</del>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Requires:</i> <tt>hasher</tt> and <tt>key_equal</tt> are <tt>CopyAssignable</tt>.<br/> 
+<i>Effects:</i> Copy assigns the hash function, predicate, and maximum load factor<br/> 
+of <tt>b</tt> to the corresponding objects of <tt>a</tt>.</ins>
+</td>
+<td>
+Average case linear in<br/> 
+<tt>b.size()</tt>,<br/>
+worst case quadratic.
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>a = rv</tt></ins>
+</td>
+<td>
+<ins><tt>X&amp;</tt></ins>
+</td>
+<td>
+<ins>(In addition to the requirements of Table 95 and Table 98)<br/>
+<i>Requires:</i> <tt>hasher</tt> and <tt>key_equal</tt> are <tt>MoveAssignable</tt>.<br/> 
+<i>Effects:</i> Move assigns the hash function, predicate, and maximum load factor<br/> 
+from <tt>rv</tt> to the corresponding objects of <tt>a</tt>.</ins>
+</td>
+<td>
+<ins>Linear</ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-08-07]</i></p>
+
+<p>
+Daniel removes the previously proposed wording to work on revised wording.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

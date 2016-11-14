@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2389: [fund.ts] <tt>function::operator=</tt> is over-specified and handles allocators incorrectly</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2389" href="#2389">2389.</a> [fund.ts] <tt>function::operator=</tt> is over-specified and handles allocators incorrectly</h3>
+<p><b>Section:</b> 99 [fund.ts::func.wrap.func.con] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2014-05-23 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts</b></p>
+
+<p>
+This issue against the TS is similar to LWG <a href="lwg-closed.html#2386">2386</a>, which is against the standard. The Effects clauses for the assignment 
+operator for class template <tt>function</tt> are written as code that constructs a temporary <tt>function</tt> and then swaps it 
+with <tt>*this</tt>. 
+The intention appears to be that assignment should have the strong exception guarantee, i.e., <tt>*this</tt> is not modified if 
+an exception is thrown. The description in the standard is incorrect when <tt>*this</tt> was originally constructed using an 
+allocator. The TS attempts to correct the problem, but the correction is incomplete.
+<p/>
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3908.html#mods.func.wrap">The wording in the TS</a> uses 
+<tt>get_memory_resource()</tt> to construct a temporary <tt>function</tt> object with the same allocator as the left-hand size 
+(lhs) of the assignment. The intended result of using this pattern was that the allocator for <tt>*this</tt> would be unchanged, 
+but it doesn't quite work. The problem is that the allocator returned by <tt>get_memory_resource()</tt> is not the same type as 
+the type-erased allocator used to construct the <tt>function</tt> object, but rather a type-erased distillation of that type that 
+is insufficient for making a true copy of the allocator. The rules for type-erased allocators in the TS 
+(<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3908.html#memory.type.erased.allocator">[memory.type.erased.allocator]</a>) 
+specify that the lifetime of the object returned by <tt>get_memory_resource()</tt> is sometimes tied to the lifetime of <tt>*this</tt>, 
+which might cause the (single copy of) the allocator to be destroyed if the <tt>swap</tt> operation destroys and reconstructs <tt>*this</tt>, 
+as some implementations do (and are allowed to do).
+<p/>
+The desired behavior is that assignment would leave the allocator of the lhs unchanged. The way to achieve this behavior is to 
+construct the temporary <tt>function</tt> using the original allocator. Unfortunately, we cannot describe the desired behavior in 
+pure code, because <tt>get_memory_resource()</tt> does not really name the type-erased allocator, as mentioned above. The PR below, 
+therefore, uses pseudo-code, inventing a fictitious <tt><i>ALLOCATOR_OF</i>(f)</tt> expression that evaluates to the actual allocator 
+type, even if that allocator was type erased. I have implemented this PR successfully.
+</p>
+
+<p><i>[2014-06-21, Rapperswil]</i></p>
+
+<p>
+Apply to Library Fundamentals TS (after removing the previous "Throws: Nothing" element to prevent an editorial conflict with
+<a href="lwg-defects.html#2401">2401</a>).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3908.html">N3908</a>.</p>
+
+<ol>
+<li><p>Change in [mods.func.wrap] in the <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3908.html#mods.func.wrap">Library TS</a> 
+as indicated:
+</p>
+<blockquote>
+<p>
+<ins>In the following descriptions, let <tt><i>ALLOCATOR_OF</i>(f)</tt> be the allocator specified in the construction of <tt>function</tt> 
+<tt>f</tt>, or <tt>allocator&lt;char&gt;()</tt> if no allocator was specified.</ins>
+</p>
+<pre>
+function&amp; operator=(const function&amp; f);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: <tt>function(allocator_arg, <del>get_memory_resource()</del><ins><i>ALLOCATOR_OF</i>(*this)</ins>, f).swap(*this);</tt>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+function&amp; operator=(function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects</i>: <tt>function(allocator_arg, <del>get_memory_resource()</del><ins><i>ALLOCATOR_OF</i>(*this)</ins>, std::move(f)).swap(*this);</tt>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+function&amp; operator=(nullptr_t);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: If <tt>*this != NULL</tt>, destroys the target of <tt>this</tt>.
+<p/>
+-12- <i>Postconditions</i>: <tt>!(*this)</tt>. <ins>The memory resource returned by <tt>get_memory_resource()</tt> after the assignment 
+is equivalent to the memory resource before the assignment. [<i>Note</i>: the address returned by <tt>get_memory_resource()</tt> 
+might change &mdash; <i>end note</i>]</ins>
+<p/>
+-13- <i>Returns</i>: <tt>*this</tt>  
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; function&amp; operator=(F&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects</i>: <tt>function(allocator_arg, <del>get_memory_resource()</del><ins><i>ALLOCATOR_OF</i>(*this)</ins>, 
+std::forward&lt;F&gt;(f)).swap(*this);</tt>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; function&amp; operator=(reference_wrapper&lt;F&gt; f);
+</pre>
+<blockquote>
+<p>
+-18- <i>Effects</i>: <tt>function(allocator_arg, <del>get_memory_resource()</del><ins><i>ALLOCATOR_OF</i>(*this)</ins>, f).swap(*this);</tt>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

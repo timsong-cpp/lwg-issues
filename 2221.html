@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2221: No formatted output operator for <tt>nullptr</tt></title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2221" href="#2221">2221.</a> No formatted output operator for <tt>nullptr</tt></h3>
+<p><b>Section:</b> 27.7.3 [output.streams] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Matt Austern <b>Opened:</b> 2012-12-07 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+When I write 
+</p>
+<blockquote><pre>
+std::cout &lt;&lt; nullptr &lt;&lt; std::endl;
+</pre></blockquote>
+<p>
+I get a compilation error, "ambiguous overload for '<tt>operator&lt;&lt;</tt>' in '<tt>std::cout &lt;&lt; nullptr</tt>'". 
+As far as I can tell, the compiler is right to issue that error. There are inserters for <tt>const void*</tt>, 
+<tt>const char*</tt>, <tt>const signed char*</tt>, and <tt>const unsigned char*</tt>, and none for 
+<tt>nullptr_t</tt>, so the expression really is ambiguous.
+<p/>
+<em>Proposed wording</em>:
+<p/>
+The obvious library solution is to add a <tt>nullptr_t</tt> overload, which would be defined something like
+</p>
+<blockquote><pre>
+template&lt;class C, class T&gt;
+basic_ostream&lt;C, T&gt;&amp; operator&lt;&lt;(basic_ostream&lt;C, T&gt;&amp; os, nullptr_t) 
+{ 
+  return os &lt;&lt; (void*) nullptr; 
+}
+</pre></blockquote>
+<p>
+We might also consider addressing this at a core level: add a special-case language rule that addresses all 
+cases where you write <tt>f(nullptr)</tt> and <tt>f</tt> is overloaded on multiple pointer types. (Perhaps 
+a tiebreaker saying that <tt>void*</tt> is preferred in such cases.)
+</p>
+
+<p><i>[2016-01-18, comments from Mike and Ville collected by Walter Brown]</i></p>
+
+<p>
+<b>Mike Miller</b>: "Changing overload resolution sounds like something that should be
+considered by EWG before CWG [&hellip;]"
+<p/>
+<b>Ville</b>: "Agreed, such a change would be Evolutionary. Personally, I think it would also be wrong, because 
+I don't see how <tt>void*</tt> is the right choice to prefer in the case of code that is currently ambiguous. 
+Sure, it would solve this particular library issue, but it seemingly has wider repercussions. If LWG really wants 
+to, EWG can certainly discuss this issue, but I would recommend solving it on the LWG side (which doesn't mean 
+that the standard necessarily needs to change, I wouldn't call it far-fetched to NAD it)."
+</p>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Zhihao recommends NAD:</p>
+<p>
+<tt>nullptr</tt> is printable if being treated as <tt>void*</tt>, but causes
+UB if being treated as <tt>char cv*</tt>. Capturing this ambigurity
+at compile time and avoid a runtime UB is a good thing.
+</p>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Tues PM: General agreement on providing the overload; discussion on what it should say.</p>
+<p>Polls:<br/>
+Matt's suggestion (in the issue): 2/0/6/2/2/<br/>
+Unspecified output: 3/2/5/0/1<br/>
+Specified output: 1/1/6/3/0</p>
+<p>Move to Open</p>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>
+The group consensus is that we only output <tt>nullptr</tt> because
+it is of a fundamental type, causing problems in functions doing
+forwarding, and we don't want to read it back.
+</p>
+<p>Fri PM: Move to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606
+</p>
+
+<ol>
+<li><p>Insert the signature into 27.7.3.1 [ostream], class template <tt>basic_ostream</tt> synopsis, as follows:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting notes:</i> Why member?  Don't want to define a new category of inserters just for this.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std {
+  template &lt;class charT, class traits = char_traits&lt;charT&gt; &gt;
+  class basic_ostream
+    : virtual public basic_ios&lt;charT, traits&gt; {
+  public:
+    [&hellip;]
+    basic_ostream&lt;charT, traits&gt;&amp; operator&lt;&lt;(const void* p);
+    <ins>basic_ostream&lt;charT, traits&gt;&amp; operator&lt;&lt;(nullptr_t);</ins>
+    basic_ostream&lt;charT, traits&gt;&amp; operator&lt;&lt;(
+      basic_streambuf&lt;char_type, traits&gt;* sb);
+    [&hellip;]
+  };
+</pre>
+</blockquote>
+</li>
+
+<li><p>Append the following new paragraphs to 27.7.3.6.3 [ostream.inserters]:</p>
+
+<blockquote>
+<pre>
+basic_ostream&lt;charT, traits&gt;&amp; operator&lt;&lt;
+  (basic_streambuf&lt;charT, traits&gt;* sb);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-10- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>basic_ostream&lt;charT, traits&gt;&amp; operator&lt;&lt;(nullptr_t);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-??- <i>Effects:</i> Equivalent to <tt>return *this &lt;&lt; s;</tt> where
+<tt>s</tt> is an implementation-defined NTCTS.</ins>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

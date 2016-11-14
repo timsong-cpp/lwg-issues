@@ -1,0 +1,283 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 408: Is <tt>vector&lt;reverse_iterator&lt;char*&gt; &gt;</tt> forbidden?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="408" href="#408">408.</a> Is <tt>vector&lt;reverse_iterator&lt;char*&gt; &gt;</tt> forbidden?</h3>
+<p><b>Section:</b> 24.2 [iterator.requirements] <b>Status:</b> <a href="lwg-active.html#NAD Editorial">NAD Editorial</a>
+ <b>Submitter:</b> Nathan Myers <b>Opened:</b> 2003-06-03 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.requirements">issues</a> in [iterator.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD Editorial">NAD Editorial</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I've been discussing iterator semantics with Dave Abrahams, and a 
+surprise has popped up.  I don't think this has been discussed before.
+</p>
+
+<p>
+99 [iterator.concepts] says that the only operation that can be performed on "singular"
+iterator values is to assign a non-singular value to them.  (It 
+doesn't say they can be destroyed, and that's probably a defect.)  
+Some implementations have taken this to imply that there is no need 
+to initialize the data member of a <tt>reverse_iterator&lt;&gt;</tt> in the default
+constructor.  As a result, code like
+</p>
+<blockquote><pre>
+  std::vector&lt;std::reverse_iterator&lt;char*&gt; &gt; v(7);
+  v.reserve(1000);
+</pre></blockquote>
+<p>
+invokes undefined behavior, because it must default-initialize the
+vector elements, and then copy them to other storage.  Of course many 
+other vector operations on these adapters are also left undefined,
+and which those are is not reliably deducible from the standard.
+</p>
+
+<p>
+I don't think that 24.1 was meant to make standard-library iterator 
+types unsafe.  Rather, it was meant to restrict what operations may 
+be performed by functions which take general user- and standard 
+iterators as arguments, so that raw pointers would qualify as
+iterators.  However, this is not clear in the text, others have come 
+to the opposite conclusion.
+</p>
+
+<p>
+One question is whether the standard iterator adaptors have defined
+copy semantics.  Another is whether they have defined destructor
+semantics: is
+</p>
+<blockquote><pre>
+  { std::vector&lt;std::reverse_iterator&lt;char*&gt; &gt;  v(7); }
+</pre></blockquote>
+<p>
+undefined too?
+</p>
+
+<p>
+Note this is not a question of whether algorithms are allowed to
+rely on copy semantics for arbitrary iterators, just whether the
+types we actually supply support those operations.  I believe the 
+resolution must be expressed in terms of the semantics of the 
+adapter's argument type.  It should make clear that, e.g., the 
+<tt>reverse_iterator&lt;T&gt;</tt> constructor is actually required to execute
+<tt>T()</tt>, and so copying is defined if the result of <tt>T()</tt> is copyable.
+</p>
+
+<p>
+Issue <a href="lwg-defects.html#235">235</a>, which defines <tt>reverse_iterator</tt>'s default
+constructor more precisely, has some relevance to this issue.
+However, it is not the whole story.
+</p>
+
+<p>
+The issue was whether 
+</p>
+<blockquote><pre>
+  reverse_iterator() { }
+</pre></blockquote>
+<p>
+is allowed, vs. 
+</p>
+<blockquote><pre>
+  reverse_iterator() : current() { }
+</pre></blockquote>
+
+<p>
+The difference is when <tt>T</tt> is <tt>char*</tt>, where the first leaves the member
+uninitialized, and possibly equal to an existing pointer value, or
+(on some targets) may result in a hardware trap when copied.
+</p>
+
+<p>
+8.5 paragraph 5 seems to make clear that the second is required to
+satisfy DR <a href="lwg-defects.html#235">235</a>, at least for non-class Iterator argument
+types.
+</p>
+
+<p>
+But that only takes care of <tt>reverse_iterator</tt>, and doesn't establish
+a policy for all iterators.  (The reverse iterator adapter was just
+an example.)  In particular, does my function
+</p>
+<blockquote><pre>
+  template &lt;typename Iterator&gt;
+    void f() { std::vector&lt;Iterator&gt;  v(7); } 
+</pre></blockquote>
+<p>
+evoke undefined behavior for some conforming iterator definitions?
+I think it does, now, because <tt>vector&lt;&gt;</tt> will destroy those singular
+iterator values, and that's explicitly disallowed.
+</p>
+
+<p>
+24.1 shouldn't give blanket permission to copy all singular iterators,
+because then pointers wouldn't qualify as iterators.  However, it
+should allow copying of that subset of singular iterator values that
+are default-initialized, and it should explicitly allow destroying any
+iterator value, singular or not, default-initialized or not.
+</p>
+
+<p>Related issues: <a href="lwg-defects.html#407">407</a>, <a href="lwg-defects.html#1012">1012</a></p>
+<p><i>[
+We don't want to require all singular iterators to be copyable,
+because that is not the case for pointers.  However, default
+construction may be a special case.  Issue: is it really default
+construction we want to talk about, or is it something like value
+initialization?  We need to check with core to see whether default
+constructed pointers are required to be copyable; if not, it would be
+wrong to impose so strict a requirement for iterators.
+]</i></p>
+
+
+<p><i>[
+2009-05-10 Alisdair provided wording.
+]</i></p>
+
+
+<blockquote><p>
+The comments regarding destroying singular iterators have already been
+resolved.  That just leaves copying (with moving implied).
+</p></blockquote>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote>
+<p>
+This is related to LWG <a href="lwg-defects.html#1012">1012</a>.
+</p>
+<p>
+Note that there is a bug in the proposed resolution to LWG <a href="lwg-defects.html#1012">1012</a>. The
+change to  [reverse.iter.con] should be modified so that the word
+"default" in the second sentence of the Effects clause is replaced by
+"value."
+</p>
+<p>
+We believe that the proposed fix to LWG <a href="lwg-defects.html#1012">1012</a> (now corrected) is
+sufficient to solve the problem for reverse_iterator. However, Alisdair
+pointed out that LWG <a href="lwg-defects.html#1012">1012</a> does not solve the general problem for authors
+of iterator adaptors.
+</p>
+<p>
+There are some problems with the proposed resolution. The phrase "safely
+copyable" is not a term of art. Also, it mentions a
+DefaultConstructible? concept.
+</p>
+<p>
+Move to Review after Alisdair updates the wording.
+</p>
+</blockquote>
+
+<p><i>[
+2009-07-31 Alisdair revised wording:
+]</i></p>
+
+
+<p><i>[
+2009-08-17 Alisdair and Daniel collaborate on slightly revised wording.
+This issue depends upon <a href="lwg-defects.html#724">724</a>
+]</i></p>
+
+
+<p><i>[
+2009-10-14 Daniel adds:
+]</i></p>
+
+
+<blockquote><p>
+There is a clear dependency on <a href="lwg-active.html#1213">1213</a>, because the term "singular",
+which is used as part of the resolution, is not properly defined yet.
+</p></blockquote>
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Moved to Open. Alisdair will provide improved wording to make
+this have "value semantics" and otherwise behave like a valid iterator.
+</p></blockquote>
+
+<p><i>[
+2010 Pittsburgh:  Moved to NAD Editorial.  Rationale added below.
+]</i></p>
+
+
+
+
+<p><b>Rationale:</b></p>
+<p>
+Solved by
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2010/n3066.html">N3066</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Add a new paragrpah to Iterator concepts 24.2 [iterator.requirements] after para 5 (the one describing
+singular iterators)
+</p>
+<blockquote>
+<p>
+Just as a regular pointer to an array guarantees that there is a pointer
+value pointing past the last element of the array, so for any iterator
+type there is an iterator value that points past the last element of a
+corresponding container. These values are called <i>past-the-end</i> values.
+Values of an iterator <tt>i</tt> for which the expression <tt>*i</tt> is defined are called
+<i>dereferenceable</i>. The library never assumes that past-the-end values are
+dereferenceable. Iterators can also have singular values that are not
+associated with any container. [<i>Example:</i> After the declaration of an
+uninitialized pointer <tt>x</tt> (as with <tt>int* x;</tt>), <tt>x</tt> must always be assumed to
+have a singular value of a pointer. &mdash; <i>end example</i>] Results of most
+expressions are undefined for singular values; the only exceptions are
+destroying an iterator that holds a singular value and the assignment of
+a non-singular value to an iterator that holds a singular value. In this
+case the singular value is overwritten the same way as any other value.
+Dereferenceable values are always non-singular.
+</p>
+<p><ins>
+After value-initialization, any iterator that satisfies the
+<tt>DefaultConstructible</tt> requirements ([defaultconstructible]) shall not introduce undefined behaviour
+when used <ins>as</ins> the
+source of a copy or move operation, even if it would
+otherwise be singular. [<i>Note:</i> This guarantee is not offered for
+default-initialization (8.6 [dcl.init]), although the distinction only
+matters for types with trivial default constructors such as pointers. &mdash;
+<i>end note</i>]
+</ins></p>
+
+
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

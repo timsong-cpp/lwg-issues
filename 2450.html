@@ -1,0 +1,165 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2450: <tt>(greater|less|greater_equal|less_equal)&lt;void&gt;</tt> do not yield a total order for pointers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2450" href="#2450">2450.</a> <tt>(greater|less|greater_equal|less_equal)&lt;void&gt;</tt> do not yield a total order for pointers</h3>
+<p><b>Section:</b> 20.14.6 [comparisons] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz <b>Opened:</b> 2014-10-30 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#comparisons">active issues</a> in [comparisons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#comparisons">issues</a> in [comparisons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>less&lt;void&gt;::operator(t, u)</tt> (and the same applies to the rest of <tt>void</tt> specializations for standard 
+comparison function objects) returns <tt>t &lt; u</tt> even if <tt>t</tt> and <tt>u</tt> are pointers, which by 
+5.9 [expr.rel]/3 is undefined except if both pointers point to the same array or object. This might be 
+regarded as a specification defect since the intention of N3421 is that <tt>less&lt;&gt;</tt> can substitute for 
+<tt>less&lt;T&gt;</tt> in any case where the latter is applicable. <tt>less&lt;void&gt;</tt> can be rewritten in 
+the following manner to cope with pointers:
+</p>
+<blockquote><pre>
+template&lt;&gt; struct less&lt;void&gt;
+{
+
+  typedef <i>unspecified</i> is_transparent;
+
+  template &lt;class T, class U&gt;
+  struct pointer_overload : std::is_pointer&lt;std::common_type_t&lt;T, U&gt;&gt;
+  {};
+
+  template &lt;
+    class T, class U,
+    typename std::enable_if&lt;!pointer_overload&lt;T, U&gt;::value&gt;::type* = nullptr
+  &gt;
+  auto operator()(T&amp;&amp; t, U&amp;&amp; u) const
+    -&gt; decltype(std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u))
+  {
+    return std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u);
+  } 
+
+  template &lt;
+    class T, class U,
+    typename std::enable_if&lt;pointer_overload&lt;T, U>::value>::type* = nullptr
+  &gt;
+  auto operator()(T&amp;&amp; t, U&amp;&amp; u) const
+    -&gt; decltype(std::declval&lt;std::less&lt;std::common_type_t&lt;T, U&gt;&gt;&gt;()(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u)))
+  {
+    std::less&lt;std::common_type_t&lt;T, U&gt;&gt; l;
+    return l(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+  }
+
+};
+</pre></blockquote>
+
+<blockquote class="note">
+<p>
+This wording is relative to N4140.
+</p>
+
+<ol>
+<li><p>Change 20.14.6 [comparisons] p14 as indicated:</p>
+<blockquote><p>
+-14- For templates <tt>greater</tt>, <tt>less</tt>, <tt>greater_equal</tt>, and <tt>less_equal</tt>, the specializations 
+for any pointer type yield a total order, even if the built-in operators <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, 
+<tt>&gt;=</tt> do not. <ins>For template specializations <tt>greater&lt;void&gt;</tt>, <tt>less&lt;void&gt;</tt>, 
+<tt>greater_equal&lt;void&gt;</tt>, and <tt>less_equal&lt;void&gt;</tt>, the call operator with arguments whose common 
+type <tt><i>CT</i></tt> is a pointer yields the same value as the corresponding comparison function object class 
+specialization for <tt><i>CT</i></tt>.</ins>
+</p></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-02, Cologne]</i></p>
+
+<p>
+AM: Is there any way this will be resolved elsewhere? VV: No. AM: Then we should bite the bullet and deal with it here.
+<p/>
+MC: These diamond operators are already ugly. Making them more ugly isn't a big problem.
+<p/>
+JY found some issue with types that are convertible, and will reword. 
+<p/>
+Jeffrey suggests improved wording.
+</p>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+STL: when diamond functions designed, this was on purpose<br/>
+STL: this does go against the original design<br/>
+STL: library is smarter and can give a total order<br/>
+MC: given that the original design rejected this, give back to LEWG<br/>
+STL: original proposal did not talk about total order<br/>
+STL: don't feel strongly about changing the design<br/>
+STL: no objections to taking this issue with some wording changes if people want it<br/>
+MC: not happy with wording, comparing pointers &mdash; what does that mean?<br/>
+STL: needs careful attention to wording<br/>
+STL: want to guarantee that <tt>nullptr</tt> participates in total ordering<br/>
+STL: all hooks into composite pointer type<br/>
+MC: move from new to open with better wording<br/>
+STL: to check updates to issue after Lenexa 
+</p>
+
+<p><i>[2015-06, Telecom]</i></p>
+
+<p>
+MC: STL on the hook to update. He's shipping something today so not here.<br/>
+MC: also add link to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4229.pdf">N4229</a><br/>
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>
+STL was on the hook for wording, but STL: I don't care. The architecture on which this is an issue does not exist.<br/>
+STL: We will also need to incorporate nullptr. TK: I think that's implied, since the wording is in terms of the resulting operation, not the deduced types. <br/>
+STL: Seems legit. MC: I guess I'm OK with this. TK: I'm weakly in favour, so that we can get people to use transparent comparators without worrying. <br/>
+STL: There's no change to implementations.<br/>
+Move to Tentatively ready.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4296.
+</p>
+
+<ol>
+<li><p>Change 20.14.6 [comparisons] p14 as indicated:</p>
+<blockquote><p>
+-14- For templates <tt>greater</tt>, <tt>less</tt>, <tt>greater_equal</tt>, and <tt>less_equal</tt>, the specializations 
+for any pointer type yield a total order, even if the built-in operators <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, 
+<tt>&gt;=</tt> do not. <ins>For template specializations <tt>greater&lt;void&gt;</tt>, <tt>less&lt;void&gt;</tt>, 
+<tt>greater_equal&lt;void&gt;</tt>, and <tt>less_equal&lt;void&gt;</tt>, if the call operator calls a built-in operator 
+comparing pointers, the call operator yields a total order.</ins>
+</p></blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

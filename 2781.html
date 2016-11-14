@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2781: Contradictory requirements for <tt>std::function</tt> and <tt>std::reference_wrapper</tt></title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2781" href="#2781">2781.</a> Contradictory requirements for <tt>std::function</tt> and <tt>std::reference_wrapper</tt></h3>
+<p><b>Section:</b> 20.14.12.2.1 [func.wrap.func.con] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-10-13 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>template&lt;class F&gt; function(F f)</tt> says that the effects are "<tt>*this</tt>
+targets a copy of <tt>f</tt>" which seems pretty clear that if <tt>F</tt> is
+<tt>reference_wrapper&lt;CallableType&gt;</tt> then the target is a
+<tt>reference_wrapper&lt;CallableType&gt;</tt>.
+<p/>
+But the function copy and move constructors say "shall not throw
+exceptions if <tt>f</tt>'s target is a callable object passed via
+<tt>reference_wrapper</tt> or a function pointer." From the requirement above
+it's impossible for the target to be "a callable object passed via
+<tt>reference_wrapper</tt>" because if the function was constructed with such a
+type then the target is the <tt>reference_wrapper</tt> not the callable object
+it wraps.
+<p/>
+This matters because it affects the result of <tt>function::target_type()</tt>,
+and we have implementation divergence. VC++ and libc++ store the
+<tt>reference_wrapper</tt> as the target, but libstdc++ and Boost.Function
+(both written by Doug Gregor) unwrap it, so the following fails:
+</p>
+<blockquote><pre>
+#include &lt;functional&gt;
+#include &lt;cassert&gt;
+
+int main()
+{
+ auto f = []{};
+ std::function&lt;void()&gt; fn(std::ref(f));
+ assert(fn.target&lt;std::reference_wrapper&lt;decltype(f)&gt;&gt;() != nullptr);
+}
+</pre></blockquote>
+<p>
+If <tt>std::function</tt> is intended to deviate from <tt>boost::function</tt> this way
+then the <i>Throws</i> element for the copy and move constructors is
+misleading, and should be clarified.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606.
+</p>
+
+<ol>
+<li><p>Modify 20.14.12.2.1 [func.wrap.func.con] p4 and p6 the same way, as shown:</p>
+
+<blockquote>
+<pre>
+function(const function&amp; f);
+</pre>
+<blockquote>
+<p>
+-3- <i>Postconditions:</i> <tt>!*this</tt> if <tt>!f</tt>; otherwise, <tt>*this</tt> targets a copy of 
+<tt>f.target()</tt>.
+<p/>
+-4- <i>Throws:</i> shall not throw exceptions if <tt>f</tt>'s target is a <del>callable object passed 
+via</del><ins>specialization of</ins> <tt>reference_wrapper</tt> or a function pointer. Otherwise, may throw 
+<tt>bad_alloc</tt> or any exception thrown by the copy constructor of the stored callable object. 
+[<i>Note:</i> Implementations are encouraged to avoid the use of dynamically allocated memory for small 
+callable objects, for example, where <tt>f</tt>'s target is an object holding only a pointer or reference to 
+an object and a member function pointer. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<pre>
+function(function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> If <tt>!f</tt>, <tt>*this</tt> has no target; otherwise, move constructs the target of 
+<tt>f</tt> into the target of <tt>*this</tt>, leaving <tt>f</tt> in a valid state with an unspecified value.
+<p/>
+-6- <i>Throws:</i> shall not throw exceptions if <tt>f</tt>'s target is a <del>callable object passed 
+via</del><ins>specialization of</ins> <tt>reference_wrapper</tt> or a function pointer. Otherwise, may throw 
+<tt>bad_alloc</tt> or any exception thrown by the copy or move constructor of the stored callable object. 
+[<i>Note:</i> Implementations are encouraged to avoid the use of dynamically allocated memory for small callable 
+objects, for example, where <tt>f</tt>'s target is an object holding only a pointer or reference to an object 
+and a member function pointer. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

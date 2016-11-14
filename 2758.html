@@ -1,0 +1,564 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2758: <tt>std::string{}.assign("ABCDE", 0, 1)</tt> is ambiguous</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2758" href="#2758">2758.</a> <tt>std::string{}.assign("ABCDE", 0, 1)</tt> is ambiguous</h3>
+<p><b>Section:</b> 99 [string.assign] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2016-07-30 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.assign">issues</a> in [string.assign].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Before C++17, we had the following signature to <tt>std::basic_string</tt>:
+</p>
+<blockquote><pre>
+basic_string&amp;
+  assign(const basic_string&amp; str, size_type pos, size_type n = npos);
+</pre></blockquote>
+<p>
+Unlike most of the other member functions on <tt>std::basic_string</tt>, there were not corresponding
+versions that take a <tt>charT*</tt> or <tt>(charT *, size)</tt>.
+<p/>
+In <a href="http://wg21.link/p0254r2">p0254r2</a>, we (I) added:
+</p>
+<blockquote><pre>
+basic_string&amp;
+  assign(basic_string_view&lt;charT, traits&gt; sv, size_type pos, size_type n = npos);
+</pre></blockquote>
+<p>
+which made the code above ambiguous. There are two conversions from "<tt>const charT*</tt>", 
+one to <tt>basic_string</tt>, and the other to <tt>basic_string_view</tt>, and they're both equally 
+good (in the view of the compiler).
+<p/>
+This ambiguity also occurs with the calls
+</p>
+<blockquote><pre>
+insert(size_type pos1, const basic_string&amp; str,             size_type pos2, size_type n = npos);
+insert(size_type pos1, basic_string_view&lt;charT, traits&gt; sv, size_type pos2, size_type n = npos);
+</pre></blockquote>
+<p>
+but I will file a separate issue (<a href="lwg-active.html#2757">2757</a>) for that.
+<p/>
+A solution is to add <em>even more</em> overloads to <tt>assign</tt>, to make it match all the other member
+functions of <tt>basic_string</tt>, which come in fours (<tt>string</tt>, <tt>pointer</tt>, <tt>pointer + size</tt>, 
+<tt>string_view</tt>).
+</p>
+
+<p><i>[2016-08-03, Chicago, Robert Douglas provides wording]</i></p>
+
+
+<p><i>[2016-08-05, Tim Song comments]</i></p>
+
+<p>
+On the assumption that the <tt>basic_string</tt> version is untouchable, I like the updated P/R, with a couple comments:
+</p>
+<ol>
+<li><p>If it's constraining on <tt>is_convertible</tt> to <tt>basic_string_view</tt>, then I think it should take 
+by reference to avoid copying <tt>T</tt>, which can be arbitrarily expensive. Both <tt>const T&amp;</tt> and 
+<tt>T&amp;&amp;</tt> should work; the question is whether to accommodate non-const <tt>operator basic_string_view()</tt>s 
+(which arguably shouldn't exist).</p></li>
+<li><p>Minor issue: <tt>compare</tt> tests <tt>is_convertible</tt> and then uses direct-initialization syntax 
+(which is <tt>is_constructible</tt>). They should match, because it's possible to have <tt>basic_string_view sv = t;</tt> 
+succeed yet <tt>basic_string_view sv(t);</tt> fail.</p></li>
+</ol>
+
+<p><i>[2016-08-05, Chicago LWG]</i></p>
+
+<ol>
+<li>breaking ABI was a non-starter</li>
+<li>we want to convert <tt>char const*</tt> to <tt>basic_string_view</tt> if possible</li>
+<li>we want to take the original type by reference, to avoid new user string types from being copied</li>
+<li>it is unfortunate that each length of string literal will generate a new entry in the symbol table</li>
+</ol>
+<p>Given feedback from discussion, we wish to go with the <tt>is_convertible_v</tt> method, but change:</p>
+<ol>
+<li>the function parameter type to <tt>T const&amp;</tt> for each overload</li>
+<li>the parameter type in <tt>is_convertible_v</tt> to <tt>T const&amp;</tt></li>
+<li>the initialization of <tt>sv(t)</tt> to <tt>sv = t</tt></li>
+</ol>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Fri PM: Move to Tentatively Ready</p>
+
+<p><i>[2016-08-16, Jonathan Wakeley reopens]</i></p>
+
+<p>
+The P/R is not correct, the new overloads get chosen in preference to
+the overloads taking <tt>const char*</tt> when passed a <tt>char*</tt>:
+</p>
+<blockquote><pre>
+#include &lt;string&gt;
+
+int main () {
+  std::string str("a");
+  char c = 'b';
+  str.replace(0, 1, &amp;c, 1);
+  if (str[0] != 'b')
+    __builtin_abort();
+}
+</pre></blockquote>
+<p>
+With the resolution of 2758 this is now equivalent to:
+</p>
+<blockquote><pre>
+str.replace(0, 1, string_view{&amp;c, 1}, 1);
+</pre></blockquote>
+<p>
+which replaces the character with <tt>string_view{"b", 1}.substr(1, npos)</tt>
+i.e. an empty string.
+<p/>
+The SFINAE constraints need to disable the new overloads for (at
+least) the case of non-const <tt>value_type*</tt> arguments.
+<p/>
+I've implemented an alternative resolution, which would be specified as:
+</p>
+<blockquote><p>
+<i>Remarks:</i> This function shall not participate in overload resolution
+unless <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is
+<tt>true</tt> <ins>and <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt></ins>.
+</p></blockquote>
+<p>
+All the overloads have the same problem.
+<p/>
+This program prints no output in C++14, and we should make sure it prints no output in C++17 too:
+</p>
+<blockquote><pre>
+#include &lt;string&gt;
+
+int main()
+{
+  std::string str("a");
+  char c[1] = { 'b' };
+  str.append(c, 1);
+  if (str != "ab")
+    puts("bad append");
+  str.assign(c, 1);
+  if (str != "b")
+    puts("bad assign");
+  str.insert(0, c, 1);
+  if (str != "bb")
+    puts("bad insert");
+  str.replace(0, 2, c, 1);
+  if (str != "b")
+    puts("bad replace");
+  if (str.compare(0, 1, c, 1))
+    puts("bad compare");
+}
+</pre></blockquote>
+<p>
+Ville and I considered "<tt>is_same_v&lt;decay_t&lt;T&gt;, char*&gt;</tt> is <tt>false</tt>" but
+that would still select the wrong overload for an array of const <tt>char</tt>,
+because the new function template would be preferred to doing an array-to-pointer conversion to 
+call the old overload.
+</p>
+
+<p><i>[2016-09-09 Issues Resolution Telecon]</i></p>
+
+<p>Ville to provide updated wording; Marshall to implement</p>
+  
+<p><i>[2016-10-05]</i></p>
+
+<p>
+Ville provides revised wording.
+</p>
+
+<p><i>[2016-10 Telecon]</i></p>
+
+<p>Ville's wording has been implemented in libstdc++ and libc++. Move this to Tentatively Ready and <a href="lwg-active.html#2757">2757</a> to Tentatively Resolved</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>In 21.3.1 [basic.string] modify the synopsis for <tt>basic_string</tt> as follows:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class charT, class traits = char_traits&lt;charT&gt;,
+    class Allocator = allocator&lt;charT&gt;&gt;
+  class basic_string {
+  public:
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; insert(size_type pos1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos2, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; replace(size_type pos1, size_type n1,
+                          <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                          size_type pos2, size_type n2 = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    int compare(size_type pos1, size_type n1,
+                <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                size_type pos2, size_type n2 = npos) const;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.append], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-7- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos &gt; sv.size()</tt>.
+<p/>
+-8- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length 
+<tt>rlen</tt> of the string to append as the smaller of <tt>n</tt> and <tt>sv.size() - pos</tt> 
+and calls <tt>append(sv.data() + pos, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-9- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.assign], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-9- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos &gt; sv.size()</tt>.
+<p/>
+-10- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length 
+<tt>rlen</tt> of the string to assign as the smaller of <tt>n</tt> and <tt>sv.size() - pos</tt> 
+and calls <tt>assign(sv.data() + pos, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-11- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.insert], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; insert(size_type pos1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos2, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-6- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos1 &gt; size()</tt> or <tt>pos2 &gt; sv.size()</tt>.
+<p/>
+-7- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length <tt>rlen</tt> 
+of the string to assign as the smaller of <tt>n</tt> and <tt>sv.size() - pos2</tt> and calls 
+<tt>insert(pos1, sv.data() + pos2, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-8- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.replace], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(size_type pos1, size_type n1, 
+                     <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos2, size_type n2 = npos);
+</pre>
+<blockquote>
+<p>
+-6- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos1 &gt; size()</tt> or <tt>pos2 &gt; sv.size()</tt>.
+<p/>
+-7- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length <tt>rlen</tt> 
+of the string to be inserted as the smaller of <tt>n2</tt> and <tt>sv.size() - pos2</tt> and calls 
+<tt>replace(pos1, n1, sv.data() + pos2, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-8- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.compare], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+int compare(size_type pos1, size_type n1,
+            <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+            size_type pos2, size_type n2 = npos) const;
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return basic_string_view&lt;charT, traits&gt;(this.data(), pos1, n1).compare(sv, pos2, n2);
+<ins>}</ins>
+</pre></blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>In 21.3.1 [basic.string] modify the synopsis for <tt>basic_string</tt> as follows:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class charT, class traits = char_traits&lt;charT&gt;,
+    class Allocator = allocator&lt;charT&gt;&gt;
+  class basic_string {
+  public:
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; insert(size_type pos1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                         size_type pos2, size_type n = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    basic_string&amp; replace(size_type pos1, size_type n1,
+                          <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                          size_type pos2, size_type n2 = npos);
+    [&hellip;]
+    <ins>template&lt;class T&gt;</ins>
+    int compare(size_type pos1, size_type n1,
+                <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                size_type pos2, size_type n2 = npos) const;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.append], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-7- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos &gt; sv.size()</tt>.
+<p/>
+-8- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length 
+<tt>rlen</tt> of the string to append as the smaller of <tt>n</tt> and <tt>sv.size() - pos</tt> 
+and calls <tt>append(sv.data() + pos, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>
+and is_convertible_v&lt;const T&amp;, const charT*&gt; is <tt>false</tt>.</ins>
+<p/>
+-9- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.assign], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-9- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos &gt; sv.size()</tt>.
+<p/>
+-10- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length 
+<tt>rlen</tt> of the string to assign as the smaller of <tt>n</tt> and <tt>sv.size() - pos</tt> 
+and calls <tt>assign(sv.data() + pos, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>
+and is_convertible_v&lt;const T&amp;, const charT*&gt; is <tt>false</tt>.</ins>
+<p/>
+-11- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.insert], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; insert(size_type pos1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos2, size_type n = npos);
+</pre>
+<blockquote>
+<p>
+-6- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos1 &gt; size()</tt> or <tt>pos2 &gt; sv.size()</tt>.
+<p/>
+-7- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length <tt>rlen</tt> 
+of the string to assign as the smaller of <tt>n</tt> and <tt>sv.size() - pos2</tt> and calls 
+<tt>insert(pos1, sv.data() + pos2, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>
+and is_convertible_v&lt;const T&amp;, const charT*&gt; is <tt>false</tt>.</ins>
+<p/>
+-8- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.replace], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(size_type pos1, size_type n1, 
+                     <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                     size_type pos2, size_type n2 = npos);
+</pre>
+<blockquote>
+<p>
+-6- <i>Throws:</i> <tt>out_of_range</tt> if <tt>pos1 &gt; size()</tt> or <tt>pos2 &gt; sv.size()</tt>.
+<p/>
+-7- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by 
+<tt>basic_string_view&lt;charT, traits&gt; sv = t</tt>.</ins> Determines the effective length <tt>rlen</tt> 
+of the string to be inserted as the smaller of <tt>n2</tt> and <tt>sv.size() - pos2</tt> and calls 
+<tt>replace(pos1, n1, sv.data() + pos2, rlen)</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>
+and is_convertible_v&lt;const T&amp;, const charT*&gt; is <tt>false</tt>.</ins>
+<p/>
+-8- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 99 [string.compare], modify <tt>basic_string_view</tt> overload as follows:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The wording changes below are for the same part of the standard as <a href="lwg-defects.html#2771">2771</a>. 
+However, they do not conflict. This one changes the definition of the routine, while the other changes the "Effects".
+&mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+int compare(size_type pos1, size_type n1,
+            <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+            size_type pos2, size_type n2 = npos) const;
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return basic_string_view&lt;charT, traits&gt;(this.data(), pos1, n1).compare(sv, pos2, n2);
+<ins>}</ins>
+</pre></blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>
+and is_convertible_v&lt;const T&amp;, const charT*&gt; is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

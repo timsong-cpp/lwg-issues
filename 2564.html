@@ -1,0 +1,187 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2564: [fund.ts.v2] <tt>std::experimental::function</tt> constructors taking allocator arguments may throw exceptions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2564" href="#2564">2564.</a> [fund.ts.v2] <tt>std::experimental::function</tt> constructors taking allocator arguments may throw exceptions</h3>
+<p><b>Section:</b> 99 [fund.ts.v2::func.wrap.func] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song  <b>Opened:</b> 2015-12-05 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fund.ts.v2::func.wrap.func">active issues</a> in [fund.ts.v2::func.wrap.func].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fund.ts.v2::func.wrap.func">issues</a> in [fund.ts.v2::func.wrap.func].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v2</b></p>
+<p>
+[This is essentially LWG <a href="lwg-active.html#2370">2370</a>, but deals with the fundamentals TS version rather than the one in the standard]
+<p/>
+In 99 [func.wrap.func] of library fundamentals TS, the constructors
+</p>
+<blockquote><pre>
+template&lt;class A&gt; function(allocator_arg_t, const A&amp;) noexcept;
+template&lt;class A&gt; function(allocator_arg_t, const A&amp;, nullptr_t) noexcept;
+</pre></blockquote>
+<p>
+must type-erase and store the provided allocator, since the <tt>operator=</tt> specification requires using the "allocator 
+specified in the construction of" the <tt>std::experimental::function</tt> object. This may require a dynamic allocation 
+and so cannot be noexcept. Similarly, the following constructors
+</p>
+<blockquote><pre>
+template&lt;class A&gt; function(allocator_arg_t, const A&amp;, const function&amp;); 
+template&lt;class A&gt; function(allocator_arg_t, const A&amp;, function&amp;&amp;);
+template&lt;class F, class A&gt; function(allocator_arg_t, const A&amp;, F);
+</pre></blockquote>
+<p>
+cannot satisfy the C++14 requirement that they "shall not throw exceptions if [the <tt>function</tt> object to be stored] 
+is a callable object passed via <tt>reference_wrapper</tt> or a function pointer" if they need to type-erase and store the 
+allocator.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4562.html">N4562</a>.
+</p>
+
+<ol>
+<li><p> Edit 99 [func.wrap.func], class template <tt>function</tt> synopsis, as follows:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  namespace experimental {
+  inline namespace fundamentals_v2 {
+
+    [&hellip;]
+
+    template&lt;class R, class... ArgTypes&gt;
+    class function&lt;R(ArgTypes...)> {
+    public:    
+      [&hellip;]
+      template&lt;class A> function(allocator_arg_t, const A&amp;) <del>noexcept</del>;
+      template&lt;class A> function(allocator_arg_t, const A&amp;,
+        nullptr_t) <del>noexcept</del>;
+      [&hellip;]
+    };
+
+    [&hellip;]
+
+  } // namespace fundamentals_v2
+  } // namespace experimental
+
+  [&hellip;]
+
+} // namespace std
+</pre>
+</blockquote>
+</li>
+
+<li><p>Insert the following paragraphs after 99 [func.wrap.func.con]/1:</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: This just reproduces the wording from C++14 with the "shall not throw exceptions for 
+<tt>reference_wrapper</tt>/function pointer" provision deleted. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+-1- When a <tt>function</tt> constructor that takes a first argument of type <tt>allocator_arg_t</tt> is invoked, 
+the second argument is treated as a <em>type-erased allocator</em> (8.3). If the constructor moves or makes a copy 
+of a function object (C++14 &sect;20.9), including an instance of the <tt>experimental::function</tt> class template, 
+then that move or copy is performed by <em>using-allocator construction</em> with allocator <tt>get_memory_resource()</tt>. 
+</p>
+<blockquote>
+<pre>
+<ins>template &lt;class A&gt; function(allocator_arg_t, const A&amp; a);
+template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, nullptr_t);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Postconditions</i>: <tt>!*this</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, const function&amp; f);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Postconditions</i>: <tt>!*this if !f</tt>; otherwise, <tt>*this</tt> targets a copy of <tt>f.target()</tt>.</ins>
+<p/>
+<ins>-?- <i>Throws</i>: May throw <tt>bad_alloc</tt> or any exception thrown by the copy constructor of the stored callable object. 
+[<i>Note</i>: Implementations are encouraged to avoid the use of dynamically allocated memory for small callable objects, 
+for example, where <tt>f</tt>'s target is an object holding only a pointer or reference to an object and a member function pointer. 
+&mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, function&amp;&amp; f);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- Effects: If <tt>!f</tt>, <tt>*this</tt> has no target; otherwise, move-constructs the target of <tt>f</tt> into the 
+target of <tt>*this</tt>, leaving <tt>f</tt> in a valid state with an unspecified value.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class F, class A&gt; function(allocator_arg_t, const A&amp; a, F f);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>F</tt> shall be <tt>CopyConstructible</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: This constructor shall not participate in overload resolution unless <tt>f</tt> is Callable 
+(C++14 &sect;20.9.11.2) for argument types <tt>ArgTypes...</tt> and return type <tt>R</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>!*this</tt> if any of the following hold:</ins>
+<ul>
+<li><p><ins><tt>f</tt> is a null function pointer value.</ins></p></li>
+<li><p><ins><tt>f</tt> is a null member pointer value.</ins></p></li>
+<li><p><ins><tt>F</tt> is an instance of the <tt>function</tt> class template, and <tt>!f</tt>.</ins></p></li>
+</ul>
+<p/>
+<ins>-?- Otherwise, <tt>*this</tt> targets a copy of <tt>f</tt> initialized with <tt>std::move(f)</tt>. [<i>Note</i>: 
+Implementations are encouraged to avoid the use of dynamically allocated memory for small callable objects, for example, 
+where <tt>f</tt>'s target is an object holding only a pointer or reference to an object and a member function pointer. &mdash; 
+<i>end note</i>]</ins>
+<p/>
+<ins>-?- <i>Throws</i>: May throw <tt>bad_alloc</tt> or any exception thrown by <tt>F</tt>'s copy or move constructor.</ins>
+</p>
+</blockquote>
+</blockquote>
+<p>
+-2- In the following descriptions, let <tt><i>ALLOCATOR_OF</i>(f)</tt> be the allocator specified in the construction 
+of <tt>function f</tt>, or <tt>allocator&lt;char&gt;()</tt> if no allocator was specified.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

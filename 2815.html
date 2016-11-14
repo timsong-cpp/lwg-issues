@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2815: <tt>quick_exit</tt> can deadlock</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2815" href="#2815">2815.</a> <tt>quick_exit</tt> can deadlock</h3>
+<p><b>Section:</b> 18.5 [support.start.term] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jean-Fran&ccedil;ois Bastien <b>Opened:</b> 2016-11-07 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#support.start.term">issues</a> in [support.start.term].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+While SG1 was processing NB comments CA1 and LATE2 regarding <a href="http://wg21.link/p0270r1">P0270R1</a>, 
+we decided to remove the proposed guarantee that <tt>quick_exit</tt> be made signal safe.
+<p/>
+Our reasoning is that functions registered with <tt>at_quick_exit</tt> aren't forbidden from calling 
+<tt>quick_exit</tt>, but <tt>quick_exit</tt> implementations likely acquire some form of a lock before 
+processing all registered functions (because a note forbids the implementation from introducing data races).
+<p/>
+The following code can therefore deadlock:
+</p>
+<blockquote><pre>
+#include &lt;cstdlib&gt;
+
+int main() 
+{
+  std::at_quick_exit([] () { std::quick_exit(0); });
+  std::quick_exit(1);
+  return 0;
+}
+</pre></blockquote>
+<p>
+The same applies if a function registered in <tt>at_quick_exit</tt> handles a signal, and that signal calls 
+<tt>quick_exit</tt>. SG1 believes that both issues (same thread deadlock, and signal deadlock) can be resolved 
+in the same manner. Either:
+</p>
+<ol>
+<li>Specify that calling <tt>quick_exit</tt> while servicing <tt>quick_exit</tt> is undefined; or</li>
+<li>Specifying that calling <tt>quick_exit</tt> while servicing <tt>quick_exit</tt> is defined to not deadlock, 
+and instead calls <tt>_Exit</tt> without calling further registered functions.</li>
+</ol>
+<p>
+Option 2. seems preferable, and can be implemented along the lines of:
+</p>
+<blockquote><pre>
+#include &lt;array>
+#include &lt;atomic>
+#include &lt;cstddef>
+
+namespace {
+
+  typedef void (*func)();
+  
+  std::array&lt;func, 32&gt; quick_exit_functions;
+  
+  const auto* quick_exit_functions_ptr = &quick_exit_functions;
+  
+  std::atomic_flag lock = ATOMIC_FLAG_INIT;
+  
+  struct scope 
+  {
+    scope() { while (lock.test_and_set(std::memory_order_acquire)) ; }
+    ~scope() { lock.clear(std::memory_order_release); }
+  };
+  
+}
+
+namespace std {
+
+  extern "C" void quick_exit(int status) noexcept
+  {
+    decltype(quick_exit_functions_ptr) f;
+    {
+      scope s;
+      f = quick_exit_functions_ptr;
+      quick_exit_functions_ptr = nullptr;
+    }
+    if (f) {
+      size_t pos = f-&gt;size();
+      while (pos > 0)
+        (*f)[--pos]();
+    }
+    _Exit(status);
+  }
+  
+  extern "C++" int at_quick_exit(func f) noexcept
+  {
+    scope s;
+    if (!quick_exit_functions_ptr || quick_exit_functions.size() == quick_exit_functions.max_size())
+      return -1;
+    quick_exit_functions[quick_exit_functions.size()] = f;
+    return 0;
+  }
+
+}
+</pre></blockquote>
+<p>
+Ideally, the resolution would also add back the wording which SG1 dropped from <a href="http://wg21.link/p0270r1">P0270R1</a>:
+</p>
+<blockquote><p>Add at new element to the end of 18.5 [support.start.term] p13 (<tt>quick_exit()</tt>):</p>
+<blockquote>
+<p>
+<ins><i>Remarks:</i> The function <tt>quick_exit()</tt> is signal-safe (18.10.5 [csignal.syn]). [<i>Note:</i> It might 
+still be unsafe to call <tt>quick_exit()</tt> from a handler, because the functions registered with <tt>at_quick_exit()</tt> 
+might not be signal-safe. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4606">N4606</a>.</p>
+
+<ol>
+<li>
+<p>Add at new element to the end of 18.5 [support.start.term] p13 (<tt>quick_exit()</tt>):</p>
+
+<blockquote>
+<pre>
+[[noreturn]] void quick_exit(int status) noexcept;
+</pre>
+<blockquote>
+<p>
+-13- <i>Effects:</i> Functions registered by calls to <tt>at_quick_exit</tt> are called in the reverse order of their
+registration, except that a function shall be called after any previously registered functions that had
+already been called at the time it was registered. Objects shall not be destroyed as a result of calling
+<tt>quick_exit</tt>. If control leaves a registered function called by <tt>quick_exit</tt> because the function does not
+provide a handler for a thrown exception, <tt>std::terminate()</tt> shall be called. [<i>Note:</i> <tt>at_quick_exit</tt>
+may call a registered function from a different thread than the one that registered it, so registered
+functions should not rely on the identity of objects with thread storage duration. &mdash; <i>end note</i>] After
+calling registered functions, <tt>quick_exit</tt> shall call <tt>_Exit(status)</tt>. [<i>Note:</i> The standard file 
+buffers are not flushed. See: ISO C 7.22.4.5. &mdash; <i>end note</i>]
+<p/>
+<ins>-?- <i>Remarks:</i> The function <tt>quick_exit()</tt> is signal-safe (18.10.5 [csignal.syn]). [<i>Note:</i> 
+It might still be unsafe to call <tt>quick_exit()</tt> from a handler, because the functions registered with 
+<tt>at_quick_exit()</tt> might not be signal-safe. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

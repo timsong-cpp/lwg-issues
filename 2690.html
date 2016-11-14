@@ -1,0 +1,157 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2690: <tt>invoke&lt;R&gt;</tt></title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2690" href="#2690">2690.</a> <tt>invoke&lt;R&gt;</tt></h3>
+<p><b>Section:</b> 20.14.3 [func.invoke] <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Zhihao Yuan <b>Opened:</b> 2016-03-25 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.invoke">active issues</a> in [func.invoke].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.invoke">issues</a> in [func.invoke].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In <a href="http://www.open-std.org/JTC1/SC22/WG21/docs/papers/2014/n4169.html">N4169</a>
+the author dropped the <tt>invoke&lt;R&gt;</tt> support by claiming
+that it's an unnecessary cruft in TR1, obsoleted by C++11
+type inference.  But now we have some new business went
+to *<tt><i>INVOKE</i></tt>*<tt>(f, t1, t2, ..., tN, R)</tt>, that is to discard the
+return type when <tt>R</tt> is <tt>void</tt>. This form is very useful, or
+possible even more useful than the basic form when
+implementing a call wrapper. Also note that the optional
+<tt>R</tt> support is already in <tt>std::is_callable</tt> and
+<tt>std::is_nothrow_callable</tt>.
+</p>
+
+<p><i>[2016-07-31, Tomasz Kami&nacute;ski comments]</i></p>
+
+<p>
+The lack of <tt>invoke&lt;R&gt;</tt> was basically a result of the concurrent publication of the never revision 
+of the paper and additional special semantics of <tt><i>INVOKE</i>(f, args..., void)</tt>.
+<p/>
+In contrast to existing <tt>std::invoke</tt> function, the proposed <tt>invoke&lt;R&gt;</tt> version is not 
+SFINAE friendly, as elimination of the standard version of invoke is guaranteed by <tt>std::result_of_t</tt> 
+in the result type that is missing for proposed <tt>invoke&lt;R&gt;</tt> version. To provide this guarantee, 
+following remarks shall be added to the specification:
+</p>
+<blockquote>
+<p>
+<i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_callable_v&lt;F(Args...), R&gt;</tt> is <tt>true</tt>.
+</p>
+</blockquote>
+
+<p><i>[2016-08-01, Tomasz Kami&nacute;ski and Zhihao Yuan update the proposed wording]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to N4606.
+</p>
+<ol>
+<li><p>Modify 20.14 [function.objects]/2, header <tt>&lt;functional&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// 20.12.3, invoke:</i>
+  template &lt;class F, class... Args&gt; result_of_t&lt;F&amp;&amp;(Args&amp;&amp;...)&gt; invoke(F&amp;&amp; f, Args&amp;&amp;... args);
+  <ins>template &lt;class R, class F, class... Args&gt; R invoke(F&amp;&amp; f, Args&amp;&amp;... args);</ins>
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following sequence of paragraphs after 20.14.3 [func.invoke]/1 as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template &lt;class R, class F, class... Args&gt; R invoke(F&amp;&amp; f, Args&amp;&amp;... args);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns</i>: <tt><i>INVOKE</i>(std::forward&lt;F&gt;(f), std::forward&lt;Args&gt;(args)..., R)</tt> 
+(20.14.2 [func.require]).</ins>
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_callable_v&lt;F(Args...), R&gt;</tt> is <tt>true</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-09-04, Tomasz Kami&nacute;ski comments and improves wording]</i></p>
+
+<p>
+The usage of <tt>is_callable_v&lt;F(Args...), R&gt;</tt> causes problem in situation when either <tt>F</tt> or <tt>Args</tt> 
+is an abstract type and the function type <tt>F(Args...)</tt> cannot be formed or when one of the args is <i>cv</i>-qualified, 
+as top-level <i>cv</i>-qualification for function parameters is dropped by language rules. It should use 
+<tt>is_callable_v&lt;F&amp;&amp;(Args&amp;&amp;...), R&gt;</tt> instead.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606.
+</p>
+<ol>
+<li><p>Modify 20.14 [function.objects]/2, header <tt>&lt;functional&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// 20.12.3, invoke:</i>
+  template &lt;class F, class... Args&gt; result_of_t&lt;F&amp;&amp;(Args&amp;&amp;...)&gt; invoke(F&amp;&amp; f, Args&amp;&amp;... args);
+  <ins>template &lt;class R, class F, class... Args&gt; R invoke(F&amp;&amp; f, Args&amp;&amp;... args);</ins>
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following sequence of paragraphs after 20.14.3 [func.invoke]/1 as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template &lt;class R, class F, class... Args&gt; R invoke(F&amp;&amp; f, Args&amp;&amp;... args);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns</i>: <tt><i>INVOKE</i>(std::forward&lt;F&gt;(f), std::forward&lt;Args&gt;(args)..., R)</tt> 
+(20.14.2 [func.require]).</ins>
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_callable_v&lt;F&amp;&amp;(Args&amp;&amp;...), R&gt;</tt> is <tt>true</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

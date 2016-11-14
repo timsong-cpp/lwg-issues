@@ -1,0 +1,282 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 1189: Awkward interface for changing the number of buckets in an unordered associative container</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="1189" href="#1189">1189.</a> Awkward interface for changing the number of buckets in an unordered associative container</h3>
+<p><b>Section:</b> 23.2.5 [unord.req], 23.5 [unord] <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Matt Austern <b>Opened:</b> 2009-08-10 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unord.req">active issues</a> in [unord.req].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unord.req">issues</a> in [unord.req].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider a typical use case: I create an <tt>unordered_map</tt> and then start
+adding elements to it one at a time. I know that it will eventually need
+to store a few million elements, so, for performance reasons, I would
+like to reserve enough capacity that none of the calls to <tt>insert</tt> will
+trigger a rehash.
+</p>
+
+<p>
+Unfortunately, the existing interface makes this awkward. The user
+naturally sees the problem in terms of the number of elements, but the
+interface presents it as buckets. If <tt>m</tt> is the map and <tt>n</tt> is the expected
+number of elements, this operation is written <tt>m.rehash(n /
+m.max_load_factor())</tt> &mdash; not very novice friendly.
+</p>
+
+<p><i>[
+2009-09-30 Daniel adds:
+]</i></p>
+
+
+<blockquote><p>
+I recommend to replace "<tt>resize</tt>" by a different name like
+"<tt>reserve</tt>", because that would better match the intended
+use-case. Rational: Any existing resize function has the on-success
+post-condition that the provided size is equal to <tt>size()</tt>, which
+is not satisfied for the proposal. Reserve seems to fit the purpose of
+the actual renaming suggestion.
+</p></blockquote>
+
+<p><i>[
+2009-10-28 Ganesh summarizes alternative resolutions and expresses a
+strong preference for the second (and opposition to the first):
+]</i></p>
+
+
+<blockquote>
+<ol>
+<li>
+<p>
+In the unordered associative container requirements (23.2.5 [unord.req]),
+remove the row for
+rehash and replace it with:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Unordered associative container requirements
+(in addition to container)</caption>
+
+<tr>
+<th>Expression</th><th>Return type</th><th>Assertion/note pre-/post-condition</th>
+<th>Complexity</th>
+</tr>
+<tr>
+<td><tt>a.<del>rehash</del><ins>reserve</ins>(n)</tt></td>
+<td><tt>void</tt></td>
+<td>
+Post: <tt>a.bucket_count &gt; <ins>max(</ins>a.size()<ins>, n)</ins>
+/ a.max_load_factor()</tt><del> and <tt>a.bucket_count()
+&gt;= n</tt></del>.
+</td>
+<td>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</td>
+</tr>
+</table>
+</blockquote>
+
+<p>
+Make the corresponding change in the class synopses in 23.5.4 [unord.map], 23.5.5 [unord.multimap],  23.5.6 [unord.set], and 23.5.7 [unord.multiset].
+</p>
+</li>
+<li>
+
+<p>
+In 23.2.5 [unord.req]/9, table 98, append a new row after the last one:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Unordered associative container requirements
+(in addition to container)</caption>
+
+<tr>
+<th>Expression</th><th>Return type</th><th>Assertion/note pre-/post-condition</th>
+<th>Complexity</th>
+</tr>
+<tr>
+<td><tt>a.rehash(n)</tt></td>
+<td><tt>void</tt></td>
+<td>
+Post: <tt>a.bucket_count &gt; a.size()
+/ a.max_load_factor()</tt> and <tt>a.bucket_count()
+&gt;= n</tt>.
+</td>
+<td>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</td>
+</tr>
+<tr>
+<td><ins>
+<tt>a.reserve(n)</tt>
+</ins></td>
+<td><ins>
+<tt>void</tt>
+</ins></td>
+<td><ins>
+Same as <tt>a.rehash(ceil(n / a.max_load_factor()))</tt>
+</ins></td>
+<td><ins>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</ins></td>
+</tr>
+</table>
+</blockquote>
+
+<p>
+In 23.5.4 [unord.map]/3 in the definition of class template <tt>unordered_map</tt>, in
+23.5.5 [unord.multimap]/3 in the definition of class template <tt>unordered_multimap</tt>, in
+23.5.6 [unord.set]/3 in the definition of class template <tt>unordered_set</tt> and in
+23.5.7 [unord.multiset]/3 in the definition of class template <tt>unordered_multiset</tt>, add the
+following line after member function <tt>rehash()</tt>:
+</p>
+
+<blockquote><pre>
+void reserve(size_type n);
+</pre></blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[
+2009-10-28 Howard:
+]</i></p>
+
+
+<blockquote>
+<p>
+Moved to Tentatively Ready after 5 votes in favor of Ganesh's option 2 above.
+The original proposed wording now appears here:
+</p>
+
+<blockquote>
+<p>
+Informally: instead of providing <tt>rehash(n)</tt> provide <tt>resize(n)</tt>, with the
+semantics "make the container a good size for <tt>n</tt> elements".
+</p>
+
+<p>
+In the unordered associative container requirements (23.2.5 [unord.req]),
+remove the row for
+rehash and replace it with:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Unordered associative container requirements
+(in addition to container)</caption>
+
+<tr>
+<th>Expression</th><th>Return type</th><th>Assertion/note pre-/post-condition</th>
+<th>Complexity</th>
+</tr>
+<tr>
+<td><tt>a.<del>rehash</del><ins>resize</ins>(n)</tt></td>
+<td><tt>void</tt></td>
+<td>
+Post: <tt>a.bucket_count &gt; <ins>max(</ins>a.size()<ins>, n)</ins>
+/ a.max_load_factor()</tt><del> and <tt>a.bucket_count()
+&gt;= n</tt></del>.
+</td>
+<td>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</td>
+</tr>
+</table>
+</blockquote>
+
+<p>
+Make the corresponding change in the class synopses in 23.5.4 [unord.map], 23.5.5 [unord.multimap],  23.5.6 [unord.set], and 23.5.7 [unord.multiset].
+</p>
+
+</blockquote>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+In 23.2.5 [unord.req]/9, table 98, append a new row after the last one:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Unordered associative container requirements
+(in addition to container)</caption>
+
+<tr>
+<th>Expression</th><th>Return type</th><th>Assertion/note pre-/post-condition</th>
+<th>Complexity</th>
+</tr>
+<tr>
+<td><tt>a.rehash(n)</tt></td>
+<td><tt>void</tt></td>
+<td>
+Post: <tt>a.bucket_count &gt; a.size()
+/ a.max_load_factor()</tt> and <tt>a.bucket_count()
+&gt;= n</tt>.
+</td>
+<td>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</td>
+</tr>
+<tr>
+<td><ins>
+<tt>a.reserve(n)</tt>
+</ins></td>
+<td><ins>
+<tt>void</tt>
+</ins></td>
+<td><ins>
+Same as <tt>a.rehash(ceil(n / a.max_load_factor()))</tt>
+</ins></td>
+<td><ins>
+Average case linear in <tt>a.size()</tt>, worst case quadratic.
+</ins></td>
+</tr>
+</table>
+</blockquote>
+
+<p>
+In 23.5.4 [unord.map]/3 in the definition of class template <tt>unordered_map</tt>, in
+23.5.5 [unord.multimap]/3 in the definition of class template <tt>unordered_multimap</tt>, in
+23.5.6 [unord.set]/3 in the definition of class template <tt>unordered_set</tt> and in
+23.5.7 [unord.multiset]/3 in the definition of class template <tt>unordered_multiset</tt>, add the
+following line after member function <tt>rehash()</tt>:
+</p>
+
+<blockquote><pre>
+void reserve(size_type n);
+</pre></blockquote>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2682: <code>filesystem::copy()</code> won't create a symlink to a directory</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2682" href="#2682">2682.</a> <code>filesystem::copy()</code> won't create a symlink to a directory</h3>
+<p><b>Section:</b> 27.10.15.3 [fs.op.copy] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-04-19 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.op.copy">issues</a> in [fs.op.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>(First raised in c++std-lib-38544)</p>
+
+<p><code>filesystem::copy</code> doesn't create a symlink to a directory in this case:</p>
+
+<blockquote>
+<code>copy("/", "root", copy_options::create_symlinks);</code>
+</blockquote>
+
+<p>
+If the first path is a file then a symlink is created, but I think my
+implementation is correct to do nothing for a directory. We get to
+bullet 27.10.15.3 [fs.op.copy] (3.6) where <code>is_directory(f)</code> is true, but <code>options
+== create_symlinks</code>, so we go to the next bullet (3.7) which says
+"Otherwise, no effects."
+<p/>
+I think the case above should either create a symlink, or should
+report an error. GNU cp -s gives an error in this case, printing
+"omitting directory '/'". An error seems reasonable, you can use
+<code>create_symlink</code> to create a symlink to a directory.
+</p>
+
+<p><i>[2016-05 Issues Telecon]</i></p>
+
+<p>
+This is related to <a href="lwg-defects.html#2681">2681</a>; and should be considered together.
+</p>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Wed AM: Move to Tentatively Ready</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>Add a new bullet following (3.6) in 27.10.15.3 [fs.op.copy] as shown:</p>
+
+<blockquote>
+<ul>
+<li><p>If <code>!exists(t)</code>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>Then, iterate over the files in <code>from</code>, as if by <code>for (directory_entry&amp; x :
+ directory_iterator(from))</code>, and for each iteration
+  <code>copy(x.path(), to/x.path().filename(), options | copy_options::unspecified )</code></p></li>
+<li><p><ins>Otherwise, if <code>is_directory(f) &amp;&amp; (options &amp;
+copy_options::create_symlinks) != copy_options::none</code>, then report an
+error with an <code>error_code</code> argument equal to
+<code>make_error_code(errc::is_a_directory)</code>.</ins></p></li>
+<li><p>Otherwise, no effects.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+
+<p><i>[2016-10-16, Eric reopens and provides improved wording]</i></p>
+
+<p>
+The current PR makes using <tt>copy(...)</tt> to copy/create a directory symlink an error. For example, the following 
+is now an error:
+</p>
+<blockquote><pre>
+copy("/", "root", copy_options::create_symlinks);
+</pre></blockquote>
+<p>
+However the current PR doesn't handle the case where both <tt>copy_options::create_symlinks</tt> and 
+<tt>copy_options::recursive</tt> are specified. This case is still incorrectly handled by bullet (3.6) [fs.op.copy].
+<p/>
+I suggest we move the PR before this bullet so that it catches the recursive copy case, since currently the conditions 
+are ordered:
+</p>
+<blockquote>
+<p>
+3.6 Otherwise if <tt>is_directory(f) &amp;&amp; (bool(options &amp; copy_options::recursive) || ...)</tt><br/>
+3.X Otherwise if <tt>is_directory(f) &amp;&amp; bool(options &amp; copy_options::create_symlinks)</tt>
+</p>
+</blockquote>
+<p>
+So 3.6 catches <tt>create_symlinks | recursive</tt> but I believe we want 3.X to handle it instead.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Add a new bullet before (3.6) in 27.10.15.3 [fs.op.copy] as shown:</p>
+
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>(3.5) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
+<blockquote>
+[&hellip;]
+</blockquote>
+</li>
+<li><p><ins>(3.?) &mdash; Otherwise, if</ins></p>
+<blockquote>
+<blockquote><pre>
+<ins>is_directory(f) &amp;&amp; 
+(options &amp; copy_options::create_symlinks) != copy_options::none</ins>
+</pre></blockquote>
+<p> 
+<ins>then report an error with an <code>error_code</code> argument equal to
+<code>make_error_code(errc::is_a_directory)</code>.</ins></p></blockquote></li>
+<li><p>(3.6) &mdash; Otherwise, if</p>
+<blockquote>
+<blockquote><pre>
+is_directory(f) &amp;&amp;
+((options &amp; copy_options::recursive) != copy_options::none ||
+options == copy_options::none)
+</pre></blockquote>
+<p>
+then:
+</p>
+</blockquote>
+<ol style="list-style-type: none">
+<li><p>(3.6.1) &mdash; If <code>!exists(t)</code>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>(3.6.2) &mdash; Then, iterate over the files in <code>from</code>, as if by <code>for (directory_entry&amp; x :
+ directory_iterator(from))</code>, and for each iteration</p>
+<blockquote><pre>
+copy(x.path(), to/x.path().filename(), options | copy_options::<i>unspecified</i>)
+</pre></blockquote>
+</li>
+</ol>
+</li>
+<li><p>(3.7) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
+<li><p>(3.8) &mdash; Otherwise, no effects.</p></li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

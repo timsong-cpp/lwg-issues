@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2457: <tt>std::begin()</tt> and <tt>std::end()</tt> do not support multi-dimensional arrays correctly</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2457" href="#2457">2457.</a> <tt>std::begin()</tt> and <tt>std::end()</tt> do not support multi-dimensional arrays correctly</h3>
+<p><b>Section:</b> 24.7 [iterator.range] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Janez &#x17d;emva <b>Opened:</b> 2014-11-16 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.range">active issues</a> in [iterator.range].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.range">issues</a> in [iterator.range].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code:
+</p>
+<blockquote><pre>
+#include &lt;algorithm&gt;
+#include &lt;iterator&gt;
+#include &lt;iostream&gt;
+#include &lt;cassert&gt;
+
+int main() 
+{
+  int a[2][3][4] = { { { 1,  2,  3,  4}, { 5,  6,  7,  8}, { 9, 10, 11, 12} },
+                     { {13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24} } };
+  int b[2][3][4];
+
+  assert(std::distance(std::begin(a), std::end(a)) == 2 * 3 * 4);
+  std::copy(std::begin(a), std::end(a), std::begin(b));
+  std::copy(std::begin(b), std::end(b), std::ostream_iterator&lt;int&gt;(std::cout, ","));
+}
+</pre></blockquote>
+<p>
+does not compile. 
+<p/>
+A possible way to remedy this would be to add the following overloads of
+<tt>begin</tt>, <tt>end</tt>, <tt>rbegin</tt>, and <tt>rend</tt> to 24.7 [iterator.range], 
+relying on recursive evaluation:
+</p>
+<blockquote><pre>
+namespace std {
+
+  template &lt;typename T, size_t M, size_t N&gt;
+  constexpr remove_all_extents_t&lt;T&gt;*
+  begin(T (&amp;array)[M][N])
+  {
+    return begin(*array);
+  }
+  
+  template &lt;typename T, size_t M, size_t N&gt;
+  constexpr remove_all_extents_t&lt;T&gt;*
+  end(T (&amp;array)[M][N])
+  {
+    return end(array[M - 1]);
+  }
+
+  template &lt;typename T, size_t M, size_t N&gt;
+  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
+  rbegin(T (&amp;array)[M][N])
+  {
+    return decltype(rbegin(array))(end(array[M - 1]));
+  }
+  
+  template &lt;typename T, size_t M, size_t N&gt;
+  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
+  rend(T (&amp;array)[M][N])
+  {
+    return decltype(rend(array))(begin(*array));
+  }
+
+}
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

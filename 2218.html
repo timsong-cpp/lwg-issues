@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2218: Unclear how containers use <tt>allocator_traits::construct()</tt></title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2218" href="#2218">2218.</a> Unclear how containers use <tt>allocator_traits::construct()</tt></h3>
+<p><b>Section:</b> 23.2.1 [container.requirements.general] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2012-11-27 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#container.requirements.general">active issues</a> in [container.requirements.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#container.requirements.general">issues</a> in [container.requirements.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Firstly, 23.2.1 [container.requirements.general]/7 says a container's
+allocator is used to obtain memory, but it isn't stated explicitly that the same 
+allocator is used to construct and destroy elements, as opposed to a value-initialized 
+allocator of the same type.
+</p>
+<p>
+Secondly, 23.2.1 [container.requirements.general]/3 says elements "shall be
+constructed using the <tt>allocator_traits&lt;allocator_type&gt;::construct</tt>
+function and destroyed using the <tt>allocator_traits&lt;allocator_type&gt;::destroy</tt> function" and
+23.2.1 [container.requirements.general]/13 defines <tt>CopyInsertable</tt> etc. in
+terms of an allocator <tt>A</tt> which is identical to the container's <tt>allocator_type</tt>.
+</p>
+<p>
+The intent of making <tt>construct()</tt> and <tt>destroy()</tt> function templates was
+that containers would be permitted to use <tt>allocator_traits&lt;A&gt;::construct()</tt> instead of
+<tt>allocator_traits&lt;allocator_type&gt;::construct()</tt>, where <tt>A</tt> is
+<tt>allocator_traits&lt;allocator_type&gt;::rebind_alloc&lt;U&gt;</tt> for some other type
+<tt>U</tt>.  This allows node-based containers to store an allocator of the right type for 
+allocating nodes and to use the same object to construct elements in aligned storage within 
+those nodes, avoiding rebinding and copying the stored allocator every time an element needs
+to be constructed.
+<p/>
+It should be made clear that a possibly-rebound copy of the container's allocator is used for object 
+construction.
+</p>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Open.
+</p>
+<p>
+Jonathan: point 2 in the proposed resolution is definitely needed.
+</p>
+
+<p><i>[2014-11-28, Jonathan improves wording]</i></p>
+
+<p>
+In the first set of edits to paragraph 3 both pieces inserting "<tt>rebind_alloc&lt;U&gt;::</tt>"
+should be replaced by "<tt>rebind_traits&lt;U&gt;::</tt>"
+<p/>
+Otherwise it implies using the allocator's functions directly, but they might not exist and 
+it should be through the rebound traits type.
+</p>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+STL: You want to permit but not require rebinding?<br/>
+Wakely: The current wording forces me to use the original allocator, not the rebound one.<br/>
+STL: Oh, I see. Yeah, we immediately rebind.<br/>
+Wakely: The edits clarify that we don't use some other allocator. The third diff is because the definitions of 
+EmplaceConstructible/etc. happen with the same types. The diff to the note is because it doesn't require the value 
+of the allocator was the one passed in.<br/>
+STL: After looking at this, I think I'm comfortable with the edits. The previous Standardese was nonsense so it's 
+pretty easy to improve upon.<br/>
+Marshall: Any other opinions?<br/>
+Marshall: Any objections to moving it to Ready? Review? Ready in Kona?<br/>
+Wakely: My preference would be Ready. We all know this is what we're doing anyways.<br/>
+Nevin: The intent won't change.<br/>
+STL: I think this is the right fix.<br/>
+Hwrd: I third Ready. Even if Jonathan retracts his.<br/>
+Marshall: Ready! 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3485.</p>
+
+<ol>
+<li><p>Edit 23.2.1 [container.requirements.general] paragraph 3:</p>
+<blockquote><p>
+For the components affected by this subclause that declare an <tt>allocator_type</tt>, objects stored in these
+components shall be constructed using the <tt>allocator_traits&lt;allocator_type&gt;::<ins>rebind_traits&lt;U&gt;::</ins>construct</tt> 
+function and destroyed using the <tt>allocator_traits&lt;allocator_type&gt;::<ins>rebind_traits&lt;U&gt;::</ins>destroy</tt> 
+function (20.10.8.2 [allocator.traits.members])<ins>, where <tt>U</tt> is either <tt>allocator_type::value_type</tt> 
+or an internal type used by the container</ins>. These functions are called only for the container's element type, 
+not for internal types used by the container. [ <i>Note</i>: This means, for example, that a node-based container 
+might need to construct nodes containing aligned buffers and call construct to place the element into the buffer. 
+&mdash; <i>end note</i> ]
+</p></blockquote>
+</li>
+
+<li><p>Edit 23.2.1 [container.requirements.general] paragraph 7:</p>
+<blockquote><p>
+[&hellip;] A copy of this allocator is used for any memory allocation <ins>and element construction</ins> performed, 
+by these constructors and by all member functions, during the lifetime of each container object or until the allocator 
+is replaced. [&hellip;]
+</p></blockquote>
+</li>
+
+<li><p>Edit 23.2.1 [container.requirements.general] paragraph 13:</p>
+<blockquote><p>
+[&hellip;] Given <ins>an allocator type <tt>A</tt> and given</ins> a container type <tt>X</tt> having <del>an 
+<tt>allocator_type</tt> identical to <tt>A</tt> and</del> a <tt>value_type</tt> identical to <tt>T</tt> 
+<ins>and an <tt>allocator_type</tt> identical to <tt>allocator_traits&lt;A&gt;::rebind_alloc&lt;T&gt;</tt></ins> 
+and given an lvalue <tt>m</tt> of type <tt>A</tt>, a pointer <tt>p</tt> 
+of type <tt>T*</tt>, an expression <tt>v</tt> of type (possibly <tt>const</tt>) <tt>T</tt>, and an rvalue <tt>rv</tt> 
+of type <tt>T</tt>, the following terms are defined.
+<p/>
+[&hellip;]
+<p/>
+[ <i>Note</i>: A container calls <tt>allocator_traits&lt;A&gt;::construct(m, p, args)</tt> to construct an element 
+at <tt>p</tt> using <tt>args</tt><ins>, with <tt>m == get_allocator()</tt></ins>. The default <tt>construct</tt> in 
+<tt>std::allocator</tt> will call <tt>::new((void*)p) T(args)</tt>, but specialized allocators may choose a 
+different definition. &mdash; <i>end note</i> ]
+</p></blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

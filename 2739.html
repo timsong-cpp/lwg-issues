@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2739: Issue with <tt>time_point</tt> non-member subtraction with an unsigned duration</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2739" href="#2739">2739.</a> Issue with <tt>time_point</tt> non-member subtraction with an unsigned duration</h3>
+<p><b>Section:</b> 20.17.6.5 [time.point.nonmember] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Michael Winterberg <b>Opened:</b> 2016-06-23 <b>Last modified:</b> 2016-11-14</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.point.nonmember">issues</a> in [time.point.nonmember].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In N4594, 20.17.6.5 [time.point.nonmember], <tt>operator-(time_point, duration)</tt> is specified as:
+</p>
+<blockquote>
+<pre>
+template &lt;class Clock, class Duration1, class Rep2, class Period2&gt;
+  constexpr time_point&lt;Clock, common_type_t&lt;Duration1, duration&lt;Rep2, Period2&gt;&gt;&gt;
+  operator-(const time_point&lt;Clock, Duration1&gt;&amp; lhs, const duration&lt;Rep2, Period2&gt;&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> <tt>lhs + (-rhs)</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+When <tt>Rep2</tt> is an unsigned integral type, the behavior is quite different with arithmetic of the underlying 
+integral types because of the requirement to negate the incoming duration and then add that. It also ends up 
+producing different results than the underlying durations as well as the non-member <tt>time_point::operator-=</tt>.
+<p/>
+Consider this program:
+</p>
+<blockquote>
+<pre>
+#include &lt;chrono&gt;
+#include &lt;iostream&gt;
+#include &lt;cstdint&gt;
+
+using namespace std;
+using namespace std::chrono;
+
+int main()
+{
+  const duration&lt;uint32_t&gt; unsignedSeconds{5};
+
+  auto someValue = system_clock::from_time_t(200);
+  cout &lt;&lt; system_clock::to_time_t(someValue) &lt;&lt; '\n';
+  cout &lt;&lt; system_clock::to_time_t(someValue - unsignedSeconds) &lt;&lt; '\n';
+  someValue -= unsignedSeconds;
+  cout &lt;&lt; system_clock::to_time_t(someValue) &lt;&lt; '\n';
+
+  std::chrono::seconds signedDur{200};
+  cout &lt;&lt; signedDur.count() &lt;&lt; '\n';
+  cout &lt;&lt; (signedDur - unsignedSeconds).count() &lt;&lt; '\n';
+  signedDur -= unsignedSeconds;
+  cout &lt;&lt; signedDur.count() &lt;&lt; '\n';
+}
+</pre>
+</blockquote>
+<p>
+The goal of the program is to compare the behavior of <tt>time_point</tt> non-member <tt>operator-</tt>, 
+<tt>time_point</tt> member <tt>operator-=</tt>, <tt>duration</tt> non-member <tt>operator-</tt>, and 
+<tt>duration</tt> member <tt>operator-=</tt> with basically the same inputs.
+<p/>
+libc++ produces this output, which appears mandated by the standard:
+</p>
+<blockquote>
+<pre>
+200
+4294967491
+195
+200
+195
+195
+</pre>
+</blockquote>
+<p>
+On the other hand, libstdc++ produces this output, which is what I "intuitively" expect and behaves more consistently:
+</p>
+<blockquote>
+<pre>
+200
+195
+195
+200
+195
+195
+</pre>
+</blockquote>
+<p>
+Given the seemingly brief coverage of durations with unsigned representations in the standard, this seems to be an 
+oversight rather than a deliberate choice for this behavior. Additionally, there may be other "unexpected" behaviors 
+with durations with an unsigned representation, this is just the one that I've come across.
+</p>
+<p><i>[2016-07 Chicago]</i></p>
+
+<p>Monday: P0 - tentatively ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4594.</p>
+
+<ol>
+<li><p>Change 20.17.6.5 [time.point.nonmember] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class Clock, class Duration1, class Rep2, class Period2&gt;
+  constexpr time_point&lt;Clock, common_type_t&lt;Duration1, duration&lt;Rep2, Period2&gt;&gt;&gt;
+  operator-(const time_point&lt;Clock, Duration1&gt;&amp; lhs, const duration&lt;Rep2, Period2&gt;&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> <del><tt>lhs + (-rhs)</tt></del><ins><tt><i>CT</i>(lhs.time_since_epoch() - rhs)</tt>, where 
+<tt><i>CT</i></tt> is the type of the return value</ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
