@@ -11,6 +11,7 @@ rm gh-pages/*.html
 mv tmp/mailing/* gh-pages/
 rm -r tmp
 cd gh-pages
-git commit -am 'Update'
+git add -A
+git commit -m 'Update'
 git push
 cd ..
