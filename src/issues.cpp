@@ -181,6 +181,7 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    k += sizeof("status=\"") - 1;
    l = tx.find('\"', k);
    is.stat = tx.substr(k, l-k);
+   if(is.stat == "Pending") is.stat = "Pending WP";
 
    // Get issue title
    k = tx.find("<title>", l);

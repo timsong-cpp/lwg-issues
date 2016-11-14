@@ -1,7 +1,16 @@
 #! /bin/sh
 
-cp -r LWG tmp
-bin/lists tmp/
-cp tmp/mailing/* gh-pages/
-rm -r tmp
+cd LWG
+git pull
+cd ..
 
+cp -r LWG tmp
+mkdir -p tmp/mailing
+bin/lists tmp/
+rm gh-pages/*.html
+mv tmp/mailing/* gh-pages/
+rm -r tmp
+cd gh-pages
+git commit -am 'Update'
+git push
+cd ..
