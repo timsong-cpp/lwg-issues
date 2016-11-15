@@ -14,7 +14,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
-
+#include <regex>
 namespace
 {
 
@@ -394,6 +394,12 @@ R"(<table>
    }
    out << lwg_issues_xml.get_revision() << ")</h1>\n";
    out << "<p>" << build_timestamp << "</p>";
+}
+
+std::string prune_title_tags(const std::string& title){
+    static const std::regex rx("<[^>]*>");
+    return std::regex_replace(title, rx, "");
+
 }
 
 } // close unnamed namespace
@@ -804,7 +810,7 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
        std::ofstream out{filename.c_str()};
        if (!out)
          throw std::runtime_error{"Failed to open " + filename};
-       print_file_header(out, std::string("Issue ") + std::to_string(iss.num) + ": " + iss.title);
+       print_file_header(out, std::string("Issue ") + std::to_string(iss.num) + ": " + prune_title_tags(iss.title));
        print_issue(out, iss, section_db, all_issues, issues_by_status, active_issues);
        print_file_trailer(out);
    }
