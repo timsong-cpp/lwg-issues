@@ -16,3 +16,7 @@ git add -A
 git commit -m 'Update'
 git push
 cd ..
+
+git commit -am 'Update'
+git push
+

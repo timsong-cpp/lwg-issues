@@ -811,6 +811,7 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
        if (!out)
          throw std::runtime_error{"Failed to open " + filename};
        print_file_header(out, std::string("Issue ") + std::to_string(iss.num) + ": " + prune_title_tags(iss.title));
+       out << "<p> Generated: " << build_timestamp << "</p>";
        print_issue(out, iss, section_db, all_issues, issues_by_status, active_issues);
        print_file_trailer(out);
    }
