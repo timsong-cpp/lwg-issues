@@ -58,8 +58,6 @@ auto lwg::make_html_anchor(lwg::issue const & iss) -> std::string {
    auto temp = std::to_string(iss.num);
 
    std::string result{"<a href=\""};
-   result += filename_for_status(iss.stat);
-   result += '#';
    result += temp;
    result += "\">";
    result += temp;
