@@ -222,7 +222,7 @@ assert(!i->tags.empty());
       out << section_db[i->tags[0]] << " " << i->tags[0];
       if (i->tags[0] != prev_tag) {
          prev_tag = i->tags[0];
-         out << "<a name=\"" << as_string(prev_tag) << "\"</a>";
+         out << "<a name=\"" << as_string(prev_tag) << "\"></a>";
       }
       out << "</td>\n";
 
