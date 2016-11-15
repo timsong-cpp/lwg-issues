@@ -262,7 +262,7 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
          out << "<hr>\n";
 
          // Number and title
-         out << "<h3><a name=\"" << iss.num << "\" href=\"#" << iss.num << "\">" << iss.num << ".</a>" << " " << iss.title << "</h3>\n";
+         out << "<h3><a name=\"" << iss.num << "\" href=\"" << iss.num << "\">" << iss.num << ".</a>" << " " << iss.title << "</h3>\n";
 
          // Section, Status, Submitter, Date
          out << "<p><b>Section:</b> ";
