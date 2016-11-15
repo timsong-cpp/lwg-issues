@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2354: Unnecessary copying when inserting into maps with braced-init syntax</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2354" href="#2354">2354.</a> Unnecessary copying when inserting into maps with braced-init syntax</h3>
+<p><b>Section:</b> 23.4.4.1 [map.overview], 23.4.5.1 [multimap.overview], 23.5.4.1 [unord.map.overview], 23.5.5.1 [unord.multimap.overview] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2014-01-08 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The rvalue-reference <tt>insert()</tt> members of <tt>map</tt>, <tt>multimap</tt>, <tt>unordered_map</tt>, and 
+<tt>unordered_multimap</tt> are specified as function templates, where the rvalue-reference parameter type 
+depends on the template parameter. 
+As a consequence, these overloads cannot be invoked via braced-initializer syntax (e.g. <tt>my_map.insert({key, value})</tt>), 
+because the template argument cannot be deduced from a braced-init-list. Such calls instead resolve to the 
+const lvalue reference overload, which forces a non-elidable copy of the argument, despite the fact that the 
+argument is an rvalue, and so should be eligible for moving and copy elision.
+<p/>
+This leads to sub-optimal performance for copyable values, and makes this syntax unusable with noncopyable 
+values. This is particularly problematic because sources such as Josuttis's "C++ Standard Library" recommend 
+this syntax as the preferred way to insert into a map in C++11.
+<p/>
+I think this can be fixed by adding an equivalent non-template <tt>value_type&amp;&amp;</tt> overload for each affected 
+member template. Simply declaring these members in the class synopses should be sufficient; their semantics are 
+already dictated by the container concepts (c.f. the corresponding lvalue-reference overloads, which have no 
+additional discussion beyond being listed in the synopsis).
+</p>
+
+<p><i>[2012-02-13 Issaquah]</i></p>
+
+<p>
+AJM: Is this not better solved by <tt>emplace</tt>?
+</p>
+
+<p>
+Nico: <tt>emplace</tt> was a mistake, it breaks a uniform pattern designed into the STL.
+Hence, this fix is important, it should be the preferred way to do this.
+</p>
+
+<p>
+JonW: <tt>emplace</tt> is still more efficient, as this form must make a non-elidable copy.
+</p>
+
+<p>
+GeoffR: Also, cannot move from a <tt>const</tt> key, must always make a copy.
+</p>
+
+<p>
+Poll for adopting the proposed wording:  
+<p/>
+SF: 1 WF: 4 N: 4 WA: 1 SA: 0 
+</p>
+
+<p>
+Move to Ready, pending implementation experience.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3797.</p>
+
+<ol>
+<li><p>Change 23.4.4.1 [map.overview], class template <tt>map</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+pair&lt;iterator, bool&gt; insert(const value_type&amp; x);
+<ins>pair&lt;iterator, bool&gt; insert(value_type&amp;&amp; x);</ins>
+template &lt;class P&gt; pair&lt;iterator, bool&gt; insert(P&amp;&amp; x);
+iterator insert(const_iterator position, const value_type&amp; x);
+<ins>iterator insert(const_iterator position, value_type&amp;&amp; x);</ins>
+template &lt;class P&gt;
+  iterator insert(const_iterator position, P&amp;&amp;);
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.5.1 [multimap.overview], class template <tt>multimap</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+iterator insert(const value_type&amp; x);
+<ins>iterator insert(value_type&amp;&amp; x);</ins>
+template &lt;class P&gt; iterator insert(P&amp;&amp; x);
+iterator insert(const_iterator position, const value_type&amp; x);
+<ins>iterator insert(const_iterator position, value_type&amp;&amp; x);</ins>
+template &lt;class P&gt; iterator insert(const_iterator position, P&amp;&amp; x);
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.4.1 [unord.map.overview], class template <tt>unordered_map</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+pair&lt;iterator, bool&gt; insert(const value_type&amp; obj);
+<ins>pair&lt;iterator, bool&gt; insert(value_type&amp;&amp; obj);</ins>
+template &lt;class P&gt; pair&lt;iterator, bool&gt; insert(P&amp;&amp; obj);
+iterator insert(const_iterator hint, const value_type&amp; obj);
+<ins>iterator insert(const_iterator hint, value_type&amp;&amp; obj);</ins>
+template &lt;class P&gt; iterator insert(const_iterator hint, P&amp;&amp; obj);
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.5.1 [unord.multimap.overview], class template <tt>unordered_multimap</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+iterator insert(const value_type&amp; obj);
+<ins>iterator insert(value_type&amp;&amp; obj);</ins>
+template &lt;class P&gt; iterator insert(P&amp;&amp; obj);
+iterator insert(const_iterator hint, const value_type&amp; obj);
+<ins>iterator insert(const_iterator hint, value_type&amp;&amp; obj);</ins>
+template &lt;class P&gt; iterator insert(const_iterator hint, P&amp;&amp; obj);
+[&hellip;]
+</pre></blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

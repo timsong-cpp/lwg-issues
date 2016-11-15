@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2711: path is convertible from approximately everything under the sun</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2711" href="#2711">2711.</a> <tt>path</tt> is convertible from approximately everything under the sun</h3>
+<p><b>Section:</b> 27.10.8.4.1 [path.construct] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2016-05-10 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The unconstrained <tt>template&lt;class Source&gt; path(const Source&amp; source);</tt> constructor defines an 
+implicit conversion from pretty much everything to <tt>path</tt>. This can lead to surprising ambiguities in 
+overload resolution.
+<p/>
+For example, given LWG <a href="lwg-active.html#2676">2676</a>'s proposed resolution, the following code appears to be ambiguous:
+</p>
+<blockquote><pre>
+struct meow {
+  operator const char *() const;
+};
+
+std::ifstream purr(meow{});
+</pre></blockquote>
+<p>
+because a <tt>meow</tt> can be converted to either a <tt>path</tt> or a <tt>const char*</tt> by a user-defined 
+conversion, even though part of the stated goal of LWG <a href="lwg-active.html#2676">2676</a>'s P/R is to avoid "break[ing] user 
+code depending on user-defined automatic conversions to the existing argument types".
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to N4582.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> <tt>decay_t&lt;Source&gt;</tt> handles both the input iterator case (27.10.8.3 [path.req]/1.2) and 
+the array case (27.10.8.3 [path.req]/1.3). The level of constraints required is debatable; the following wording limits 
+the constraint to "is a <tt>basic_string</tt> or an iterator", but perhaps stronger constraints (e.g., an 
+<tt>iterator_category</tt> check in the second case, and/or a <tt>value_type</tt> check for both cases) would be desirable.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Change 27.10.8.4.1 [path.construct] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class Source&gt;
+  path(const Source&amp; source);
+template &lt;class InputIterator&gt;
+  path(InputIterator first, InputIterator last);
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects:</i> Constructs an object of class <tt>path</tt>, storing the effective range of <tt>source</tt> (27.10.8.3) 
+or the range <tt>[first, last)</tt> in <tt>pathname</tt>, converting format and encoding if required (27.10.8.2.1).
+<p/>
+<ins>-?- <i>Remarks:</i> The first overload shall not participate in overload resolution unless either <tt>Source</tt> 
+is a specialization of <tt>basic_string</tt> or the qualified-id <tt>iterator_traits&lt;decay_t&lt;Source&gt;&gt;::value_type</tt> 
+is valid and denotes a type (14.8.2 [temp.deduct]).</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-05-28, Eric Fiselier comments suggests alternative wording]</i></p>
+
+<p>
+Functions taking <tt>EcharT</tt> or <tt>Source</tt> parameter types often provide additional overloads with the 
+same arity and concrete types. In order to allow conversions to these concrete types in the interface we need to 
+explicitly disable the <tt>EcharT</tt> and <tt>Source</tt> overloads.
+</p>
+
+<p><i>[2016-06-19, Eric and Tim improve the wording]</i></p>
+
+
+<p><i>[2016-06, Oulu]</i></p>
+
+<p>Voted to Ready 8-0 Monday morning in Oulu</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4594.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Functions taking <tt>EcharT</tt> or <tt>Source</tt> parameter types often provide additional overloads with the 
+same arity and concrete types. In order to allow conversions to these concrete types in the interface we need to explicitly disable 
+the <tt>EcharT</tt> and <tt>Source</tt> overloads.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Change 27.10.5 [fs.req] as indicated:</p>
+
+<blockquote>
+<p>
+-2- <del>Template parameters named <tt>EcharT</tt> shall be</del><ins>Functions with template parameters named 
+<tt>EcharT</tt> shall not participate in overload resolution unless <tt>EcharT</tt> is</ins> one of the encoded 
+character types.
+</p>
+</blockquote>
+</li>
+
+<li><p>Insert a new paragraph between 27.10.8.3 [path.req] p1 and p2 as indicated:</p>
+
+<blockquote>
+<p>
+<ins>-?- Functions taking template parameters named <tt>Source</tt> shall not participate in overload resolution unless either 
+<tt>Source</tt> is a specialization of <tt>basic_string</tt> or the qualified-id <tt>iterator_traits&lt;decay_t&lt;Source&gt;&gt;::value_type</tt> 
+is valid and denotes a possibly <tt>const</tt> encoded character type (14.8.2 [temp.deduct]).</ins> 
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

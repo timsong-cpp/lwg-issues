@@ -1,0 +1,215 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 242: Side effects of function objects</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="242" href="#242">242.</a> Side effects of function objects</h3>
+<p><b>Section:</b> 25.4.4 [alg.transform], 26.6 [rand] <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Angelika Langer <b>Opened:</b> 2000-05-15 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.transform">issues</a> in [alg.transform].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>The algorithms transform(), accumulate(), inner_product(),
+partial_sum(), and adjacent_difference() require that the function
+object supplied to them shall not have any side effects.</p>
+
+<p>The standard defines a side effect in 1.9 [intro.execution] as:</p>
+<blockquote><p>-7- Accessing an object designated by a volatile lvalue (basic.lval),
+modifying an object, calling a library I/O function, or calling a function
+that does any of those operations are all side effects, which are changes
+in the state of the execution environment.</p></blockquote>
+
+<p>As a consequence, the function call operator of a function object supplied
+to any of the algorithms listed above cannot modify data members, cannot
+invoke any function that has a side effect, and cannot even create and
+modify temporary objects.&nbsp; It is difficult to imagine a function object
+that is still useful under these severe limitations. For instance, any
+non-trivial transformator supplied to transform() might involve creation
+and modification of temporaries, which is prohibited according to the current
+wording of the standard.</p>
+
+<p>On the other hand, popular implementations of these algorithms exhibit
+uniform and predictable behavior when invoked with a side-effect-producing
+function objects. It looks like the strong requirement is not needed for
+efficient implementation of these algorithms.</p>
+
+<p>The requirement of&nbsp; side-effect-free function objects could be
+replaced by a more relaxed basic requirement (which would hold for all
+function objects supplied to any algorithm in the standard library):</p>
+<blockquote><p>A function objects supplied to an algorithm shall not invalidate
+any iterator or sequence that is used by the algorithm. Invalidation of
+the sequence includes destruction of the sorting order if the algorithm
+relies on the sorting order (see section 25.3 - Sorting and related operations
+[lib.alg.sorting]).</p></blockquote>
+
+<p>I can't judge whether it is intended that the function objects supplied
+to transform(), accumulate(), inner_product(), partial_sum(), or adjacent_difference()
+shall not modify sequence elements through dereferenced iterators.</p>
+
+<p>It is debatable whether this issue is a defect or a change request.
+Since the consequences for user-supplied function objects are drastic and
+limit the usefulness of the algorithms significantly I would consider it
+a defect.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p><i>Things to notice about these changes:</i></p>
+
+<ol>
+<li> <i>The fully-closed ("[]" as opposed to half-closed "[)" ranges
+     are intentional. we want to prevent side-effects from
+     invalidating the end iterators.</i></li>
+
+<li> <i>That has the unintentional side-effect of prohibiting
+     modification of the end element as a side-effect. This could
+     conceivably be significant in some cases.</i></li>
+
+<li> <i>The wording also prevents side-effects from modifying elements
+     of the output sequence. I can't imagine why anyone would want
+     to do this, but it is arguably a restriction that implementors
+     don't need to place on users.</i></li>
+
+<li> <i>Lifting the restrictions imposed in #2 and #3 above is possible
+     and simple, but would require more verbiage.</i></li>
+</ol>
+
+<p>Change 25.2.3/2 from:</p>
+
+<blockquote><p>
+   -2- Requires: op and binary_op shall not have any side effects.
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -2- Requires: in the ranges [first1, last1], [first2, first2 +
+  (last1 - first1)] and [result, result + (last1- first1)], op and
+  binary_op shall neither modify elements nor invalidate iterators or
+  subranges.
+  [Footnote: The use of fully closed ranges is intentional --end footnote]
+</p></blockquote>
+
+
+<p>Change 25.2.3/2 from:</p>
+
+<blockquote><p>
+   -2- Requires: op and binary_op shall not have any side effects. 
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -2- Requires: op and binary_op shall not invalidate iterators or
+   subranges, or modify elements in the ranges [first1, last1],
+   [first2, first2 + (last1 - first1)], and [result, result + (last1
+   - first1)].
+  [Footnote: The use of fully closed ranges is intentional --end footnote]
+</p></blockquote>
+
+
+<p>Change 26.4.1/2 from:</p>
+
+<blockquote><p>
+  -2- Requires: T must meet the requirements of CopyConstructible
+   (lib.copyconstructible) and Assignable (lib.container.requirements)
+   types. binary_op shall not cause side effects.
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -2- Requires: T must meet the requirements of CopyConstructible
+   (lib.copyconstructible) and Assignable
+   (lib.container.requirements) types. In the range [first, last],
+   binary_op shall neither modify elements nor invalidate iterators
+   or subranges.
+  [Footnote: The use of a fully closed range is intentional --end footnote]
+</p></blockquote>
+
+<p>Change 26.4.2/2 from:</p>
+
+<blockquote><p>
+  -2- Requires: T must meet the requirements of CopyConstructible
+   (lib.copyconstructible) and Assignable (lib.container.requirements)
+   types. binary_op1 and binary_op2 shall not cause side effects.
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -2- Requires: T must meet the requirements of CopyConstructible
+   (lib.copyconstructible) and Assignable (lib.container.requirements)
+   types. In the ranges [first, last] and [first2, first2 + (last -
+   first)], binary_op1 and binary_op2 shall neither modify elements
+   nor invalidate iterators or subranges.
+  [Footnote: The use of fully closed ranges is intentional --end footnote]
+</p></blockquote>
+
+
+<p>Change 26.4.3/4 from:</p>
+
+<blockquote><p>
+  -4- Requires: binary_op is expected not to have any side effects.
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -4- Requires: In the ranges [first, last] and [result, result +
+   (last - first)], binary_op shall neither modify elements nor
+   invalidate iterators or subranges.
+  [Footnote: The use of fully closed ranges is intentional --end footnote]
+</p></blockquote>
+
+<p>Change 26.4.4/2 from:</p>
+
+<blockquote><p>
+  -2- Requires: binary_op shall not have any side effects.
+</p></blockquote>
+
+<p>to:</p>
+
+<blockquote><p>
+  -2- Requires: In the ranges [first, last] and [result, result +
+   (last - first)], binary_op shall neither modify elements nor
+   invalidate iterators or subranges.
+  [Footnote: The use of fully closed ranges is intentional --end footnote]
+</p></blockquote>
+
+<p><i>[Toronto: Dave Abrahams supplied wording.]</i></p>
+
+
+<p><i>[Copenhagen: Proposed resolution was modified slightly. Matt
+added footnotes pointing out that the use of closed ranges was
+intentional.]</i></p>
+
+
+
+
+
+
+
+</body>
+</html>

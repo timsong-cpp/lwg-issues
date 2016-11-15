@@ -1,0 +1,252 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 896: Library thread safety issue</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="896" href="#896">896.</a> Library thread safety issue</h3>
+<p><b>Section:</b> 20.11.2.2 [util.smartptr.shared] <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Hans Boehm <b>Opened:</b> 2008-09-16 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared">active issues</a> in [util.smartptr.shared].</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared">issues</a> in [util.smartptr.shared].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It is unclear whether <tt>shared_ptr</tt> is thread-safe in the sense that
+multiple threads may simultaneously copy a <tt>shared_ptr</tt>.  However this
+is a critical piece of information for the client, and it has significant
+impact on usability for many applications.  (Detlef Vollman thinks it
+is currently clear that it is not thread-safe.  Hans Boehm thinks
+it currently requires thread safety, since the <tt>use_count</tt> is not an
+explicit field, and constructors and assignment take a const reference
+to an existing <tt>shared_ptr</tt>.)
+</p>
+
+<p>
+Pro thread-safety:
+</p>
+<p>
+Many multi-threaded usages are impossible.  A thread-safe version can
+be used to destroy an object when the last thread drops it, something
+that is often required, and for which we have no other easy mechanism.
+</p>
+<p>
+Against thread-safety:
+</p>
+<p>
+The thread-safe version is well-known to be far more expensive, even
+if used by a single thread.  Many applications, including all single-threaded
+ones, do not care.
+</p>
+
+<p><i>[
+San Francisco:
+]</i></p>
+
+
+<blockquote>
+<p>
+Beman: this is a complicated issue, and would like to move this to Open
+and await comment from Peter Dimov; we need very careful and complete
+rationale for any decision we make; let's go slow
+</p>
+<p>
+Detlef: I think that <tt>shared_ptr</tt> should not be thread-safe.
+</p>
+<p>
+Hans: When you create a thread with a lambda, it in some cases makes it
+very difficult for the lambda to reference anything in the heap. It's
+currently ambiguous as to whether you can use a <tt>shared_ptr</tt> to get at an
+object.
+</p>
+<p>
+Leave in Open. Detlef will submit an alternative proposed resolution
+that makes <tt>shared_ptr</tt> explicitly unsafe.
+</p>
+<p>
+A third option is to support both threadsafe and non-safe share_ptrs,
+and to let the programmer decide which behavior they want.
+</p>
+
+<p>
+Beman:  Peter, do you support the PR?
+</p>
+
+<p>
+Peter:
+</p>
+<blockquote>
+<p>
+Yes, I support the proposed resolution, and I certainly oppose any
+attempts to <tt>make shared_ptr</tt> thread-unsafe.
+</p>
+<p>
+I'd mildly prefer if
+</p>
+<blockquote><p>
+[<i>Note:</i> This is true in spite of that fact that such functions often
+modify <tt>use_count()</tt> <i>--end note</i>]
+</p></blockquote>
+<p>
+is changed to
+</p>
+<blockquote><p>
+[<i>Note:</i> This is true in spite of that fact that such functions often
+cause a change in <tt>use_count()</tt> <i>--end note</i>]
+</p></blockquote>
+<p>
+(or something along these lines) to emphasise that <tt>use_count()</tt> is not,
+conceptually, a variable, but a return value.
+</p>
+</blockquote>
+
+</blockquote>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote>
+<p>
+Vote: Do we want one thread-safe shared pointer or two? If two, one
+would allow concurrent construction and destruction of shared pointers,
+and one would not be thread-safe. If one, then it would be thread-safe.
+</p>
+<p>
+No concensus on that vote.
+</p>
+<p>
+Hans to improve wording in consultation with Pete. Leave Open.
+</p>
+</blockquote>
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Move to Ready. Ask Editor to clear up wording a little when integrating to
+make it clear that the portion after the first comma only applies for
+the presence of data races.
+</p></blockquote>
+
+<p><i>[
+2009-10-24 Hans adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+I think we need to pull 896 back from ready, unfortunately.  My wording
+doesn't say the right thing.
+</p>
+
+<p>
+I suspect we really want to say something along the lines of:
+</p>
+
+<blockquote><p>
+For purposes of determining the presence of a data race, member
+functions access and modify only the <tt>shared_ptr</tt> and
+<tt>weak_ptr</tt> objects themselves and not objects they refer to.
+Changes in <tt>use_count()</tt> do not reflect modifications that can
+introduce data races.
+</p></blockquote>
+
+<p>
+But I think this needs further discussion by experts to make sure this
+is right.
+</p>
+
+<p>
+Detlef and I agree continue to disagree on the resolution, but I think
+we agree that it would be good to try to expedite this so that it can be
+in CD2, since it's likely to generate NB comments no matter what we do.
+And lack of clarity of intent is probably the worst option.  I think it
+would be good to look at this between meetings.
+</p>
+</blockquote>
+
+<p><i>[
+2010-01-20 Howard:
+]</i></p>
+
+
+<blockquote>
+<p>
+I've moved Hans' suggested wording above into the proposed resolution section
+and preserved the previous wording here:
+</p>
+
+<blockquote>
+<p>
+Make it explicitly thread-safe, in this weak sense, as I believe was intended:
+</p>
+<p>
+Insert in 20.11.2.2 [util.smartptr.shared], before p5:
+</p>
+<blockquote>
+<p>
+For purposes of determining the presence of a data race,
+member functions do not modify <tt>const shared_ptr</tt> and
+const <tt>weak_ptr</tt> arguments, nor any objects they
+refer to.  [<i>Note:</i> This is true in spite of that fact that such functions often
+cause a change in <tt>use_count()</tt> <i>--end note</i>]
+</p>
+</blockquote>
+<p>
+On looking at the text, I'm not sure we need a similar disclaimer
+anywhere else, since nothing else has the problem with the modified
+<tt>use_count()</tt>.  I think Howard arrived at a similar conclusion.
+</p>
+</blockquote>
+</blockquote>
+
+<p><i>[
+2010 Pittsburgh:  Moved to Ready for Pittsburgh
+]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>
+Insert a new paragraph at the end of 20.11.2.2 [util.smartptr.shared]:
+</p>
+
+<blockquote><p>
+For purposes of determining the presence of a data race, member functions access
+and modify only the <tt>shared_ptr</tt> and <tt>weak_ptr</tt> objects themselves
+and not objects they refer to. Changes in <tt>use_count()</tt> do not reflect
+modifications that can introduce data races.
+</p></blockquote>
+
+
+
+
+
+</body>
+</html>

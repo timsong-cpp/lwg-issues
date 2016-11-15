@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2146: Are reference types Copy&#47;Move-Constructible&#47;Assignable or Destructible?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2146" href="#2146">2146.</a> Are reference types <tt>Copy</tt>&#47;<tt>Move-Constructible</tt>&#47;<tt>Assignable</tt> or <tt>Destructible</tt>?</h3>
+<p><b>Section:</b> 17.6.3.1 [utility.arg.requirements] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Nikolay Ivchenkov <b>Opened:</b> 2012-03-23 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#utility.arg.requirements">issues</a> in [utility.arg.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+According to 17.6.3.1 [utility.arg.requirements] p1
+</p>
+<blockquote><p>
+The template definitions in the C++ standard library refer to various named requirements whose details are set out in 
+tables 17-24. In these tables, <tt>T</tt> is an object or reference type to be supplied by a C++ program instantiating 
+a template; <tt>a</tt>, <tt>b</tt>, and <tt>c</tt> are values of type (possibly <tt>const</tt>) <tt>T</tt>; <tt>s</tt> 
+and <tt>t</tt> are modifiable lvalues of type <tt>T</tt>; <tt>u</tt> denotes an identifier; <tt>rv</tt> is an rvalue of 
+type <tt>T</tt>; and <tt>v</tt> is an lvalue of type (possibly <tt>const</tt>) <tt>T</tt> or an rvalue of type <tt>const T</tt>.
+</p></blockquote>
+<p>
+Is it really intended that <tt>T</tt> may be a reference type? If so, what should <tt>a</tt>, <tt>b</tt>, <tt>c</tt>, 
+<tt>s</tt>, <tt>t</tt>, <tt>u</tt>, <tt>rv</tt>, and <tt>v</tt> mean? For example, are "<tt>int &amp;</tt>" and 
+"<tt>int &amp;&amp;</tt>" <tt>MoveConstructible</tt>?
+<p/>
+As far as I understand, we can explicitly specify template arguments for <tt>std::swap</tt> and <tt>std::for_each</tt>. 
+Can we use reference types there?
+</p>
+<ol>
+<li>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;utility&gt;
+
+int main()
+{
+  int x = 1;
+  int y = 2;
+  std::swap&lt;<span style="color:#C80000;font-weight:bold">int &amp;&amp;</span>&gt;(x, y); // <em>undefined?</em>
+  std::cout &lt;&lt; x &lt;&lt; " " &lt;&lt; y &lt;&lt; std::endl;
+}
+</pre></blockquote>
+</li>
+<li>
+<blockquote><pre>
+#include &lt;algorithm&gt;
+#include &lt;iostream&gt;
+#include &lt;iterator&gt;
+#include &lt;utility&gt;
+
+struct F
+{
+  void operator()(int n)
+  {
+    std::cout &lt;&lt; n &lt;&lt; std::endl;
+    ++count;
+  }
+  int count;
+} f;
+
+int main()
+{
+  int arr[] = { 1, 2, 3 };
+  auto&amp;&amp; result = std::for_each&lt;int *, <span style="color:#C80000;font-weight:bold">F &amp;&amp;</span>&gt;( // <em>undefined?</em>
+    std::begin(arr),
+    std::end(arr),
+    std::move(f));
+  std::cout &lt;&lt; "count: " &lt;&lt; result.count &lt;&lt; std::endl;
+}
+</pre></blockquote>
+</li>
+</ol>
+<p>
+Are these forms of usage well-defined?
+<p/>
+Let's also consider the following constructor of <tt>std::thread</tt>:
+</p>
+<blockquote><pre>
+template &lt;class F, class ...Args&gt;
+explicit thread(F&amp;&amp; f, Args&amp;&amp;... args);
+</pre><blockquote>
+<p>
+<i>Requires</i>: <tt>F</tt> and each <tt>Ti</tt> in <tt>Args</tt> shall satisfy the <tt>MoveConstructible</tt> requirements.
+</p>
+</blockquote></blockquote>
+<p>
+When the first argument of this constructor is an lvalue (e.g. a name of a global function), template argument for <tt>F</tt> 
+is deduced to be lvalue reference type. What should "<tt>MoveConstructible</tt>" mean with regard to an lvalue reference 
+type? Maybe the wording should say that <tt>std::decay&lt;F&gt;::type</tt> and each <tt>std::decay&lt;Ti&gt;::type</tt> (where 
+<tt>Ti</tt> is an arbitrary item in <tt>Args</tt>) shall satisfy the <tt>MoveConstructible</tt> requirements?
+</p>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>Moved to Open.</p>
+<p>The questions raised by the issue are real, and should have a clear answer.</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>STL: std::thread needs to be fixed, and anything behaving like it needs to be fixed, rather than reference types. std::bind gets this right. We need to survey this. GR: That doesn't sound small to me. STL: Seach for CopyConstructible etc. It may be a long change, but not a hard one.</p>
+<p>MC: It seems that we don't have a PR. Does anyone have one? Is anyone interested in doing a survey?</p>
+
+<p><i>[2016-03, Jacksonville]</i></p>
+
+<p>Casey volunteers to make a survey</p>
+
+<p><i>[2016-06, Oulu]</i></p>
+
+<p>
+During an independent survey performed by Daniel as part of the analysis of LWG <a href="lwg-defects.html#2716">2716</a>,
+some overlap was found between these two issues. Daniel suggested to take responsibility for surveying
+LWG <a href="lwg-active.html#2146">2146</a> and opined that the P/R of LWG <a href="lwg-defects.html#2716">2716</a> should restrict to forwarding 
+references, where the deduction to lvalue references can happen without providing an explicit template
+argument just by providing an lvalue function argument.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+
+</body>
+</html>

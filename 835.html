@@ -1,0 +1,230 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 835: Tying two streams together (correction to DR 581)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="835" href="#835">835.</a> Tying two streams together (correction to DR 581)</h3>
+<p><b>Section:</b> 27.5.5.3 [basic.ios.members] <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Martin Sebor <b>Opened:</b> 2008-05-17 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#basic.ios.members">issues</a> in [basic.ios.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+       <p>
+
+The fix for
+issue <a href="lwg-defects.html#581">581</a>,
+now integrated into the working paper, overlooks a couple of minor
+problems.
+
+       </p>
+       <p>
+
+First, being an unformatted function once again, <code>flush()</code>
+is required to create a sentry object whose constructor must, among
+other things, flush the tied stream. When two streams are tied
+together, either directly or through another intermediate stream
+object, flushing one will also cause a call to <code>flush()</code> on
+the other tied stream(s) and vice versa, ad infinitum. The program
+below demonstrates the problem.
+
+       </p>
+       <p>
+
+Second, as Bo Persson notes in his
+comp.lang.c++.moderated <a href="http://groups.google.com/group/comp.lang.c++.moderated/tree/browse_frm/thread/f2187794e9cc036d/305df31dc583054a">post</a>,
+for streams with the <code>unitbuf</code> flag set such
+as <code>std::stderr</code>, the destructor of the sentry object will
+again call <code>flush()</code>. This seems to create an infinite
+recursion for <code>std::cerr &lt;&lt; std::flush;</code>
+
+       </p>
+       <blockquote>
+           <pre>
+#include &lt;iostream&gt;
+
+int main ()
+{
+   std::cout.tie (&amp;std::cerr);
+   std::cerr.tie (&amp;std::cout);
+   std::cout &lt;&lt; "cout\n";
+   std::cerr &lt;&lt; "cerr\n";
+} 
+</pre>
+</blockquote>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote><p>
+We agree with the proposed resolution.
+Move to Review.
+</p></blockquote>
+
+<p><i>[
+2009-05-26 Daniel adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+I think that the most recently suggested change in
+27.7.3.4 [ostream::sentry] need some further word-smithing. As
+written, it would make the behavior undefined, if under
+conditions when <tt>pubsync()</tt> should be called, but when
+in this scenario <tt>os.rdbuf()</tt> returns 0.
+</p>
+<p>
+This case is explicitly handled in <tt>flush()</tt> and needs to be
+taken care of. My suggested fix is:
+</p>
+
+<blockquote><p>
+If <tt>((os.flags() &amp; ios_base::unitbuf) &amp;&amp; !uncaught_exception()</tt>
+<ins><tt>&amp;&amp; os.rdbuf() != 0</tt></ins>) is true, calls <del><tt>os.flush()</tt></del>
+<ins><tt>os.rdbuf()-&gt;pubsync()</tt></ins>.
+</p></blockquote>
+
+<p>
+Two secondary questions are:
+</p>
+
+<ol>
+<li>
+Should <tt>pubsync()</tt> be invoked in any case or shouldn't a
+base requirement for this trial be that <tt>os.good() == true</tt>
+as required in the original <tt>flush()</tt> case?
+</li>
+<li>
+Since <tt>uncaught_exception()</tt> is explicitly tested, shouldn't
+a return value of -1 of <tt>pubsync()</tt> produce <tt>setstate(badbit)</tt>
+(which may throw <tt>ios_base::failure</tt>)?
+</li>
+</ol>
+</blockquote>
+
+<p><i>[
+2009-07 Frankfurt:
+]</i></p>
+
+
+<blockquote>
+<p>
+Daniel volunteered to modify the proposed resolution to address his two questions.
+</p>
+<p>
+Move back to Open.
+</p>
+</blockquote>
+
+<p><i>[
+2009-07-26 Daniel provided wording.  Moved to Review.
+]</i></p>
+
+
+<p><i>[
+2009-10-13 Daniel adds:
+]</i></p>
+
+
+<blockquote><p>
+This proposed wording is written to match the outcome
+of <a href="lwg-closed.html#397">397</a>.
+</p></blockquote>
+
+<p><i>[
+2009 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Move to Open. Martin to propose updated wording that will also resolve
+issue <a href="lwg-closed.html#397">397</a> consistently.
+</p></blockquote>
+
+<p><i>[
+2010-02-15 Martin provided wording.
+]</i></p>
+
+
+<p><i>[
+2010 Pittsburgh:
+]</i></p>
+
+
+<blockquote><p>
+Moved to Ready for Pittsburgh.
+</p></blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<ol>
+<li>
+<p>
+Just before 27.5.5.3 [basic.ios.members] p. 2 insert a new paragraph:
+</p>
+
+<blockquote><p>
+<ins><i>Requires:</i> If <tt>(tiestr != 0)</tt> is <tt>true</tt>,
+<tt>tiestr</tt> must not be reachable by traversing the linked list of tied
+stream objects starting from <tt>tiestr-&gt;tie()</tt>.</ins>
+</p></blockquote>
+</li>
+
+<li>
+<p>
+Change 27.7.3.4 [ostream::sentry] p. 4 as indicated:
+</p>
+
+<blockquote><p>
+If <tt>((os.flags() &amp; ios_base::unitbuf) &amp;&amp; !uncaught_exception()
+<ins>&amp;&amp; os.good()</ins>)</tt> is <tt>true</tt>, calls
+<del><tt>os.flush()</tt></del> <ins><tt>os.rdbuf()-&gt;pubsync()</tt>. If that
+function returns -1 sets <tt>badbit</tt> in <tt>os.rdstate()</tt> without
+propagating an exception</ins>.
+</p></blockquote>
+</li>
+
+<li>
+<p>
+Add after 27.7.3.4 [ostream::sentry] p17, the following paragraph:
+</p>
+
+<blockquote><p>
+<ins><i>Throws:</i> Nothing.</ins>
+</p></blockquote>
+
+</li>
+
+</ol>
+
+
+   
+
+
+
+</body>
+</html>

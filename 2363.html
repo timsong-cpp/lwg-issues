@@ -1,0 +1,432 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2363: Defect in 30.4.1.4.1 [thread.sharedtimedmutex.class]</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2363" href="#2363">2363.</a> Defect in 30.4.1.4.1 [thread.sharedtimedmutex.class]</h3>
+<p><b>Section:</b> 30.4.1.5.1 [thread.sharedtimedmutex.class] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2014-02-16 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+30.4.1.5.1 [thread.sharedtimedmutex.class] paragraph 2: 
+</p>
+<blockquote><p> The class <tt>shared_timed_mutex</tt> shall satisfy all of the 
+<tt>SharedTimedMutex</tt> requirements (30.4.1.4). It shall be a standard layout class (Clause 9).
+</p></blockquote> 
+<p>
+There's no <tt>SharedTimedMutex</tt> requirements; this name doesn't appear anywhere else in the standard. (Prior to N3891, 
+this was <tt>SharedMutex</tt>, which was equally undefined.)
+<p/>
+I assume this concept should be defined somewhere?
+<p/>
+Also, n3891 changes 30.4.1.5 [thread.sharedtimedmutex.requirements] from defining "shared mutex type" to defining 
+"shared timed mutex type", but its paragraph 2 still talks about "shared mutex type". Is that OK? I think you could argue 
+that it's clear enough what it means, but presumably it should use the term that paragraph 1 defined.
+<p/>
+30.4.2.3 [thread.lock.shared] paragraph 1 talks about the "shared mutex requirements", which again is a term that isn't 
+defined, and presumably means "the requirements on a shared timed mutex type" or similar (maybe if <tt>SharedMutex</tt> or 
+<tt>SharedTimedMutex</tt> were defined it could be reused here).
+</p>
+
+<p><i>[2014-05-22, Daniel comments]</i></p>
+
+<p>
+As for <tt>SharedTimedMutex</tt>, there exists a similar problem in regard to <tt>TimedMutex</tt> referred to in
+30.4.1.3.1 [thread.timedmutex.class] p2 and in 30.4.1.3.2 [thread.timedmutex.recursive] p2, but nowhere defined.
+<p/>
+Another problem is, that according to 30.4.1.2.1 [thread.mutex.class] p3, "The class <tt>mutex</tt> shall satisfy all the 
+<tt>Mutex</tt> requirements (30.4.1 [thread.mutex.requirements]).", but there are no concrete <tt>Mutex</tt> requirements,
+30.4.1 [thread.mutex.requirements] &mdash; titled as "Mutex requirements" &mdash; describes <em>mutex types</em>,
+<em>timed mutex types</em>, and <em>shared timed mutex types</em>.
+</p>
+
+<p><i>[2014-06-08, Daniel comments and provides wording]</i></p>
+
+<p>
+The presented wording adds to the existing <em>mutex types</em>, <em>timed mutex types</em>, and <em>shared timed mutex types</em> 
+terms a new set of corresponding <tt>MutexType</tt>, <tt>TimedMutexType</tt>, and <tt>SharedTimedMutexType</tt> requirements. 
+<p/>
+The reason for the change of requirement names is two-fold: First, the new name better matches the intention to have a concrete 
+name for the requirements imposed on the corresponding <em>mutex types</em> (This kind of requirement deviate from the more general
+<tt>Lockable</tt> requirements, which are not restricted to a explicitly enumerated set of library types). Second, using 
+<tt>**MutexType</tt> over <tt>**Mutex</tt> provides the additional advantage that it reduces the chances of confusing named 
+requirements from template parameters named <tt>Mutex</tt> (such as for <tt>unique_lock</tt> or <tt>shared_lock</tt>).
+<p/>
+Nonetheless the here presented wording has one unfortunate side-effect: Once applied it would have the effect that types
+used to instantiate <tt>std::shared_lock</tt> cannot be user-defined shared mutex types due to 30.4.2.3 [thread.lock.shared]. 
+The reason is based on the currently lack of an existing <tt>SharedLockable</tt> requirement set, which would complete the 
+existing <tt>BasicLockable</tt> and <tt>Lockable</tt> requirements (which are "real" requirements). This restriction is not
+actually a problem introduced by the provided resolution but instead one that existed before but becomes more obvious now.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Handed over to SG1.
+</p>
+
+<p><i>[2015-05 Lenexa, SG1 response]</i></p>
+
+<p>
+Thanks to Daniel, and please put it in SG1-OK status. Perhaps open another issue for the remaining problem Daniel points out?
+</p>
+
+<p><i>[2015-10 pre-Kona]</i></p>
+
+<p>
+SG1 hands this over to LWG for wording review
+</p>
+
+<p><i>[2015-10-21 Kona, Daniel comments and adjusts wording to to untimed shared mutex types]</i></p>
+
+<p>
+The new wording reflects the addition of the new shared mutex types. The approach used for <tt>shared_lock</tt>
+is similar to the one used for <tt>unique_lock</tt>: The template argument <tt>Mutex</tt> has a reduced requirement set that is not
+sufficient for <em>all</em> operations. Only those members that require stronger requirements of <tt>SharedTimedMutexType</tt>
+specify that additionally in the <i>Requires</i> element of the corresponding prototype specifications.
+<p/>
+The proposed wording could be more general if we would introduce more fundamental requirements set for <tt>SharedLockable</tt>
+and <tt>SharedTimedLockable</tt> types which could be satisfied by user-provided types as well, because the 
+<tt>SharedMutexType</tt> and <tt>SharedTimedMutexType</tt> requirements are essentially restricted to an enumerated set of
+types provided by the Standard Library. But this extension seemed too large for this issue and can be easily fixed later
+without any harm. 
+</p>
+
+<p><b>Previous resolution [SUPERSEDED]:</b></p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 30.4.1.2 [thread.mutex.requirements.mutex] as indicated:</p>
+
+<blockquote><p>
+-1- The <em>mutex types</em> are the standard library types <tt>std::mutex</tt>, <tt>std::recursive_mutex</tt>, <tt>std::timed_mutex</tt>,
+<tt>std::recursive_timed_mutex</tt>, and <tt>std::shared_timed_mutex</tt>. They shall meet the <ins><tt><em>MutexType</em></tt></ins> 
+requirements set out in this section. In this description, <tt>m</tt> denotes an object of a mutex type.
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.2.1 [thread.mutex.class] as indicated:</p>
+
+<blockquote><p>
+-3- The class <tt>mutex</tt> shall satisfy all the <tt>Mutex<ins>Type</ins></tt> requirements 
+(<ins>30.4.1.2 [thread.mutex.requirements.mutex]</ins><del>30.4.1 [thread.mutex.requirements]</del>). 
+It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.2.2 [thread.mutex.recursive] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>recursive_mutex</tt> shall satisfy all the <del>Mutex</del><ins><tt>MutexType</tt></ins> requirements 
+(<ins>30.4.1.2 [thread.mutex.requirements.mutex]</ins><del>30.4.1 [thread.mutex.requirements]</del>). 
+It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3 [thread.timedmutex.requirements] as indicated:</p>
+
+<blockquote><p>
+-1- The <em>timed mutex types</em> are the standard library types <tt>std::timed_mutex</tt>, <tt>std::recursive_timed_mutex</tt>,
+and <tt>std::shared_timed_mutex</tt>. They shall meet the <ins><tt><em>TimedMutexType</em></tt></ins> requirements set out below. 
+In this description, <tt>m</tt> denotes an object of a mutex type, <tt>rel_time</tt> denotes an object of an instantiation of 
+<tt>duration</tt> (20.12.5), and <tt>abs_time</tt> denotes an object of an instantiation of <tt>time_point</tt> (20.12.6).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3.1 [thread.timedmutex.class] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>timed_mutex</tt> shall satisfy all of the <tt>TimedMutex<ins>Type</ins></tt> requirements 
+(30.4.1.3 [thread.timedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3.2 [thread.timedmutex.recursive] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>recursive_timed_mutex</tt> shall satisfy all of the <tt>TimedMutex<ins>Type</ins></tt> requirements 
+(30.4.1.3 [thread.timedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.5 [thread.sharedtimedmutex.requirements] as indicated: [<i>Drafting note</i>: The reference to the
+timed mutex types requirements has been moved <em>after</em> introducing the new requirement set to ensure that 
+<tt>SharedTimedMutexType</tt> <em>refine</em> <tt>TimedMutexType</tt>.]</p>
+
+<blockquote>
+<p>
+-1- The standard library type <tt>std::shared_timed_mutex</tt> is a <em>shared timed mutex type</em>. Shared timed mutex
+types shall meet the <ins><tt><em>SharedTimedMutexType</em></tt></ins> requirements <del>of timed mutex types 
+(30.4.1.3 [thread.timedmutex.requirements]), and additionally shall meet the requirements</del> set out below. In this 
+description, <tt>m</tt> denotes an object of a mutex type, <tt>rel_type</tt> denotes
+an object of an instantiation of <tt>duration</tt> (20.12.5), and <tt>abs_time</tt> denotes an object of an instantiation of
+<tt>time_point</tt> (20.12.6).
+<p/>
+<ins>-?- The shared timed mutex types shall meet the <tt>TimedMutexType</tt> requirements (30.4.1.3 [thread.timedmutex.requirements]).</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 30.4.1.5.1 [thread.sharedtimedmutex.class] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>shared_timed_mutex</tt> shall satisfy all of the <tt>SharedTimedMutex<ins>Type</ins></tt> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.2.3 [thread.lock.shared] as indicated: [<i>Drafting note</i>: Once 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3995.htm">N3995</a> has been applied, the following 
+reference should be changed to the new <tt>SharedMutexType</tt> requirements ([thread.sharedmutex.requirements]) or 
+even better to some new <tt>SharedLockable</tt> requirements (to be defined) &mdash; <i>end drafting note</i>]</p>
+
+<blockquote><p>
+-1- [&hellip;] The supplied <tt>Mutex</tt> type shall meet the <del>shared mutex</del><ins><tt>SharedTimedMutexType</tt></ins> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]).
+<p/>
+-2- [<i>Note</i>: <tt>shared_lock&lt;Mutex&gt;</tt> meets the <tt>TimedLockable</tt> requirements 
+(30.2.5.4). &mdash; <i>end note</i>]
+</p></blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2016-02 Jacksonville]</i></p>
+
+<p>
+Marshall to review wording.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4527.</p>
+
+<ol>
+<li><p>Change 30.4.1.2 [thread.mutex.requirements.mutex] as indicated:</p>
+
+<blockquote><p>
+-1- The <em>mutex types</em> are the standard library types <tt>std::mutex</tt>, <tt>std::recursive_mutex</tt>, <tt>std::timed_mutex</tt>,
+<tt>std::recursive_timed_mutex</tt>, <tt>std::shared_mutex</tt>, and <tt>std::shared_timed_mutex</tt>. They shall meet the 
+<ins><tt><em>MutexType</em></tt></ins> requirements set out in this section. In this description, <tt>m</tt> denotes an object 
+of a mutex type.
+<p/>
+-2- The mutex types shall meet the <tt>Lockable</tt> requirements (30.2.5.3 [thread.req.lockable.req]).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.2.1 [thread.mutex.class] as indicated:</p>
+
+<blockquote><p>
+-3- The class <tt>mutex</tt> shall satisfy all the <tt>Mutex<ins>Type</ins></tt> requirements 
+(<ins>30.4.1.2 [thread.mutex.requirements.mutex]</ins><del>30.4.1 [thread.mutex.requirements]</del>). 
+It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.2.2 [thread.mutex.recursive] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>recursive_mutex</tt> shall satisfy all the <del>Mutex</del><ins><tt>MutexType</tt></ins> requirements 
+(<ins>30.4.1.2 [thread.mutex.requirements.mutex]</ins><del>30.4.1 [thread.mutex.requirements]</del>). 
+It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3 [thread.timedmutex.requirements] as indicated:</p>
+
+<blockquote><p>
+-1- The <em>timed mutex types</em> are the standard library types <tt>std::timed_mutex</tt>, <tt>std::recursive_timed_mutex</tt>,
+and <tt>std::shared_timed_mutex</tt>. They shall meet the <ins><tt><em>TimedMutexType</em></tt></ins> requirements set out below. 
+In this description, <tt>m</tt> denotes an object of a mutex type, <tt>rel_time</tt> denotes an object of an instantiation of 
+<tt>duration</tt> (20.12.5), and <tt>abs_time</tt> denotes an object of an instantiation of <tt>time_point</tt> (20.12.6).
+<p/>
+-2- The timed mutex types shall meet the <tt>TimedLockable</tt> requirements (30.2.5.4 [thread.req.lockable.timed]).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3.1 [thread.timedmutex.class] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>timed_mutex</tt> shall satisfy all of the <tt>TimedMutex<ins>Type</ins></tt> requirements 
+(30.4.1.3 [thread.timedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.3.2 [thread.timedmutex.recursive] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>recursive_timed_mutex</tt> shall satisfy all of the <tt>TimedMutex<ins>Type</ins></tt> requirements 
+(30.4.1.3 [thread.timedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.4 [thread.sharedmutex.requirements] as indicated:  [<i>Drafting note</i>: The reference to the
+mutex types requirements has been moved <em>after</em> introducing the new requirement set to ensure that 
+<tt>SharedMutexType</tt> <em>refines</em> <tt>MutexType</tt>.]</p>
+
+<blockquote><p>
+-1- The standard library types <tt>std::shared_mutex</tt> and <tt>std::shared_timed_mutex</tt> are <em>shared mutex types</em>.
+Shared mutex types shall meet the <ins><tt><em>SharedMutexType</em></tt></ins> requirements <del>of mutex types 
+(30.4.1.2 [thread.mutex.requirements.mutex]), and additionally shall meet the 
+requirements</del> set out below. In this description, <tt>m</tt> denotes an object of a shared mutex type.
+<p/>
+<ins>-?- The shared mutex types shall meet the <tt>MutexType</tt> requirements (30.4.1.2 [thread.mutex.requirements.mutex]).</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 30.4.1.4.1 [thread.sharedmutex.class] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>shared_mutex</tt> shall satisfy all of the <ins><tt>SharedMutexType</tt></ins> requirements 
+<del>for shared mutexes</del> (30.4.1.4 [thread.sharedmutex.requirements]). It shall be a standard-layout class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.1.5 [thread.sharedtimedmutex.requirements] as indicated: [<i>Drafting note</i>: The reference to the
+timed mutex types requirements has been moved <em>after</em> introducing the new requirement set to ensure that 
+<tt>SharedTimedMutexType</tt> <em>refines</em> <tt>TimedMutexType</tt> and <tt>SharedMutexType</tt>.]</p>
+
+<blockquote>
+<p>
+-1- The standard library type <tt>std::shared_timed_mutex</tt> is a <em>shared timed mutex type</em>. Shared timed mutex
+types shall meet the <ins><tt><em>SharedTimedMutexType</em></tt></ins> requirements <del>of timed mutex types 
+(30.4.1.3 [thread.timedmutex.requirements]), shared mutex types (30.4.1.4 [thread.sharedmutex.requirements]), 
+and additionally shall meet the requirements</del> set out below. In this description, <tt>m</tt> denotes an object of 
+a shared timed mutex type, <tt>rel_type</tt> denotes an object of an instantiation of <tt>duration</tt> (20.12.5), and 
+<tt>abs_time</tt> denotes an object of an instantiation of <tt>time_point</tt> (20.12.6).
+<p/>
+<ins>-?- The shared timed mutex types shall meet the <tt>TimedMutexType</tt> requirements (30.4.1.3 [thread.timedmutex.requirements])
+and the <tt>SharedMutexType</tt> requirements (30.4.1.4 [thread.sharedmutex.requirements]).</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 30.4.1.5.1 [thread.sharedtimedmutex.class] as indicated:</p>
+
+<blockquote><p>
+-2- The class <tt>shared_timed_mutex</tt> shall satisfy all of the <ins><tt>SharedTimedMutexType</tt></ins> requirements 
+<del>for shared timed mutexes</del> (30.4.1.5 [thread.sharedtimedmutex.requirements]). It shall be a standard-layout 
+class (Clause 9).
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.2.3 [thread.lock.shared] as indicated:</p>
+
+<blockquote><p>
+-1- [&hellip;] The supplied <tt>Mutex</tt> type shall meet the <del>shared mutex</del><ins><tt>SharedMutexType</tt></ins> requirements 
+(<del>30.4.1.5 [thread.sharedtimedmutex.requirements]</del><ins>30.4.1.4 [thread.sharedmutex.requirements]</ins>).
+<p/>
+-2- [<i>Note</i>: <tt>shared_lock&lt;Mutex&gt;</tt> meets the <tt>TimedLockable</tt> requirements 
+(30.2.5.4). &mdash; <i>end note</i>]
+</p></blockquote>
+</li>
+
+<li><p>Change 30.4.2.3.1 [thread.lock.shared.cons] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class Clock, class Duration&gt;
+  shared_lock(mutex_type&amp; m,
+              const chrono::time_point&lt;Clock, Duration&gt;&amp; abs_time);
+</pre>
+<blockquote>
+<p>
+-14- <i>Requires</i>: <ins>The supplied <tt>Mutex</tt> type shall meet the <tt>SharedTimedMutexType</tt> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]).</ins> 
+The calling thread does not own the mutex for any ownership mode.
+<p/>
+-15- <i>Effects</i>: Constructs an object of type <tt>shared_lock</tt> and calls <tt>m.try_lock_shared_until(abs_time)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class Rep, class Period&gt;
+  shared_lock(mutex_type&amp; m,
+              const chrono::duration&lt;Rep, Period&gt;&amp; rel_time);
+</pre>
+<blockquote>
+<p>
+-17- <i>Requires</i>: <ins>The supplied <tt>Mutex</tt> type shall meet the <tt>SharedTimedMutexType</tt> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]).</ins> 
+The calling thread does not own the mutex for any ownership mode.
+<p/>
+-18- <i>Effects</i>: Constructs an object of type <tt>shared_lock</tt> and calls <tt>m.try_lock_shared_for(rel_time)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Change 30.4.2.3.2 [thread.lock.shared.locking] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class Clock, class Duration&gt;
+  bool
+  try_lock_until(const chrono::time_point&lt;Clock, Duration&gt;&amp; abs_time);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: The supplied <tt>Mutex</tt> type shall meet the <tt>SharedTimedMutexType</tt> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]).</ins>
+<p/>
+-8- <i>Effects</i>: <tt>pm-&gt;try_lock_shared_until(abs_time)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class Rep, class Period&gt;
+  bool try_lock_for(const chrono::duration&lt;Rep, Period&gt;&amp; rel_time);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: The supplied <tt>Mutex</tt> type shall meet the <tt>SharedTimedMutexType</tt> requirements 
+(30.4.1.5 [thread.sharedtimedmutex.requirements]).</ins>
+<p/>
+-12- <i>Effects</i>: <tt>pm-&gt;try_lock_shared_for(rel_time)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

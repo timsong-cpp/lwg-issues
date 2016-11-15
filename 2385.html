@@ -1,0 +1,249 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2385: function::assign allocator argument doesn't make sense</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2385" href="#2385">2385.</a> <tt>function::assign</tt> allocator argument doesn't make sense</h3>
+<p><b>Section:</b> 20.14.12.2 [func.wrap.func] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2014-05-23 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func">active issues</a> in [func.wrap.func].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func">issues</a> in [func.wrap.func].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The definition of <tt>function::assign</tt> in N3936 is:
+</p>
+<blockquote><pre>
+template&lt;class F, class A&gt;
+  void assign(F&amp;&amp; f, const A&amp; a);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: <tt>function(allocator_arg, a, std::forward&lt;F&gt;(f)).swap(*this)</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+This definition is flawed in several respects:
+</p>
+<ol>
+<li><p>The interface implies that the intent is to replace the allocator in <tt>*this</tt>
+with the specified allocator, <tt>a</tt>.  Such functionality is unique in the
+standard and is problematic when creating, e.g. a container of function
+objects, all using the same allocator.</p>
+</li>
+<li><p>The current definition of <tt>swap()</tt> makes it unclear whether the objects being
+swapped can have different allocators.  The general practice is that
+allocators must be equal in order to support swap, and this practice is
+reinforced by the proposed library TS. Thus, the definition of <tt>assign</tt> would
+have undefined behavior unless the allocator matched the allocator already
+within function.
+</p>
+</li>
+<li><p>
+The general rule for members of function is to supply the allocator before
+the functor, using the <tt>allocator_arg</tt> prefix. Supplying the allocator as a
+second argument, without the <tt>allocator_arg</tt> prefix is error prone and
+confusing.
+</p></li>
+</ol>
+
+<p>
+I believe that this ill-conceived interface was introduced in the effort to
+add allocators to parts of the standard where it had been missing, when we
+were unpracticed in the right way to accomplish that. Allocators were added
+to function at a time when the allocator model was in flux and it was the
+first class in the standard after <tt>shared_ptr</tt> to use type-erased allocators, so
+it is not surprising to see some errors in specification here. (<tt>shared_ptr</tt> is
+a special case because of its shared semantics, and so is not a good model.)
+<p/>
+The main question is whether this member should be specified with better
+precision or whether it should be deprecated/removed. The only way I can see to
+give a "reasonable" meaning to the existing interface is to describe it in
+terms of destroying and re-constructing <tt>*this</tt>:
+</p>
+<blockquote><pre>
+function temp(allocator_arg, a, std::forward&lt;F&gt;(f));
+this-&gt;~function();
+::new(this) function(std::move(temp));
+</pre></blockquote>
+<p>
+(The temp variable is needed for exception safety). The ugliness of this
+specification underscores the ugliness of the concept. What is the purpose of
+this member other than to reconstruct the object from scratch, a facility that
+library classes do not generally provide? Programmers are always free to
+destroy and re-construct objects &mdash; there is no reason why function should
+make that especially easy.
+<p/>
+I propose, therefore, that we make no attempt at giving the current interface
+a meaningful definition of questionable utility, but simply get rid of it
+all together. This leaves us with only two questions:
+</p>
+<ol>
+<li><p>Should we deprecate the interface or just remove it?</p></li>
+<li><p>Should we replace it with an <tt>assign(f)</tt> member that doesn't take an
+allocator?</p></li>
+</ol>
+<p>
+Of these four combinations of binary answers to the above questions, I think
+the ones that make the most sense are (remove, no) and (deprecate, yes). The
+proposed new interface provides nothing that <tt>operator=</tt> does not already
+provide. However, if the old (deprecated) interface remains, then having the
+new interface will guide the programmer away from it.
+<p/>
+The proposed wording below assumes deprecation. If we choose removal, then
+there is no wording needed; simply remove the offending declaration and
+definition.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change class template <tt>function</tt> synopsis, 20.14.12.2 [func.wrap.func], as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R, class... ArgTypes&gt;
+class function&lt;R(ArgTypes...)&gt; {
+  [&hellip;]
+  <i>// 20.9.11.2.2, function modifiers:</i>
+  void swap(function&amp;) noexcept;
+  template&lt;class F<del>, class A</del>&gt; void assign(F&amp;&amp;<del>, const A&amp;</del>);
+  [&hellip;]
+};
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 20.14.12.2.2 [func.wrap.func.mod] as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F<del>, class A</del>&gt; void assign(F&amp;&amp; f<del>, const A&amp; a</del>);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: <tt><ins>*this = forward&lt;F&gt;(f);</ins><del>function(allocator_arg, a, std::forward&lt;F&gt;(f)).swap(*this)</del></tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>To deprecation section  [depr.function.objects], add the following new sub-clause:</p>
+
+<blockquote>
+<p>
+<b>Old <tt>assign</tt> member of polymorphic function wrappers [depr.function.objects.assign]</b>
+</p>
+<blockquote>
+<pre>
+namespace std{
+  template&lt;class R, class... ArgTypes&gt;
+  class function&lt;R(ArgTypes...)&gt; {
+    <i>// remainder unchanged</i>
+    template&lt;class F, class A&gt; void assign(F&amp;&amp; f, const A&amp; a);
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+The two-argument form of <tt>assign</tt> is defined as follows:
+</p>
+<pre>
+template&lt;class F, class A&gt; void assign(F&amp;&amp; f, const A&amp; a);
+</pre>
+<blockquote>
+<p>
+<i>Requires</i>: <tt>a</tt> shall be equivalent to the allocator used to construct <tt>*this</tt>.
+<p/>
+<i>Effects</i>: <tt>this-&gt;assign(forward&lt;F&gt;(f));</tt>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+STL: I would ask, does anybody oppose removing this outright?<br/>
+Wakely: I don't even have this signature.<br/>
+Hwrd: And I think this doesn't go far enough, even more should be removed. This is a step in the right direction.<br/>
+PJP: I'm in favor of removal.<br/>
+Wakely: We've already got TS1 that has a new function that does it right. We could wait for feedback on that. 
+I think this issue should be taken now.<br/>
+Marshall: Then the goal will be to move to ready. 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4431.</p>
+
+<ol>
+<li><p>Change class template <tt>function</tt> synopsis, 20.14.12.2 [func.wrap.func], as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R, class... ArgTypes&gt;
+class function&lt;R(ArgTypes...)&gt; {
+  [&hellip;]
+  <i>// 20.9.12.2.2, function modifiers:</i>
+  void swap(function&amp;) noexcept;
+  <del>template&lt;class F, class A&gt; void assign(F&amp;&amp;, const A&amp;);</del>
+  [&hellip;]
+};
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 20.14.12.2.2 [func.wrap.func.mod] as indicated:</p>
+
+<blockquote>
+<pre>
+<del>template&lt;class F, class A&gt; 
+  void assign(F&amp;&amp; f, const A&amp; a);</del>
+</pre>
+<blockquote>
+<p>
+<del>-2- <i>Effects</i>: <tt>function(allocator_arg, a, std::forward&lt;F&gt;(f)).swap(*this)</tt></del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

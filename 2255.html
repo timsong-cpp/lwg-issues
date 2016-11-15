@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2255: [arrays.ts] dynarray constructor ambiguity</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2255" href="#2255">2255.</a> [arrays.ts] <tt>dynarray</tt> constructor ambiguity</h3>
+<p><b>Section:</b> 99 [arrays.ts::dynarray.cons] <b>Status:</b> <a href="lwg-active.html#NAD Arrays">NAD Arrays</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2013-04-23 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD Arrays">NAD Arrays</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: arrays.ts</b></p>
+
+<p>
+These constructors can interact badly::
+</p>
+<blockquote><pre>
+template&lt;class Alloc&gt;
+  dynarray(size_type c, const Alloc&amp; alloc);
+dynarray(size_type c, const T&amp; v);
+</pre></blockquote>
+<p>
+Unless the second argument is a value of exactly the type <tt>T</tt> you will get the first constructor, i.e. 
+all of these will fail to compile:
+</p>
+<blockquote><pre>
+dynarray&lt;long&gt; dlong(1, 1);   // 1 is not long
+dynarray&lt;float&gt; dflt(1, 1.0);  // 1.0 is not float
+dynarray&lt;int*&gt; dptr(1, nullptr);  // nullptr is not int*
+dynarray&lt;void*&gt; doh(1, 0);  // 0 is not void*
+</pre></blockquote>
+<p>
+The <tt>nullptr</tt> case is particularly annoying, a user trying to do the right thing by saying <tt>nullptr</tt> 
+instead of <tt>NULL</tt> still gets the wrong result.
+<p/>
+The constructor taking an allocator requires that "<tt>Alloc</tt> shall meet the requirements for an Allocator" 
+but doesn't actually say "shall not participate in overload resolution unless ..."
+<p/>
+I believe we have no precedent for using SFINAE to check "the requirements for an Allocator" because it's 
+a pretty complicated set of requirements. We could say it shall not participate in overload resolution if <tt>Alloc</tt> 
+is implicitly convertible to <tt>value_type</tt>.
+<p/>
+Alternatively, we could follow the same approach used by other types that can be constructed with an unconstrained 
+allocator type and use <tt>std::allocator_arg_t</tt> as the first argument instead of adding an allocator after the 
+other arguments.
+</p>
+
+<p><i>[2013-09 Chicago:]</i></p>
+
+<p>
+Move to Deferred. This feature will ship after C++14 and should be revisited then.
+</p>
+
+<p><i>[2014-06-06 pre-Rapperswil]</i></p>
+
+<p>
+This issue has been reopened as arrays-ts.
+</p>
+
+<p><i>[2014-06-16 Rapperswil]</i></p>
+
+<p>
+Move to Ready for alternative A
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<p/>
+<blockquote class="note"> 
+<ol style="list-style-type:upper-alpha">
+<li>
+<p>
+<em>Either</em> use the correct way to unambiguously call a constructor taking any type of allocator, i.e. change the 
+constructors to take <tt>dynarray(std::allocator_arg_t, const Alloc&amp;, ...)</tt> by modifying both the synopsis
+99 [dynarray.overview] p2 and 99 [dynarray.cons] before p9 like so:</p>
+
+<blockquote><pre>
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>size_type c<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>size_type c, const T&amp; v<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>const dynarray&amp; d<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>initializer_list&lt;T&gt;<del>, const Alloc&amp; alloc</del>);
+</pre></blockquote>
+
+</li>
+
+<li><p><em>or</em> constrain the problematic constructor by adding a new paragraph to 99 [dynarray.cons]:</p>
+<blockquote><pre>
+template &lt;class Alloc&gt;
+  dynarray(size_type c, const Alloc&amp; alloc);
+template &lt;class Alloc&gt;
+  dynarray(size_type c, const T&amp; v, const Alloc&amp; alloc);
+template &lt;class Alloc&gt;
+  dynarray(const dynarray&amp; d, const Alloc&amp; alloc);
+template &lt;class Alloc&gt;
+  dynarray(initializer_list&lt;T&gt;, const Alloc&amp; alloc);
+</pre><blockquote>
+<p>
+-9- <i>Requires</i>: <tt>Alloc</tt> shall meet the requirements for an Allocator (17.6.3.5 [allocator.requirements]).
+<p/>
+-10- <i>Effects</i>: Equivalent to the preceding constructors except that each element is constructed with uses-allocator
+construction (20.10.7.2 [allocator.uses.construction]).
+<p/>
+<ins>-?- <i>Remarks</i>: The first constructor shall not participate in overload resolution unless <tt>Alloc</tt> is not 
+implicitly convertible to <tt>T</tt>.</ins>
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2014/11 Urbana]</i></p>
+
+<p>
+Held at Ready status, pending clarification of Arrays TS
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<ol>
+<li>
+<p>
+Use the correct way to unambiguously call a constructor taking any type of allocator, i.e. change the 
+constructors to take <tt>dynarray(std::allocator_arg_t, const Alloc&amp;, ...)</tt> by modifying both the synopsis
+99 [dynarray.overview] p2 and 99 [dynarray.cons] before p9 like so:</p>
+
+<blockquote><pre>
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>size_type c<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>size_type c, const T&amp; v<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>const dynarray&amp; d<del>, const Alloc&amp; alloc</del>);
+template &lt;class Alloc&gt;
+  dynarray(<ins>allocator_arg_t, const Alloc&amp; a, </ins>initializer_list&lt;T&gt;<del>, const Alloc&amp; alloc</del>);
+</pre></blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

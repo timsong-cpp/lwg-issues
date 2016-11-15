@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2499: operator&gt;&gt;(basic_istream&amp;, CharT*) makes it hard to avoid buffer overflows</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2499" href="#2499">2499.</a> <tt>operator&gt;&gt;(basic_istream&amp;, CharT*)</tt> makes it hard to avoid buffer overflows</h3>
+<p><b>Section:</b> 27.7.2.2.3 [istream::extractors] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2015-05-08 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream::extractors">issues</a> in [istream::extractors].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+We removed <tt>gets()</tt> (due to an NB comment and C11 &mdash; bastion of backwards compatibility &mdash; doing the same). 
+Should we remove this too?
+<p/>
+Unlike <tt>gets()</tt>, there are legitimate uses:
+</p>
+<blockquote>
+<pre>
+char buffer[32];
+char text[32] = // ...
+ostream_for_buffer(text) &gt;&gt; buffer; // ok, can't overrun buffer
+</pre>
+</blockquote>
+<p>
+&hellip; but the risk from constructs like "<tt>std::cin &gt;&gt; buffer</tt>" seems to outweigh the benefit.
+<p/>
+The issue had been discussed on the library reflector starting around 
+<a href="http://accu.org/cgi-bin/wg21/message?wg=lib&amp;msg=35541">c++std-lib-35541</a>.
+</p>
+
+<p><i>[2015-06, Telecom]</i></p>
+
+<p>VV: Request a paper to deprecate / remove anything<br/></p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>STL: This overload is evil and should probably die. </p>
+<p>VV: I agree with that, even though I don't care.</p>
+<p>STL: Say that we either remove it outright following the gets() rationale, or at least deprecate it.</p>
+<p>Move to Open; needs a paper.</p>
+
+<p><i>[2016-08, Chicago: Zhihao Yuan comments and provides wording]</i></p>
+
+<p>
+Rationale:
+</p>
+<ol>
+<li><p>I would like to keep some reasonable code working;</p></li>
+<li><p>Reasonable code includes two cases:</p>
+<ol style="list-style-type:lower-alpha">
+<li><p><tt>width() &gt; 0</tt>, any pointer argument</p></li>
+<li><p><tt>width() &gt;= 0</tt>, array argument</p></li>
+</ol>
+</li>
+<li><p>For a), banning bad code will become a silent behavior change at runtime; 
+for b), it breaks at compile time.</p></li>
+</ol>
+<p>
+I propose to replace these signatures with references to arrays.
+An implementation may want to ship the old instantiatations in the
+binary without exposing the old signatures.
+</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Tues PM: General agreement on deprecating the unsafe call, but no consensus for the P/R.</p>
+<p>General feeling that implementation experience would be useful.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606.
+</p>
+<ol>
+<li><p>Modify 27.7.2.2.3 [istream::extractors] as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class charT, class traits<ins>, size_t N</ins>&gt;
+  basic_istream&lt;charT, traits&gt;&amp; operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; in,
+                                           <del>charT* s</del><ins>charT (&amp;s)[N]</ins>);
+template&lt;class traits<ins>, size_t N</ins>&gt;
+  basic_istream&lt;char, traits&gt;&amp; operator&gt;&gt;(basic_istream&lt;char, traits&gt;&amp; in,
+                                          <del>unsigned char* s</del><ins>unsigned char (&amp;s)[N]</ins>);
+template&lt;class traits<ins>, size_t N</ins>&gt;
+  basic_istream&lt;char, traits&gt;&amp; operator&gt;&gt;(basic_istream&lt;char, traits&gt;&amp; in,
+                                          <del>signed char* s</del><ins>signed char (&amp;s)[N]</ins>);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects:</i> Behaves like a formatted input member (as described in 27.7.2.2.1 [istream.formatted.reqmts]) 
+of <tt>in</tt>. After a <tt>sentry</tt> object is constructed, <tt>operator&gt;&gt;</tt> extracts characters and 
+stores them into <del>successive locations of an array whose first element is designated by</del> <tt>s</tt>. If <tt>width()</tt> 
+is greater than zero, <tt>n</tt> is <tt><del>width()</del><ins>min(size_t(width()), N)</ins></tt>. Otherwise 
+<tt>n</tt> is <del>the number of elements of the largest 
+array of <tt>char_type</tt> that can store a terminating <tt>charT()</tt></del><ins><tt>N</tt></ins>. <tt>n</tt> is the 
+maximum number of characters stored.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

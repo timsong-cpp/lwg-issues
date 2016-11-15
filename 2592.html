@@ -1,0 +1,133 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2592: Require that chrono::duration_casts from smaller durations to larger durations do not overflow</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2592" href="#2592">2592.</a> Require that <tt>chrono::duration_cast</tt>s from smaller durations to larger durations do not overflow</h3>
+<p><b>Section:</b> 20.17.2 [time.syn] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Andy Giese <b>Opened:</b> 2016-02-05 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.syn">issues</a> in [time.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently 20.17.2 [time.syn] states
+</p>
+<blockquote><pre>
+<i>// convenience typedefs</i>
+typedef duration&lt;<i>signed integer type of at least 64 bits</i>,        nano&gt; nanoseconds;
+typedef duration&lt;<i>signed integer type of at least 55 bits</i>,       micro&gt; microseconds;
+typedef duration&lt;<i>signed integer type of at least 45 bits</i>,       milli&gt; milliseconds;
+typedef duration&lt;<i>signed integer type of at least 35 bits</i>             &gt; seconds;
+typedef duration&lt;<i>signed integer type of at least 29 bits</i>, ratio&lt;  60&gt;&gt; minutes;
+typedef duration&lt;<i>signed integer type of at least 23 bits</i>, ratio&lt;3600&gt;&gt; hours;
+</pre></blockquote>
+<p>
+However, a <tt>duration_cast&lt;minutes&gt;(seconds::max())</tt> would cause overflow if the underlying signed integers 
+only met the minimums specified.
+<p/>
+The standard should specify that implementations guarantee that a <tt>duration_cast</tt> from any smaller duration in 
+these "convenience typedefs" will not overflow any larger duration. That is, <tt>hours</tt> should be able to hold 
+the maximum of <tt>minutes</tt>, which should be able to hold the maximum of <tt>seconds</tt> and so on.
+<p/>
+More formally, if the ratio <tt>typedef A</tt> and <tt>typedef B</tt> is <tt>1:Y</tt> where <tt>Y &gt; 1</tt> (e.g., 
+1 : 60 in case of <tt>minutes</tt> : <tt>seconds</tt>), then <tt>#bits<sub>A</sub>-1</tt> must be at least 
+<tt>ceil(log<sub>2</sub>(2<sup>#bits<sub>B</sub>-1)/Y)</sup>)</tt>.
+<p/>
+In the case of <tt>minutes</tt> : <tt>seconds</tt>, <tt>X = 1</tt>, <tt>Y = 60</tt>. Let 
+<tt>#bits<sub>seconds</sub> = 32</tt>. Therefore:
+</p>
+<ul>
+<li><p><tt>2<sup>(#bits<sub>seconds</sub> - 1)</sup> = 2<sup>31</sup> = 2147483648</tt></p></li>
+<li><p><tt>ceil(log<sub>2</sub>(2<sup>31</sup> / 60) = 26</tt></p></li>
+<li><p><tt>#bits<sub>minutes</sub> - 1 = 26</tt></p></li>
+<li><p><tt>#bits<sub>minutes</sub> = 27</tt></p></li>
+</ul>
+<p>
+Therefore, a minimum of 27 bits would be needed to store <tt>minutes</tt> if 32 were used to store <tt>seconds</tt>.
+<p/>
+I propose to change the definitions of the convenience typedefs as follows:
+</p>
+<blockquote><pre>
+<i>// convenience typedefs</i>
+typedef duration&lt;<i>signed integer type of at least 64 bits</i>,        nano&gt; nanoseconds;
+typedef duration&lt;<i>signed integer type of at least 55 bits</i>,       micro&gt; microseconds;
+typedef duration&lt;<i>signed integer type of at least 46 bits</i>,       milli&gt; milliseconds;
+typedef duration&lt;<i>signed integer type of at least 37 bits</i>             &gt; seconds;
+typedef duration&lt;<i>signed integer type of at least 32 bits</i>, ratio&lt;  60&gt;&gt; minutes;
+typedef duration&lt;<i>signed integer type of at least 27 bits</i>, ratio&lt;3600&gt;&gt; hours;
+</pre></blockquote>
+<p>
+These bits were chosen to satisfy the above formula. Note that
+minimums only increased, so larger ranges could be held. A nice
+outcome of this choice is that <tt>minutes</tt> does not go above 32 bits.
+</p>
+
+<p><i>[2016-04-23, Tim Song comments]</i></p>
+
+<p>
+The P/R of LWG 2592 doesn't fix the issue it wants to solve, because the actual underlying type will likely 
+have more bits than the specified minimum.
+<p/>
+Consider <tt>seconds</tt>, which the P/R requires to have at least 37 bits. On a typical system this implies 
+using a 64-bit integer. To ensure that casting from <tt>seconds::max()</tt> to <tt>minutes</tt> doesn't overflow 
+in such a system, it is necessary for the latter to have at least 59 bits (which means, in practice, 64 bits too), 
+not just 32 bits. Thus, just changing the minimum number of bits will not be able to provide the desired guarantee 
+that casting from a smaller unit to a larger one never overflow.
+<p/>
+If such a guarantee is to be provided, it needs to be spelled out directly. Note that the difference here is 9 bits 
+(for the 1000-fold case) and 5 bits (for the 60-fold case), which is less than the size difference between integer 
+types on common systems, so such a requirement would effectively require those convenience typedefs to use the 
+same underlying integer type.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Change 20.17.2 [time.syn], header <tt>&lt;chrono&gt;</tt> synopsis, as indicated</p>
+
+<blockquote><pre>
+[&hellip;]
+
+<i>// convenience typedefs</i>
+typedef duration&lt;<i>signed integer type of at least 64 bits</i>,        nano&gt; nanoseconds;
+typedef duration&lt;<i>signed integer type of at least 55 bits</i>,       micro&gt; microseconds;
+typedef duration&lt;<i>signed integer type of at least <ins>46</ins><del>45</del> bits</i>,       milli&gt; milliseconds;
+typedef duration&lt;<i>signed integer type of at least <ins>37</ins><del>35</del> bits</i>             &gt; seconds;
+typedef duration&lt;<i>signed integer type of at least <ins>32</ins><del>29</del> bits</i>, ratio&lt;  60&gt;&gt; minutes;
+typedef duration&lt;<i>signed integer type of at least <ins>27</ins><del>23</del> bits</i>, ratio&lt;3600&gt;&gt; hours;
+
+[&hellip;]
+</pre></blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2714: complex stream extraction underspecified</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2714" href="#2714">2714.</a> <tt>complex</tt> stream extraction underspecified</h3>
+<p><b>Section:</b> 26.5.6 [complex.ops] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2016-05-23 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#complex.ops">issues</a> in [complex.ops].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of <tt>operator&gt;&gt;(istream&amp;, complex&lt;T&gt;&amp;)</tt> is extremely short on details. 
+It currently reads, in its entirety (26.5.6 [complex.ops]/12-15):
+</p>
+<blockquote class="note">
+<pre>
+template&lt;class T, class charT, class traits&gt;
+basic_istream&lt;charT, traits&gt;&amp; operator>>(basic_istream&lt;charT, traits&gt;&amp; is, complex&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<i>Effects:</i> Extracts a complex number <tt>x</tt> of the form: <tt>u</tt>, <tt>(u)</tt>, or <tt>(u,v)</tt>, 
+where <tt>u</tt> is the real part and <tt>v</tt> is the imaginary part (27.7.2.2 [istream.formatted]).
+<p/>
+<i>Requires:</i> The input values shall be convertible to <tt>T</tt>.
+<p/>
+If bad input is encountered, calls <tt>is.setstate(ios_base::failbit)</tt> (which may throw <tt>ios::failure</tt> 
+(27.5.5.4 [iostate.flags])).
+<p/>
+<i>Returns:</i> <tt>is</tt>.
+<p/>
+<i>Remarks:</i> This extraction is performed as a series of simpler extractions. Therefore, the skipping of whitespace 
+is specified to be the same for each of the simpler extractions.
+</p>
+</blockquote>
+</blockquote>
+<p>
+It is completely unclear:
+</p>
+<ul>
+<li>which "simpler extractions" are performed,</li>
+<li>how the extracted characters are matched to the special characters <tt>'('</tt>, <tt>')'</tt> and <tt>','</tt> 
+(by <tt>==</tt>, or by <tt>traits::eq</tt>),</li>
+<li>what is left in the stream on failure. (For example, with <tt>"(0, 0]"</tt>, libstdc++ extracts the <tt>]</tt> 
+while libc++ leaves it in the stream.)</li>
+</ul>
+
+
+<p><b>Proposed resolution:</b></p>
+<blockquote class="note">
+<i>Drafting note:</i> the following wording is based on:
+<ul>
+<li> Characters are extracted using <tt>operator&gt;&gt;</tt> and compared using <tt>traits::eq</tt>.</li>
+<li> Mismatched characters are returned to the stream. </li>
+</ul>
+</blockquote>
+<p>This wording is relative to N4582.</p>
+<ol>
+<li><p>Replace 26.5.6 [complex.ops]/12-15 with the following paragraphs:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class charT, class traits&gt;
+basic_istream&lt;charT, traits&gt;&amp;
+operator>>(basic_istream&lt;charT, traits&gt;&amp; is, complex&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+-?- <i>Effects:</i> First, extracts a character from <tt>is</tt>.
+<ul>
+<li>If the character extracted is equal to <tt>is.widen('(')</tt>, extracts an object <tt>u</tt> of type <tt>T</tt> from <tt>is</tt>, then extracts a character from <tt>is</tt>.
+<ul>
+    <li>
+    If this character is equal to <tt>is.widen(')')</tt>, then assigns <tt>complex&lt;T&gt;(u)</tt> to <tt>x</tt>.
+    </li>
+    <li>
+      Otherwise, if this character is equal to <tt>is.widen(',')</tt>, extracts an object <tt>v</tt> of type <tt>T</tt> from <tt>is</tt>,
+      then extracts a character from <tt>is</tt>.
+      If this character is equal to <tt>is.widen(')')</tt>, then assigns <tt>complex&lt;T&gt;(u, v)</tt> to <tt>x</tt>;
+      otherwise returns the character to <tt>is</tt> and the extraction fails.
+    </li>
+    <li>
+      Otherwise, returns the character to <tt>is</tt> and the extraction fails.
+    </li>
+  </ul>
+</li>
+<li> Otherwise, returns the character to <tt>is</tt>, extracts an object <tt>u</tt> of type <tt>T</tt> from <tt>is</tt>, and assigns <tt>complex&lt;T&gt;(u)</tt> to <tt>x</tt>.
+</li>
+</ul>
+In the description above, characters are extracted from <tt>is</tt> as if by <tt>operator&gt;&gt;</tt> (27.7.2.2.3 [istream::extractors]), and returned
+to the stream as if by <tt>basic_istream::putback</tt> (27.7.2.3 [istream.unformatted]). Character equality is determined using <tt>traits::eq</tt>.
+An object <tt>t</tt> of type <tt>T</tt> is extracted from <tt>is</tt> as if by <tt> is &gt;&gt; t</tt>.
+<p/>
+If any extraction operation fails, no further operation is performed and the whole extraction fails.
+<p/>
+On failure, calls <tt>is.setstate(ios_base::failbit)</tt> (which may throw <tt>ios::failure</tt>
+(27.5.5.4 [iostate.flags])).
+<p/>
+-?- <i>Returns:</i> <tt>is</tt>.
+<p/>
+-?- [<i>Note</i>: This extraction is performed as a series of simpler extractions. Therefore, the skipping of whitespace
+is specified to be the same for each of the simpler extractions. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 893: std::mutex issue</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="893" href="#893">893.</a> <tt>std::mutex</tt> issue</h3>
+<p><b>Section:</b> 30.4.1.2.1 [thread.mutex.class] <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2008-09-15 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.mutex.class">issues</a> in [thread.mutex.class].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Duplicate of:</b> <a href="lwg-closed.html#905">905</a></p>
+<p><b>Discussion:</b></p>
+<p>
+30.4.1.2.1 [thread.mutex.class]/27 (in
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2723.pdf">N2723</a>)
+says that the behavior is undefined if:
+</p>
+<ul>
+<li>a thread that owns a <tt>mutex</tt> object calls <tt>lock()</tt> or
+<tt>try_lock()</tt> on that object</li>
+</ul>
+<p>
+I don't believe that this is right. Calling <tt>lock()</tt> or <tt>try_lock()</tt> on a
+locked <tt>mutex</tt> is well defined in the general case. <tt>try_lock()</tt> is required
+to fail and return <tt>false</tt>. <tt>lock()</tt> is required to either throw an
+exception (and is allowed to do so if it detects deadlock) or to block
+until the <tt>mutex</tt> is free. These general requirements apply regardless of
+the current owner of the <tt>mutex</tt>; they should apply even if it's owned by
+the current thread.
+</p>
+<p>
+Making double <tt>lock()</tt> undefined behavior probably can be justified (even
+though I'd still disagree with the justification), but <tt>try_lock()</tt> on a
+locked <tt>mutex</tt> must fail.
+</p>
+
+<p><i>[
+Summit:
+]</i></p>
+
+<blockquote>
+<p>
+Move to open. Proposed resolution:
+</p>
+<ul>
+<li>
+In 30.4.1 [thread.mutex.requirements] paragraph 12, change the error
+condition for <tt>resource_deadlock_would_occur</tt> to: "if the implementation
+detects that a deadlock would occur"
+</li>
+<li>
+Strike 30.4.1.2.1 [thread.mutex.class] paragraph 3 bullet 2 "a thread that owns a mutex object
+calls <tt>lock()</tt> or <tt>try_lock()</tt> on that object, or"
+</li>
+</ul>
+</blockquote>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote><p>
+Move to Review. Alisdair to provide note.
+</p></blockquote>
+
+<p><i>[
+2009-07-31 Alisdair provided note.
+]</i></p>
+
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Moved to Ready.
+</p></blockquote>
+
+<p><i>[
+2009-11-18 Peter Opens:
+]</i></p>
+
+
+<blockquote>
+<p>
+I don't believe that the proposed note:
+</p>
+
+<blockquote><p>
+[<i>Note:</i> a program may deadlock if the thread that owns a <tt>mutex</tt>
+object calls <tt>lock()</tt> or <tt>try_lock()</tt> on that object. If the program can
+detect the deadlock, a <tt>resource_deadlock_would_occur</tt> error condition may
+be observed. &mdash; <i>end note</i>]
+</p></blockquote>
+
+<p>
+is entirely correct. "or <tt>try_lock()</tt>" should be removed, because
+<tt>try_lock</tt> is non-blocking and doesn't deadlock; it just returns
+<tt>false</tt> when it fails to lock the mutex.
+</p>
+
+<p><i>[
+Howard: I've set to Open and updated the wording per Peter's suggestion.
+]</i></p>
+
+
+</blockquote>
+
+<p><i>[
+2009-11-18 Moved to Tentatively Ready after 5 positive votes on c++std-lib.
+]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+In 30.4.1 [thread.mutex.requirements] paragraph 12 change:
+</p>
+
+<blockquote>
+<ul>
+<li>...</li>
+<li>
+<tt>resource_deadlock_would_occur</tt> -- if the <del>current thread already owns the mutex and is able 
+to detect it</del> <ins>implementation detects that a deadlock would occur</ins>.
+</li>
+<li>...</li>
+</ul>
+</blockquote>
+
+<p>
+Strike 30.4.1.2.1 [thread.mutex.class] paragraph 3 bullet 2:
+</p>
+<blockquote>
+<p>
+-3- The behavior of a program is undefined if:
+</p>
+<ul>
+<li>...</li>
+<li>
+<del>a thread that owns a <tt>mutex</tt> object calls <tt>lock()</tt> or <tt>try_lock()</tt> on that object, or</del>
+</li>
+<li>...</li>
+</ul>
+</blockquote>
+
+<p>
+Add the following note after p3 30.4.1.2.1 [thread.mutex.class]
+</p>
+
+<blockquote><p>
+[<i>Note:</i> a program may deadlock if the thread that owns a <tt>mutex</tt>
+object calls <tt>lock()</tt> on that object. If the implementation can detect the
+deadlock, a <tt>resource_deadlock_would_occur</tt> error condition may be
+observed. &mdash; <i>end note</i>]
+</p></blockquote>
+
+
+
+
+
+
+</body>
+</html>

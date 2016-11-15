@@ -1,0 +1,173 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2072: Unclear wording about capacity of temporary buffers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2072" href="#2072">2072.</a> Unclear wording about capacity of temporary buffers</h3>
+<p><b>Section:</b> 99 [temporary.buffer] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Kazutoshi Satoda <b>Opened:</b> 2011-08-10 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#temporary.buffer">issues</a> in [temporary.buffer].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+According to 99 [temporary.buffer] p1+2:
+
+</p><blockquote><pre>
+template &lt;class T&gt;
+pair&lt;T*, ptrdiff_t&gt; get_temporary_buffer(ptrdiff_t n) noexcept;
+</pre><blockquote><p>
+-1- <i>Effects</i>: Obtains a pointer to storage sufficient to store up to <tt>n</tt> adjacent <tt>T</tt> 
+objects. It is implementation-defined whether over-aligned types are supported (3.11).
+<p/>
+-2- <i>Returns</i>: A pair containing the buffer's address and capacity (in the units of <tt>sizeof(T)</tt>), 
+or a pair of 0 values if no storage can be obtained or if <tt>n &lt;= 0</tt>.
+</p></blockquote></blockquote>
+<p>
+I read this as prohibiting to return a buffer of which capacity is less than <tt>n</tt>, because 
+such a buffer is not sufficient to store <tt>n</tt> objects.
+<p/>
+The corresponding description in <a href="http://www.sgi.com/tech/stl/get_temporary_buffer.html">SGI STL</a> 
+is clear on this point, but I think it is a bit too verbose:
+</p>
+
+<blockquote class="note"><p>
+(for the return value, a pair <tt>P</tt>) [...] the buffer pointed to by <tt>P.first</tt> is large enough 
+to hold <tt>P.second</tt> objects of type <tt>T</tt>. <tt>P.second</tt> is greater than or equal to 0, 
+and less than or equal to <tt>len</tt>.
+</p></blockquote>
+
+<p>
+There seems to be two different targets of the "up to n" modification:
+The capacity of obtained buffer, and the actual number that the caller
+will store into the buffer.
+<p/>
+First I read as the latter, and got surprised seeing that libstdc++
+implementation can return a smaller buffer. I started searching about
+<tt>get_temporary_buffer()</tt>. After reading a quote from TC++PL at
+<a href="http://stackoverflow.com/questions/3264299/why-do-i-need-stdget-temporary-buffer">stackoverflow</a>, 
+I realized that the former is intended.
+<p/>
+Such misinterpretation seems common:
+</p>
+<ul>
+<li>The above question is likely started from same misinterpretation.</li>
+<li><p>JIS standard (Japanese translation of ISO&#47;IEC standard) says nothing
+    like "up to". I think the editor misinterpreted the original wording,
+    and omitted words for "up to" as it is redundant. (If a buffer is
+    sufficient to store <tt>n</tt> objects, it is also sufficient to store
+    up to <tt>n</tt> objects.)</p></li>
+<li><p>Rogue Wave implementation doesn't return smaller buffer, instead, it
+    can return larger buffer on some circumstances. Apache 
+	<a href="http://stdcxx.apache.org/">STDCXX</a> is a derived version of that
+    implementation, and <a href="https://stdcxx.apache.org/doc/stdlibref/get-temporary-buffer.html">publicly accessible</a>:
+</p>
+<blockquote class="note"><p>
+Specializations of the <tt>get_temporary_buffer()</tt> function template
+attempt to allocate a region of storage sufficiently large to store at
+least <tt>n</tt> adjacent objects of type <tt>T</tt>.
+</p></blockquote>
+<p>
+I know one commercial compiler package based on Rogue Wave implementation, 
+and its implementation is essentially same as the above.
+</p>
+</li>
+</ul>
+
+<p><i>[2014-05-18, Daniel comments and suggests concrete wording]</i></p>
+
+
+<p>
+The provided wording attempts to clarify the discussed capacity freedom, but it also makes it clearer that the returned
+memory is just "raw memory", which is currently not really clear. In addition the wording clarifies that the deallocating
+<tt>return_temporary_buffer</tt> function does not throw exceptions, which I believe is the intention when the preconditions
+of the functions are satisfied. Then, my understanding is that we can provide to <tt>return_temporary_buffer</tt> a
+null pointer value if that was the value, <tt>get_temporary_buffer()</tt> had returned. Furthermore, as STL noticed, the current 
+wording seemingly allows multiple invocations of <tt>return_temporary_buffer</tt> with the same value returned by 
+<tt>get_temporary_buffer</tt>; this should be constrained similar to the wording we have for <tt>operator delete</tt> (unfortunately
+we miss such wording for allocators).
+</p>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+MC: move to ready? in favor: 14, opposed: 0, abstain: 0 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3936.</p>
+
+<ol><li><p>Change 99 [temporary.buffer] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T&gt;
+  pair&lt;T*, ptrdiff_t&gt; get_temporary_buffer(ptrdiff_t n) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: <ins>Obtains a pointer to uninitialized, contiguous storage for <tt><i>N</i></tt> adjacent objects of type 
+<tt>T</tt>, for some non-negative number <tt><i>N</i></tt>.</ins><del>Obtains a pointer to storage sufficient 
+to store up to <tt>n</tt> adjacent <tt>T</tt> objects.</del> It is implementation-defined whether over-aligned types are supported (3.11).
+<p/>
+<ins>-?- <i>Remarks</i>: Calling <tt>get_temporary_buffer</tt> with a positive number <tt>n</tt> is a non-binding request to return 
+storage for <tt>n</tt> objects of type <tt>T</tt>. In this case, an implementation is permitted to return instead storage for a 
+non-negative number <tt><i>N</i></tt> of such objects, where <tt><i>N</i> != n</tt> (including <tt><i>N</i> == 0</tt>). [<i>Note</i>: The 
+request is non-binding to allow latitude for implementation-specific optimizations of its memory management. &mdash; <i>end note</i>].</ins>
+<p/>
+-2- <i>Returns</i>: <ins>If <tt>n &lt;= 0</tt> or if no storage could be obtained, returns a pair <tt>P</tt> such that <tt>P.first</tt>
+is a null pointer value and <tt>P.second == 0</tt>; otherwise returns a pair <tt>P</tt> such that <tt>P.first</tt> refers to the 
+address of the uninitialized storage and <tt>P.second</tt> refers to its capacity <tt><i>N</i></tt> (in the units of 
+<tt>sizeof(T)</tt>).</ins><del>A <tt>pair</tt> containing the buffer's address and capacity (in the units of <tt>sizeof(T)</tt>), or a 
+pair of 0 values if no storage can be obtained or if <tt>n &lt;= 0</tt>.</del>
+</p>
+</blockquote>
+
+<pre>
+template &lt;class T&gt; void return_temporary_buffer(T* p);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Deallocates the <del>buffer to which <tt>p</tt> points</del><ins>storage referenced by <tt>p</tt></ins>.
+<p/>
+-4- <i>Requires</i>: <del>The buffer shall have been previously allocated by</del><ins><tt>p</tt> shall be a pointer value 
+returned by an earlier call to</ins> <tt>get_temporary_buffer</tt> <ins>which has not been invalidated by an intervening call to
+<tt>return_temporary_buffer(T*)</tt></ins>.
+<p/>
+<ins>-?- <i>Throws</i>: Nothing.</ins>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

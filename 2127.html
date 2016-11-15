@@ -1,0 +1,175 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2127: Move-construction with raw_storage_iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2127" href="#2127">2127.</a> Move-construction with <tt>raw_storage_iterator</tt></h3>
+<p><b>Section:</b> 99 [storage.iterator] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2012-01-23 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#storage.iterator">issues</a> in [storage.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Aliaksandr Valialkin pointed out that <tt>raw_storage_iterator</tt> only supports constructing 
+a new object from lvalues so cannot be used to construct move-only types:
+</p>
+<blockquote><pre>
+template &lt;typename InputIterator, typename T&gt;
+void move_to_raw_buffer(InputIterator first, InputIterator last, T *raw_buffer)
+{
+  std::move(first, last, std::raw_storage_iterator&lt;T *, T&gt;(raw_buffer));
+}
+</pre></blockquote>
+<p>
+This could easily be solved by overloading <tt>operator=</tt> for rvalues.
+<p/>
+Dave Abrahams:
+<p/>
+<tt>raw_storage_iterator</tt> causes exception-safety problems when used with any
+generic algorithm. I suggest leaving it alone and not encouraging its use.
+</p>
+
+<p><i>[2014-11-11, Jonathan provides improved wording]</i></p>
+
+<p>
+In Urbana LWG decided to explicitly say the value is constructed from an rvalue.
+</p>
+
+<strong>Previous resolution from Jonathan [SUPERSEDED]:</strong>
+<p/>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3337.pdf">N3337</a>.</p>
+
+<ol>
+<li><p>Add a new signature to the synopsis in 99 [storage.iterator] p1:</p>
+
+<blockquote><pre>
+namespace std {
+  template &lt;class OutputIterator, class T&gt;
+  class raw_storage_iterator
+    : public iterator&lt;output_iterator_tag,void,void,void,void&gt; {
+  public:
+    explicit raw_storage_iterator(OutputIterator x);
+
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator*();
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(const T&amp; element);
+    <ins>raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(T&amp;&amp; element);</ins>
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator++();
+    raw_storage_iterator&lt;OutputIterator,T&gt; operator++(int);
+};
+}
+</pre></blockquote>
+</li>
+
+<li><p>Insert the new signature and a new paragraph before p4:</p>
+
+<blockquote><pre>
+raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(const T&amp; element);
+<ins>raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(T&amp;&amp; element);</ins>
+</pre><blockquote>
+<p>
+<ins>-?- <i>Requires</i>: For the first signature <tt>T</tt> shall be <tt>CopyConstructible</tt>. For
+the second signature <tt>T</tt> shall be <tt>MoveConstructible</tt>.</ins>
+<p/>
+-4- <i>Effects</i>: Constructs a value from <tt>element</tt> at the location to which the iterator points.
+<p/>
+-5- <i>Returns</i>: A reference to the iterator.
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+MC: Suggestion to move it to Ready for incorporation on Friday<br/>
+MC: move to ready: in favor: 12, opposed: 0, abstain: 3 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/prot/14882fdis/n4140.pdf">N4140</a>.</p>
+
+<ol>
+<li><p>Add a new signature to the synopsis in 99 [storage.iterator] p1:</p>
+
+<blockquote><pre>
+namespace std {
+  template &lt;class OutputIterator, class T&gt;
+  class raw_storage_iterator
+    : public iterator&lt;output_iterator_tag,void,void,void,void&gt; {
+  public:
+    explicit raw_storage_iterator(OutputIterator x);
+
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator*();
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(const T&amp; element);
+    <ins>raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(T&amp;&amp; element);</ins>
+    raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator++();
+    raw_storage_iterator&lt;OutputIterator,T&gt; operator++(int);
+};
+}
+</pre></blockquote>
+</li>
+
+<li><p>Insert a new paragraph before p4:</p>
+
+<blockquote><pre>
+raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(const T&amp; element);
+</pre><blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>T</tt> shall be <tt>CopyConstructible</tt>.</ins>
+<p/>
+-4- <i>Effects</i>: Constructs a value from <tt>element</tt> at the location to which the iterator points.
+<p/>
+-5- <i>Returns</i>: A reference to the iterator.
+</p>
+</blockquote></blockquote>
+</li>
+
+<li><p>Insert the new signature and a new paragraph after p5:</p>
+
+<blockquote><pre>
+<ins>raw_storage_iterator&lt;OutputIterator,T&gt;&amp; operator=(T&amp;&amp; element);</ins>
+</pre><blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>T</tt> shall be <tt>MoveConstructible</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: Constructs a value from <tt>std::move(element)</tt> at the
+location to which the iterator points.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: A reference to the iterator.</ins>
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

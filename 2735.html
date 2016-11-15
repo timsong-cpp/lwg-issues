@@ -1,0 +1,197 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2735: std::abs(short), std::abs(signed char) and others should return int instead of 
+double in order to be compatible with C++98 and C</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2735" href="#2735">2735.</a> <tt>std::abs(short)</tt>, <tt>std::abs(signed char)</tt> and others should return <tt>int</tt> instead of 
+<tt>double</tt> in order to be compatible with C++98 and C</h3>
+<p><b>Section:</b> 26.9 [c.math] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> J&ouml;rn Heusipp <b>Opened:</b> 2016-06-16 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#c.math">issues</a> in [c.math].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider this C++98 program:
+</p>
+<blockquote>
+<pre>
+#include &lt;cmath&gt;
+#include &lt;cstdlib&gt;
+
+int main() {
+  return std::abs(static_cast&lt;short&gt;(23)) % 42;
+}
+</pre>
+</blockquote>
+<p>
+This works fine with C++98 compilers. At the <tt>std::abs(short)</tt> call, short gets promoted to <tt>int</tt> and 
+<tt>std::abs(int)</tt> is called.
+<p/>
+C++11 added the <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4594.pdf">following wording</a>
+on page 1083 &sect;26.9 p15 b2 [c.math]:
+</p>
+<blockquote>
+<p>
+Otherwise, if any argument of arithmetic type corresponding to a <tt>double</tt> parameter has type <tt>double</tt> 
+or an integer type, then all arguments of arithmetic type corresponding to <tt>double</tt> parameters are effectively 
+cast to <tt>double</tt>.
+</p>
+</blockquote>
+<p>
+C++17 draft <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4594.pdf">additionally adds</a> on
+page 1080 &sect;26.9 p10 [c.math]:
+</p>
+<blockquote>
+<p>
+If <tt>abs()</tt> is called with an argument of type <tt>X</tt> for which <tt>is_unsigned&lt;X&gt;::value</tt> is <tt>true</tt> 
+and if <tt>X</tt> cannot be converted to <tt>int</tt> by integral promotion (4.5), the program is ill-formed. [<i>Note:</i> 
+Arguments that can be promoted to <tt>int</tt> are permitted for compatibility with C. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<p>
+It is somewhat confusing and probably even contradictory to on the one hand specify <tt>abs()</tt> in terms of integral 
+promotion in &sect;26.9 p10 and on the other hand demand all integral types to be converted to <tt>double</tt> in 
+&sect;26.9 p15 b2.
+<p/>
+Most compilers (each with their own respective library implementation) I tested (MSVC, Clang, older GCC) appear to not 
+consider &sect;26.9 p15 b2 for <tt>std::abs</tt> and compile the code successfully. GCC 4.5-5.3 (for <tt>std::abs</tt> but 
+not for <tt>::abs</tt>) as well as GCC &gt;=6.0 (for both <tt>std::abs</tt> and <tt>::abs</tt>) fail to compile in the following 
+way: Taking &sect;26.9 p15 b2 literally and applying it to <tt>abs()</tt> (which is listed in &sect;26.9 p12) results in 
+<tt>abs(short)</tt> returning <tt>double</tt>, and with <tt>operator%</tt> not being specified for <tt>double</tt>, this 
+makes the programm ill-formed.
+<p/>
+I do acknowledge the reason for the wording and semantics demanded by &sect;26.9 p15 b2, i.e. being able to call math functions 
+with integral types or with partly floating point types and partly integral types. Converting integral types to <tt>double</tt>
+certainly makes sense here for all the other floating point math functions.
+However, <tt>abs()</tt> is special. <tt>abs()</tt> has overloads for the 3 wider integral types which return integral types. 
+<tt>abs()</tt> originates in the C standard in <tt>stdlib.h</tt> and had originally been specified for integral types only. 
+Calling it in C with a short argument returns an <tt>int</tt>. Calling <tt>std::abs(short)</tt> in C++98 also returns an 
+<tt>int</tt>. Calling <tt>std::abs(short)</tt> in C++11 and later with &sect;26.9 p15 b2 applied to <tt>abs()</tt> suddenly 
+returns a <tt>double</tt>.
+<p/>
+Additionally, this behaviour also breaks third-party C headers which contain macros or inline functions calling 
+<tt>abs(short)</tt>.
+<p/>
+As per discussion on std-discussion, my reading of the standard as well as GCC's interpretation seem valid.
+However, as can be seen, this breaks existing code.
+<p/>
+In addition to the compatibilty concerns, having <tt>std::abs(short)</tt> return <tt>double</tt> is also very confusing 
+and unintuitive.
+<p/>
+The other (possibly, depending on their respective size relative to <tt>int</tt>) affected types besides <tt>short</tt> 
+are <tt>signed char</tt>, <tt>unsigned char</tt> and <tt>unsigned short</tt>, and also <tt>char</tt>, <tt>char16_t</tt>, 
+<tt>char32_t</tt> and <tt>wchar_t</tt>, (all of these are or may be promotable to <tt>int</tt>). Wider integral types 
+are not affected because explicit overloads are specified for those types by &sect;26.9 p6, &sect;26.9 p7 and &sect;26.9 p9.
+<tt>div()</tt> is also not affected because it is neither listed in &sect;26.9 p12, nor does it actually provide 
+any overload for <tt>double</tt> at all.
+<p/>
+As far as I can see, the proposed or implemented solutions for LWG <a href="lwg-active.html#2294">2294</a>, <a href="lwg-defects.html#2192">2192</a> and/or 
+<a href="lwg-defects.html#2086">2086</a> do not resolve this issue.
+<p/>
+I think both, &sect;26.9 p10 [c.math] and &sect;26.9 p15 [c.math] need some correction and clarification.
+<p/>
+(Note: These changes would explicitly render the current implementation in GCC's libstdc++ non-conforming, which would 
+be a good thing, as outlined above.)
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N4594.</p>
+<ol>
+<li><p>Modify 26.9 [c.math] as indicated:</p>
+
+<blockquote>
+<p>
+-10- If <tt>abs()</tt> is called with an argument of type <tt>X</tt> for which <tt>is_unsigned&lt;X&gt;::value</tt> is 
+<tt>true</tt> and if <tt>X</tt> cannot be converted to <tt>int</tt> by integral promotion (4.5), the program is ill-formed.
+<ins>If <tt>abs()</tt> is called with an argument of type <tt>X</tt> which can be converted to <tt>int</tt> by integral 
+promotion (4.5), the argument is promoted to <tt>int</tt>.</ins> [<i>Note:</i> Arguments that can be promoted to <tt>int</tt> 
+are <ins>promoted to <tt>int</tt> in order to keep</ins><del>permitted for</del> compatibility with C. &mdash; <i>end note</i>]
+<p/>
+[&hellip;]
+<p/>
+-15- Moreover, there shall be additional overloads <ins>for these functions, with the exception of <tt>abs()</tt>,</ins> 
+sufficient to ensure:
+</p>
+<ol>
+<li><p>If any argument of arithmetic type corresponding to a <tt>double</tt> parameter has type <tt>long double</tt>, then
+all arguments of arithmetic type (3.9.1) corresponding to <tt>double</tt> parameters are effectively cast to
+<tt>long double</tt>.</p></li>
+<li><p>Otherwise, if any argument of arithmetic type corresponding to a <tt>double</tt> parameter has type <tt>double</tt>
+or an integer type, then all arguments of arithmetic type corresponding to <tt>double</tt> parameters are
+effectively cast to <tt>double</tt>.</p></li>
+<li><p>Otherwise, all arguments of arithmetic type corresponding to <tt>double</tt> parameters have type <tt>float</tt>.</p></li>
+</ol>
+<p>
+See also: ISO C 7.5, 7.10.2, 7.10.6.
+<p/>
+<ins>[<i>Note:</i> <tt>abs()</tt> is exempted from these rules in order to stay compatible with C. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-07 Chicago]</i></p>
+
+<p>Monday: Some of this has been changed in N4606; the rest of the changes may be editorial.</p>
+<p>Fri PM: Move to Tentatively Ready</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+<ol>
+<li><p>Modify 26.9.1 [cmath.syn] as indicated:</p>
+
+<blockquote>
+<p>
+-2- For each set of overloaded functions within <tt>&lt;cmath&gt;</tt>,
+ <ins>with the exception of <tt>abs</tt>, </ins> there shall be additional
+overloads sufficient to ensure:
+</p>
+<ol>
+<li><p>If any argument of arithmetic type corresponding to a <tt>double</tt> parameter has type <tt>long double</tt>, then
+all arguments of arithmetic type (3.9.1) corresponding to <tt>double</tt> parameters are effectively cast to
+<tt>long double</tt>.</p></li>
+<li><p>Otherwise, if any argument of arithmetic type corresponding to a <tt>double</tt> parameter has type <tt>double</tt>
+or an integer type, then all arguments of arithmetic type corresponding to <tt>double</tt> parameters are
+effectively cast to <tt>double</tt>.</p></li>
+<li><p>Otherwise, all arguments of arithmetic type corresponding to <tt>double</tt> parameters have type <tt>float</tt>.</p></li>
+</ol>
+<p><ins>[<i>Note:</i> <tt>abs</tt> is exempted from these rules in order to stay compatible with C. &mdash; <i>end note</i>]</ins></p>
+<p>
+See also: ISO C 7.5, 7.10.2, 7.10.6.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

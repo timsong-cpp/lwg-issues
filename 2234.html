@@ -1,0 +1,245 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2234: assert() should allow usage in constant expressions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2234" href="#2234">2234.</a> <tt>assert()</tt> should allow usage in constant expressions</h3>
+<p><b>Section:</b> 19.3 [assertions] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2013-01-12 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#assertions">issues</a> in [assertions].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It is unclear from the current specification whether <tt>assert()</tt> expressions can be used in 
+(potential) constant expressions. As an example consider the implementation of a <tt>constexpr</tt>
+function:
+</p>
+
+<blockquote><pre>
+#include &lt;cassert&gt;
+
+template&lt;class T, unsigned N&gt;
+struct array {
+  T data[N];
+  constexpr const T&amp; operator[](unsigned i) const {
+    return assert(i &lt; N), data[i];
+  }
+};
+
+int main() {
+  constexpr array&lt;int, 3&gt; ai = {1, 2, 3};
+  constexpr int i = ai[0];
+  int j = ai[0];
+  // constexpr int k = ai[5];
+}
+</pre></blockquote>
+
+<p>
+The first question is whether this program is guaranteed well-formed? A second question is whether is would guaranteed to be
+ill-formed, if we uncomment the last code line in <tt>main()</tt>?
+</p>
+
+<p>
+The wording in 19.3 [assertions] doesn't add anything significant to the C99 wording. From the C99 specification 
+(7.2 p1 and 7.2.1.1 p2) we get already some valuable guarantees:
+</p>
+
+<ul>
+<li><p>
+The expression <tt>assert(e)</tt> is a <tt>void</tt> expression for all expressions <tt>e</tt> independent of 
+the definition of <tt>NDEBUG</tt>.
+</p></li>
+<li><p>
+If <tt>NDEBUG</tt> is defined, <tt>assert(e)</tt> is equivalent to the expression <tt>void()</tt>
+(or anything that cannot be distinguished from that).
+</p></li>
+</ul>
+
+<p>
+The current wording does not yet <em>guarantee</em> that <tt>assert</tt> expressions can be used in constant expressions,
+but all tested implementations (gcc, MSVC) would already support this use-case. It seems to me that this should be possible
+without giving <tt>assert</tt> a special meaning for the core language.
+<p/>
+As a related comment it should be added, that there is a core language 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3444.html">proposal</a> 
+that intents to relax some current constraints for <tt>constexpr</tt> functions and <tt>literal</tt> types. The most 
+interesting one (making <tt>void</tt> a literal types and allowing for expression-statements) would simplify the motivating 
+example implementation of <tt>operator[]</tt> to:
+</p>
+<blockquote><pre>
+constexpr const T&amp; operator[](unsigned i) const {
+  assert(i &lt; N);
+  return data[i];
+};
+</pre></blockquote>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Open.
+</p>
+<p>
+We are still gaining experience with <tt>constexpr</tt> as a language feature, and there may
+be work in Evolution that would help address some of these concerns.  Defer discussion until
+we have a group familiar with any evolutionary direction.
+</p>
+
+<p><i>[2014-06-08, Daniel comments and suggests wording]</i></p>
+
+<p>
+After approval of <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3652.html"/>N3652<a/>,
+<tt>void</tt> is now a literal type and <tt>constexpr</tt> functions can contain multiple statements, so
+this makes the guarantee that <tt>assert</tt> expressions are per-se <tt>constexpr</tt>-friendly even more
+relevant. A possible wording form could be along the lines of:
+</p>
+<blockquote>
+<p>
+For every core constant expression <em>e</em> of scalar type that evaluates to <tt>true</tt> after being contextually 
+converted to <tt>bool</tt>, the expression <tt>assert(<em>e</em>)</tt> shall be a prvalue core constant expression of type 
+<tt>void</tt>.
+</p>
+</blockquote>
+<p>
+Richard Smith pointed out some weaknesses of this wording form, for example it would not guarantee to require
+the following example to work:
+</p>
+<blockquote><pre>
+constexpr void check(bool b) { assert(b); }
+</pre></blockquote>
+<p>
+because <tt>b</tt> is not a core constant expression in this context.
+<p/>
+He suggested improvements that lead to the wording form presented below (any defects mine). 
+</p>
+
+<p><i>[Lenexa 2015-05-05]</i></p>
+
+<p>
+MC : ran into this<br/>
+Z : Is it guaranteed to be an expression?<br/>
+MC : clarifies that assert runs at runtime, not sure what it does at compile time<br/>
+STL : c standard guarantees its an expression and not a whole statement, so comma chaining it is ok<br/>
+HH : Some implementations work as author wants it to<br/>
+STL : also doing this as constexpr<br/>
+DK/STL : discussing how this can actually work<br/>
+HH : GCC 5 also implements it. We have implementor convergence<br/>
+MC : Wants to do this without giving assert a special meaning<br/>
+STL : NDEBUG being defined where assert appears is not how assert works. This is bug in wording. Should be "when assert is defined" or something like that. ... is a constant subexpression if NDEBUG is defined at the point where assert is last defined or redefined."<br/>
+Would like to strike the "either" because ok if both debug or assertion is true. We want inclusive-or here<br/>
+MC : is redefined needed?<br/>
+STL : my mental model is its defined once and then redefined<br/>
+HH : wants to up to P2<br/>
+Z/STL : discussing how wording takes care of how/when assert is defined/redefefined<br/>
+STL/WB : discussing whether to move to ready or review. -> Want to move it to ready.<br/>
+ask for updated wording<br/>
+p3 -> p2<br/>
+plan to go to ready after checking wording<br/>
+</p>
+
+<p><i>[Telecom 2015-06-30]</i></p>
+
+<p>
+HH: standardizing existing practice<br/>
+MC: what about the comment from Lenexa about striking "either"?<br/>
+HH: all three implementations accept it<br/>
+MC: update issue to strike "either" and move to Tentatively Ready<br/>
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3936.</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note"> 
+<ol>
+<li><p>Introduce the following new definition to the existing list in 17.3 [definitions]: [<i>Drafting note</i>:
+If LWG <a href="lwg-defects.html#2296">2296</a> is accepted before this issue, the accepted wording for the new definition should be used instead 
+&mdash; <i>end drafting note</i>]</p>
+
+<blockquote>
+<p>
+<strong>constant subexpression</strong> [defns.const.subexpr]
+<p/>
+an expression whose evaluation as subexpression of a <em>conditional-expression</em> <em>CE</em> (5.16 [expr.cond]) 
+would not prevent <em>CE</em> from being a core constant expression (5.20 [expr.const]).
+</p>
+</blockquote>
+</li>
+
+<li><p>Insert a new paragraph following 19.3 [assertions] p1 as indicated:</p>
+
+<blockquote>
+<p>
+<ins>-?- An expression <tt>assert(<em>E</em>)</tt> is a constant subexpression (17.3.7 [defns.const.subexpr]), if either</ins>
+</p>
+<ul>
+<li><p><ins><tt>NDEBUG</tt> is defined at the point where <tt>assert(<em>E</em>)</tt> appears, or</ins></p></li>
+<li><p><ins><tt><em>E</em></tt> contextually converted to <tt>bool</tt> (4 [conv]), is a constant subexpression 
+that evaluates to the value <tt>true</tt>.</ins></p></li>
+</ul>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<ol>
+<li><p>Introduce the following new definition to the existing list in 17.3 [definitions]: [<i>Drafting note</i>:
+If LWG <a href="lwg-defects.html#2296">2296</a> is accepted before this issue, the accepted wording for the new definition should be used instead 
+&mdash; <i>end drafting note</i>]</p>
+
+<blockquote>
+<p>
+<strong>constant subexpression</strong> [defns.const.subexpr]
+<p/>
+an expression whose evaluation as subexpression of a <em>conditional-expression</em> <em>CE</em> (5.16 [expr.cond]) 
+would not prevent <em>CE</em> from being a core constant expression (5.20 [expr.const]).
+</p>
+</blockquote>
+</li>
+
+<li><p>Insert a new paragraph following 19.3 [assertions] p1 as indicated:</p>
+
+<blockquote>
+<p>
+<ins>-?- An expression <tt>assert(<em>E</em>)</tt> is a constant subexpression (17.3.7 [defns.const.subexpr]), if </ins>
+</p>
+<ul>
+<li><p><ins><tt>NDEBUG</tt> is defined at the point where <tt>assert(<em>E</em>)</tt> appears, or</ins></p></li>
+<li><p><ins><tt><em>E</em></tt> contextually converted to <tt>bool</tt> (4 [conv]), is a constant subexpression 
+that evaluates to the value <tt>true</tt>.</ins></p></li>
+</ul>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

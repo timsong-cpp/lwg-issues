@@ -1,0 +1,202 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2591: std::function's member template target() should not lead to undefined behaviour</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2591" href="#2591">2591.</a> <tt>std::function</tt>'s member template <tt>target()</tt> should not lead to undefined behaviour</h3>
+<p><b>Section:</b> 20.14.12.2.5 [func.wrap.func.targ] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2016-01-31 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.targ">issues</a> in [func.wrap.func.targ].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This issue is a spin-off of LWG <a href="lwg-defects.html#2393">2393</a>, it solely focuses on the pre-condition of 20.14.12.2.5 [func.wrap.func.targ] p2:
+</p>
+<blockquote class="note"><p>
+<i>Requires</i>: <tt>T</tt> shall be a type that is Callable (20.9.12.2) for parameter types <tt>ArgTypes</tt> and return type
+<tt>R</tt>.
+</p></blockquote>
+<p>
+Originally, the author of this issue here had assumed that simply removing the precondition as a side-step of fixing LWG
+<a href="lwg-defects.html#2393">2393</a> would be uncontroversial. Discussions on the 
+<a href="http://accu.org/cgi-bin/wg21/message?wg=lib&amp;msg=38356">library reflector</a> indicated that this is not the case, 
+although it seemed that there was agreement on removing the undefined behaviour edge-case.
+<p/>
+There exist basically the following positions:
+</p>
+<ol>
+<li><p>The constraint should be removed completely, the function is considered as having a 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2011/n3279.pdf">wide contract</a>.</p>
+</li>
+<li><p>The pre-condition should be replaced by a <i>Remarks</i> element, that has the effect of making the code ill-formed,
+if <tt>T</tt> is a type that is not Lvalue-Callable (20.9.11.2) for parameter types <tt>ArgTypes</tt> and return type <tt>R</tt>.
+Technically this approach is still conforming with a wide contract function, because the definition of this contract form
+depends on runtime constraints.</p></li>
+</ol>
+<p>
+Not yet explicitly discussed, but a possible variant of bullet (2) could be:
+</p>
+<ol start="3">
+<li><p>The pre-condition should be replaced by a <i>Remarks</i> element, that has the effect of SFINAE-constraining
+this member: "This function shall not participate in overload resolution unless  <tt>T</tt> is a type that is 
+Lvalue-Callable (20.9.11.2) for parameter types <tt>ArgTypes</tt> and return type <tt>R</tt>".
+</p></li>
+</ol>
+<p>
+The following describes a list of some selected arguments that have been provided for one or the other position
+using corresponding list items. Unless explicitly denoted, no difference has been accounted for option (3) over 
+option (2).
+</p>
+<ol>
+<li>
+<ol style="list-style-type:lower-alpha">
+<li>
+<p>It reflects existing implementation practice, Visual Studio 2015 SR1, gcc 6 libstdc++, and clang 3.8.0 libc++ do accept 
+the following code:</p>
+<blockquote><pre>
+#include &lt;functional&gt;
+#include &lt;iostream&gt;
+#include &lt;typeinfo&gt;
+#include "boost/function.hpp"
+
+void foo(int) {}
+
+int main() {
+  std::function&lt;void(int)&gt; f(foo);
+  std::cout &lt;&lt; f.target&lt;void(*)()&gt;() &lt;&lt; std::endl;
+  boost::function&lt;void(int)&gt; f2(foo);
+  std::cout &lt;&lt; f2.target&lt;void(*)()&gt;() &lt;&lt; std::endl;
+}
+</pre></blockquote>
+<p>
+and consistently output the implementation-specific result for <b>two null pointer</b> values.
+</p>
+</li>
+<li>
+<p>
+The current
+<a href="http://www.boost.org/doc/libs/1_60_0/doc/html/boost/function_base.html">Boost documentation</a>
+does not indicate <em>any</em> precondition for calling the <tt>target</tt> function, so it is natural
+that programmers would expect similar specification and behaviour for the corresponding standard component.
+</p>
+</li>
+<li>
+<p>
+There is a consistency argument in regard to the free function template <tt>get_deleter</tt>
+</p>
+<blockquote><pre>
+template&lt;class D, class T&gt; 
+D* get_deleter(const shared_ptr&lt;T&gt;&amp; p) noexcept;
+</pre></blockquote>
+<p>
+This function also does not impose any pre-conditions on its template argument <tt>D</tt>.
+</p>
+</li>
+</ol>
+</li>
+<li>
+<ol style="list-style-type:lower-alpha">
+<li>
+<p>
+Programmers have control over the type they're passing to <tt>target&lt;T&gt;()</tt>. Passing a non-callable type 
+can't possibly retrieve a non-null target, so it seems highly likely to be programmer error. Diagnosing that at 
+compile time seems highly preferable to allowing this to return null, always, at runtime.
+</p>
+</li>
+<li>
+<p>
+If <tt>T</tt> is a reference type then the return type <tt>T*</tt> is ill-formed anyway. This implies that one can't 
+blindly call <tt>target&lt;T&gt;</tt> without knowing what <tt>T</tt> is.
+</p>
+</li>
+<li>
+<p>
+It has been pointed out that some real world code, boiling down to
+</p>
+<blockquote><pre>
+void foo() {}
+
+int main() {
+  std::function&lt;void()&gt; f = foo;
+  if (f.target&lt;decltype(foo)&gt;()) {
+    <i>// fast path</i>
+  } else {
+    <i>// slow path</i>
+  }
+}
+</pre></blockquote>
+<p>
+had manifested as a performance issue and preparing a patch that made the library <tt>static_assert</tt> in that
+case solved this problem (Note that <tt>decltype(foo)</tt> evaluates to <tt>void()</tt>, but a proper argument of
+<tt>target()</tt> would have been the function <em>pointer</em> type <tt>void(*)()</tt>, because a function type 
+<tt>void()</tt> is not any <i>Callable</i> type).
+</p>
+</li>
+</ol>
+</li>
+</ol>
+<p>
+It might be worth adding that if use case (2 c) is indeed an often occurring idiom, it would make sense to consider
+to provide an explicit conversion to a function pointer (w/o template parameters that could be provided incorrectly), 
+if the <tt>std::function</tt> object at runtime conditions contains a pointer to a real function, e.g.
+</p>
+<blockquote><pre>
+R(*)(ArgTypes...) target_func_ptr() const noexcept;
+</pre></blockquote>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Tues PM: Moved to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Change 20.14.12.2.5 [func.wrap.func.targ] p2 as indicated:</p>
+
+<blockquote><pre>
+template&lt;class T&gt; T* target() noexcept;
+template&lt;class T&gt; const T* target() const noexcept;
+</pre>
+<blockquote>
+<p>
+<del>-2- <i>Requires</i>: <tt>T</tt> shall be a type that is <tt>Callable</tt> (20.14.12.2 [func.wrap.func]) for parameter types 
+<tt>ArgTypes</tt> and return type <tt>R</tt>.</del>
+<p/>
+-3- <i>Returns</i>: If <tt>target_type() == typeid(T)</tt> a pointer to the stored function target; otherwise a null
+pointer.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

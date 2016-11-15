@@ -1,0 +1,189 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2779: [networking.ts] Relax strict aliasing requirement for user-defined buffer sequence iterators</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2779" href="#2779">2779.</a> [networking.ts] Relax strict aliasing requirement for user-defined buffer sequence iterators</h3>
+<p><b>Section:</b> 99 [networking.ts::buffer.reqmts.mutablebuffersequence] <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2016-10-05 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+We propose to relax the <b>ForwardIterator</b> requirements of buffer sequences
+in [networking.ts] by allowing buffer sequence iterators to return rvalues when
+dereferenced, and skip providing <tt>operator-&gt;</tt>.
+A paraphrased explanation of why the strict aliasing rules of <b>ForwardIterator</b>
+are harmful to the buffer sequence requirements comes from 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4128.html">N4128</a>,
+3.3.7 "Ranges For The Standard Library":
+</p>
+<blockquote><p>
+The [networking.ts] dependence on <b>ForwardIterator</b> in the buffer
+sequence requirements ties together the traversal and access properties of
+iterators. For instance, no forward iterator may return an <i>rvalue</i> proxy
+when it is dereferenced; the <b>ForwardIterator</b> concept requires that
+unary <tt>operator*</tt> return an lvalue. This problem has serious consequences
+for lazy evaluation that applies transformations to buffer sequence elements on
+the fly. If the transformation function does not return an <i>lvalue</i>, the
+range’s iterator can model no concept stronger than <b>InputIterator</b>, even
+if the resulting iterator could in theory support
+<b>BidirectionalIterator</b>. The result in practice is that most range
+adaptors today will not be compatible with [networking.ts], thereby limiting the
+types that [networking.ts] can be passed, for no good reason.
+</p></blockquote>
+
+<p>
+Consider a user defined function <tt>trim</tt> which lazily adapts a
+<tt>ConstBufferSequence</tt>, such that when iterating the buffers in the new
+sequence, each buffer appears one byte shorter than in the underlying sequence:
+</p>
+
+<blockquote><pre>
+#include &lt;boost/range/adaptor/transformed.hpp&gt;
+
+struct trim
+{
+  using result_type = const_buffer;
+  result_type operator()(const_buffer b)
+  {
+    return const_buffer{b.data(), b.size() - 1};
+  }
+};
+
+template &lt;ConstBufferSequence&gt;
+auto
+trim(ConstBufferSequence const&amp; buffers)
+{
+  using namespace boost::adaptors;
+  return buffers | transformed(trim{});
+}
+</pre></blockquote>
+
+<p>
+<tt>trim</tt> returns a <b>BidirectionalRange</b>, whose
+<tt>const_iterator</tt> returns an rvalue when dereferenced. This breaks the
+requirements of <b>ForwardIterator</b>. A solution that meets the strict
+aliasing rules of <b>ForwardIterator</b>, would be to evaluate the transformed
+sequence upon construction (for example, by storing each transformed
+<tt>const_buffer</tt> in a <tt>vector</tt>). Unfortunately this work-around is
+more expensive since it would add heap allocation which the original example avoids.
+</p>
+
+<p>
+The requirement of <b>InputIterator</b> <tt>operator-&gt;</tt> is also
+unnecessary for buffer sequence iterators, and should be removed. Because
+[networking.ts] only requires that a buffer sequence iterator's
+<tt>value_type</tt> be convertible to <tt>const_buffer</tt> or
+<tt>mutable_buffer</tt>, implementations of [networking.ts] cannot assume the
+existence of any particular member functions or data members other than an
+implicit conversion to <tt>const_buffer</tt> or <tt>mutable_buffer</tt>.
+Removing the requirement for <tt>operator-&gt;</tt> to be present, provides
+additional relief from the strict aliasing requirements of
+<b>ForwardIterator</b> and allows transformations of buffer sequences to meet
+the requirements of buffer sequences.
+</p>
+
+<p>
+This proposal imposes no changes on existing implementations of [networking.ts].
+It does not change anything in the standard. The proposal is precise, minimal,
+and allows range adapters to transform buffer sequences in optimized, compatible
+ways.
+</p>
+
+<p><i>[Issues processing Telecon 2016-10-07]</i></p>
+
+<p>Status set to LEWG</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/n4588.pdf">N4588</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Modify 16.2.1 [buffer.reqmts.mutablebuffersequence] as indicated:
+</p>
+<blockquote>
+<p>
+<del>An iterator type meeting the requirements for bidirectional
+iterators (C++Std [bidirectional.iterators]) whose value type is
+convertible to <tt>mutable_buffer</tt></del>
+</p>
+<p><ins>
+An iterator type whose <tt>reference</tt> type is convertible to
+<tt>mutable_buffer</tt>, and which satisfies all the requirements for
+bidirectional iterators (C++Std [bidirectional.iterators]) except
+that:
+</ins></p>
+<ol style="list-style-type:lower-alpha">
+<li>
+<ins>there is no requirement that <tt>operator-&gt;</tt> is provided, and</ins>
+</li>
+<li>
+<ins>there is no requirement that <tt>reference</tt> be a reference type.</ins>
+</li>
+</ol>
+</blockquote>
+</li>
+
+<li>
+<p>
+Modify 16.2.2 [buffer.reqmts.constbuffersequence] as indicated:
+</p>
+<blockquote>
+<p>
+<del>An iterator type meeting the requirements for bidirectional
+iterators (C++Std [bidirectional.iterators]) whose value type is
+convertible to <tt>const_buffer</tt>.</del>
+</p>
+
+<p>
+<ins>An iterator type whose <tt>reference</tt> type is convertible to
+<tt>const_buffer</tt>, and which satisfies all the requirements for
+bidirectional iterators (C++Std [bidirectional.iterators]) except
+that:
+</ins></p>
+<ol style="list-style-type:lower-alpha">
+<li>
+<ins>there is no requirement that <tt>operator-&gt;</tt> is provided, and</ins>
+</li>
+<li>
+<ins>there is no requirement that <tt>reference</tt> be a reference type.</ins>
+</li>
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2160: Unintended destruction ordering-specification of resize</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2160" href="#2160">2160.</a> Unintended destruction ordering-specification of <tt>resize</tt></h3>
+<p><b>Section:</b> 23.3.11.3 [vector.capacity] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2012-06-07 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#vector.capacity">issues</a> in [vector.capacity].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+As part of resolving LWG issue <a href="lwg-defects.html#2033">2033</a> a wording change was done for <tt>resize()</tt> to 
+respect the problem mentioned in the question:
+</p>
+<blockquote><p>
+Does a call to 'void resize(size_type sz)' of <tt>std::vector</tt> require the element type to be 
+<tt>MoveAssignable</tt> because the call <tt>erase(begin() + sz, end())</tt> mentioned in the Effects 
+paragraph would require the element type to be <tt>MoveAssignable</tt>?
+</p></blockquote>
+<p>
+The wording change was to replace in 23.3.8.3 [deque.capacity] and 23.3.11.3 [vector.capacity]:
+</p>
+<blockquote><p>
+-1- <i>Effects</i>: If <tt>sz &lt;= size()</tt>, equivalent to <tt>erase(begin() + sz, end())</tt>; [&hellip;]
+</p></blockquote>
+<p>
+by:
+</p>
+<blockquote><p>
+-1- <i>Effects</i>: If <tt>sz &lt;= size()</tt>, equivalent to calling <tt>pop_back() size() - sz</tt> times. [&hellip;]
+</p></blockquote>
+<p>
+The overlooked side-effect of this wording change is that this implies a destruction order
+of the removed elements to be in reverse order of construction, but the previous version
+did not impose any specific destruction order due to the way how the semantics of <tt>erase</tt>
+is specified in Table 100.
+<p/>
+Given the program:
+</p>
+<blockquote><pre>
+#include &lt;vector&gt;
+#include &lt;iostream&gt;
+
+struct Probe {
+  int value;
+  Probe() : value(0) {}
+  Probe(int value) : value(value) {}
+  ~Probe() { std::cout &lt;&lt; "~Probe() of " &lt;&lt; value &lt;&lt; std::endl; }
+};
+
+int main() {
+  std::vector&lt;Probe&gt; v;
+  v.push_back(Probe(1));
+  v.push_back(Probe(2));
+  v.push_back(Probe(3));
+  std::cout &lt;&lt; "---" &lt;&lt; std::endl;
+  <span style="color:#C80000;font-weight:bold">v.resize(0)</span>;
+}
+</pre></blockquote>
+<p>
+the last three lines of the output for every compiler I tested was:
+</p>
+<blockquote><pre>
+~Probe() of 1
+~Probe() of 2
+~Probe() of 3
+</pre></blockquote>
+<p>
+but a conforming implementation would now need to change this order to
+</p>
+<blockquote><pre>
+~Probe() of 3
+~Probe() of 2
+~Probe() of 1
+</pre></blockquote>
+<p>
+This possible stringent interpretation makes sense, because one can argue that sequence containers 
+(or at least <tt>std::vector</tt>) should have the same required destruction order of it's elements,
+as elements of a C array or controlled by memory deallocated with an array <tt>delete</tt> have.
+I also learned that libc++ does indeed implement <tt>std::vector::resize</tt> in a way that the
+second output form is observed.
+<p/>
+While I agree that required reverse-destruction would better mimic the natural behaviour of
+<tt>std::vector</tt> this was not required in C++03 and this request may be too strong. My current 
+suggestion would be to restore the effects of the previous wording <em>in regard to the destruction order</em>, 
+because otherwise several currently existing implementations would be broken just because of this
+additional requirement.
+</p>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Open.
+</p>
+<p>
+Jonathan says that he believes this is a valid issue.
+</p>
+<p>
+Walter wonders if this was intended when we made the previous change - if so, this would be NAD.
+</p>
+<p>
+Jonathan said that Issue <a href="lwg-defects.html#2033">2033</a> doesn't mention ordering.
+</p>
+<p>
+Walter then asked if anyone is really unhappy that we're destroying items in reverse order of construction.
+</p>
+<p>
+Jonathan points out that this conflicts with existing practice (libstc++, but not libc++).
+</p>
+<p>
+Jonathan asked for clarification as to whether this change was intended by <a href="lwg-defects.html#2033">2033</a>.
+</p>
+
+<p><i>[2014-06 Rapperswil]</i></p>
+
+<p>
+Daniel points out that the ordering change was not intended.
+<p/>
+General agreement that implementations should not be required to change.
+</p>
+
+<p><i>[2014-06-28 Daniel provides alternative wording]</i></p>
+
+
+<p><i>[Urbana 2014-11-07: Move to Ready]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3936.</p> 
+
+<ol>
+<li><p>Change 23.3.8.3 [deque.capacity] as indicated: [<i>Drafting note</i>: The chosen wording form is similar to that for
+<tt>forward_list</tt>. Note that the existing <i>Requires</i> element already specifies the necessary operational requirements 
+on the value type. &mdash; <i>end drafting note</i>]</p>
+
+<blockquote>
+<pre>
+void resize(size_type sz);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: If <tt>sz &lt;<del>=</del> size()</tt>, <ins>erases the last <tt>size() - sz</tt> elements from the 
+sequence</ins><del>equivalent to calling <tt>pop_back() size() - sz</tt> times</del>. <ins>Otherwise</ins><del>If <tt>size() 
+&lt;= sz</tt></del>, appends <tt>sz - size()</tt> default-inserted elements to the sequence.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void resize(size_type sz, const T&amp; c);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: If <tt>sz &lt;<del>=</del> size()</tt>, <ins>erases the last <tt>size() - sz</tt> elements from the 
+sequence</ins><del>equivalent to calling <tt>pop_back() size() - sz</tt> times</del>. <ins>Otherwise</ins><del>If <tt>size() 
+&lt; sz</tt></del>, appends <tt>sz - size()</tt> copies of <tt>c</tt> to the sequence.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 23.3.11.3 [vector.capacity] as indicated: [<i>Drafting note</i>: See <tt>deque</tt> for the rationale of the
+used wording. &mdash; <i>end drafting note</i>]</p>
+
+<blockquote>
+<pre>
+void resize(size_type sz);
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects</i>: If <tt>sz &lt;<del>=</del> size()</tt>, <ins>erases the last <tt>size() - sz</tt> elements from the 
+sequence</ins><del>equivalent to calling <tt>pop_back() size() - sz</tt> times</del>. <ins>Otherwise</ins><del>If <tt>size() 
+&lt; sz</tt></del>, appends <tt>sz - size()</tt> default-inserted elements to the sequence.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void resize(size_type sz, const T&amp; c);
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects</i>: If <tt>sz &lt;<del>=</del> size()</tt>, <ins>erases the last <tt>size() - sz</tt> elements from the 
+sequence</ins><del>equivalent to calling <tt>pop_back() size() - sz</tt> times</del>. <ins>Otherwise</ins><del>If <tt>size() 
+&lt; sz</tt></del>, appends <tt>sz - size()</tt> copies of <tt>c</tt> to the sequence.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

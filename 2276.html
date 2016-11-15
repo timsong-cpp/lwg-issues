@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2276: Missing requirement on std::promise::set_exception</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2276" href="#2276">2276.</a> Missing requirement on <tt>std::promise::set_exception</tt></h3>
+<p><b>Section:</b> 30.6 [futures] <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2013-07-30 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures">issues</a> in [futures].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard does not specify the behaviour of this program:
+</p>
+
+<blockquote><pre>
+#include &lt;future&gt;
+#include &lt;cassert&gt;
+
+struct NonTrivial
+{
+  NonTrivial() : init(true) { }
+  ~NonTrivial() { assert(init); }
+  bool init;
+};
+
+int main()
+{
+  std::promise&lt;NonTrivial&gt; p;
+  auto f = p.get_future();
+  p.set_exception(std::exception_ptr());
+  f.get();
+}
+</pre></blockquote>
+
+<p>
+The standard doesn't forbid making the state ready with a null
+<tt>exception_ptr</tt>, so what should <tt>get()</tt> return?  There's no stored
+exception to throw, but it can't return a value because none was initialized.
+<p/>
+A careful reading of the standard shows 30.6.4 [futures.state] p8 says
+"A shared state is <em>ready</em> only if it holds a value or an exception
+ready for retrieval." One can infer from the fact that <tt>set_exception()</tt>
+makes the state ready that it must store a value or exception, so
+cannot store "nothing", but that isn't explicit.
+<p/>
+The <tt>promise::set_exception()</tt> and <tt>promise::set_exception_at_thread_exit()</tt> 
+members should require <tt>p != nullptr</tt> or should state the type of exception thrown 
+if <tt>p</tt> is null.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>Handed over to SG1.</p>
+
+<p><i>[2015-05 Lenexa, SG1 response]</i></p>
+
+<p>SG1 provides P/R and requests move to SG1-OK status: Add Requires clauses for promise (30.6.5 [futures.promise]) set_exception (before p18) and set_exception_at_thread_exit (before p24): Requires: p is not null.</p>
+
+<p><i>[2015-10, Kona issue prioritization]</i></p>
+
+<p>Priority 0, move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4431.
+</p>
+Add Requires clauses for promise (30.6.5 [futures.promise]) <tt>set_exception</tt> (before p18) and 
+<tt>set_exception_at_thread_exit</tt> (before p24): <i>Requires</i>: <tt>p</tt> is not null.
+
+<ol>
+<li><p>Change 30.6.5 [futures.promise] as depicted:</p>
+
+<blockquote>
+<pre>
+void set_exception(exception_ptr p);
+</pre>
+<blockquote>
+<p>
+<ins>-??- <i>Requires:</i> <tt>p</tt> is not null. </ins>
+</p>
+<p>
+-18- <i>Effects:</i> atomically stores the exception pointer <tt>p</tt> in the shared state and makes that state ready (30.6.4).
+</p>
+</blockquote>
+</blockquote>
+
+<blockquote>
+<pre>
+void set_exception_at_thread_exit(exception_ptr p);
+</pre>
+<blockquote>
+<p>
+<ins>-??- <i>Requires:</i> <tt>p</tt> is not null. </ins>
+</p>
+<p>
+-24- <i>Effects:</i> Stores the exception pointer <tt>p</tt> in the shared state without making that state ready immediately. [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li></ol>
+
+
+
+
+
+
+</body>
+</html>

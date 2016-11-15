@@ -1,0 +1,147 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 109: Missing binders for non-const sequence elements</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="109" href="#109">109.</a> Missing binders for non-const sequence elements</h3>
+<p><b>Section:</b> 99 [depr.lib.binders] <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Bjarne Stroustrup <b>Opened:</b> 1998-10-07 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#depr.lib.binders">issues</a> in [depr.lib.binders].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>There are no versions of binders that apply to non-const elements
+of a sequence. This makes examples like for_each() using bind2nd() on
+page 521 of &quot;The C++ Programming Language (3rd)&quot;
+non-conforming. Suitable versions of the binders need to be added.</p>
+
+<p>Further discussion from Nico:</p>
+
+<p>What is probably meant here is shown in the following example:</p>
+
+<pre>class Elem { 
+  public: 
+    void print (int i) const { } 
+    void modify (int i) { } 
+}; </pre>
+<pre>int main() 
+{ 
+    vector&lt;Elem&gt; coll(2); 
+    for_each (coll.begin(), coll.end(), bind2nd(mem_fun_ref(&amp;Elem::print),42));    // OK 
+    for_each (coll.begin(), coll.end(), bind2nd(mem_fun_ref(&amp;Elem::modify),42));   // ERROR 
+}</pre>
+
+<p>The error results from the fact that bind2nd() passes its first
+argument (the argument of the sequence) as constant reference. See the
+following typical implementation:</p>
+
+<blockquote>
+  <pre>template &lt;class Operation&gt; 
+class binder2nd 
+  : public unary_function&lt;typename Operation::first_argument_type, 
+                          typename Operation::result_type&gt; { 
+protected: 
+  Operation op; 
+  typename Operation::second_argument_type value; 
+public: 
+  binder2nd(const Operation&amp; o, 
+            const typename Operation::second_argument_type&amp; v) 
+      : op(o), value(v) {} </pre>
+  <pre> typename Operation::result_type 
+  operator()(const typename Operation::first_argument_type&amp; x) const { 
+    return op(x, value); 
+  } 
+};</pre>
+</blockquote>
+
+<p>The solution is to overload operator () of bind2nd for non-constant arguments:</p>
+
+<blockquote>
+  <pre>template &lt;class Operation&gt; 
+class binder2nd 
+  : public unary_function&lt;typename Operation::first_argument_type, 
+                          typename Operation::result_type&gt; { 
+protected: 
+  Operation op; 
+  typename Operation::second_argument_type value; 
+public: 
+  binder2nd(const Operation&amp; o, 
+            const typename Operation::second_argument_type&amp; v) 
+      : op(o), value(v) {} </pre>
+  <pre> typename Operation::result_type 
+  operator()(const typename Operation::first_argument_type&amp; x) const { 
+    return op(x, value); 
+  } 
+  typename Operation::result_type 
+  operator()(typename Operation::first_argument_type&amp; x) const { 
+    return op(x, value); 
+  } 
+};</pre>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p><b>Howard believes there is a flaw</b> in this resolution.
+See c++std-lib-9127.  We may need to reopen this issue.</p>
+
+<p>In 99 [depr.lib.binders] in the declaration of binder1st after:</p>
+<blockquote>
+  <p><tt>typename Operation::result_type<br/>
+  &nbsp;operator()(const typename Operation::second_argument_type&amp; x) const;</tt></p>
+</blockquote>
+<p>insert:</p>
+<blockquote>
+  <p><tt>typename Operation::result_type<br/>
+  &nbsp;operator()(typename Operation::second_argument_type&amp; x) const;</tt></p>
+</blockquote>
+<p>In 99 [depr.lib.binders] in the declaration of binder2nd after:</p>
+<blockquote>
+  <p><tt>typename Operation::result_type<br/>
+  &nbsp;operator()(const typename Operation::first_argument_type&amp; x) const;</tt></p>
+</blockquote>
+<p>insert:</p>
+<blockquote>
+  <p><tt>typename Operation::result_type<br/>
+  &nbsp;operator()(typename Operation::first_argument_type&amp; x) const;</tt></p>
+</blockquote>
+
+<p><i>[Kona: The LWG discussed this at some length.It was agreed that
+this is a mistake in the design, but there was no consensus on whether
+it was a defect in the Standard.  Straw vote: NAD - 5.  Accept
+proposed resolution - 3.  Leave open - 6.]</i></p>
+
+
+<p><i>[Copenhagen: It was generally agreed that this was a defect.
+Strap poll: NAD - 0.  Accept proposed resolution - 10. 
+Leave open - 1.]</i></p>
+
+
+
+
+
+
+
+</body>
+</html>

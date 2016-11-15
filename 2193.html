@@ -1,0 +1,604 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2193: Default constructors for standard library containers are explicit</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2193" href="#2193">2193.</a> Default constructors for standard library containers are explicit</h3>
+<p><b>Section:</b> 23 [containers] <b>Status:</b> <a href="lwg-active.html#C++14">C++14</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2012-10-04 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#containers">active issues</a> in [containers].</p>
+<p><b>View all other</b> <a href="lwg-index.html#containers">issues</a> in [containers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++14">C++14</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Most (all?) of the standard library containers have explicit default constructors. Consequently:
+</p>
+<blockquote><pre>
+std::set&lt;int&gt; s1 = { 1, 2 }; // ok
+std::set&lt;int&gt; s2 = { 1 }; // ok
+std::set&lt;int&gt; s3 = {}; // ill-formed, copy-list-initialization selected an explicit constructor
+</pre></blockquote>
+<p>
+Note that Clang + libc++ rejects the declaration of <tt>s3</tt> for this reason. This cannot possibly match the intent.
+</p>
+<p>
+Suggested fix: apply this transformation throughout the standard library:
+</p>
+<blockquote><pre>
+<ins>set() : set(Compare()) {}</ins>
+explicit set(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+
+<p><i>[
+2012-10-06: Daniel adds concrete wording.
+]</i></p>
+
+
+<p><i>[2012, Portland: Move to Open]</i></p>
+
+<p>
+This may be an issue better solved by a core language tweak.  Throw the issue over to EWG and see whether they
+believe the issue is better resolved in Core or Library.
+</p>
+
+<p>
+AJM suggest we spawn a new status of 'EWG' to handle such issues - and will move this issue appropriately when
+the software can record such resolutions.
+</p>
+
+<p><i>[2013-08-27, Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz comments:]</i></p>
+
+
+<p>
+For the record, I'd like to point out that the resolution proposed by the submitter, namely replacing
+</p>
+
+<blockquote><pre>
+explicit basic_string(const Allocator&amp; a = Allocator());
+</pre></blockquote>
+
+<p>
+by
+</p>
+
+<blockquote><pre>
+basic_string() : basic_string(Allocator()) {}
+explicit basic_string(const Allocator&amp; a);
+</pre></blockquote>
+
+<p>
+(and similarly for other container and container-like classes) might introduce a potential
+backwards-compatibility problem related with explicit instantiation. Consider for instance
+</p>
+
+<blockquote><pre>
+struct my_allocator
+{
+  my_allocator(...); // no default ctor
+  ...
+};
+
+template class std::basic_string&lt;char, std::char_traits&lt;char&gt;, my_allocator&lt;char&gt;&gt;;
+</pre></blockquote>
+
+<p>
+This (which I understand is currently a valid explicit instantiation of <tt>std::basic_string</tt>) will break if
+<tt>std::basic_string</tt> ctors are modified as proposed by this issue, since <tt>my_allocator</tt> doesn't have
+a default ctor.
+</p>
+
+<p><i>[2013-10-06, Daniel comments:]</i></p>
+
+
+<p>
+Issue <a href="lwg-active.html#2303">2303</a> describes the more general problem related to explicit instantiation requests in the current
+library and may help to solve this problem here as well.
+</p>
+
+<p><i>[2014-02-13, Issaquah, Jonathan revises wording]</i></p>
+
+
+<p><strong>Previous resolution from Daniel [SUPERSEDED]:</strong></p>
+
+<blockquote class="note">
+
+<p>This wording is relative to N3376.</p>
+
+<p>The more general criterion for performing the suggested transformation was: Any type with an initializer-list 
+constructor that also has an explicit default constructor.</p>
+
+<ol>
+<li><p>Change class template <tt>basic_string</tt> synopsis, 21.3.1 [basic.string] p5 as indicated:</p>
+<blockquote><pre>
+<ins>basic_string() : basic_string(Allocator()) {}</ins>
+explicit basic_string(const Allocator&amp; a<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 21.3.1.2 [string.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit basic_string(const Allocator&amp; a<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>deque</tt> synopsis, 23.3.8.1 [deque.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>deque() : deque(Allocator()) {}</ins>
+explicit deque(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.8.2 [deque.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit deque(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>forward_list</tt> synopsis, 23.3.9.1 [forwardlist.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>forward_list() : forward_list(Allocator()) {}</ins>
+explicit forward_list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.9.2 [forwardlist.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit forward_list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>list</tt> synopsis, 23.3.10.1 [list.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>list() : list(Allocator()) {}</ins>
+explicit list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.10.2 [list.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>vector</tt> synopsis, 23.3.11.1 [vector.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>vector() : vector(Allocator()) {}</ins>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.11.2 [vector.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template specialization <tt>vector&lt;bool&gt;</tt> synopsis, 23.3.12 [vector.bool] p1 as indicated:</p>
+<blockquote><pre>
+<ins>vector() : vector(Allocator()) {}</ins>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>map</tt> synopsis, 23.4.4.1 [map.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>map() : map(Compare()) {}</ins>
+explicit map(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.4.2 [map.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit map(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>multimap</tt> synopsis, 23.4.5.1 [multimap.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>multimap() : multimap(Compare()) {}</ins>
+explicit multimap(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.5.2 [multimap.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit multimap(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>set</tt> synopsis, 23.4.6.1 [set.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>set() : set(Compare()) {}</ins>
+explicit set(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.6.2 [set.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit set(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>multiset</tt> synopsis, 23.4.7.1 [multiset.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>multiset() : multiset(Compare()) {}</ins>
+explicit multiset(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.7.2 [multiset.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit multiset(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_map</tt> synopsis, 23.5.4.1 [unord.map.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_map() : unordered_map(<i>see below</i>) {}</ins>
+explicit unordered_map(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.4.2 [unord.map.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_map() : unordered_map(<i>see below</i>) {}</ins>
+explicit unordered_map(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_multimap</tt> synopsis, 23.5.5.1 [unord.multimap.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multimap() : unordered_multimap(<i>see below</i>) {}</ins>
+explicit unordered_multimap(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.5.2 [unord.multimap.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multimap() : unordered_multimap(<i>see below</i>) {}</ins>
+explicit unordered_multimap(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_set</tt> synopsis, 23.5.6.1 [unord.set.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_set() : unordered_set(<i>see below</i>) {}</ins>
+explicit unordered_set(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.6.2 [unord.set.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_set() : unordered_set(<i>see below</i>) {}</ins>
+explicit unordered_set(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_multiset</tt> synopsis, 23.5.7.1 [unord.multiset.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multiset() : unordered_multiset(<i>see below</i>) {}</ins>
+explicit unordered_multiset(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.7.2 [unord.multiset.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multiset() : unordered_multiset(<i>see below</i>) {}</ins>
+explicit unordered_multiset(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[Issaquah 20014-10-11: Move to Immediate after final review]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3376.</p>
+
+<p>The more general criterion for performing the suggested transformation was: Any type with an initializer-list 
+constructor that also has an explicit default constructor.</p>
+
+<ol>
+<li><p>Change class template <tt>basic_string</tt> synopsis, 21.3.1 [basic.string] p5 as indicated:</p>
+<blockquote><pre>
+<ins>basic_string() : basic_string(Allocator()) { }</ins>
+explicit basic_string(const Allocator&amp; a<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 21.3.1.2 [string.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit basic_string(const Allocator&amp; a<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>deque</tt> synopsis, 23.3.8.1 [deque.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>deque() : deque(Allocator()) { }</ins>
+explicit deque(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.8.2 [deque.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit deque(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>forward_list</tt> synopsis, 23.3.9.1 [forwardlist.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>forward_list() : forward_list(Allocator()) { }</ins>
+explicit forward_list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.9.2 [forwardlist.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit forward_list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>list</tt> synopsis, 23.3.10.1 [list.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>list() : list(Allocator()) { }</ins>
+explicit list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.10.2 [list.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit list(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>vector</tt> synopsis, 23.3.11.1 [vector.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>vector() : vector(Allocator()) { }</ins>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.3.11.2 [vector.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template specialization <tt>vector&lt;bool&gt;</tt> synopsis, 23.3.12 [vector.bool] p1 as indicated:</p>
+<blockquote><pre>
+<ins>vector() : vector(Allocator()) { }</ins>
+explicit vector(const Allocator&amp;<del> = Allocator()</del>);
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>map</tt> synopsis, 23.4.4.1 [map.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>map() : map(Compare()) { }</ins>
+explicit map(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.4.2 [map.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit map(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>multimap</tt> synopsis, 23.4.5.1 [multimap.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>multimap() : multimap(Compare()) { }</ins>
+explicit multimap(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.5.2 [multimap.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit multimap(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>set</tt> synopsis, 23.4.6.1 [set.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>set() : set(Compare()) { }</ins>
+explicit set(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.6.2 [set.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit set(const Compare&amp; comp<del> = Compare()</del>,
+             const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>multiset</tt> synopsis, 23.4.7.1 [multiset.overview] p2 as indicated:</p>
+<blockquote><pre>
+<ins>multiset() : multiset(Compare()) { }</ins>
+explicit multiset(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.4.7.2 [multiset.cons] before p1 as indicated:</p>
+<blockquote><pre>
+explicit multiset(const Compare&amp; comp<del> = Compare()</del>,
+                  const Allocator&amp; = Allocator());
+</pre></blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_map</tt> synopsis, 23.5.4.1 [unord.map.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_map();</ins>
+explicit unordered_map(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.4.2 [unord.map.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_map() : unordered_map(size_type(<i>see below</i>)) { }</ins>
+explicit unordered_map(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre>
+
+-1- <i>Effects:</i> Constructs an empty <code>unordered_map</code> using the specified hash function, key equality func-<br />
+tion, and allocator, and using at least <i>n</i> buckets. <del>If <i>n</i> is not provided,</del> <ins>For the default constructor</ins><br />
+the number of buckets is implementation-defined. <code>max_load_factor()</code> returns 1.0.
+</blockquote>
+
+</li>
+
+<li><p>Change class template <tt>unordered_multimap</tt> synopsis, 23.5.5.1 [unord.multimap.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multimap();</ins>
+explicit unordered_multimap(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.5.2 [unord.multimap.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multimap() : unordered_multimap(size_type(<i>see below</i>)) { }</ins>
+explicit unordered_multimap(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre>
+
+-1- <i>Effects:</i> Constructs an empty <code>unordered_multimap</code> using the specified hash function, key equality<br />
+function, and allocator, and using at least <i>n</i> buckets. <del>If <i>n</i> is not provided,</del> <ins>For the default constructor</ins><br />
+the number of buckets is implementation-defined. <code>max_load_factor()</code> returns 1.0.
+
+</blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_set</tt> synopsis, 23.5.6.1 [unord.set.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_set();</ins>
+explicit unordered_set(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.6.2 [unord.set.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_set() : unordered_set(size_type(<i>see below</i>)) { }</ins>
+explicit unordered_set(size_type n<del> = <i>see below</i></del>,
+                       const hasher&amp; hf = hasher(),
+                       const key_equal&amp; eql = key_equal(),
+                       const allocator_type&amp; a = allocator_type());
+</pre>
+
+-1- <i>Effects:</i> Constructs an empty <code>unordered_set</code> using the specified hash function, key equality func-<br />
+tion, and allocator, and using at least <i>n</i> buckets. <del>If <i>n</i> is not provided,</del> <ins>For the default constructor</ins><br />
+the number of buckets is implementation-defined. <code>max_load_factor()</code> returns 1.0.
+
+</blockquote>
+</li>
+
+<li><p>Change class template <tt>unordered_multiset</tt> synopsis, 23.5.7.1 [unord.multiset.overview] p3 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multiset();</ins>
+explicit unordered_multiset(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre></blockquote>
+</li>
+
+<li><p>Change 23.5.7.2 [unord.multiset.cnstr] before p1 as indicated:</p>
+<blockquote><pre>
+<ins>unordered_multiset() : unordered_multiset(size_type(<i>see below</i>)) { }</ins>
+explicit unordered_multiset(size_type n<del> = <i>see below</i></del>,
+                            const hasher&amp; hf = hasher(),
+                            const key_equal&amp; eql = key_equal(),
+                            const allocator_type&amp; a = allocator_type());
+</pre>
+
+-1- <i>Effects:</i> Constructs an empty <code>unordered_multiset</code> using the specified hash function, key equality<br />
+function, and allocator, and using at least <i>n</i> buckets. <del>If <i>n</i> is not provided,</del> <ins>For the default constructor</ins><br />
+the number of buckets is implementation-defined. <code>max_load_factor()</code> returns 1.0.
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

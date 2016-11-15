@@ -1,0 +1,224 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2468: Self-move-assignment of library types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2468" href="#2468">2468.</a> Self-move-assignment of library types</h3>
+<p><b>Section:</b> 17.6.4.9 [res.on.arguments], 17.6.3.1 [utility.arg.requirements], 17.6.5.15 [lib.types.movedfrom], 23.2.1 [container.requirements.general] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Matt Austern <b>Opened:</b> 2015-01-22 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#res.on.arguments">issues</a> in [res.on.arguments].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Suppose we write
+</p>
+<blockquote>
+<pre>
+vector&lt;string&gt; v{"a", "b", "c", "d"};
+v = move(v);
+</pre>
+</blockquote>
+<p>
+What should be the state of <tt>v</tt> be? The standard doesn't say anything specific about self-move-assignment. 
+There's relevant text in several parts of the standard, and it's not clear how to reconcile them.
+<p/>
+17.6.4.9 [res.on.arguments] writes that, for all functions in the standard library, unless explicitly stated 
+otherwise, "If a function argument binds to an rvalue reference parameter, the implementation may assume that this 
+parameter is a unique reference to this argument." The <tt>MoveAssignable</tt> requirements table in 
+17.6.3.1 [utility.arg.requirements] writes that, given <tt>t = rv</tt>, <tt>t</tt>'s state is equivalent to 
+<tt>rv</tt>'s from before the assignment and <tt>rv</tt>'s state is unspecified (but valid). For containers 
+specifically, the requirements table in 23.2.1 [container.requirements.general] says that, given <tt>a = rv</tt>, 
+<tt>a</tt> becomes equal to what <tt>rv</tt> was before the assignment (and doesn't say anything about <tt>rv</tt>'s 
+state post-assignment).
+<p/>
+Taking each of these pieces in isolation, without reference to the other two:
+</p>
+<ul>
+<li><p>17.6.4.9 [res.on.arguments] would clearly imply that the effect of <tt>v = move(v)</tt> is undefined.</p></li>
+<li><p>17.6.3.1 [utility.arg.requirements] would clearly imply that <tt>v = move(v)</tt> has defined behavior. 
+It might be read to imply that this is a no-op, or might be read to imply that it leaves <tt>v</tt> in a valid but 
+unspecified state; I'm not sure which reading is more natural.</p></li>
+<li><p>23.2.1 [container.requirements.general] would clearly imply that <tt>v = move(v)</tt> is a no-op.</p></li>
+</ul>
+<p>
+It's not clear from the text how to put these pieces together, because it's not clear which one takes precedence.  
+Maybe 17.6.4.9 [res.on.arguments] wins (it imposes an implicit precondition that isn't mentioned in the 
+<tt>MoveAssignable</tt> requirements, so <tt>v = move(v)</tt> is undefined), or maybe 
+23.2.1 [container.requirements.general] wins (it explicitly gives additional guarantees for 
+<tt>Container::operator=</tt> beyond what's guaranteed for library functions in general, so <tt>v = move(v)</tt> 
+is a no-op), or maybe something else.
+<p/>
+On the existing implementations that I checked, for what it's worth, <tt>v = move(v)</tt> appeared to clear the vector; 
+it didn't leave the vector unchanged and it didn't cause a crash.
+<p/>
+<em>Proposed wording</em>:
+<p/>
+Informally: change the <tt>MoveAssignable</tt> and Container requirements tables (and any other requirements tables 
+that mention move assignment, if any) to make it explicit that <tt>x = move(x)</tt> is defined behavior and it leaves 
+<tt>x</tt> in a valid but unspecified state. That's probably not what the standard says today, but it's probably what 
+we intended and it's consistent with what we've told users and with what implementations actually do.
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>JW: So far, the library forbids self-assignment since it assumes that anything bound to an rvalue reference has no aliases. But self-assignment can happen in real code, and it can be implemented. So I want to add an exception to the Standard that this should be allowed and leave the object in a valid-but-unspecified state.</p>
+<p>STL: When this is resolved, I want to see a) VBU for library types after self-move, but also b) requirements on user types for self-moves. E.g. should algorithms be required to avoid self-assignments (since a user-defined type might blow up)? HH: In other words, should we require that you can assign from moved-from values.</p>
+<p>WEB: What can one generally do with moved-from values?</p>
+<p>VV: Call any member function that has no preconditions.</p>
+<p>JW: That's certainly the library requirement, and it's also good guidance for user types.</p>
+<p>JW: I'm writing wording. I care about this.</p>
+<p>Move to Open; Jonathan to provide wording</p>
+
+<p><i>[2016-08-01, Howard provided wording]</i></p>
+
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Tuesday AM: Move to Tentatively Ready</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>
+In 17.6.3.2 [swappable.requirements], modify Table 23 &mdash; <code>MoveAssignable</code> requirements [moveassignable]:
+</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 23 &mdash; <tt>MoveAssignable</tt> requirements [moveassignable]</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Return value</th>
+<th>Post-condition</th>
+</tr>
+
+<tr>
+<td><tt>t = rv</tt></td>
+<td><tt>T&amp;</tt></td>
+<td><tt>t</tt></td>
+<td><ins>If <tt>addressof(t) != addressof(rv)</tt>,</ins> <tt>t</tt> is
+equivalent to the value of <tt>rv</tt> before the assignment</td>
+</tr>
+
+<tr>
+<td colspan="4">
+<tt>rv</tt>'s state is unspecified. [<i>Note:</i> <tt>rv</tt> must
+still meet the requirements of the library component that is using it<ins>,
+whether or not <tt>addressof(t) == addressof(rv)</tt></ins>. The
+operations listed in those requirements must work as specified whether
+<tt>rv</tt> has been moved from or not. &mdash; <i>end note</i>] </td>
+</tr>
+
+</table>
+
+</blockquote>
+
+</blockquote>
+
+<p><i>[2016-08-07, Daniel reopens]</i></p>
+
+<p>
+With the acceptance of LWG <a href="lwg-defects.html#2598">2598</a>, the proposed wording is invalid code, because it attempts to
+call <code>std::addressof</code> with an rvalue argument. It should be pointed out that the new restriction 
+caused by <a href="lwg-defects.html#2598">2598</a> doesn't affect real code, because any identity test within a move assignment
+operator (or any comparable function) would act on the current function argument, which is an lvalue in the
+context of the function body. The existing wording form of the issue could still be kept, if a helper variable
+would be introduced such as:
+</p>
+<blockquote><p>
+<ins>Let <code>refrv</code> denote a reference initialized as if by <code>const T&amp; refrv = rv;</code>. Then 
+if <code>addressof(t) != addressof(refrv)</code>,</ins> <code>t</code> is equivalent to the value of <code>rv</code> 
+before the assignment
+</p></blockquote>
+<p>
+But it seems to me that the same effect could be much easier realized by replacing the code form by 
+a non-code English phrase that realizes the same effect.
+</p>
+
+<p><i>[2016-09-09 Issues Resolution Telecon]</i></p>
+
+<p>Move to Tentatively Ready</p>
+
+<p><i>[2016-10-05, Tim Song comments]</i></p>
+
+<p>
+The current P/R of LWG 2468 simply adds to <tt>MoveAssignable</tt> the requirement to tolerate self-move-assignment, 
+but that doesn't actually do much about self-move-assignment of library types. Very few types in the library are 
+explicitly required to satisfy <tt>MoveAssignable</tt>, so as written the restriction in 17.6.4.9 [res.on.arguments] 
+would seem to still apply for any type that's not explicitly required to be <tt>CopyAssignable</tt> or <tt>MoveAssignable</tt>.
+<p/>
+The current P/R also doesn't address the issue with 23.2.1 [container.requirements.general] noted in the issue discussion.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p> In 17.6.3.2 [swappable.requirements], modify Table 23 &mdash; <code>MoveAssignable</code> 
+requirements [moveassignable]:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 23 &mdash; <tt>MoveAssignable</tt> requirements [moveassignable]</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Return value</th>
+<th>Post-condition</th>
+</tr>
+
+<tr>
+<td><tt>t = rv</tt></td>
+<td><tt>T&amp;</tt></td>
+<td><tt>t</tt></td>
+<td><ins>If <code>t</code> and <code>rv</code> do not refer to the same object,</ins> <tt>t</tt> is
+equivalent to the value of <tt>rv</tt> before the assignment</td>
+</tr>
+
+<tr>
+<td colspan="4">
+<tt>rv</tt>'s state is unspecified. [<i>Note:</i> <tt>rv</tt> must
+still meet the requirements of the library component that is using it<ins>,
+whether or not <code>t</code> and <code>rv</code> refer to the same object</ins>. The
+operations listed in those requirements must work as specified whether
+<tt>rv</tt> has been moved from or not. &mdash; <i>end note</i>] </td>
+</tr>
+
+</table>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

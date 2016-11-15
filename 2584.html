@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2584: &lt;regex&gt; ECMAScript IdentityEscape is ambiguous</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2584" href="#2584">2584.</a> <tt>&lt;regex&gt;</tt> ECMAScript <tt>IdentityEscape</tt> is ambiguous</h3>
+<p><b>Section:</b> 28.13 [re.grammar] <b>Status:</b> <a href="lwg-active.html#WP">Pending WP</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2016-01-13 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#re.grammar">active issues</a> in [re.grammar].</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.grammar">issues</a> in [re.grammar].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending WP">Pending WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Stephan and I are seeing differences in implementation for how non-special characters should be handled in the 
+<tt>IdentityEscape</tt> part of the ECMAScript grammar. For example:
+</p>
+<blockquote><pre>
+#include &lt;stdio.h&gt;
+#include &lt;iostream&gt;
+#ifdef USE_BOOST
+#include &lt;boost/regex.hpp&gt;
+using namespace boost;
+#else
+#include &lt;regex&gt;
+#endif
+using namespace std;
+
+int main() {
+  try {
+    const regex r("\\z");
+    cout &lt;&lt; "Constructed \\z." &lt;&lt; endl;
+    if (regex_match("z", r))
+      cout &lt;&lt; "Matches z" &lt;&lt; endl;
+  } catch (const regex_error&amp; e) {
+      cout &lt;&lt; e.what() &lt;&lt; endl;
+  }
+}
+</pre></blockquote>
+<p>
+libstdc++, boost, and browsers I tested with (Microsoft Edge, Google Chrome) all happily interpret <tt>\z</tt>, which 
+otherwise has no meaning, as an identity character escape for the letter <tt>z</tt>.
+libc++ and msvc++ say that this is invalid, and throw <tt>regex_error</tt> with <tt>error_escape</tt>.
+<p/>
+ECMAScript 3 (which is what C++ currently points to) seems to agree with libc++ and msvc++:
+</p>
+<blockquote>
+<pre>
+IdentityEscape ::
+  SourceCharacter <b>but not</b> IdentifierPart
+
+IdentifierPart ::
+  IdentifierStart
+  UnicodeCombiningMark
+  UnicodeDigit
+  UnicodeConnectorPunctuation
+  \ UnicodeEscapeSequence
+
+IdentifierStart ::
+  UnicodeLetter
+  $
+  _
+  \ UnicodeEscapeSequence
+</pre>
+</blockquote>
+<p>
+But this doesn't make any sense &mdash; it prohibits things like <tt>\$</tt> which users absolutely need to be able to escape. 
+So let's look at ECMAScript 6. I believe this says much the same thing, but updates the spec to better handle Unicode by 
+referencing what the Unicode standard says is an identifier character:
+</p>
+<blockquote>
+<pre>
+IdentityEscape ::
+  SyntaxCharacter
+  /
+  SourceCharacter <b>but not</b> UnicodeIDContinue
+  
+UnicodeIDContinue ::
+  any Unicode code point with the Unicode property "ID_Continue", "Other_ID_Continue", or "Other_ID_Start"
+</pre>
+</blockquote>
+<p>
+However, ECMAScript 6 has an appendix B defining "additional features for web browsers" which says:
+</p>
+<blockquote>
+<pre>
+IdentityEscape ::
+  SourceCharacter <b>but not</b> c
+</pre>
+</blockquote>
+<p>
+which appears to agree with what libstdc++, boost, and browsers are doing.
+<p/>
+What should be the correct behavior here?
+</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Monday PM: Move to tentatively ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4567.
+</p>
+
+<ol>
+<li><p>Change 28.13 [re.grammar]/3 as indicated:</p>
+
+<blockquote>
+<p>
+-3- The following productions within the ECMAScript grammar are modified as follows:
+</p>
+<blockquote><pre>
+ClassAtom ::
+  -
+  ClassAtomNoDash
+  ClassAtomExClass
+  ClassAtomCollatingElement
+  ClassAtomEquivalence
+  
+<ins>IdentityEscape ::
+  SourceCharacter <b>but not</b> c</ins>
+</pre></blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

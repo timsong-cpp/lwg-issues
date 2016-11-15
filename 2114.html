@@ -1,0 +1,1338 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2114: Incorrect "contextually convertible to bool" requirements</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2114" href="#2114">2114.</a> Incorrect "<em>contextually</em> convertible to <tt>bool</tt>" requirements</h3>
+<p><b>Section:</b> 17.6.3.3 [nullablepointer.requirements], 24.2.3 [input.iterators], 24.2.7 [random.access.iterators], 25.1 [algorithms.general], 25.5 [alg.sorting], 30.2.1 [thread.req.paramname] <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2011-12-09 <b>Last modified:</b> 2016-11-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+As of 17.6.3.1 [utility.arg.requirements] Table 17&#47;18, the return types of the expressions
+</p>
+<blockquote><pre>
+a == b
+</pre></blockquote>
+<p>
+or
+</p>
+<blockquote><pre>
+a &lt; b
+</pre></blockquote>
+<p>
+for types satisfying the <tt>EqualityComparable</tt> or <tt>LessThanComparable</tt>
+types, respectively, are required to be "convertible to <tt>bool</tt>" which corresponds to
+a copy-initialization context. But several newer parts of the library that refer to 
+such contexts have lowered the requirements taking  advantage of the new terminology of 
+"<em>contextually</em> convertible to <tt>bool</tt>" instead, which corresponds to a 
+direct-initialization context (In addition to "normal" direct-initialization constructions, 
+operands of logical operations as well as <tt>if</tt> or <tt>switch</tt> conditions also 
+belong to this special context).
+<p/>
+One example for these new requirements are input iterators which satisfy <tt>EqualityComparable</tt> 
+but also specify that the expression
+</p>
+<blockquote><pre>
+a != b
+</pre></blockquote>
+<p>
+shall be just "<strong>contextually</strong> convertible to <tt>bool</tt>". The same discrepancy 
+exists for requirement set <tt>NullablePointer</tt> in regard to several equality-related expressions.
+<p/>
+For random access iterators we have
+</p>
+<blockquote><p>
+<tt>a &lt; b</tt>      contextually convertible to <tt>bool</tt>
+</p></blockquote>
+<p>
+as well as for all derived comparison functions, so strictly speaking we could have a random access 
+iterator that does not satisfy the <tt>LessThanComparable</tt> requirements, which looks like an
+artifact to me.
+<p/>
+Even if we keep with the existing requirements based on <tt>LessThanComparable</tt> or
+<tt>EqualityComparable</tt> we still would have the problem that some current specifications 
+are actually  based on the assumption of implicit convertibility instead of "explicit convertibility", e.g. 
+20.11.1.5 [unique.ptr.special] p3:
+</p>
+<blockquote><pre>
+template &lt;class T1, class D1, class T2, class D2&gt;
+bool operator!=(const unique_ptr&lt;T1, D1&gt;&amp; x, const unique_ptr&lt;T2, D2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: <tt>x.get() != y.get()</tt>.
+</p>
+</blockquote></blockquote>
+<p>
+Similar examples exist in 20.11.1.2.2 [unique.ptr.single.dtor] p2, 20.11.1.2.3 [unique.ptr.single.asgn] p9,
+20.11.1.2.4 [unique.ptr.single.observers] p1+3+8, etc.
+<p/>
+In all these places the expressions involving comparison functions (but <em>not</em> those of the conversion 
+of a <tt>NullablePointer</tt> to <tt>bool</tt>!) assume to be "convertible to <tt>bool</tt>". I think this
+is a very natural assumption and all delegations of the comparison functions of some type <tt>X</tt> to some
+other API type <tt>Y</tt> in third-party code does so assuming that copy-initialization semantics will
+just work.
+<p/>
+The actual reason for using the newer terminology can be rooted back to LWG <a href="lwg-defects.html#556">556</a>. My hypotheses 
+is that the resolution of that issue also needs a slight correction. Why so?
+<p/>
+The reason for opening that issue were worries based on the previous "convertible to <tt>bool</tt>"
+wording. An expressions like "<tt>!pred(a, b)</tt>" might not be well-formed in those situations, because
+<tt>operator!</tt> might not be accessible or might have an unusual semantics (and similarly for other logical
+operations). This can indeed happen with unusual proxy return types, so the idea was that the evaluation of 
+<tt>Predicate</tt>, <tt>BinaryPredicate</tt> (25.1 [algorithms.general] p8+9), and <tt>Compare</tt> 
+(25.5 [alg.sorting] p2) should be defined based on contextual conversion to <tt>bool</tt>. 
+Unfortunately this <em>alone</em> is not sufficient: In addition, I think, we <em>also</em> want the predicates 
+to be (implicitly) convertible to <tt>bool</tt>! Without this wording, several conditions are plain wrong, 
+e.g. 25.3.5 [alg.find] p2, which talks about "<tt>pred(*i) != false</tt>" (<tt>find_if</tt>) and 
+"<tt>pred(*i) == false</tt>" (<tt>find_if_not</tt>). These expressions are not within a boolean context! 
+<p/>
+While we could simply fix all these places by proper wording to be considered in a "contextual conversion to
+<tt>bool</tt>", I think that this is not the correct solution: Many third-party libraries already refer to
+the previous C++03 <tt>Predicate</tt> definition &mdash; it actually predates C++98 and is as old as the 
+<a href="http://www.sgi.com/tech/stl/Predicate.html">SGI specification</a>. It seems to be a high price to
+pay to switch to direct initialization here instead of fixing a completely different specification problem.
+<p/>
+A final observation is that we have another definition for a <tt>Predicate</tt> in 30.2.1 [thread.req.paramname] p2:
+</p>
+<blockquote><p>
+If a parameter is <tt>Predicate</tt>, <tt>operator()</tt> applied to the actual template argument shall return a value that
+is convertible to <tt>bool</tt>.
+</p></blockquote>
+<p>
+The problem here is not that we have two different definitions of <tt>Predicate</tt> in the standard &mdash; this 
+is confusing, but this fact alone is not a defect. The first (minor) problem is that this definition does not properly 
+apply to function objects that are function pointers, because <tt>operator()</tt> is not defined in a strict sense. 
+But the actually worse second problem is that this wording has the very <tt>same</tt> problem that has originally lead to
+LWG <a href="lwg-defects.html#556">556</a>! We only need to look at 30.5.1 [thread.condition.condvar] p15 to recognice this:
+</p>
+<blockquote><pre>
+while (!pred())
+  wait(lock);
+</pre></blockquote>
+<p>
+The negation expression here looks very familiar to the example provided in LWG <a href="lwg-defects.html#556">556</a> and is sensitive
+to the same "unusual proxy" problem. Changing the 30.2.1 [thread.req.paramname] wording to a corresponding
+"contextual conversion to <tt>bool</tt>" wouldn't work either, because existing specifications rely on "convertible
+to <tt>bool</tt>", e.g. 30.5.1 [thread.condition.condvar] p32+33+42 or 30.5.2 [thread.condition.condvarany] 
+p25+26+32+33.
+<p/>
+To summarize: I believe that LWG <a href="lwg-defects.html#556">556</a> was not completely resolved. A pessimistic interpretation is,
+that even with the current wording based on "contextually convertible to <tt>bool</tt>" the actual problem of that 
+issue has <em>not</em> been fixed. What actually needs to be required here is some normative wording that basically
+expresses something along the lines of:
+</p>
+<blockquote><p>
+The semantics of <em>any</em> contextual conversion to <tt>bool</tt> shall be equivalent to the semantics of 
+any implicit conversion to <tt>bool</tt>.
+</p></blockquote>
+<p>
+This is still not complete without having concepts, but it seems to be a better approximation. Another way of solving
+this issue would be to define a minimum requirements table with equivalent semantics. The proposed wording is a bit
+simpler but attempts to express the same thing.
+</p>
+
+<p><i>[2012, Kona]</i></p>
+
+<p>
+Agree with Daniel that we potentially broke some C++03 user code, accept the changes striking
+"contextually" from tables.  Stefan to provide revised wording for section 25, and figure out
+changes to section 30.
+</p>
+<p>
+Move to open, and then to Review when updated wording from Stefan is available.
+</p>
+
+<p><i>[2012-10-12, STL comments]</i></p>
+
+
+<ol>
+<li>
+<p>
+The current proposed resolution still isn't completely satisfying. It would certainly be possible for the Standard to 
+require these various expressions to be implicitly and contextually convertible to <tt>bool</tt>, but that would have 
+a subtle consequence (which, I will argue, is undesirable - regardless of the fact that it dates all the way back to 
+C++98/03). It would allow users to provide really wacky types to the Standard Library, with one of two effects:
+</p>
+<ol style="list-style-type:upper-alpha">
+<li>
+<p>Standard Library implementations would have to go to great lengths to respect such wacky types, essentially using 
+<tt>static_cast&lt;bool&gt;</tt> when invoking any predicates or comparators.
+</p>
+</li>
+
+<li>
+<p>
+Otherwise, such wacky types would be de facto nonportable, because they would make Standard Library implementations 
+explode.
+</p>
+</li>
+</ol>
+
+<p>
+Effect B is the status quo we're living with today. What Standard Library implementations want to do with <tt>pred(args)</tt> 
+goes beyond "<tt>if (pred(args))</tt>" (C++03), contextually converting <tt>pred(args)</tt> to <tt>bool</tt> (C++11), or 
+implicitly and contextually converting <tt>pred(args)</tt> to <tt>bool</tt> (the current proposed resolution). 
+Implementations want to say things like:
+</p>
+
+<blockquote><pre>
+if (pred(args))
+if (!pred(args))
+if (cond &amp;&amp; pred(args))
+if (cond &amp;&amp; !pred(args))
+</pre></blockquote>
+
+<p>
+These are real examples taken from Dinkumware's implementation. There are others that would be realistic 
+("<tt>pred(args) &amp;&amp; cond</tt>", "<tt>cond || pred(args)</tt>", etc.)
+<p/>
+Although negation was mentioned in this issue's Discussion section, and in LWG <a href="lwg-defects.html#556">556</a>'s, the current proposed 
+resolution doesn't fix this problem. Requiring <tt>pred(args)</tt> to be implicitly and contextually convertible to <tt>bool</tt> 
+doesn't prevent <tt>operator!()</tt> from being overloaded and returning <tt>std::string</tt> (as a wacky example). More 
+ominously, it doesn't prevent <tt>operator&amp;&amp;()</tt> and <tt>operator||()</tt> from being overloaded and destroying 
+short-circuiting.
+</p>
+
+</li>
+
+<li>
+<p>
+I would like LWG input before working on Standardese for a new proposed resolution. Here's an outline of what I'd like to 
+do:
+</p>
+<ol style="list-style-type:upper-alpha">
+<li>
+<p>
+Introduce a new "concept" in 17.6.3 [utility.requirements], which I would call <tt>BooleanTestable</tt> in the 
+absence of better ideas.
+</p>
+</li>
+
+<li>
+<p>
+Centralize things and reduce verbosity by having everything simply refer to <tt>BooleanTestable</tt> when necessary. 
+I believe that the tables could say "Return type: <tt>BooleanTestable</tt>", while Predicate/BinaryPredicate/Compare 
+would need the incantation "shall satisfy the requirements of BooleanTestable".
+</p>
+</li>
+
+<li>
+<p>
+Resolve the tug-of-war between users (who occasionally want to do weird things) and implementers (who don't want to have 
+to contort their code) by requiring that:
+</p>
+<ol style="list-style-type:upper-roman">
+<li>
+<p>
+Given a <tt>BooleanTestable x</tt>, <tt>x</tt> is both implicitly and contextually convertible to <tt>bool</tt>.
+</p>
+</li>
+
+<li>
+<p>
+Given a <tt>BooleanTestable x</tt>, <tt>!x</tt> is <tt>BooleanTestable</tt>. (This is intentionally "recursive".)
+</p>
+</li>
+
+<li>
+<p>
+Given a <tt>BooleanTestable x</tt>, <tt>bool t = x, t2(x), f = !x;</tt> has the postcondition <tt>t == t2 &amp;&amp; t != f</tt>.
+</p>
+</li>
+
+<li>
+<p>
+Given a <tt>BooleanTestable x</tt> and a <tt>BooleanTestable y</tt> of possibly different types, "<tt>x &amp;&amp; y</tt>" 
+and "<tt>x || y</tt>" invoke the built-in <tt>operator&amp;&amp;()</tt> and <tt>operator||()</tt>, triggering short-circuiting.
+</p>
+</li>
+
+<li>
+<p>
+<tt>bool</tt> is <tt>BooleanTestable</tt>.
+</p>
+</li>
+</ol>
+
+</li>
+
+</ol>
+
+<p>
+ I believe that this simultaneously gives users great latitude to use types other than <tt>bool</tt>, while allowing 
+ implementers to write reasonable code in order to get their jobs done. (If I'm forgetting anything that implementers 
+ would want to say, please let me know.)
+</p>
+
+</li>
+
+<li>
+<p>
+About requirement (I): As Daniel patiently explained to me, we need to talk about both implicit conversions and 
+contextual conversions, because it's possible for a devious type to have both "<tt>explicit operator bool()</tt>" 
+and "<tt>operator int()</tt>", which might behave differently (or be deleted, etc.).
+</p>
+</li>
+
+<li>
+<p>
+About requirement (IV): This is kind of tricky. What we'd like to say is, "<tt>BooleanTestable</tt> can't ever trigger 
+an overloaded logical operator". However, given a perfectly reasonable type <tt>Nice</tt> - perhaps even <tt>bool</tt> itself! - 
+other code (perhaps a third-party library) could overload <tt>operator&amp;&amp;(Nice, Evil)</tt>. Therefore, I believe 
+that the requirement should be "no first use" - the Standard Library will ask for various <tt>BooleanTestable</tt> types 
+from users (for example, the result of "<tt>first != last</tt>" and the result of "<tt>pred(args)</tt>"), and as long 
+as they don't trigger overloaded logical operators with each other, everything is awesome.
+</p>
+</li>
+
+
+<li>
+<p>
+About requirement (V): This is possibly redundant, but it's trivial to specify, makes it easier for users to understand 
+what they need to do ("oh, I can always achieve this with <tt>bool</tt>"), and provides a "base case" for requirement 
+(IV) that may or may not be necessary.  Since <tt>bool</tt> is <tt>BooleanTestable</tt>, overloading 
+<tt>operator&amp;&amp;(bool, Other)</tt> (etc.) clearly makes the <tt>Other</tt> type non-<tt>BooleanTestable</tt>.
+</p>
+</li>
+</ol>
+
+<strong>Previous resolution from Daniel [SUPERSEDED]:</strong>
+<p/>
+<blockquote class="note">
+<p>This wording is relative to the FDIS.</p>
+
+<ol>
+<li><p>Change Table 25 &mdash; "<tt>NullablePointer</tt> requirements" in 17.6.3.3 [nullablepointer.requirements]
+as indicated:</p>
+
+<table border="1">
+<caption>Table 25 &mdash; <tt>NullablePointer</tt> requirements</caption>
+<tr align="center">
+<th>Expression</th>
+<th>Return type</th>
+<th>Operational semantics</th>
+</tr> 
+
+<tr>
+<td colspan="3" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a != b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>!(a == b)</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a == np<br/>
+np == a</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>a == P()</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a != np<br/>
+np != a</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>!(a == np)</tt>
+</td>
+</tr>
+
+</table>
+ 
+</li>
+
+<li><p>Change Table 107 &mdash; "Input iterator requirements" in 24.2.3 [input.iterators]
+as indicated:</p>
+
+<table border="1">
+<caption>Table 107 &mdash; Input iterator requirements (in addition to Iterator)</caption>
+<tr align="center">
+<th>Expression</th>
+<th>Return type</th>
+<th>Operational semantics</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr> 
+
+<tr>
+<td>
+<tt>a != b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>!(a == b)</tt>
+</td>
+<td>
+pre: <tt>(a, b)</tt> is in the domain of <tt>==</tt>.
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+
+</table>
+ 
+</li>
+
+<li><p>Change Table 111 &mdash; "Random access iterator requirements" in 24.2.7 [random.access.iterators]
+as indicated:</p>
+
+<table border="1">
+<caption>Table 111 &mdash; Random access iterator requirements (in addition to bidirectional iterator)</caption>
+<tr align="center">
+<th>Expression</th>
+<th>Return type</th>
+<th>Operational semantics</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr> 
+
+<tr>
+<td colspan="4" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt; b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>b - a &gt; 0</tt>
+</td>
+<td>
+<tt>&lt;</tt> is a total ordering relation
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt; b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>b &lt; a</tt>
+</td>
+<td>
+<tt>&gt;</tt> is a total ordering relation opposite to <tt>&lt;</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt;= b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>!(a &lt; b)</tt>
+</td>
+<td>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt;= b</tt>
+</td>
+<td>
+<del>contextually</del> convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>!(a &gt; b)</tt>
+</td>
+<td>
+</td>
+</tr>
+
+</table>
+ 
+</li>
+
+<li><p>Change 25.1 [algorithms.general] p8+9 as indicated:</p>
+
+<blockquote>
+<p>
+-8- The <tt>Predicate</tt> parameter is used whenever an algorithm expects a function object 
+(20.14 [function.objects]) that, when applied to the result of dereferencing the corresponding iterator, 
+returns a value testable as <tt>true</tt>. In other words, if an algorithm takes <tt>Predicate pred</tt> 
+as its argument and first as its iterator argument, it should work correctly in the construct 
+<tt>pred(*first)</tt> <ins>implicitly or</ins> contextually converted to <tt>bool</tt> (Clause 4 [conv]). 
+The function object <tt>pred</tt> shall not apply any non-constant function through the dereferenced iterator.
+<p/>
+-9- The <tt>BinaryPredicate</tt> parameter is used whenever an algorithm expects a function object that when applied
+to the result of dereferencing two corresponding iterators or to dereferencing an iterator and type
+<tt>T</tt> when <tt>T</tt> is part of the signature returns a value testable as <tt>true</tt>. In other words, if an algorithm takes
+<tt>BinaryPredicate binary_pred</tt> as its argument and <tt>first1</tt> and <tt>first2</tt> as its iterator arguments, it should
+work correctly in the construct <tt>binary_pred(*first1, *first2)</tt> <ins>implicitly or</ins> contextually converted to 
+<tt>bool</tt> (Clause 4 [conv]).
+<tt>BinaryPredicate</tt> always takes the first iterator's <tt>value_type</tt> as its first argument, that is, in those cases
+when <tt>T</tt> value is part of the signature, it should work correctly in the construct <tt>binary_pred(*first1, value)</tt> 
+<ins>implicitly or</ins> contextually converted to <tt>bool</tt> (Clause 4 [conv]). <tt>binary_pred</tt> shall 
+not apply any non-constant function through the dereferenced iterators.
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 25.5 [alg.sorting] p2 as indicated:</p>
+
+<blockquote>
+<p>
+-2- <tt>Compare</tt> is a function object type (20.14 [function.objects]). The return value of the function 
+call operation applied to an object of type <tt>Compare</tt>, when <ins>implicitly or</ins> contextually converted 
+to <tt>bool</tt> (4 [conv]), yields <tt>true</tt> if the first argument of the call is less than the second, and 
+<tt>false</tt> otherwise. <tt>Compare comp</tt> is used throughout for algorithms assuming an ordering relation. It is assumed 
+that <tt>comp</tt> will not apply any non-constant function through the dereferenced iterator.
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 30.2.1 [thread.req.paramname] p2 as indicated:</p>
+
+<blockquote>
+<p>
+-2- <del>If a parameter is <tt>Predicate</tt>, operator() applied to the actual template argument shall return a value that
+is convertible to <tt>bool</tt></del><ins><tt>Predicate</tt> is a function object type (20.14 [function.objects]).
+The return value of the function call operation applied to an object of type <tt>Predicate</tt>, when implicitly or 
+contextually converted to <tt>bool</tt> (4 [conv]), yields <tt>true</tt> if the corresponding test condition is
+satisfied, and <tt>false</tt> otherwise</ins>.
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2014-05-20, Daniel suggests concrete wording based on STL's proposal]</i></p>
+
+<p>
+The presented wording follows relatively closely STL's outline with the following notable exceptions:
+</p>
+<ol style="list-style-type:upper-alpha">
+<li><p>
+A reference to <tt>BooleanTestable</tt> in table "Return Type" specifications seemed very unusual to me and
+I found no "prior art" for this in the Standard. Instead I decided to follow the usual style to add a symbol
+with a specific meaning to a specific paragraph that specifies symbols and their meanings.
+</p></li>
+<li><p>
+STL's requirement IV suggested to directly refer to built-in operators <tt>&amp;&amp;</tt> and <tt>||</tt>. In my
+opinion this concrete requirement isn't needed if we simply require that two <tt>BooleanTestable</tt> operands behave 
+equivalently to two those operands after conversion to <tt>bool</tt> (each of them).
+</p></li>
+<li><p>
+I couldn't find a good reason to require normatively that type <tt>bool</tt> meets the requirements of <tt>BooleanTestable</tt>: My
+assertion is that after having defined them, the result simply falls out of this. But to make this a bit clearer, I added
+also a non-normative note to these effects.
+</p></li>
+</ol>
+
+<p><i>[2014-06-10, STL comments]</i></p>
+
+<p>
+In the current wording I would like to see changed the suggested changes described by bullet #6:
+</p>
+<ol style="list-style-type:upper-alpha">
+<li><p>In 23.2.1 [container.requirements.general] p4 undo the suggested change</p></li>
+<li><p>Then change the 7 occurrences of "convertible to <tt>bool</tt>" in the denoted tables to "<tt>bool</tt>".</p></li>
+</ol>
+
+<p><i>[2015-05-05 Lenexa]</i></p>
+
+<p>STL: Alisdair wanted to do something here, but Daniel gave us updated wording.</p>
+
+<p><i>[2015-07 Telecom]</i></p>
+<p>
+Alisdair: Should specify we don't break short circuiting.<br/>
+Ville: Looks already specified because that's the way it works for bool. <br/>
+Geoffrey: Maybe add a note about the short circuiting.<br/>
+B2/P2 is somewhat ambiguous. It implies that B has to be both implicitly convertible to bool and contextually convertible to bool.<br/>
+We like this, just have nits.<br/>
+Status stays Open.<br/>
+Marshall to ping Daniel with feedback.<br/>
+</p>
+
+<p><i>[2016-02-27, Daniel updates wording]</i></p>
+
+<ol>
+<li>
+<p>
+The revised wording has been updated from N3936 to N4567. 
+</p>
+</li>
+<li>
+<p>
+To satisfy the Kona 2015 committee comments, the wording in 
+[booleantestable.requirements] has been improved to better separate the two different requirements of "can be 
+contextually converted to <tt>bool</tt>" and "can be implicitly converted to <tt>bool</tt>. Both are necessary because 
+it is possible to define a type that has the latter property but not the former, such as the following one:
+</p>
+<blockquote class="note">
+<p>
+2016-08-07, Daniel: The below example has been corrected to reduce confusion about the performed conversions as indicated
+by the delta markers:
+</p>
+</blockquote>
+<blockquote><pre>
+using Bool = int;
+
+struct OddBoolean 
+{
+  explicit <ins>operator bool() const = delete;
+  operator Bool() const;</ins>
+  <del>OddBoolean(bool) = delete;
+  OddBoolean(Bool){}</del>
+} <ins>ob</ins>;
+
+<ins>bool b2 = ob; // OK
+bool b1(ob);  // Error</ins>
+<del>OddBoolean b2 = true; // OK
+OddBoolean b1(true);  // Error</del>
+<ins></ins>
+</pre></blockquote>
+</li>
+<li>
+<p>
+In [booleantestable.requirements] a note has been added to ensure that an implementation is not allowed to 
+break any short-circuiting semantics.
+</p>
+</li>
+<li>
+<p>
+I decided to separate LWG <a href="lwg-active.html#2587">2587</a>/<a href="lwg-active.html#2588">2588</a> from this issue. Both these issues aren't exactly the
+same but depending on the committee's position, their resolution might benefit from the new vocabulary introduced
+here.
+</p>
+</li>
+</ol>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Change 17.6.3.1 [utility.arg.requirements] p1, Table 17 &mdash; "EqualityComparable requirements", and
+Table 18 &mdash; "LessThanComparable requirements" as indicated:</p>
+
+<blockquote>
+<p>
+-1- [&hellip;] In these tables, <tt>T</tt> is an object or reference type to be supplied by a C++ program
+instantiating a template; <tt>a</tt>, <tt>b</tt>, and <tt>c</tt> are values of type (possibly <tt>const</tt>) <tt>T</tt>; 
+<tt>s</tt> and <tt>t</tt> are modifiable lvalues of type <tt>T</tt>; <tt>u</tt> denotes an identifier; <tt>rv</tt> 
+is an rvalue of type <tt>T</tt>; <del>and</del> <tt>v</tt> is an lvalue of type (possibly <tt>const</tt>) <tt>T</tt> or an
+rvalue of type <tt>const T</tt><ins>; and <tt>BT</tt> denotes a type that meets the <tt>BooleanTestable</tt> 
+requirements ([booleantestable.requirements])</ins>.
+<p/>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 17 &mdash; <tt>EqualityComparable</tt> requirements [equalitycomparable]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td>
+<tt>a == b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+<tt>==</tt> is an equivalence relation, that is, it has the
+following properties: [&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 18 &mdash; <tt>LessThanComparable</tt> requirements [lessthancomparable]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt; b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+<tt>&lt;</tt> is a strict weak ordering relation (25.5 [alg.sorting])
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</blockquote>
+
+</li>
+
+<li><p>Between 17.6.3.2 [swappable.requirements] and 17.6.3.3 [nullablepointer.requirements] insert a new sub-clause 
+as indicated:</p>
+
+<blockquote>
+?.?.?.? <b><tt>BooleanTestable</tt> requirements [booleantestable.requirements]</b>  
+<blockquote>
+<p>
+-?- A <tt>BooleanTestable</tt> type is a boolean-like type that also supports conversions to <tt>bool</tt>.
+A type <tt>B</tt> meets the <tt>BooleanTestable</tt> requirements if the expressions described in Table ?? are valid 
+and have the indicated semantics, and if <tt>B</tt> also satisfies all the other requirements of this sub-clause 
+[booleantestable.requirements].
+<p/>
+An object <tt>b</tt> of type <tt>B</tt> can be implicitly converted to <tt>bool</tt> and in addition can be 
+contextually converted to <tt>bool</tt> (Clause 4). The result values of both kinds of conversions shall be equivalent. 
+<p/>
+[<i>Example</i>: The types <tt>bool</tt>, <tt>std::true_type</tt>, and <tt>std::bitset&lt;&gt;::reference</tt> are 
+<tt>BooleanTestable</tt> types. &mdash; <i>end example</i>]
+<p/>
+For the purpose of Table ??, let <tt>B2</tt> and <tt>Bn</tt> denote types (possibly both equal to <tt>B</tt> or to each other) 
+that meet the <tt>BooleanTestable</tt> requirements, let <tt>b1</tt> denote a (possibly <tt>const</tt>) value of <tt>B</tt>, 
+let <tt>b2</tt> denote a (possibly <tt>const</tt>) value of <tt>B2</tt>, and let <tt>t1</tt> denote a value of type 
+<tt>bool</tt>.
+<p/>
+[<i>Note</i>: These rules ensure what an implementation can rely on but doesn't grant it
+license to break short-circuiting behavior of a <tt>BooleanTestable</tt> type. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Somewhere within the new sub-clause [booleantestable.requirements] insert the following new Table (?? denotes
+the assigned table number):</p>
+
+<blockquote>
+<table border="1">
+<caption>Table ?? &mdash; <tt>BooleanTestable</tt> requirements [booleantestable]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Operational semantics</th>
+</tr>
+
+<tr>
+<td>
+<tt>bool(b1)</tt>
+</td>
+<td>
+<tt>bool</tt>
+</td>
+<td>
+<i>Remarks</i>: <tt>bool(b1) == t1</tt> for every value<br/>
+<tt>b1</tt> implicitly converted to <tt>t1</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>!b1</tt>
+</td>
+<td>
+<tt>Bn</tt>
+</td>
+<td>
+<i>Remarks</i>: <tt>bool(b1) == !bool(!b1)</tt> for<br/>
+every value <tt>b1</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>b1 &amp;&amp; b2</tt>
+</td>
+<td>
+<tt>bool</tt>
+</td>
+<td>
+<tt>bool(b1) &amp;&amp; bool(b2)</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>b1 || b2</tt>
+</td>
+<td>
+<tt>bool</tt>
+</td>
+<td>
+<tt>bool(b1) || bool(b2)</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Change 17.6.3.3 [nullablepointer.requirements] p5 and Table 25 &mdash; "NullablePointer requirements" as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-5- In Table 25, <tt>u</tt> denotes an identifier, <tt>t</tt> denotes a non-<tt>const</tt> lvalue of type <tt>P</tt>, <tt>a</tt> 
+and <tt>b</tt> denote values of type (possibly <tt>const</tt>) <tt>P</tt>, <del>and</del> <tt>np</tt> denotes a value of type 
+(possibly <tt>const</tt>) <tt>std::nullptr_t</tt><ins>, and <tt>BT</tt> denotes a type that meets the <tt>BooleanTestable</tt> 
+requirements ([booleantestable.requirements])</ins>.
+<p/>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 25 &mdash; <tt>NullablePointer</tt> requirements [nullablepointer]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Operational semantics</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a != b</tt>
+</td>
+<td>
+<del>contextually convertible to <tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a == np</tt><br/>
+<tt>np == a</tt>
+</td>
+<td>
+<del>contextually convertible to <tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a != np</tt><br/>
+<tt>np != a</tt>
+</td>
+<td>
+<del>contextually convertible to <tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 20.5.2.8 [tuple.rel] as indicated;</p>
+
+<blockquote>
+<pre>
+template&lt;class... TTypes, class... UTypes&gt;
+constexpr bool operator==(const tuple&lt;TTypes...&gt;&amp; t, const tuple&lt;UTypes...&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires</i>: For all <tt>i</tt>, where <tt>0 &lt;= i</tt> and <tt>i &lt; sizeof...(TTypes)</tt>, 
+<tt>get&lt;i&gt;(t) == get&lt;i&gt;(u)</tt> is a valid expression returning a type that <del>is convertible to 
+<tt>bool</tt></del><ins>meets the <tt>BooleanTestable</tt> requirements ([booleantestable.requirements])</ins>. 
+<tt>sizeof...(TTypes) == sizeof...(UTypes)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class... TTypes, class... UTypes&gt;
+constexpr bool operator&lt;(const tuple&lt;TTypes...&gt;&amp; t, const tuple&lt;UTypes...&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+-4- <i>Requires</i>: For all <tt>i</tt>, where <tt>0 &lt;= i</tt> and <tt>i &lt; sizeof...(TTypes)</tt>, 
+<tt>get&lt;i&gt;(t) &lt; get&lt;i&gt;(u)</tt> and <tt>get&lt;i&gt;(u) &lt; get&lt;i&gt;(t)</tt> are valid 
+expressions returning types that <del>are convertible to 
+<tt>bool</tt></del><ins>meet the <tt>BooleanTestable</tt> requirements ([booleantestable.requirements])</ins>. 
+<tt>sizeof...(TTypes) == sizeof...(UTypes)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 23.2.1 [container.requirements.general], Table 95 &mdash; "Container requirements", and
+Table 97 &mdash; "Optional container operations" as indicated:</p>
+
+<blockquote>
+<p>
+-4- In Tables 95, 96, and 97 <tt>X</tt> denotes a container class containing objects of type <tt>T</tt>, <tt>a</tt> and 
+<tt>b</tt> denote values of type <tt>X</tt>, <tt>u</tt> denotes an identifier, <tt>r</tt> denotes a non-<tt>const</tt> value 
+of type <tt>X</tt>, <del>and</del> <tt>rv</tt> denotes a non-<tt>const</tt> rvalue of type <tt>X</tt><ins>, and <tt>BT</tt> 
+denotes a type that meets the <tt>BooleanTestable</tt> requirements ([booleantestable.requirements])</ins>.
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 95 &mdash; Container requirements</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">[&hellip;]</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a == b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a != b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.empty()</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 97 &mdash; Optional container requirements</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">[&hellip;]</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt; b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt; b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt;= b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt;= b</tt>
+</td>
+<td>
+<del>convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 24.2.1 [iterator.requirements.general], Table 106 &mdash; "Input iterator requirements", and
+Table 110 &mdash; "Random access iterator requirements" as indicated:</p>
+
+<blockquote>
+<p>
+-12- In the following sections, <tt>a</tt> and <tt>b</tt> denote values of type <tt>X</tt> or <tt>const X</tt>, 
+<tt>difference_type</tt> and <tt>reference</tt> refer to the types <tt>iterator_traits&lt;X&gt;::difference_type</tt> and 
+<tt>iterator_traits&lt;X&gt;::reference</tt>, respectively, <tt>n</tt> denotes a value of <tt>difference_type</tt>, <tt>u</tt>, 
+<tt>tmp</tt>, and <tt>m</tt> denote identifiers, <tt>r</tt> denotes a value of <tt>X&amp;</tt>, <tt>t</tt> denotes
+a value of value type <tt>T</tt>, <tt>o</tt> denotes a value of some type that is writable to the output iterator<ins>, and <tt>BT</tt> 
+denotes a type that meets the <tt>BooleanTestable</tt> requirements ([booleantestable.requirements])</ins>.
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 106 &mdash; Input iterator requirements</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">[&hellip;]</th>
+</tr>
+
+<tr>
+<td>
+<tt>a != b</tt>
+</td>
+<td>
+<del>contextually convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+</table>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 110 &mdash; Random access iterator requirements</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">[&hellip;]</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt; b</tt>
+</td>
+<td>
+<del>contextually convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt; b</tt>
+</td>
+<td>
+<del>contextually convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &gt;= b</tt>
+</td>
+<td>
+<del>contextually convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt;= b</tt>
+</td>
+<td>
+<del>contextually convertible to<br/>
+<tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 25.1 [algorithms.general] p8+p9 as indicated:</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The wording changes below also fix
+(a) unusual wording forms used ("should work") which are unclear in which sense they are imposing normative requirements and
+(b) the problem, that the current wording seems to allow that the predicate may mutate a call argument, if that is not a 
+dereferenced iterator.
+Upon applying the new wording it became obvious that the both the previous and the new wording has the effect that currently 
+algorithms such as <tt>adjacent_find</tt>, <tt>search_n</tt>, <tt>unique</tt>, and <tt>unique_copy</tt> are not correctly 
+described (because they have no iterator argument named <tt>first1</tt>), which could give raise to a new library issue. 
+&mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+-8- The <tt>Predicate</tt> parameter is used whenever an algorithm expects a function object (20.9) that, when applied
+to the result of dereferencing the corresponding iterator, returns a value testable as <tt>true</tt>. <del>In other words,
+i</del><ins>I</ins>f an algorithm takes <tt>Predicate pred</tt> as its argument and <tt>first</tt> as its iterator argument, 
+<del>it should work correctly in the construct <tt>pred(*first)</tt> contextually converted to 
+<tt>bool</tt> (Clause 4)</del><ins>the expression <tt>pred(*first)</tt> shall have a type that meets the <tt>BooleanTestable</tt> 
+requirements ( [booleantestable.requirements])</ins>. 
+The function object <tt>pred</tt> shall not apply any non-constant function through <del>the dereferenced 
+iterator</del><ins>its argument</ins>.
+<p/>
+-9- The <tt>BinaryPredicate</tt> parameter is used whenever an algorithm expects a function object that when applied
+to the result of dereferencing two corresponding iterators or to dereferencing an iterator and type
+<tt>T</tt> when <tt>T</tt> is part of the signature returns a value testable as <tt>true</tt>. <del>In other words, 
+i</del><ins>I</ins>f an algorithm takes <tt>BinaryPredicate binary_pred</tt> as its argument and <tt>first1</tt> and 
+<tt>first2</tt> as its iterator arguments, <del>it should work correctly in the construct <tt>binary_pred(*first1, *first2)</tt> 
+contextually converted to <tt>bool</tt> (Clause 4)</del><ins>the expression <tt>binary_pred(*first1, *first2)</tt> shall 
+have a type that meets the <tt>BooleanTestable</tt> requirements ( [booleantestable.requirements])</ins>. 
+<tt>BinaryPredicate</tt> always takes the first iterator's <tt>value_type</tt> as its first argument, that is, in those cases 
+when <tt>T</tt> value is part of the signature, <del>it should work correctly in the construct <tt>binary_pred(*first1, value)</tt> 
+contextually converted to <tt>bool</tt> (Clause 4)</del><ins>the expression <tt>binary_pred(*first1, value)</tt> shall have a 
+type that meets the <tt>BooleanTestable</tt> requirements ( [booleantestable.requirements])</ins>. <tt>binary_pred</tt> 
+shall not apply any non-constant function through <del>the dereferenced iterators</del><ins>any of its arguments</ins>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 25.5 [alg.sorting] p2 as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <tt>Compare</tt> is a function object type (20.9). <del>The return value of the function call 
+operation applied to an object of type <tt>Compare</tt>, when contextually converted 
+to <tt>bool</tt>(Clause 4), yields <tt>true</tt> if the first argument of the call is less than the second, 
+and <tt>false</tt> otherwise.</del> <tt>Compare comp</tt> is used throughout for algorithms assuming an ordering relation. 
+<ins>Let <tt>a</tt> and <tt>b</tt> denote two argument values whose types depend on the corresponding algorithm. Then the expression 
+<tt>comp(a, b)</tt> shall have a type that meets the <tt>BooleanTestable</tt> requirements ( [booleantestable.requirements]).
+The return value of <tt>comp(a, b)</tt>, converted to <tt>bool</tt>, yields <tt>true</tt> if the 
+first argument <tt>a</tt> is less than the second argument <tt>b</tt>, and <tt>false</tt> otherwise.</ins> It is assumed that 
+<tt>comp</tt> will not apply any non-constant function through <del>the dereferenced iterator</del><ins>any of its arguments</ins>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 27.5.4.2 [fpos.operations] and Table 126 &mdash; "Position type requirements" as indicated:</p>
+
+<blockquote>
+<p>
+-1- Operations specified in Table 126 are permitted. In that table,
+</p>
+<ul>
+<li><p><tt>P</tt> refers to an instance of <tt>fpos</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p><tt>o</tt> refers to a value of type <tt>streamoff</tt>,</p></li>
+<li><p><ins><tt>BT</tt> refers to a type that meets the <tt>BooleanTestable</tt> requirements ([booleantestable.requirements]),</ins></p></li>
+<li><p>[&hellip;]</p></li>
+</ul>
+<blockquote>
+<table border="1">
+<caption>Table 126 &mdash; Position type requirements</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">[&hellip;]</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>p == q</tt>
+</td>
+<td>
+<del>convertible to <tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>p != q</tt>
+</td>
+<td>
+<del>convertible to <tt>bool</tt></del><ins><tt>BT</tt></ins>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+</table>
+</blockquote>
+</blockquote>
+<blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 30.2.1 [thread.req.paramname] p1 as indicated:</p>
+
+<blockquote>
+<p>
+-1- Throughout this Clause, the names of template parameters are used to express type requirements. <del>If a template
+parameter is named <tt>Predicate</tt>, <tt>operator()</tt> applied to the template argument shall return a value that
+is convertible to <tt>bool</tt></del><ins><tt>Predicate</tt> is a function object type (20.14 [function.objects]).
+Let <tt>pred</tt> denote an lvalue of type <tt>Predicate</tt>. Then the expression <tt>pred()</tt> shall have a type that meets the 
+<tt>BooleanTestable</tt> requirements ( [booleantestable.requirements]). The return value of <tt>pred()</tt>, 
+converted to <tt>bool</tt>, yields <tt>true</tt> if the corresponding test condition is satisfied, and <tt>false</tt> otherwise</ins>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
