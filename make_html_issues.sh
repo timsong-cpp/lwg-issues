@@ -2,6 +2,10 @@
 
 cd LWG
 git pull
+
+# Restore timestamp from the last commit that touched the file.
+# Otherwise the "last modified" time displayed is worthless.
+../git-tools/git-restore-mtime --force
 cd ..
 
 cp -pr LWG tmp
