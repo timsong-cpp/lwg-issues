@@ -4,7 +4,7 @@ cd LWG
 git pull
 cd ..
 
-cp -r LWG tmp
+cp -pr LWG tmp
 mkdir -p tmp/mailing
 bin/lists tmp/
 rm gh-pages/*.html
