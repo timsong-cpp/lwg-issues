@@ -1,10 +1,10 @@
 #! /bin/sh
 
-cd LWG
-git pull
+git submodule foreach git pull origin
 
 # Restore timestamp from the last commit that touched the file.
 # Otherwise the "last modified" time displayed is worthless.
+cd LWG
 ../git-tools/git-restore-mtime --force
 cd ..
 
