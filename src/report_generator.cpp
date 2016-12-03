@@ -48,7 +48,7 @@ auto utc_timestamp() -> std::tm const & {
 }
 
 // global data - would like to do something about that.
-static std::string const build_timestamp{format_time("<p>Revised %Y-%m-%d at %H:%m:%S UTC</p>\n", utc_timestamp())};
+static std::string build_timestamp;
 
 static std::string const maintainer_email{"lwgchair@gmail.com"};
 
@@ -541,6 +541,15 @@ out << R"(<h1>C++ Standard Library Issues Resolved Directly In [INSERT CURRENT M
    out << "<h2>Immediate Issues</h2>\n";
    print_issues(out, issues, section_db, [](issue const & i) {return "Immediate" == i.stat;} );
    print_file_trailer(out);
+}
+
+
+void report_generator::set_timestamp_from_issues(std::vector<issue> const & issues){
+    auto max_time = std::max_element(issues.begin(), issues.end(),
+                                     [](const issue& a, const issue& b) {
+                                         return std::difftime(a.mod_timestamp, b.mod_timestamp) < 0; 
+                                     })->mod_timestamp;
+    build_timestamp = format_time("<p>Revised %Y-%m-%d at %H:%m:%S UTC</p>\n", max_time);
 }
 
 void report_generator::make_ready(std::vector<issue> const & issues, std::string const & path) {

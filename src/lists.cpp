@@ -780,6 +780,7 @@ int main(int argc, char* argv[]) {
 
 
       lwg::report_generator generator{lwg_issues_xml, section_db};
+      generator.set_timestamp_from_issues(issues);
 
 
       // issues must be sorted by number before making the mailing list documents
