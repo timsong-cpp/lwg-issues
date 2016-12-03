@@ -36,6 +36,11 @@ auto format_time(std::string const & format, std::tm const & t) -> std::string {
    return s;
 }
 
+auto format_time(std::string const& format, std::time_t t) -> std::string {
+    std::tm m = *std::gmtime(&t);
+    return format_time(format, m);
+}
+
 auto utc_timestamp() -> std::tm const & {
    static std::time_t t{ std::time(nullptr) };
    static std::tm utc = *std::gmtime(&t);
@@ -277,7 +282,7 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
              << " <b>Opened:</b> ";
          print_date(out, iss.date);
          out << " <b>Last modified:</b> ";
-         print_date(out, iss.mod_date);
+         out << format_time("%Y-%m-%d %H:%m:%S UTC", iss.mod_timestamp);
          out << "</p>\n";
 
          // priority
@@ -812,7 +817,6 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
        if (!out)
          throw std::runtime_error{"Failed to open " + filename};
        print_file_header(out, std::string("Issue ") + std::to_string(iss.num) + ": " + prune_title_tags(iss.title));
-       out << build_timestamp;
        print_issue(out, iss, section_db, all_issues, issues_by_status, active_issues);
        print_file_trailer(out);
    }

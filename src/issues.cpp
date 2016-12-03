@@ -63,13 +63,16 @@ auto make_date(std::tm const & mod) -> gregorian::date {
    return gregorian::year((unsigned short)(mod.tm_year+1900)) / (mod.tm_mon+1) / mod.tm_mday;
 }
 
-auto report_date_file_last_modified(std::string const & filename) -> gregorian::date {
+auto report_date_file_last_modified(std::string const & filename) -> std::time_t {
    struct stat buf;
    if (stat(filename.c_str(), &buf) == -1) {
       throw std::runtime_error{"call to stat failed for " + filename};
    }
+   return buf.st_mtime;
+}
 
-   return make_date(*std::localtime(&buf.st_mtime));
+auto make_date(std::time_t t) -> gregorian::date {
+   return make_date(*std::gmtime(&t));
 }
 
 } // close unnamed namespace
@@ -260,8 +263,9 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    try {
       is.date = parse_date(temp);
 
-      // Get modification date
-      is.mod_date = report_date_file_last_modified(filename);
+      // Get modification timestamp
+      is.mod_timestamp = report_date_file_last_modified(filename);
+      is.mod_date = make_date(is.mod_timestamp);
    }
    catch(std::exception const & ex) {
       throw bad_issue_file{filename, ex.what()};

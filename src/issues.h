@@ -22,7 +22,8 @@ struct issue {
    std::vector<section_tag>   tags;           // section(s) of the standard affected by the issue
    std::string                submitter;      // original submitter of the issue
    gregorian::date            date;           // date the issue was filed
-   gregorian::date            mod_date;       // this no longer appears useful
+   gregorian::date            mod_date;       // date of last modification (as reported by the system)
+   std::time_t                mod_timestamp;  // timestamp of last modification
    std::set<std::string>      duplicates;     // sorted list of duplicate issues, stored as html anchor references.
    std::string                text;           // text representing the issue
    int                        priority = 99;  // severity, 1 = critical, 4 = minor concern, 0 = trivial to resolve, 99 = not yet prioritised
