@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2016-12-14 at 19:12:45 UTC</p>
+<p><p>Revised 2016-12-15 at 19:12:25 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="255" href="255">255.</a> Why do <tt>basic_streambuf&lt;&gt;::pbump()</tt> and <tt>gbump()</tt> take an int?</h3>
@@ -27062,6 +27062,344 @@ This wording is relative to <a href="http://wg21.link/n4618">N4618</a>.
 <p/>
 -4- Every other C header, [&hellip;]
 </p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2836" href="2836">2836.</a> More string operations should be <tt>noexcept</tt></h3>
+<p><b>Section:</b> 21.3.1 [basic.string], 21.3.1.7.2 [string.find], 21.3.1.7.3 [string.rfind], 21.3.1.7.4 [string.find.first.of], 21.3.1.7.5 [string.find.last.of], 21.3.1.7.6 [string.find.first.not.of], 21.3.1.7.7 [string.find.last.not.of], 21.3.1.7.9 [string.compare] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-12-05 <b>Last modified:</b> 2016-12-15 19:12:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#basic.string">active issues</a> in [basic.string].</p>
+<p><b>View all other</b> <a href="lwg-index.html#basic.string">issues</a> in [basic.string].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently some overloads of <tt>basic_string::find</tt> are <tt>noexcept</tt> and some are not. Historically this 
+was because some were specified in terms of constructing a temporary <tt>basic_string</tt>, which could throw. In 
+practice creating a temporary (and potentially allocating memory) is a silly implementation, and so they could be 
+<tt>noexcept</tt>. In the C++17 draft most of them have been changed to create a temporary <tt>basic_string_view</tt> 
+instead, which can't throw anyway (P0254R2 made those changes).
+<p/>
+This is confusing for users, as they need to carefully check which overload their code will resolve to, and consider 
+whether that overload can throw. Refactoring code can change whether it calls a throwing or non-throwing overload. 
+This is an unnecessary burden on users when realistically none of the functions will ever throw.
+<p/>
+The <tt>find</tt>, <tt>rfind</tt>, <tt>find_first_of</tt>, <tt>find_last_of</tt>, <tt>find_first_not_of</tt> and 
+<tt>find_last_not_of</tt> overloads that are defined in terms of <tt>basic_string_view</tt> should be <tt>noexcept</tt>, 
+or "<i>Throws:</i> Nothing." for the ones with narrow contracts (even though those narrow contracts are not enforcable 
+or testable).
+<p/>
+The remaining overloads that are still specified in terms of a temporary string could also be <tt>noexcept</tt>. They 
+construct <tt>basic_string</tt> of length one (which won't throw for an SSO implementation anyway), but can easily be 
+defined in terms of <tt>basic_string_view</tt> instead.
+<p/>
+There's one <tt>basic_string::compare</tt> overload that is still defined in terms of a temporary <tt>basic_string</tt>, 
+which should be <tt>basic_string_view</tt> and so can also be <tt>noexcept</tt> (the other <tt>compare</tt> overloads can 
+throw <tt>out_of_range</tt>).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4618">N4618</a>.
+</p>
+<ol>
+<li><p>Change class template synopsis <tt>std::basic_string</tt>, 21.3.1 [basic.string], as indicated:</p>
+<blockquote>
+<pre>
+size_type find (basic_string_view&lt;charT, traits> sv,
+                size_type pos = 0) const noexcept;
+size_type find (const basic_string&amp; str, size_type pos = 0) const noexcept;
+size_type find (const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+size_type find (const charT* s, size_type pos = 0) const;
+size_type find (charT c, size_type pos = 0) const <ins>noexcept</ins>;
+size_type rfind(basic_string_view&lt;charT, traits&gt; sv,
+                size_type pos = npos) const noexcept;
+size_type rfind(const basic_string&amp; str, size_type pos = npos) const noexcept;
+size_type rfind(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+size_type rfind(const charT* s, size_type pos = npos) const;
+size_type rfind(charT c, size_type pos = npos) const <ins>noexcept</ins>;
+size_type find_first_of(basic_string_view&lt;charT, traits&gt; sv,
+                        size_type pos = 0) const noexcept;
+size_type find_first_of(const basic_string&amp; str,
+                        size_type pos = 0) const noexcept;
+size_type find_first_of(const charT* s,
+                        size_type pos, size_type n) const <ins>noexcept</ins>;
+size_type find_first_of(const charT* s, size_type pos = 0) const;
+size_type find_first_of(charT c, size_type pos = 0) const <ins>noexcept</ins>;
+size_type find_last_of (basic_string_view&lt;charT, traits&gt; sv,
+                        size_type pos = npos) const noexcept;
+size_type find_last_of (const basic_string&amp; str,
+                        size_type pos = npos) const noexcept;
+size_type find_last_of (const charT* s,
+                        size_type pos, size_type n) const <ins>noexcept</ins>;
+size_type find_last_of (const charT* s, size_type pos = npos) const;
+size_type find_last_of (charT c, size_type pos = npos) const <ins>noexcept</ins>;
+size_type find_first_not_of(basic_string_view&lt;charT, traits&gt; sv,
+                            size_type pos = 0) const noexcept;
+size_type find_first_not_of(const basic_string&amp; str,
+                            size_type pos = 0) const noexcept;
+size_type find_first_not_of(const charT* s, size_type pos,
+                            size_type n) const <ins>noexcept</ins>;
+size_type find_first_not_of(const charT* s, size_type pos = 0) const;
+size_type find_first_not_of(charT c, size_type pos = 0) const <ins>noexcept</ins>;
+size_type find_last_not_of (basic_string_view&lt;charT, traits&gt; sv,
+                            size_type pos = npos) const noexcept;
+size_type find_last_not_of (const basic_string&amp; str,
+                            size_type pos = npos) const noexcept;
+size_type find_last_not_of (const charT* s, size_type pos,
+                            size_type n) const <ins>noexcept</ins>;
+size_type find_last_not_of (const charT* s,
+                            size_type pos = npos) const;
+size_type find_last_not_of (charT c, size_type pos = npos) const <ins>noexcept</ins>;
+
+basic_string substr(size_type pos = 0, size_type n = npos) const;
+int compare(basic_string_view&lt;charT, traits&gt; sv) const noexcept;
+int compare(size_type pos1, size_type n1,
+            basic_string_view&lt;charT, traits&gt; sv) const;
+template&lt;class T&gt;
+  int compare(size_type pos1, size_type n1, const T&amp; t,
+              size_type pos2, size_type n2 = npos) const;
+int compare(const basic_string&amp; str) const noexcept;
+int compare(size_type pos1, size_type n1,
+            const basic_string&amp; str) const;
+int compare(size_type pos1, size_type n1,
+            const basic_string&amp; str,
+            size_type pos2, size_type n2 = npos) const;
+int compare(const charT* s) const <ins>noexcept</ins>;
+int compare(size_type pos1, size_type n1,
+            const charT* s) const;
+int compare(size_type pos1, size_type n1,
+            const charT* s, size_type n2) const;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.2 [string.find] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type find(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>find(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type find(const charT* s, size_type pos = 0) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>find(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type find(charT c, size_type pos = 0) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>find(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.3 [string.rfind] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type rfind(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>rfind(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type rfind(const charT* s, size_type pos = npos) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>rfind(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type rfind(charT c, size_type pos = npos) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>rfind(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.4 [string.find.first.of] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type
+  find_first_of(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>find_first_of(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type find_first_of(const charT* s, size_type pos = 0) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>find_first_of(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type find_first_of(charT c, size_type pos = 0) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>find_first_of(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.5 [string.find.last.of] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type find_last_of(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>find_last_of(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type find_last_of(const charT* s, size_type pos = npos) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>find_last_of(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type find_last_of(charT c, size_type pos = npos) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>find_last_of(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.6 [string.find.first.not.of] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type
+  find_first_not_of(const charT* s, size_type pos, size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>find_first_not_of(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type find_first_not_of(const charT* s, size_type pos = 0) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>find_first_not_of(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type find_first_not_of(charT c, size_type pos = 0) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>find_first_not_of(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.7 [string.find.last.not.of] as indicated:</p>
+
+<blockquote>
+<pre>
+size_type find_last_not_of(const charT* s, size_type pos,
+                           size_type n) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>find_last_not_of(basic_string_view&lt;charT, traits&gt;(s, n), pos)</tt>.
+</p>
+</blockquote>
+<pre>
+size_type find_last_not_of(const charT* s, size_type pos = npos) const;
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of <tt>charT</tt>.
+<p/>
+-7- <i>Returns:</i> <tt>find_last_not_of(basic_string_view&lt;charT, traits&gt;(s), pos)</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+size_type find_last_not_of(charT c, size_type pos = npos) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>find_last_not_of(basic_string<ins>_view&lt;charT, traits&gt;(addressof(c), 1)</ins><del>(1, c)</del>, pos)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.3.1.7.9 [string.compare] as indicated:</p>
+
+<blockquote>
+<pre>
+int compare(const charT* s) const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-9- <i>Returns:</i> <tt>compare(basic_string<ins>_view&lt;charT, traits&gt;</ins>(s))</tt>.
+</p>
+</blockquote>
 </blockquote>
 </li>
 </ol>
