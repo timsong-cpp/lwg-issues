@@ -50,6 +50,15 @@ auto lwg::operator << (std::ostream& os, section_tag const & tag) -> std::ostrea
    return os;
 }
 
+auto lwg::operator << (std::ostream& os, section_tag_nolink const & t) -> std::ostream & {
+   os << '[' ;
+   if (!t.tag.prefix.empty()) {
+      os << t.tag.prefix << "::";
+   }
+   os << t.tag.name << ']';
+   return os;
+}
+
 std::string lwg::as_string(section_tag const & x)
 {
   return x.prefix.empty()

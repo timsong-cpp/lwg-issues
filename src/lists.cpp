@@ -353,8 +353,13 @@ void format_issue_as_html(lwg::issue & is,
  
                {
                   std::ostringstream t;
-                  t << section_db[tag] << ' ';
-                  r.insert(0, t.str());
+                  auto num = section_db[tag];
+                  t << num << ' ';
+                  if(num.num.empty() || num.num.front() == 99)
+                     t << nolink(tag);
+                  else
+                     t << tag;
+                  r = t.str();
                }
 
                j -= i - 1;

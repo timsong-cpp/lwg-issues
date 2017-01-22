@@ -193,6 +193,17 @@ void print_file_trailer(std::ostream& out) {
     out << "</html>\n";
 }
 
+void print_tag(std::ostream& out, lwg::section_map& section_db, lwg::section_tag const& tag, bool tagonly = false){
+    const auto& num = section_db[tag];
+    if(!tagonly) { out << num << ' '; }
+    if(num.num.empty() || num.num.front() == 99) {
+        out << nolink(tag);
+    }
+    else {
+        out << tag;
+    }
+}
+
 
 void print_table(std::ostream& out, std::vector<lwg::issue>::const_iterator i, std::vector<lwg::issue>::const_iterator e, lwg::section_map & section_db) {
 #if defined (DEBUG_LOGGING)
@@ -224,8 +235,8 @@ R"(<table border="1" cellpadding="4">
 
       // Section
       out << "<td align=\"left\">";
-assert(!i->tags.empty());
-      out << section_db[i->tags[0]] << " " << i->tags[0];
+      assert(!i->tags.empty());
+      print_tag(out, section_db, i->tags[0]);
       if (i->tags[0] != prev_tag) {
          prev_tag = i->tags[0];
          out << "<a name=\"" << as_string(prev_tag) << "\"></a>";
@@ -261,7 +272,6 @@ assert(!i->tags.empty());
    out << "</table>\n";
 }
 
-
 template<class SAI, class SIBS>
 void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & section_db,
                  const SAI& all_issues, const SIBS& issues_by_status, const SAI& active_issues) {
@@ -272,9 +282,10 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 
          // Section, Status, Submitter, Date
          out << "<p><b>Section:</b> ";
-         out << section_db[iss.tags[0]] << " " << iss.tags[0];
+         print_tag(out, section_db, iss.tags[0]);
          for (unsigned k = 1; k < iss.tags.size(); ++k) {
-            out << ", " << section_db[iss.tags[k]] << " " << iss.tags[k];
+            out << ", ";
+            print_tag(out, section_db, iss.tags[k]);
          }
 
          out << " <b>Status:</b> <a href=\"lwg-active.html#" << lwg::remove_qualifier(iss.stat) << "\">" << iss.stat << "</a>\n";
@@ -296,13 +307,17 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
          // view active issues in []
          if (active_issues.count(iss) > 1) {
             out << "<p><b>View other</b> <a href=\"lwg-index-open.html#"
-              << as_string(iss.tags[0]) << "\">active issues</a> in " << iss.tags[0] << ".</p>\n";
+              << as_string(iss.tags[0]) << "\">active issues</a> in ";
+            print_tag(out, section_db, iss.tags[0], true);
+            out << ".</p>\n";
          }
 
          // view all issues in []
          if (all_issues.count(iss) > 1) {
             out << "<p><b>View all other</b> <a href=\"lwg-index.html#"
-              << as_string(iss.tags[0]) << "\">issues</a> in " << iss.tags[0] << ".</p>\n";
+              << as_string(iss.tags[0]) << "\">issues</a> in ";
+            print_tag(out, section_db, iss.tags[0], true);
+            out  << ".</p>\n";
          }
          // view all issues with same status
          if (issues_by_status.count(iss) > 1) {
