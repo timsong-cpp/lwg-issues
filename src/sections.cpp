@@ -41,9 +41,12 @@ auto lwg::operator!=(section_tag const & x, section_tag const & y) noexcept -> b
 }
 
 auto lwg::operator << (std::ostream& os, section_tag const & tag) -> std::ostream & {
-  os << '[';
-   if (!tag.prefix.empty()) { os << tag.prefix << "::"; }
-   os <<  tag.name << ']';
+   if (!tag.prefix.empty()) { 
+        os << '[' << tag.prefix << "::" << tag.name << ']';
+   }
+   else { 
+       os << "<a href=\"https:/""/timsong-cpp.github.io/cppwp/" << tag.name << "\">" <<'[' << tag.name<< ']' << "</a>";
+   }
    return os;
 }
 
