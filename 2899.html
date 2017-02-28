@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="2899" href="2899">2899.</a> <tt>is_(nothrow_)move_constructible</tt> and <tt>tuple</tt>, <tt>optional</tt> and <tt>unique_ptr</tt></h3>
 <p><b>Section:</b> 20.5 <a href="https://timsong-cpp.github.io/cppwp/tuple">[tuple]</a>, 20.6 <a href="https://timsong-cpp.github.io/cppwp/optional">[optional]</a>, 20.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2017-02-05 13:02:47 UTC</p>
+ <b>Submitter:</b> United States <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2017-02-27 22:02:53 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#tuple">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/tuple">[tuple]</a>.</p>
@@ -35,10 +35,186 @@
 <p>The move constructors for <tt>tuple</tt>, <tt>optional</tt>, and <tt>unique_ptr</tt> should return false for 
 <tt>is_(nothrow_)move_constructible_v&lt;<i>TYPE</i>&gt;</tt> when their corresponding <i>Requires</i> clauses are not 
 satisfied, as there are now several library clauses that are defined in terms of these traits. The same concern 
-applies to the move-assignment operator. Note that <tt>pair</tt> and <tt>variant</tt> already satisfy this constraint.</p>
+applies to the move-assignment operator. Note that <tt>pair</tt> and <tt>variant</tt> already satisfy this constraint.
+</p>
+
+<p><i>[2017-02-26, Scott Schurr provides wording]</i></p>
+
 
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.
+</p>
+<ol>
+<li><p>Modify 20.5.3 <a href="https://timsong-cpp.github.io/cppwp/tuple.tuple">[tuple.tuple]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<i>// 20.5.3.1, tuple construction</i>
+<i>EXPLICIT</i> constexpr tuple();
+<i>EXPLICIT</i> constexpr tuple(const Types&amp;...); <i>// only if sizeof...(Types) &gt;= 1</i>
+template &lt;class... UTypes&gt;
+<i>EXPLICIT</i> constexpr tuple(UTypes&amp;&amp;...) <ins>noexcept(<i>see below</i>)</ins>; <i>// only if sizeof...(Types) &gt;= 1</i>
+
+tuple(const tuple&amp;) = default;
+tuple(tuple&amp;&amp;) = default;
+
+template &lt;class... UTypes&gt;
+<i>EXPLICIT</i> constexpr tuple(const tuple&lt;UTypes...&gt;&amp;);
+template &lt;class... UTypes&gt;
+<i>EXPLICIT</i> constexpr tuple(tuple&lt;UTypes...&gt;&amp;&amp;) <ins>noexcept(<i>see below</i>)</ins>;
+
+template &lt;class U1, class U2&gt;
+<i>EXPLICIT</i> constexpr tuple(const pair&lt;U1, U2&gt;&amp;); <i>// only if sizeof...(Types) == 2</i>
+template &lt;class U1, class U2&gt;
+<i>EXPLICIT</i> constexpr tuple(pair&lt;U1, U2&gt;&amp;&amp;) <ins>noexcept(<i>see below</i>)</ins>; <i>// only if sizeof...(Types) == 2</i>
+
+[&hellip;]
+
+<i>// 20.5.3.2, tuple assignment</i>
+tuple&amp; operator=(const tuple&amp;);
+tuple&amp; operator=(tuple&amp;&amp;) noexcept(<i>see below</i>);
+
+template &lt;class... UTypes&gt;
+tuple&amp; operator=(const tuple&lt;UTypes...&gt;&amp;);
+template &lt;class... UTypes>
+tuple&amp; operator=(tuple&lt;UTypes...&gt;&amp;&amp;) <ins>noexcept(<i>see below</i>)</ins>;
+
+template &lt;class U1, class U2&gt;
+tuple&amp; operator=(const pair&lt;U1, U2&gt;&amp;); <i>// only if sizeof...(Types) == 2</i>
+template &lt;class U1, class U2&gt;
+tuple&amp; operator=(pair&lt;U1, U2&gt;&amp;&amp;) <ins>noexcept(<i>see below</i>)</ins>; <i>// only if sizeof...(Types) == 2</i>
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class... UTypes&gt; <i>EXPLICIT</i> constexpr tuple(UTypes&amp;&amp;... u) <ins>noexcept(<i>see below</i>)</ins>;
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Initializes the elements in the tuple with the corresponding value in <tt>std::forward&lt;UTypes&gt;(u)</tt>.
+<p/>
+-9- <i>Remarks:</i> This constructor shall not participate in overload resolution unless <tt>sizeof...(Types) ==
+sizeof...(UTypes)</tt> and <tt>sizeof...(Types) >= 1</tt> and <tt>is_constructible_v&lt;T<sub><i>i</i></sub>, 
+U<sub><i>i</i></sub>&amp;&amp;&gt;</tt> is <tt>true</tt> for all <tt><i>i</i></tt>. The constructor is explicit if and only if 
+<tt>is_convertible_v&lt;U<sub><i>i</i></sub>&amp;&amp;, T<sub><i>i</i></sub>&gt;</tt> is <tt>false</tt> for at least one 
+<tt><i>i</i></tt>. <ins>The expression inside <tt>noexcept</tt> is equivalent to the logical AND of the following expressions:</ins>
+</p>
+<blockquote><pre>
+<ins>is_nothrow_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&amp;&amp;&gt;</ins>
+</pre></blockquote>
+<p>
+<ins>where <tt>T<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>Types</tt>, and
+<tt>U<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>UTypes</tt>.</ins>
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template &lt;class... UTypes&gt; <i>EXPLICIT</i> constexpr tuple(tuple&lt;UTypes...&gt;&amp;&amp; u) <ins>noexcept(<i>see below</i>)</ins>;
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects:</i> For all <tt><i>i</i></tt>, initializes the <tt><i>i</i></tt><sup>th</sup> element of <tt>*this</tt> with 
+<tt>std::forward&lt;U<sub><i>i</i></sub>&gt;(get&lt;<i>i</i>&gt;(u))</tt>.
+<p/>
+-17- <i>Remarks:</i> This constructor shall not participate in overload resolution unless
+<p/>
+[&hellip;]
+<p/>
+The constructor is explicit if and only if <tt>is_convertible_v&lt;U<sub><i>i</i></sub>&amp;&amp;, T<sub><i>i</i></sub>&gt;</tt> 
+is <tt>false</tt> for at least one <tt><i>i</i></tt>. <ins>The expression inside <tt>noexcept</tt> is equivalent to the logical AND of the following expressions:</ins>
+</p>
+<blockquote><pre>
+<ins>is_nothrow_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&amp;&amp;&gt;</ins>
+</pre></blockquote>
+<p>
+<ins>where <tt>T<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>Types</tt>, and
+<tt>U<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>UTypes</tt>.</ins>
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template &lt;class U1, class U2&gt; <i>EXPLICIT</i> constexpr tuple(pair&lt;U1, U2&gt;&amp;&amp; u) <ins>noexcept(<i>see below</i>)</ins>;
+</pre>
+<blockquote>
+<p>
+-21- <i>Effects:</i> Initializes the first element with <tt>std::forward&lt;U1&gt;(u.first)</tt> and the second element with
+<tt>std::forward&lt;U2&gt;(u.second)</tt>.
+<p/>
+-22- <i>Remarks:</i> This constructor shall not participate in overload resolution unless <tt>sizeof...(Types) == 2</tt>,
+<tt>is_constructible_v&lt;T0, U1&amp;&amp;&gt;</tt> is <tt>true</tt> and <tt>is_constructible_v&lt;T1, U2&amp;&amp;&gt;</tt> is <tt>true</tt>.
+<p/>
+-23- The constructor is explicit if and only if <tt>is_convertible_v&lt;U1&amp;&amp;, T0&gt;</tt> is <tt>false</tt> or 
+<tt>is_convertible_v&lt;U2&amp;&amp;, T1&gt;</tt> is <tt>false</tt>. <ins>The expression inside <tt>noexcept</tt> is equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>is_nothrow_constructible_v&lt;T0, U1&amp;&amp;&gt; &amp;&amp; is_nothrow_constructible_v&lt;T1, U2&amp;&amp;&gt;</ins>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.assign">[tuple.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class... UTypes&gt; tuple&amp; operator=(tuple&lt;UTypes...&gt;&amp;&amp; u) <ins>noexcept(<i>see below</i>)</ins>;
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects:</i> For all <tt><i>i</i></tt>, assigns <tt>std::forward&lt;U<sub><i>i</i></sub>&gt;(get&lt;<i>i</i>&gt;(u))</tt> 
+to <tt>get&lt;<i>i</i>&gt;(*this)</tt>.
+<p/>
+-13- <i>Remarks:</i> This operator shall not participate in overload resolution unless <tt>is_assignable_v&lt;T<sub><i>i</i></sub>&amp;, 
+U<sub><i>i</i></sub>&amp;&amp;&gt; == true</tt> for all <tt><i>i</i></tt> and <tt>sizeof...(Types) == sizeof...(UTypes)</tt>.
+<ins>The expression inside <tt>noexcept</tt> is equivalent to the logical AND of the following expressions:</ins>
+</p>
+<blockquote><pre>
+<ins>is_nothrow_assignable_v&lt;T<sub><i>i</i></sub>&amp;, U<sub><i>i</i></sub>&amp;&amp;&gt;</ins>
+</pre></blockquote>
+<p>
+<ins>where <tt>T<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>Types</tt>, and
+<tt>U<sub><i>i</i></sub></tt> is the <tt><i>i</i></tt><sup>th</sup> type in <tt>UTypes</tt>.</ins>
+</p>
+<p>
+-14- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template &lt;class U1, class U2&gt; tuple&amp; operator=(pair&lt;U1, U2&gt;&amp;&amp; u) <ins>noexcept(<i>see below</i>)</ins>;
+</pre>
+<blockquote>
+<p>
+-18- <i>Effects:</i> Assigns <tt>std::forward&lt;U1&gt;(u.first)</tt> to the first element of <tt>*this</tt> and
+<tt>std::forward&lt;U2&gt;(u.second)</tt> to the second element of <tt>*this</tt>.
+<p/>
+-19- <i>Remarks:</i> This operator shall not participate in overload resolution unless <tt>sizeof...(Types) == 2</tt>
+and <tt>is_assignable_v&lt;T0&amp;, U1&amp;&amp;&gt;</tt> is <tt>true</tt> for the first type <tt>T0</tt> in <tt>Types</tt> 
+and <tt>is_assignable_v&lt;T1&amp;, U2&amp;&amp;&gt;</tt> is <tt>true</tt> for the second type <tt>T1</tt> in <tt>Types</tt>.
+<ins>The expression inside <tt>noexcept</tt> is equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>is_nothrow_assignable_v&lt;T0&amp;, U1&amp;&amp;&gt; &amp;&amp; is_nothrow_assignable_v&lt;T1&amp;, U2&amp;&amp;&gt;</ins>
+</pre></blockquote>
+<p>
+-20- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
