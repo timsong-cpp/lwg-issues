@@ -26,7 +26,7 @@ D is not copy constructible</title>
 <h3><a name="2905" href="2905">2905.</a> <tt>is_constructible_v&lt;unique_ptr&lt;P, D&gt;, P, D const &amp;&gt;</tt> should be false when 
 <tt>D</tt> is not copy constructible</h3>
 <p><b>Section:</b> 20.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2017-02-05 13:02:47 UTC</p>
+ <b>Submitter:</b> United States <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2017-03-01 08:03:32 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#unique.ptr.single.ctor">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a>.</p>
@@ -41,11 +41,109 @@ achieved by the traditional 'does not participate in overload resolution' wordin
 
 <p>Proposed change: Add a <i>Remarks:</i> clause to constrain the appropriate constructors.</p>
 
+<p><i>[2017-02-28, Jonathan comments and provides concrete wording]</i></p>
+
+
+<p>
+As well as addressing the NB comment, this attempts to make some further improvements to the current wording, which is a little strange.
+It incorrectly uses "<code>d</code>" to mean the constructor argument that initializes the parameter <code>d</code>, and unnecessarily explains how overload resolution works for lvalues and rvalues.
+It refers to the copy/move constructor of <code>D</code>, but the constructor that is selected to perform the initialization may not be a copy/move constructor (e.g. initializing a deleter object from an rvalue might use a copy constructor if there is no move constructor).
+The condition "<code>d</code> shall be reference compatible with one of the constructors" is bogus: reference compatible is a property of two types, not a value and a constructor, and again is trying to talk about the argument not the parameter.
+</p>
+
+<p>
+Note that we could replace the "see below" in the signatures and paragraphs 9, 10 and 11 by declaring the constructors as:
+</p>
+
+<blockquote><pre>
+unique_ptr(pointer p, const D&amp; d) noexcept;
+unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
+</pre></blockquote>
+
+<p>
+I think this produces the same signatures in all cases. I haven't proposed that here, it could be changed separately if desired.
+</p>
+
 
 
 <p><b>Proposed resolution:</b></p>
-<p>
-</p>
+
+<p>Modify [unique.ptr.single.ctor] paragraphs 9-11 as shown:</p>
+
+<blockquote>
+<pre>
+unique_ptr(pointer p, <em>see belo</em>w d1) noexcept;
+unique_ptr(pointer p, <em>see below</em> d2) noexcept;
+</pre>
+
+<p>-9- The signature of these constructors depends upon whether <code>D</code> is a reference type. If <code>D</code> is a non-reference
+type <code>A</code>, then the signatures are</p>
+
+<pre><code>  unique_ptr(pointer p, const A&amp; d) <ins>noexcept</ins>;
+  unique_ptr(pointer p, A&amp;&amp; d) <ins>noexcept</ins>;
+</code></pre>
+
+<p>-10- If <code>D</code> is an lvalue reference type <code>A&amp;</code>, then the signatures are:</p>
+
+<pre><code>  unique_ptr(pointer p, A&amp; d) <ins>noexcept</ins>;
+  unique_ptr(pointer p, A&amp;&amp; d) <ins>= delete</ins>;
+</code></pre>
+
+<p>-11- If <code>D</code> is an lvalue reference type <code>const A&amp;</code>, then the signatures are:</p>
+
+<pre><code>  unique_ptr(pointer p, const A&amp; d) <ins>noexcept</ins>;
+  unique_ptr(pointer p, const A&amp;&amp; d) <ins>= delete</ins>;
+</code></pre>
+</blockquote>
+
+<p>Remove paragraph 12 entirely:</p>
+
+<blockquote>
+<p> <del>-12- <em>Requires:</em></del> </p>
+<ul>
+<li><del>If <code>D</code> is not an lvalue reference type then</del>
+<ul>
+<li>
+<del>
+If <code>d</code> is an lvalue or const rvalue then the first constructor of this pair will be selected. <code>D</code> shall satisfy the requirements of <code>CopyConstructible</code> (Table 24), and the copy constructor of <code>D</code> shall not throw an exception. This <code>unique_ptr</code> will hold a copy of <code>d</code>.
+</del>
+</li>
+<li>
+<del>
+Otherwise, <code>d</code> is a non-const rvalue and the second constructor of this pair will be selected. <code>D</code> shall satisfy the requirements of <code>MoveConstructible</code> (Table 23), and the move constructor of <code>D</code> shall not throw an exception. This <code>unique_ptr</code> will hold a value move constructed from <code>d</code>.
+</del>
+</li>
+</ul>
+</li>
+<li>
+<del>
+Otherwise <code>D</code> is an lvalue reference type. <code>d</code> shall be reference-compatible with one of the constructors.
+If <code>d</code> is an rvalue, it will bind to the second constructor of this pair and the program is ill-formed.
+[<em>Note:</em> The diagnostic could be implemented using a static_assert which assures that <code>D</code> is not
+a reference type. <em>— end note</em>] Else <code>d</code> is an lvalue and will bind to the first constructor of this
+pair. The type which <code>D</code> references need not be <code>CopyConstructible</code> nor <code>MoveConstructible</code>. This
+<code>unique_ptr</code> will hold a <code>D</code> which refers to the lvalue <code>d</code>. [<em>Note:</em> <code>D</code> may not be an rvalue reference
+type. <em>— end note</em>]
+</del>
+</li>
+</ul>
+</blockquote>
+
+<p>Modify paragraph 13 as shown:</p>
+
+<blockquote>
+<p>-13- <em>Effects:</em>
+Constructs a <code>unique_ptr</code> object which owns <code>p</code>, initializing the stored pointer with <code>p</code> and
+initializing the deleter <del>as described above</del> <ins>from <code>std::forward&lt;decltype(d)&gt;(d)</code></ins>.</p>
+</blockquote>
+
+<p>Add a new paragraph after paragraph 14 (Postconditions):</p>
+
+<blockquote>
+<p><ins>-?- <em>Remarks:</em> These constructors shall not participate in overload resolution unless <code>is_constructible_v&lt;D, decltype(d)&gt;</code> is <code>true</code>.</ins></p>
+</blockquote>
+
+
 
 
 
