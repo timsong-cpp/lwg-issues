@@ -1,0 +1,609 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2946: LWG 2758's resolution missed further corrections</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2946" href="2946">2946.</a> LWG 2758's resolution missed further corrections</h3>
+<p><b>Section:</b> 21.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a>, 21.3.2.6.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 21.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a>, 21.3.2.7 <a href="https://timsong-cpp.github.io/cppwp/string.ops">[string.ops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2017-03-17 <b>Last modified:</b> 2017-03-19 12:03:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.cons">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="2758">2758</a> corrected newly introduced ambiguities of <tt>std::string::assign</tt> and other functions 
+that got new overloads taking a <tt>basic_string_view</tt> as argument, but the assignment operator of 
+<tt>basic_string</tt> and other functions taking a parameter of type <tt>basic_string_view&lt;charT, traits&gt;</tt> 
+were not corrected. Similar to the previous issue the following operations lead now to an ambiguity as well:
+ </p>
+
+<blockquote>
+<pre>
+#include &lt;string&gt;
+
+int main() 
+{
+  std::string s({"abc", 1});
+  s = {"abc", 1};
+  s += {"abc", 1};
+  s.append({"abc", 1});
+  s.assign({"abc", 1});
+  s.insert(0, {"abc", 1});
+  s.replace(0, 1, {"abc", 1});
+  s.replace(s.cbegin(), s.cbegin(), {"abc", 1});
+  s.find({"abc", 1});
+  s.rfind({"abc", 1});
+  s.find_first_of({"abc", 1});
+  s.find_last_of({"abc", 1});
+  s.find_first_not_of({"abc", 1});
+  s.find_last_not_of({"abc", 1});
+  s.compare({"abc", 1});
+  s.compare(0, 1, {"abc", 1});
+}
+</pre>
+</blockquote>
+
+<p>
+The right fix is to convert <em>all</em> member functions taken a <tt>basic_string_view&lt;charT, traits&gt;</tt> parameter 
+into constrained function templates.
+<p/>
+When doing so, it turns out that there occurs an additional problem: The functions that had been massaged by LWG 
+<a href="2758">2758</a> are all functions that are not specified to be <tt>noexcept</tt>, but the wider range of 
+"string operation" functions taking a <tt>basic_string_view&lt;charT, traits&gt;</tt> parameter are mostly 
+<tt>noexcept</tt> because they had a wide contract. Now with the approach of LWG <a href="2758">2758</a>, there are all 
+types allowed that are <em>convertible</em> to <tt>basic_string_view&lt;charT, traits&gt;</tt>, but the conversion 
+occurs now in the function body, not outside of it. So, if these conversion <em>would</em> be potentially 
+exception-throwing, this would lead to a call to <tt>std::terminate</tt>, which is a semantic change compared to 
+the previous specification. There are several options to handle this situation:
+</p>
+<ol>
+<li><p>Ignore that and let <tt>std::terminate</tt> come into action. This is a different way of saying that
+we impose the requirement of a nothrowing operation.</p></li>
+<li><p>Remove <tt>noexcept</tt> from all the affected functions.</p></li>
+<li><p>Make these functions conditionally <tt>noexcept</tt>.</p></li>
+</ol>
+<p>
+The submitter has a personal preference for option (3), except that this would complicate the wording a bit, 
+because unfortunately there exists yet no trait <tt>std::is_nothrow_convertible</tt> (See LWG <a href="2040">2040</a>). 
+A seemingly low-hanging fruit would be the attempt to use <tt>std::is_nothrow_constructible</tt> instead, but this 
+trait describes a potentially different initialization context and is therefore inappropriate. Option (1) would 
+conserve the existing <tt>noexcept</tt> guarantee for all non-throwing conversions, but now these functions become 
+narrow-contract functions and at least according to the <a href="http://wg21.link/n3279">current <tt>noexcept</tt> 
+guidelines</a> such functions should <em>not</em> be marked as <tt>noexcept</tt>. But there are exceptions possible 
+for that rule, and the initially suggested proposed wording below argues that this exception is reasonable here, 
+because the required wording fixes just an unintended side-effects of transforming the functions into functions 
+templates, but it doesn't intend to change the actual functionality.
+<p/>
+Some of the below suggested overload exclusion constraints technically don't require the additional
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt; == false</tt> requirement, but the submitter of this issue
+suggests a more advanced approach that should be applied in a synchronous wording adjustment combined with the 
+existing LWG <a href="2758">2758</a> wording: It would presumably life easier for implementations (which are allowed
+to provide additional member function overloads as conforming extensions), when we would define a mini requirement
+set for template parameter type <tt>T</tt> below:
+</p>
+<ul>
+<li><p><tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt>.</p></li>
+<li><p><tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+<li><p>The implicit conversion to <tt>basic_string_view&lt;charT, traits&gt;</tt> shall not throw an exception.</p></li>
+</ul>
+<p>
+But the corresponding slightly revised wording taking advantage of this "concept-like" requirements set will not be
+suggested before the upcoming working draft has been published to allow a simpler coordinated adjustment together with
+the LWG <a href="2758">2758</a> wording.
+<p/>
+It should also be noted that these changes have impact on deduction behaviour and therefore may require further 
+adjustments of the deduction rules.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.
+</p>
+
+<ol>
+<li><p>Edit 21.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a>, class template <tt>basic_string</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+
+<i>// 21.3.2.2, construct/copy/destroy</i>
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+explicit basic_string(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                      const Allocator&amp; a = Allocator());
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; operator=(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+basic_string&amp; operator=(const charT* s);
+[&hellip;]
+
+<i>// 21.3.2.6, modifiers</i>
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; operator+=(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; insert(size_type pos, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(size_type pos1, size_type n1, 
+                      <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(const_iterator i1, const_iterator i2,
+                      <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+[&hellip;]
+
+<i>// 21.3.2.7, string operations</i>
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type find (<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                size_type pos = 0) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type rfind(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                size_type pos = npos) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type find_first_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                        size_type pos = 0) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type find_last_of (<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                        size_type pos = npos) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type find_first_not_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                            size_type pos = 0) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+size_type find_last_not_of (<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                            size_type pos = npos) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+int compare(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>) const noexcept;
+[&hellip;]
+<ins>template&lt;class T&gt;</ins>
+int compare(size_type pos1, size_type n1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>) const;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+explicit basic_string(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                      const Allocator&amp; a = Allocator());
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> <del>Same as <tt>basic_string(sv.data(), sv.size(), a)</tt>.</del><ins>Creates a variable, <tt>sv</tt>, 
+as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> and then behaves the same as 
+<tt>basic_string(sv.data(), sv.size(), a)</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks:</i> This constructor shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; operator=(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-25- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return assign(sv);
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.6.1 <a href="https://timsong-cpp.github.io/cppwp/string.op+=">[string.op+=]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; operator+=(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then c</ins><del>C</del>alls <tt>append(sv)</tt>.
+<p/>
+-4- <i>Returns:</i> <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.6.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; append(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return append(sv.data(), sv.size());
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; assign(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return assign(sv.data(), sv.size());
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; insert(size_type pos, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return insert(pos, sv.data(), sv.size());
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.6.6 <a href="https://timsong-cpp.github.io/cppwp/string.replace">[string.replace]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(size_type pos1, size_type n1,
+                      <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return replace(pos1, n1, sv.data(), sv.size());
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+basic_string&amp; replace(const_iterator i1, const_iterator i2,
+                      <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>);
+</pre>
+<blockquote>
+<p>
+-21- <i>Requires:</i> <tt>[begin(), i1)</tt> and <tt>[i1, i2)</tt> are valid ranges.
+<p/>
+-22- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then c</ins><del>C</del>alls <tt>replace(i1 - begin(), i2 - i1, sv)</tt>.
+<p/>
+-23- <i>Returns:</i> <tt>*this</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.find">[string.find]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type find(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>, size_type pos = 0) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the lowest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.rfind">[string.rfind]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type rfind(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>, size_type pos = npos) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the highest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.4 <a href="https://timsong-cpp.github.io/cppwp/string.find.first.of">[string.find.first.of]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type find_first_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>, size_type pos = 0) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the lowest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.5 <a href="https://timsong-cpp.github.io/cppwp/string.find.last.of">[string.find.last.of]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type find_last_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>, size_type pos = npos) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the highest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.6 <a href="https://timsong-cpp.github.io/cppwp/string.find.first.not.of">[string.find.first.not.of]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type find_first_not_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                            size_type pos = 0) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the lowest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.7 <a href="https://timsong-cpp.github.io/cppwp/string.find.last.not.of">[string.find.last.not.of]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+size_type find_last_not_of(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>,
+                           size_type pos = npos) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the highest position <tt>xpos</tt>, if possible, such that both of the following conditions
+hold: [&hellip;]
+<p/>
+-2- <i>Returns:</i> <tt>xpos</tt> if the function can determine such a value for <tt>xpos</tt>. Otherwise, returns <tt>npos</tt>.
+</p>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.2.7.9 <a href="https://timsong-cpp.github.io/cppwp/string.compare">[string.compare]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+int compare(<del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>) const noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The initialization of <tt>sv</tt>, as specified below, shall not throw an exception.</ins>
+<p/>
+-1- <i>Effects:</i> <ins>Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then d</ins><del>D</del>etermines the effective length <tt>rlen</tt> of the strings to compare as the smaller of 
+<tt>size()</tt> and <tt>sv.size()</tt>. The function then compares the two strings by calling <tt>traits::compare(data(),
+sv.data(), rlen)</tt>.
+<p/>
+-2- <i>Returns:</i> The nonzero result if the result of the comparison is nonzero. Otherwise, returns a value as
+indicated in Table 63.
+</p>
+[&hellip;]
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+int compare(size_type pos1, size_type n1, <del>basic_string_view&lt;charT, traits&gt; sv</del><ins>const T&amp; t</ins>) const;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>{</ins>
+  <ins>basic_string_view&lt;charT, traits&gt; sv = t;</ins>
+  return basic_string_view&lt;charT, traits&gt;(data(), size()).substr(pos1, n1).compare(sv);
+<ins>}</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless 
+<tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> is <tt>true</tt> and 
+<tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
