@@ -9,6 +9,12 @@ cd LWG
 cd ..
 
 cp -pr LWG tmp
+
+if [ -f section.data ]
+then
+   cp section.data tmp/meta-data/
+fi
+
 mkdir -p tmp/mailing
 bin/lists tmp/
 rm gh-pages/*.html
