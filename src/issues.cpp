@@ -89,6 +89,7 @@ auto lwg::filename_for_status(std::string stat) -> std::string {
         : (stat == "CD1")           ? LWG_DEFECTS
         : (stat == "C++11")         ? LWG_DEFECTS
         : (stat == "C++14")         ? LWG_DEFECTS
+        : (stat == "C++17")         ? LWG_DEFECTS
         : (stat == "WP")            ? LWG_DEFECTS
         : (stat == "Resolved")      ? LWG_DEFECTS
         : (stat == "DR")            ? LWG_DEFECTS
@@ -364,6 +365,7 @@ auto lwg::get_status_priority(std::string const & stat) noexcept -> std::ptrdiff
       "NAD Future",
       "DR",
       "WP",
+      "C++17",
       "C++14",
       "C++11",
       "CD1",

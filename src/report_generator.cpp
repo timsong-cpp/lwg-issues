@@ -91,7 +91,7 @@ struct order_by_section {
    auto operator()(lwg::issue const & x, lwg::issue const & y) const -> bool {
       assert(!x.tags.empty());
       assert(!y.tags.empty());
-      return section_db.get()[x.tags.front()] < section_db.get()[y.tags.front()];
+      return std::tie(section_db.get()[x.tags.front()], x.tags.front()) < std::tie(section_db.get()[y.tags.front()], y.tags.front());
    }
 
 private:

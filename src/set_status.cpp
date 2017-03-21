@@ -75,7 +75,7 @@ void check_is_directory(std::string const & directory) {
 
 int main(int argc, char const * argv[]) {
    try {
-      bool trace_on{false};  // Will pick this up from the command line later
+//       bool trace_on{false};  // Will pick this up from the command line later
 
       if (argc != 3) {
          std::cerr << "Must specify exactly one issue, followed by its new status\n";
