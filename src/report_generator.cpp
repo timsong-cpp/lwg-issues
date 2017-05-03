@@ -293,7 +293,7 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
              << " <b>Opened:</b> ";
          print_date(out, iss.date);
          out << " <b>Last modified:</b> ";
-         out << format_time("%Y-%m-%d %H:%m:%S UTC", iss.mod_timestamp);
+         out << format_time("%Y-%m-%d %H:%M:%S UTC", iss.mod_timestamp);
          out << "</p>\n";
 
          // priority
@@ -564,7 +564,7 @@ void report_generator::set_timestamp_from_issues(std::vector<issue> const & issu
                                      [](const issue& a, const issue& b) {
                                          return std::difftime(a.mod_timestamp, b.mod_timestamp) < 0; 
                                      })->mod_timestamp;
-    build_timestamp = format_time("<p>Revised %Y-%m-%d at %H:%m:%S UTC</p>\n", max_time);
+    build_timestamp = format_time("<p>Revised %Y-%m-%d at %H:%M:%S UTC</p>\n", max_time);
 }
 
 void report_generator::make_ready(std::vector<issue> const & issues, std::string const & path) {
