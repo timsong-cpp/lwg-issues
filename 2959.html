@@ -1,0 +1,89 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2959: char_traits&lt;char16_t&gt;::eof is a valid UTF-16 code unit</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2959" href="2959">2959.</a> <tt>char_traits&lt;char16_t&gt;::eof</tt> is a valid UTF-16 code unit</h3>
+<p><b>Section:</b> 24.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char16_t">[char.traits.specializations.char16_t]</a>, 24.2.3.3 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char32_t">[char.traits.specializations.char32_t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-05-05 <b>Last modified:</b> 2017-05-07 17:10:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#char.traits.specializations.char16_t">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char16_t">[char.traits.specializations.char16_t]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard requires that <tt>char_traits&lt;char16_t&gt;::int_type</tt> is
+<tt>uint_least16_t</tt>, so when that has the same representation as <tt>char16_t</tt>
+there are no bits left to represent the <tt>eof</tt> value.
+<p/>
+[char.traits.specializations.char16_t] says:
+</p>
+<blockquote>
+<p>
+&mdash; The member <tt>eof()</tt> shall return an implementation-defined constant
+that cannot appear as a valid UTF-16 code unit.
+</p>
+</blockquote>
+<p>
+Existing practice is to use the "noncharacter" <tt>u'\uffff'</tt> for this
+value, but the Unicode spec is clear that <tt>U+FFFF</tt> and other
+noncharacters are valid, and their appearance in a UTF-16 string does
+not make it ill-formed. See <a href="http://www.unicode.org/faq/private_use.html#nonchar7">here</a> and
+<a href="http://www.unicode.org/faq/private_use.html#nonchar8">here</a>.
+<p/>
+The fact that they are called "noncharacters" and are not intended for open interchange does not mean 
+that they are somehow illegal or invalid code points which make strings containing them invalid.
+<p/>
+In practice this means there's no way to tell if
+<tt>basic_streambuf&lt;char16_t&gt;::sputc(u'\uffff')</tt> succeeded or not. If it
+can insert the character it returns <tt>to_int_type(u'\uffff')</tt> and
+otherwise it returns <tt>eof()</tt>, which is the same value.
+<p/>
+I believe that <tt>char_traits&lt;char16_t&gt;::to_int_type(char_type c)</tt> can be
+defined to transform <tt>U+FFFF</tt> into <tt>U+FFFD</tt>, so that the invariant
+<tt>eq_int_type(eof(), to_int_type(c)) == false</tt> holds for any <tt>c</tt> (and the
+return value of <tt>sputc</tt> will be distinct from <tt>eof</tt>). I don't think any
+implementation currently meets that invariant.
+<p/>
+I think at the very least we need to correct the statement "The member
+<tt>eof()</tt> shall return an implementation-defined constant that cannot
+appear as a valid UTF-16 code unit", because there are no such
+constants if <tt>sizeof(uint_least16_t) == sizeof(char16_t)</tt>.
+<p/>
+This issue is closely related to LWG <a href="1200">1200</a>, but there it's a
+slightly different statement of the problem, and neither the
+submitter's recommendation nor the proposed resolution solves this
+issue here. It seems that was closed as NAD before the Unicode corrigendum
+existed, so at the time our standard just gave "surprising results"
+but wasn't strictly wrong. Now it makes a normative statement that
+conflicts with Unicode.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
