@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2017-06-24 at 18:30:44 UTC</p>
+<p><p>Revised 2017-06-24 at 22:07:33 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -29870,6 +29870,60 @@ void f(basic_ios&lt;charT, traits&gt;&amp; str, const moneyT&amp; mon, bool intl
 The expression <tt>out &lt;&lt; put_money(mon, intl)</tt> shall have type 
 <tt>basic_ostream&lt;<del>charT</del><ins><i>Ch</i></ins>, <del>traits</del><ins><i>Tr</i></ins>&gt;&amp;</tt>
 and value <tt>out</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="2985" href="2985">2985.</a> <tt>std::reverse</tt> should be permitted to be vectorized</h3>
+<p><b>Section:</b> 28.6.10 <a href="https://timsong-cpp.github.io/cppwp/alg.reverse">[alg.reverse]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-06-24 <b>Last modified:</b> 2017-06-24 22:07:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.reverse">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/alg.reverse">[alg.reverse]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The fine folks on our backend team suggested that we special case <tt>std::reverse</tt> of 1/2/4/8 to take 
+advantage of vector units. Unfortunately, at present <tt>std::reverse</tt> says it does <tt>N/2 iter_swap</tt>s, 
+which doesn't permit our vector implementation even if the iterator inputs are pointers to trivially copyable <tt>T</tt>s.
+<p/>
+The vectorized version for pointers to <tt>short</tt>s is 
+<a href="https://twitter.com/MalwareMinigun/status/878150939512717312">~8x faster on Skylake</a> than the serial version, 
+and about 7x faster for <tt>unsigned long long</tt>s; and users don't actually care whether or not we call <tt>swap</tt> here.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 28.6.10 <a href="https://timsong-cpp.github.io/cppwp/alg.reverse">[alg.reverse]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class BidirectionalIterator&gt;
+  void reverse(BidirectionalIterator first, BidirectionalIterator last);
+template&lt;class ExecutionPolicy, class BidirectionalIterator>
+  void reverse(ExecutionPolicy&amp;&amp; exec,
+               BidirectionalIterator first, BidirectionalIterator last);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> <tt>*first</tt> shall be swappable (20.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>).
+<p/>
+-2- <i>Effects:</i> For each non-negative integer <tt>i &lt; (last - first) / 2</tt>, applies <tt>iter_swap</tt> 
+to all pairs of iterators <tt>first + i, (last - i) - 1</tt>. <ins>If 
+<tt>is_trivially_copyable_v&lt;typename iterator_traits&lt;BidirectionalIterator&gt;::value_type&gt;</tt> is 
+<tt>true</tt>, an implementation may permute the elements by making temporary copies, rather than by calling 
+<tt>iter_swap</tt>. [<i>Note:</i> this allows the implementation to be vectorized. &mdash; <i>end note</i>]</ins>
 </p>
 </blockquote>
 </blockquote>
