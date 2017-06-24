@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2017-06-17 at 10:55:49 UTC</p>
+<p><p>Revised 2017-06-24 at 18:30:44 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -29687,6 +29687,194 @@ member type of the <del>primary <tt>unordered_multiset</tt> template</del><ins>t
 
 </ol>
 
+
+
+
+
+<hr>
+<h3><a name="2983" href="2983">2983.</a> <tt>money_put::do_put</tt> underspecified</h3>
+<p><b>Section:</b> 25.4.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/locale.money.put.virtuals">[locale.money.put.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-06-21 <b>Last modified:</b> 2017-06-24 14:16:16 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#locale.money.put.virtuals">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/locale.money.put.virtuals">[locale.money.put.virtuals]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Whether you get "<tt>.99</tt>" or "<tt>0.99</tt>" for the following depends on the implementation:
+</p>
+<blockquote><pre>
+std::cout.imbue(std::locale("en_US"));
+std::cout &lt;&lt; std::put_money(99.L);
+</pre></blockquote>
+<p>
+I don't see any justification in [locale.money.put.virtuals] for the leading <tt>0</tt>, although that seems more useful.
+<p/>
+If we want the leading zero, we should say so.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="2984" href="2984">2984.</a> <tt>put_money(99)</tt> is unnecessarily undefined</h3>
+<p><b>Section:</b> 30.7.7 <a href="https://timsong-cpp.github.io/cppwp/ext.manip">[ext.manip]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-06-22 <b>Last modified:</b> 2017-06-24 18:30:44 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#ext.manip">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/ext.manip">[ext.manip]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[ext.manip] p5 says:
+</p>
+<blockquote><p>
+<i>Requires:</i> The type <tt>moneyT</tt> shall be either <tt>long double</tt> or a specialization of the 
+<tt>basic_string</tt> template (Clause 24).
+</p></blockquote>
+<p>
+This means that <tt>put_money(99)</tt>, <tt>put_money(99.)</tt>, <tt>put_money("99")</tt>, and 
+<tt>put_money(string_view{"99"})</tt> are all undefined, when in practice they will compile fine and 
+do the right thing, converting the argument to <tt>long double</tt> or <tt>std::string</tt> as needed.
+<p/>
+We could change it to be "otherwise the program is ill-formed", or to remove the function templates from overload 
+resolution when the argument is not <tt>long double</tt> or a <tt>std::basic_string</tt>, but that will unnecessarily 
+break code that works fine today. We should accept types convertible to <tt>long double</tt> or the relevant 
+<tt>money_put</tt> facet's <tt>string_type</tt> (which is not known until we attempt to write the unspecified 
+type to an ostream).
+<p/>
+The requirement is also insufficient, because <tt>cout &lt;&lt; put_money(wstring(L"99"))</tt> won't compile on any 
+implementation, despite the argument type being a specialization of <tt>basic_string</tt>. This same problem exists 
+for <tt>std::get_money</tt>.
+</p>
+
+<p><i>[2017-06-24, Daniel comments and provides wording]</i></p>
+
+<p>
+The wording changes below are supposed to support all <tt>moneyT</tt> types that are convertible to either 
+<tt>long double</tt> or to <tt>money_put/get&lt;Ch, o/istreambuf_iterator&lt;Ch, Tr&gt;&gt;::string_type</tt> 
+(but not to both), where <tt>Ch</tt> and <tt>Tr</tt> are determined by the concrete instantiated specialization of the 
+exposition-only function template <tt>f</tt> that is used to specify the semantics of <tt>put_money</tt> and 
+<tt>get_money</tt>, respectively. XOR-ing the requirements outlaws types that are convertible to both, which 
+would cause an ambiguity unless we would provide wording that would introduce an ordered application of these 
+convertibility constraints. This is the rationale for the seemingly odd new <i>Remarks</i> formulation. Note also,
+that the wording provided below intentionally attempts to distinguish between the statically testable
+conditions based on the <tt>is_convertible_v</tt> expressions within the <i>Remarks:</i> element and the well-defined 
+runtime behaviour requirement of the actually provided argument of deduced type <tt>moneyT</tt> within the 
+pre-existing <i>Requires:</i> element. Another point worth pointing out is that the wording attempts to fix an
+currently existing ambiguity of the meaning of the type <tt>moneyT</tt> (and to a lesser extend for <tt>charT</tt> and
+<tt>traits</tt>) as either the template parameter of <tt>put/get_money</tt> or that of the corresponding template
+argument of the exposition-only <tt>f</tt> templates. The revised form makes it clearer that it refers to the latter.
+<p/>
+It should be emphasized that this extension of the current wording would provide support for <tt>put_money(99)</tt>, 
+<tt>put_money(99.)</tt>, and <tt>put_money("99")</tt>, but <em>not</em> yet for <tt>put_money(string_view{"99"})</tt>, 
+because <tt>string_view</tt> is not convertible to <tt>string</tt>. To realize support for the latter, this wording 
+approach could be extended by referring to <tt>is_constructible</tt> instead of <tt>is_convertible</tt>, though.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 30.7.7 <a href="https://timsong-cpp.github.io/cppwp/ext.manip">[ext.manip]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class moneyT&gt; <i>unspecified</i> get_money(moneyT&amp; mon, bool intl = false);
+</pre>
+<blockquote>
+<p>
+<ins>-?- For an expression <tt>in &gt;&gt; get_money(mon, intl)</tt> described below, let <tt><i>Mo</i></tt>, 
+<tt><i>Ch</i></tt>, and <tt><i>Tr</i></tt> be the deduced template argument types of the template parameters 
+<tt>moneyT</tt>, <tt>charT</tt>, and <tt>traits</tt>, respectively, of the instantiated specialization of the 
+template <tt>f</tt>.</ins>
+<p/>
+-2- <i>Requires:</i> <del>The type <tt>moneyT</tt> shall be either <tt>long double</tt> or a specialization of the 
+<tt>basic_string</tt> template (Clause 24 <a href="https://timsong-cpp.github.io/cppwp/strings">[strings]</a>)</del><ins><tt><i>Mo</i></tt>
+shall be either convertible to <tt>long double</tt> or shall be convertible to 
+<tt>money_get&lt;<i>Ch</i>, istreambuf_iterator&lt;<i>Ch</i>, <i>Tr</i>&gt;&gt;::string_type</tt></ins>.
+<p/>
+<ins>-?- <i>Remarks:</i> If <tt>(!is_convertible_v&lt;<i>Mo</i>, long double&gt; != !is_convertible_v&lt;<i>Mo</i>, 
+money_get&lt;<i>Ch</i>, istreambuf_iterator&lt;<i>Ch</i>, <i>Tr</i>&gt;&gt;::string_type&gt;)</tt> is <tt>false</tt>,
+the program is ill-formed.</ins>
+<p/>
+-3- <i>Effects:</i> The expression <tt>in &gt;&gt; get_money(mon, intl)</tt> described below behaves as 
+a formatted input function (30.7.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/istream.formatted.reqmts">[istream.formatted.reqmts]</a>).
+<p/>
+-4- <i>Returns:</i> An object of unspecified type such that if <tt>in</tt> is an object of type 
+<tt>basic_istream&lt;<del>charT</del><ins><i>Ch</i></ins>, <del>traits</del><ins><i>Tr</i></ins>&gt;</tt> then 
+the expression <tt>in &gt;&gt; get_money(mon, intl)</tt> behaves as if it called <tt>f(in, mon, intl)</tt>, where 
+the function <tt>f</tt> is defined as:
+</p>
+<blockquote><pre>
+template &lt;class charT, class traits, class moneyT&gt;
+void f(basic_ios&lt;charT, traits>&amp; str, moneyT&amp; mon, bool intl) {
+  using Iter = istreambuf_iterator&lt;charT, traits&gt;;
+  using MoneyGet = money_get&lt;charT, Iter&gt;;
+  ios_base::iostate err = ios_base::goodbit;
+  const MoneyGet&amp; mg = use_facet&lt;MoneyGet>(str.getloc());
+  mg.get(Iter(str.rdbuf()), Iter(), intl, str, err, mon);
+  if (ios_base::goodbit != err)
+    str.setstate(err);
+}
+</pre></blockquote>
+<p>
+The expression <tt>in &gt;&gt; get_money(mon, intl)</tt> shall have type 
+<tt>basic_istream&lt;<del>charT</del><ins><i>Ch</i></ins>, <del>traits</del><ins><i>Tr</i></ins>&gt;&amp;</tt> 
+and value <tt>in</tt>.
+</p>
+</blockquote>
+<pre>
+template &lt;class moneyT&gt; <i>unspecified</i> put_money(const moneyT&amp; mon, bool intl = false);
+</pre>
+<blockquote>
+<p>
+<ins>-?- For an expression <tt>out &lt;&lt; put_money(mon, intl)</tt> described below, let <tt><i>Mo</i></tt>, 
+<tt><i>Ch</i></tt>, and <tt><i>Tr</i></tt> be the deduced template argument types of the template parameters 
+<tt>moneyT</tt>, <tt>charT</tt>, and <tt>traits</tt>, respectively, of the instantiated specialization of the 
+template <tt>f</tt>.</ins>
+<p/>
+-5- <i>Requires:</i> <del>The type <tt>moneyT</tt> shall be either <tt>long double</tt> or a specialization of the 
+<tt>basic_string</tt> template (Clause 24 <a href="https://timsong-cpp.github.io/cppwp/strings">[strings]</a>)</del><ins><tt><i>Mo</i></tt>
+shall be either convertible to <tt>long double</tt> or shall be convertible to 
+<tt>money_put&lt;<i>Ch</i>, ostreambuf_iterator&lt;<i>Ch</i>, <i>Tr</i>&gt;&gt;::string_type</tt></ins>.
+<p/>
+<ins>-?- <i>Remarks:</i> If <tt>(!is_convertible_v&lt;<i>Mo</i>, long double&gt; != !is_convertible_v&lt;<i>Mo</i>, 
+money_put&lt;<i>Ch</i>, ostreambuf_iterator&lt;<i>Ch</i>, <i>Tr</i>&gt;&gt;::string_type&gt;)</tt> is <tt>false</tt>,
+the program is ill-formed.</ins>
+<p/>
+-6- <i>Returns:</i> An object of unspecified type such that if <tt>out</tt> is an object of type 
+<tt>basic_ostream&lt;<del>charT</del><ins><i>Ch</i></ins>, <del>traits</del><ins><i>Tr</i></ins>&gt;</tt> then 
+the expression <tt>out &lt;&lt; put_money(mon, intl)</tt> behaves as a formatted output function
+(30.7.5.2.1 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.reqmts">[ostream.formatted.reqmts]</a>) that calls <tt>f(out, mon, intl)</tt>, where the function <tt>f</tt> 
+is defined as:
+</p>
+<blockquote><pre>
+template &lt;class charT, class traits, class moneyT&gt;
+void f(basic_ios&lt;charT, traits&gt;&amp; str, const moneyT&amp; mon, bool intl) {
+  using Iter = ostreambuf_iterator&lt;charT, traits&gt;;
+  using MoneyPut = money_put&lt;charT, Iter&gt;;
+  const MoneyPut&amp; mp = use_facet&lt;MoneyPut>(str.getloc());
+  const Iter end = mp.put(Iter(str.rdbuf()), intl, str, str.fill(), mon);
+  if (end.failed())
+    str.setstate(ios::badbit);
+}
+</pre></blockquote>
+<p>
+The expression <tt>out &lt;&lt; put_money(mon, intl)</tt> shall have type 
+<tt>basic_ostream&lt;<del>charT</del><ins><i>Ch</i></ins>, <del>traits</del><ins><i>Tr</i></ins>&gt;&amp;</tt>
+and value <tt>out</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
