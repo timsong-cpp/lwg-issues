@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="2993" href="2993">2993.</a> <tt>reference_wrapper&lt;T&gt;</tt> conversion from <tt>T&amp;&amp;</tt></h3>
 <p><b>Section:</b> 23.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2017-06-28 18:11:24 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2017-06-28 19:32:15 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#refwrap">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>.</p>
@@ -44,19 +44,19 @@ ill-formed if actually used. This is visible in overload resolution:
 <blockquote><pre>
 void meow(std::reference_wrapper&lt;int&gt;); //#1
 void meow(convertible_from_int); //#2
-meow(0); // <span style="color:#C80000;font-weight:bold">ambiguous;</span> would call #2 if #1 instead took int&amp;
+meow(0); // <span style="color:#C80000;font-weight:bold">error, ambiguous</span>; would unambiguously call #2 if #1 instead took int&amp;
 </pre></blockquote>
 <p>
-and in conditional expressions (and hence <tt>std::common_type</tt>) after core
-issue <a href="https://wg21.link/cwg1895">CWG 1895</a>:
+and in conditional expressions (and hence <tt>std::common_type</tt>) after <a href="https://wg21.link/cwg1895">core issue 1895</a>:
 </p>
 <blockquote><pre>
 std::reference_wrapper&lt;int&gt; purr();
 
 auto x = true? purr() : 0; // <span style="color:#C80000;font-weight:bold">error, ambiguous:</span> ICS exists from int prvalue to 
-     // reference_wrapper&lt;int&gt; and from reference_wrapper&lt;int&gt; to int
-using t = std::common_type_t&lt;std::reference_wrapper&lt;int&gt;, int&gt;; // <span style="color:#C80000;font-weight:bold">error</span>, no member 
-     // type because the conditional expression is ill-formed
+                           // reference_wrapper&lt;int&gt; and from reference_wrapper&lt;int&gt; to int
+
+using t = std::common_type_t&lt;std::reference_wrapper&lt;int&gt;, int&gt;; // <span style="color:#C80000;font-weight:bold">error:</span> no member 'type' because the conditional 
+                                                                // expression is ill-formed
 </pre></blockquote>
 <p>
 The latter in turn interferes with the use of <tt>reference_wrapper</tt> as a
@@ -71,6 +71,63 @@ current pair of constructors taking <tt>T&amp;</tt> and <tt>T&amp;&amp;</tt>.
 
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The conditional <tt>noexcept</tt> specification is intended to ensure that converting a <tt>T&amp;</tt> to
+a <tt>reference_wrapper&lt;T&gt;</tt> remains <tt>noexcept</tt>. ]
+</p>
+</blockquote>
+<ol>
+<li><p>Edit 23.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>, class template <tt>reference_wrapper</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template &lt;class T&gt; class reference_wrapper {
+    [&hellip;]
+    // construct/copy/destroy
+<del>    reference_wrapper(T&amp;) noexcept;
+    reference_wrapper(T&amp;&amp;) = delete;    // do not bind to temporary objects</del>
+<ins>    template &lt;class U&gt;
+      reference_wrapper(U&amp;&amp;) noexcept(<i>see below</i>);</ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Edit 23.14.5.1 <a href="https://timsong-cpp.github.io/cppwp/refwrap.const">[refwrap.const]</a>/1 as indicated:</p>
+<blockquote>
+<pre>
+<del>reference_wrapper(T&amp; t) noexcept;</del>
+</pre>
+<blockquote>
+<p><del>-1- <i>Effects:</i> Constructs a <tt>reference_wrapper</tt> object that stores a reference to <tt>t</tt>.</del></p>
+</blockquote>
+<pre>
+<ins>template&lt;class U&gt;
+  reference_wrapper(U&amp;&amp; u) noexcept(<i>see below</i>);</ins>
+</pre>
+<blockquote>
+<p><ins>
+-?- <i>Remarks:</i> Let <tt><i>FUN</i></tt> denote the exposition-only functions</ins>
+<blockquote><pre>
+<ins>void <i>FUN</i>(T&amp;) noexcept;
+void <i>FUN</i>(T&amp;&amp;) = delete;</ins>
+</pre></blockquote>
+<ins>This constructor shall not participate in overload resolution unless the expression <tt><i>FUN</i>(std::declval&lt;U&gt;())</tt> is well-formed.
+The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(<i>FUN</i>(std::declval&lt;U&gt;()))</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects:</i> Creates a variable <tt>r</tt> as if by <tt>T&amp; r = std::forward&lt;U&gt;(u)</tt>, then constructs a
+<tt>reference_wrapper</tt> object that stores a reference to <tt>r</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
