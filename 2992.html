@@ -1,0 +1,267 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2992: system_category() and error_code::error_code() should be constexpr</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2992" href="2992">2992.</a> <tt>system_category()</tt> and <tt>error_code::error_code()</tt> should be <tt>constexpr</tt></h3>
+<p><b>Section:</b> 22.5.2.5 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a>, 22.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.constructors">[syserr.errcode.constructors]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2017-06-27 <b>Last modified:</b> 2017-06-28 17:06:31 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#syserr.errcat.objects">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The default constructor of <tt>error_code</tt> should be <tt>constexpr</tt> to enable constant initialization; 
+as a practical matter, there are reports that it regularly shows up in profiles because clearing error codes 
+is so frequent.
+<p/>
+Suggested resolution:
+</p>
+<ul>
+<li><p>add <tt>constexpr</tt> to the declaration of <tt>system_category()</tt> in [syserr.errcat.overview] 
+and [syserr.errcat.objects];</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to the declaration of <tt>generic_category()</tt> in the same two sections;</p></li>
+<li><p>add <tt>constexpr</tt> to the default constructor of <tt>error_code</tt> in [syserr.errcode.overview] and [syserr.errcode.constructors];</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to the <tt>error_code(int val, const error_category&amp; cat)</tt> 
+constructor in the same two sections;</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to <tt>error_code::assign</tt>;</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to <tt>error_code::clear</tt>;</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to <tt>error_code::value</tt>;</p></li>
+<li><p>optionally, add <tt>constexpr</tt> to <tt>error_code::category</tt>.</p></li>
+</ul>
+<p>
+There was an objection that <tt>system_category()</tt> can't be made <tt>constexpr</tt> because it needs to 
+"immortalize" the object so that it's not destroyed at process shutdown or module unload, in order for 
+the <tt>error_code</tt> facility to remain usable. However, the <a href="https://wandbox.org/permlink/pwliJ6sw6I4LBtlE">following 
+proof of concept</a> shows how to achieve this and still make the function <tt>constexpr</tt>:
+</p>
+<blockquote><pre>
+#include &lt;new&gt;
+
+template&lt;class _Ty&gt;
+  union _Immortalizer
+  { // constructs _Ty, never destroys
+  constexpr _Immortalizer(): __ty()
+  {
+  }
+
+  ~_Immortalizer() noexcept {}
+  _Immortalizer(const _Immortalizer&amp;) = delete;
+  _Immortalizer&amp; operator=(const _Immortalizer&amp;) = delete;
+
+  _Ty __ty;
+};
+
+struct error_category
+{
+  virtual ~error_category() = default;
+};
+
+struct system_category_impl : public error_category
+{
+};
+
+[[clang::require_constant_initialization]] static const _Immortalizer&lt;system_category_impl&gt; _System_category;
+
+constexpr error_category const&amp; system_category() noexcept
+{
+  return _System_category.__ty;
+}
+
+struct error_code
+{
+  int val_;
+  const error_category* cat_;
+
+  constexpr error_code() noexcept : val_(0), cat_(&amp;system_category()) {}
+
+  constexpr int value() const noexcept { return val_; }
+  constexpr error_category const&amp; category() const noexcept { return *cat_; }
+};
+
+constexpr error_code s_code;
+
+static_assert(s_code.value() == 0);
+static_assert(&amp;s_code.category() == &amp;system_category());
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 22.5.2.1 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.overview">[syserr.errcat.overview]</a>, class <tt>error_category</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+class error_category {
+public:
+  constexpr error_category() noexcept;
+  virtual ~error_category();
+  error_category(const error_category&amp;) = delete;
+  error_category&amp; operator=(const error_category&amp;) = delete;
+  virtual const char* name() const noexcept = 0;
+  virtual error_condition default_error_condition(int ev) const noexcept;
+  virtual bool equivalent(int code, const error_condition&amp; condition) const noexcept;
+  virtual bool equivalent(const error_code&amp; code, int condition) const noexcept;
+  virtual string message(int ev) const = 0;
+
+  bool operator==(const error_category&amp; rhs) const noexcept;
+  bool operator!=(const error_category&amp; rhs) const noexcept;
+  bool operator&lt;(const error_category&amp; rhs) const noexcept;
+};
+
+<ins>constexpr</ins> const error_category&amp; generic_category() noexcept;
+<ins>constexpr</ins> const error_category&amp; system_category() noexcept;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 22.5.2.5 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr</ins> const error_category&amp; generic_category() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> const error_category&amp; system_category() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.overview">[syserr.errcode.overview]</a>, class <tt>error_code</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+class error_code {
+public:
+  // 22.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.constructors">[syserr.errcode.constructors]</a>, constructors
+  <ins>constexpr</ins> error_code() noexcept;
+  <ins>constexpr</ins> error_code(int val, const error_category&amp; cat) noexcept;
+  template &lt;class ErrorCodeEnum&gt;
+  error_code(ErrorCodeEnum e) noexcept;
+  
+  // 22.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.modifiers">[syserr.errcode.modifiers]</a>, modifiers
+  <ins>constexpr</ins> void assign(int val, const error_category&amp; cat) noexcept;
+  template &lt;class ErrorCodeEnum&gt;
+  error_code&amp; operator=(ErrorCodeEnum e) noexcept;
+  <ins>constexpr</ins> void clear() noexcept;
+  
+  // 22.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.observers">[syserr.errcode.observers]</a>, observers
+  <ins>constexpr</ins> int value() const noexcept;
+  <ins>constexpr</ins> const error_category&amp; category() const noexcept;
+  error_condition default_error_condition() const noexcept;
+  string message() const;
+  explicit operator bool() const noexcept;
+  
+private:
+  int val_; // exposition only
+  const error_category* cat_; // exposition only
+};</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 22.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.constructors">[syserr.errcode.constructors]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr</ins> error_code() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> error_code(int val, const error_category&amp; cat) noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 22.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.modifiers">[syserr.errcode.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr</ins> void assign(int val, const error_category&amp; cat) noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> void clear() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 22.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.observers">[syserr.errcode.observers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr</ins> int value() const noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> const error_category&amp; category() const noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

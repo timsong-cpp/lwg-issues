@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="2950" href="2950">2950.</a> <tt>std::byte</tt> operations are misspecified</h3>
 <p><b>Section:</b> 21.2.5 <a href="https://timsong-cpp.github.io/cppwp/support.types.byteops">[support.types.byteops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2017-03-24 <b>Last modified:</b> 2017-06-27 21:42:35 UTC</p>
+ <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2017-03-24 <b>Last modified:</b> 2017-06-28 17:52:24 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -55,8 +55,184 @@ Equivalent to: <tt>return byte(static_cast&lt;unsigned char&gt;(static_cast&lt;u
 ]</i></p>
 
 
+<p><i>[2017-06-28, STL comments and provides wording]</i></p>
+
+<p>
+This proposed resolution performs its work in <tt>unsigned int</tt>, which is immune to promotion. For <tt>op=</tt>, 
+I'm avoiding unnecessary verbosity.
+<p/>
+It stylistically uses <tt>static_cast</tt>s instead of functional-style casts. All of the <tt>static_cast</tt>s are 
+intentional, although not all of them are strictly necessary. I felt that it was simpler to always follow the 
+same pattern for type conversions, instead of skipping <tt>static_cast</tt>s by taking advantage of the possible 
+ranges of values. (I could prepare an alternative PR to avoid unnecessary casts.) I'm not <tt>static_cast</tt>ing 
+the shift arguments, because of how 8.8 <a href="https://timsong-cpp.github.io/cppwp/expr.shift">[expr.shift]</a> works.
+<p/>
+For <tt>to_integer()</tt>, there's a tiny question. According to 8.2.9 <a href="https://timsong-cpp.github.io/cppwp/expr.static.cast">[expr.static.cast]</a>/9, 
+<tt>static_cast</tt>ing from <tt>[128, 255]</tt> bytes to <tt>signed</tt> (behavior) <tt>char</tt>s triggers unspecified behavior, 
+whereas using <tt>unsigned char</tt> as an intermediate type would produce implementation-defined behavior, 
+7.8 <a href="https://timsong-cpp.github.io/cppwp/conv.integral">[conv.integral]</a>/3. This question is basically theoretical, and it's unaffected by this proposed resolution 
+(which is just changing a functional-style cast to a <tt>static_cast</tt>).
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 21.2.5 <a href="https://timsong-cpp.github.io/cppwp/support.types.byteops">[support.types.byteops]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class IntType&gt;
+  constexpr byte&amp; operator&lt;&lt;=(byte&amp; b, IntType shift) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>is_integral_v&lt;IntType&gt;</tt> 
+is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> Equivalent to: <tt>return b = <ins>b &lt;&lt; shift</ins><del>byte(static_cast&lt;unsigned char&gt;(b) &lt;&lt; shift)</del>;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class IntType&gt;
+  constexpr byte operator&lt;&lt;(byte b, IntType shift) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>is_integral_v&lt;IntType&gt;</tt> is
+<tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to: <tt>return 
+<ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(static_cast&lt;unsigned int&gt;(b) &lt;&lt; 
+shift))</ins><del>byte(static_cast&lt;unsigned char&gt;(b) &lt;&lt; shift)</del>;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class IntType&gt;
+  constexpr byte&amp; operator&gt;&gt;=(byte&amp; b, IntType shift) noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>is_integral_v&lt;IntType&gt;</tt> is
+<tt>true</tt>.
+<p/>
+-6- <i>Effects:</i> Equivalent to: <tt>return b = <ins>b &gt;&gt; shift</ins><del>byte(static_cast&lt;unsigned char&gt;(b) &gt;&gt; shift)</del>;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class IntType&gt;
+  constexpr byte operator&gt;&gt;(byte b, IntType shift) noexcept;
+</pre>
+<blockquote>
+<p>
+-7- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>is_integral_v&lt;IntType&gt;</tt> is
+<tt>true</tt>.
+<p/>
+-8- <i>Effects:</i> Equivalent to: <tt>return 
+<ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(static_cast&lt;unsigned int&gt;(b) &gt;&gt; 
+shift))</ins><del>byte(static_cast&lt;unsigned char&gt;(b) &gt;&gt; shift)</del>;</tt>
+</p>
+</blockquote>
+<pre>
+constexpr byte&amp; operator|=(byte&amp; l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return l = <ins>l | r</ins><del>byte(static_cast&lt;unsigned char&gt;(l) | static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte operator|(byte l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return <ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(static_cast&lt;unsigned int&gt;(l) | 
+static_cast&lt;unsigned int&gt;(r)))</ins><del>byte(static_cast&lt;unsigned char&gt;(l) | 
+static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte&amp; operator&amp;=(byte&amp; l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return l = <ins>l &amp; r</ins><del>byte(static_cast&lt;unsigned char&gt;(l) &amp; static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte operator&amp;(byte l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return <ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(static_cast&lt;unsigned int&gt;(l) &amp; 
+static_cast&lt;unsigned int&gt;(r)))</ins><del>byte(static_cast&lt;unsigned char&gt;(l) &amp; 
+static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte&amp; operator^=(byte&amp; l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-13- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return l = <ins>l ^ r</ins><del>byte(static_cast&lt;unsigned char&gt;(l) ^ static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte operator^(byte l, byte r) noexcept;
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return <ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(static_cast&lt;unsigned int&gt;(l) ^ 
+static_cast&lt;unsigned int&gt;(r)))</ins><del>byte(static_cast&lt;unsigned char&gt;(l) ^ 
+static_cast&lt;unsigned char&gt;(r))</del>;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr byte operator~(byte b) noexcept;
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects:</i> Equivalent to: <tt>return 
+<ins>static_cast&lt;byte&gt;(static_cast&lt;unsigned char&gt;(~static_cast&lt;unsigned 
+int&gt;(b)))</ins><del>byte(~static_cast&lt;unsigned char&gt;(b))</del>;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class IntType&gt;
+  constexpr IntType to_integer(byte b) noexcept;
+</pre>
+<blockquote>
+<p>
+-16- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>is_integral_v&lt;IntType&gt;</tt> is
+<tt>true</tt>.
+<p/>
+-17- <i>Effects:</i> Equivalent to: <tt>return <ins>static_cast&lt;IntType&gt;</ins><del>IntType</del>(b);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
