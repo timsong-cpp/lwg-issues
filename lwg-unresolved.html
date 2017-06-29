@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2017-06-28 at 19:49:42 UTC</p>
+<p><p>Revised 2017-06-28 at 21:58:07 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -30535,7 +30535,7 @@ private:
 <hr>
 <h3><a name="2993" href="2993">2993.</a> <tt>reference_wrapper&lt;T&gt;</tt> conversion from <tt>T&amp;&amp;</tt></h3>
 <p><b>Section:</b> 23.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2017-06-28 19:49:42 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2017-06-28 21:58:07 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#refwrap">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>.</p>
@@ -30579,18 +30579,27 @@ ill-formed when used. This can be done by using a suitably constrained
 constructor template taking a forwarding reference instead of the
 current pair of constructors taking <tt>T&amp;</tt> and <tt>T&amp;&amp;</tt>.
 </p>
+<p><i>[2017-06-28, Tim adds P/R and comments]</i></p>
+
+<p>
+The draft P/R below uses a conditional <tt>noexcept</tt> specification to ensure that converting a <tt>T&amp;</tt> to
+a <tt>reference_wrapper&lt;T&gt;</tt> remains <tt>noexcept</tt> and make it not usable when the source type is a 
+<tt>reference_wrapper</tt> of the same type so as to avoid affecting <tt>is_trivially_constructible</tt>.
+The constructor template has the additional effect of making <tt>reference_wrapper&lt;T&gt;</tt> convertible from everything
+that is convertible to <tt>T&amp;</tt>. This implies, for instance, that <tt>reference_wrapper&lt;int&gt;</tt> is now
+convertible to <tt>reference_wrapper&lt;const int&gt;</tt> when it wasn't before (the conversion would have required 
+two user-defined conversions previously). This more closely emulates the behavior of an actual reference, but does represent
+a change to the existing behavior.
+<p/>
+If perfectly emulating the existing behavior is desired, a conditionally-explicit constructor that is only implicit if 
+<tt>T</tt> is reference-compatible with <tt>remove_reference_t&lt;U&gt;</tt> (see 11.6.3 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.ref">[dcl.init.ref]</a>) can be used.
+</p>
 
 
 <p><b>Proposed resolution:</b></p>
 <p>
 This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
 </p>
-<blockquote class="note">
-<p>
-[<i>Drafting note:</i> The conditional <tt>noexcept</tt> specification is intended to ensure that converting a <tt>T&amp;</tt> to
-a <tt>reference_wrapper&lt;T&gt;</tt> remains <tt>noexcept</tt>. ]
-</p>
-</blockquote>
 <ol>
 <li><p>Edit 23.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>, class template <tt>reference_wrapper</tt> synopsis, as indicated:</p>
 <blockquote>
@@ -30629,7 +30638,8 @@ namespace std {
 <ins>void <i>FUN</i>(T&amp;) noexcept;
 void <i>FUN</i>(T&amp;&amp;) = delete;</ins>
 </pre></blockquote>
-<ins>This constructor shall not participate in overload resolution unless the expression <tt><i>FUN</i>(declval&lt;U&gt;())</tt> is well-formed.
+<ins>This constructor shall not participate in overload resolution unless the expression <tt><i>FUN</i>(declval&lt;U&gt;())</tt> is well-formed
+and <tt>is_same_v&lt;decay_t&lt;U&gt;, reference_wrapper&gt;</tt> is <tt>false</tt>.
 The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(<i>FUN</i>(declval&lt;U&gt;()))</tt>.</ins>
 <p/>
 <ins>-?- <i>Effects:</i> Creates a variable <tt>r</tt> as if by <tt>T&amp; r = std::forward&lt;U&gt;(u)</tt>, then constructs a
