@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2017-07-06 at 18:10:22 UTC</p>
+<p><p>Revised 2017-07-08 at 14:21:32 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -30530,6 +30530,511 @@ name the same type</del> <ins>is not the same type</ins> as <tt>charT</tt><ins>,
 </blockquote>
 </li>
 
+</ol>
+
+
+
+
+<hr>
+<h3><a name="2995" href="2995">2995.</a> <tt>basic_stringbuf</tt> default constructor forbids it from using SSO capacity</h3>
+<p><b>Section:</b> 30.8.2.1 <a href="https://timsong-cpp.github.io/cppwp/stringbuf.cons">[stringbuf.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2017-07-08 09:55:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#stringbuf.cons">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/stringbuf.cons">[stringbuf.cons]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[stringbuf.cons] says that the default constructor initializes the
+base class as <tt>basic_streambuf()</tt> which means the all the pointers to
+the input and output sequences (<tt>pbase</tt>, <tt>eback</tt> etc) are all required to
+be null.
+<p/>
+This means that a <tt>stringbuf</tt> that is implemented in terms of a Small
+String Optimised <tt>std::basic_string</tt> cannot make us of the string's
+initial capacity, and so cannot avoid a call to the overflow virtual
+function even for small writes. In other words, the following
+assertions must pass:
+</p>
+<blockquote><pre>
+#include &lt;sstream&gt;
+#include &lt;cassert&gt;
+
+bool overflowed = false;
+
+struct SB : std::stringbuf
+{
+  int overflow(int c) {
+    assert( pbase() == nullptr );
+    overflowed = true;
+    return std::stringbuf::overflow(c);
+  }
+};
+
+int main()
+{
+  SB sb;
+  sb.sputc('1');
+  assert(overflowed);
+}
+</pre></blockquote>
+<p>
+This is an unnecessary pessimisation. Implementations should be
+allowed to use the SSO buffer immediately and write to it without
+calling overflow. Libc++ already does this, so is non-conforming.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 30.8.2.1 <a href="https://timsong-cpp.github.io/cppwp/stringbuf.cons">[stringbuf.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit basic_stringbuf(
+  ios_base::openmode which = ios_base::in | ios_base::out);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Constructs an object of class <tt>basic_stringbuf</tt>, initializing the base class with 
+<tt>basic_streambuf()</tt> (30.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/streambuf.cons">[streambuf.cons]</a>), and initializing <tt>mode</tt> with <tt>which</tt>.
+<ins>It is implementation-defined whether the sequence pointers (<tt>eback()</tt>, <tt>gptr()</tt>, <tt>egptr()</tt>, 
+<tt>pbase()</tt>, <tt>pptr()</tt>, <tt>epptr()</tt>) are initialized to null pointers.</ins>
+<p/>
+-2- <i>Postconditions:</i> <tt>str() == ""</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="2996" href="2996">2996.</a> Missing rvalue overloads for <tt>shared_ptr</tt> operations</h3>
+<p><b>Section:</b> 23.11.2.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>, 23.11.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2017-07-08 12:58:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>.</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>shared_ptr</tt> aliasing constructor and the <tt>shared_ptr</tt> casts are specified to take a <tt>shared_ptr</tt> 
+by <tt>const</tt> reference and construct a new <tt>shared_ptr</tt> that shares ownership with it, and yet they have no 
+corresponding rvalue reference overloads. That results in an unnecessary refcount increment/decrement when those operations 
+are given an rvalue. Rvalue overloads can't be added as a conforming extension because they observably change semantics 
+(but mostly only for code that does unreasonable things like pass an argument by move and then rely on the fact that it's 
+unchanged), and [res.on.arguments]/p1.3 doesn't help because it only applies to rvalue reference parameters.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 23.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The text with light-blue background shows a currently missing declaration of 
+<tt>reinterpret_pointer_cast</tt> in the header <tt>&lt;memory&gt;</tt> synopsis. The project editor 
+is kindly asked to consider adding it for consistency. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 23.11.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a>,</i> shared_ptr <i>casts</i>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; static_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; static_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; dynamic_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; dynamic_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; const_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; const_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+<span style="background-color:powderblue;text-decoration:underline;">template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;</span>
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; reinterpret_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 23.11.2.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>, class template <tt>shared_ptr</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; class shared_ptr {
+public:
+  [&hellip;]
+  <i>// 23.11.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a>, constructors</i>
+  [&hellip;]
+  template &lt;class D, class A&gt; shared_ptr(nullptr_t p, D d, A a);
+  template&lt;class Y&gt; shared_ptr(const shared_ptr&lt;Y&gt;&amp; r, element_type* p) noexcept;
+  <ins>template&lt;class Y&gt; shared_ptr(shared_ptr&lt;Y&gt;&amp;&amp; r, element_type* p) noexcept;</ins>
+  shared_ptr(const shared_ptr&amp; r) noexcept;
+  [&hellip;]
+};
+
+[&hellip;]
+<i>// 23.11.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a>,</i> shared_ptr <i>casts</i>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; static_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; static_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; dynamic_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; dynamic_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; const_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; const_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; reinterpret_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 23.11.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> the <tt>use_count()</tt> postcondition can safely be deleted because it is redundant with 
+the "shares ownership" wording in the <i>Effects</i>. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class Y&gt; shared_ptr(const shared_ptr&lt;Y&gt;&amp; r, element_type* p) noexcept;
+<ins>template&lt;class Y&gt; shared_ptr(shared_ptr&lt;Y&gt;&amp;&amp; r, element_type* p) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects:</i> Constructs a <tt>shared_ptr</tt> instance that stores <tt>p</tt> and shares ownership with 
+<ins>the initial value of</ins> <tt>r</tt>.
+<p/>
+-15- <i>Postconditions:</i> <tt>get() == p <del>&amp;&amp; use_count() == r.use_count()</del></tt>. <ins>For the 
+second overload, <tt>r</tt> is empty and <tt>r.get() == nullptr</tt>.</ins>
+<p/>
+-16- [<i>Note:</i> To avoid the possibility of a dangling pointer, the user of this constructor must ensure that <tt>p</tt>
+remains valid at least until the ownership group of <tt>r</tt> is destroyed. &mdash; <i>end note</i>]
+<p/>
+-17- [<i>Note:</i> This constructor allows creation of an empty <tt>shared_ptr</tt> instance with a non-null stored pointer.
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 23.11.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; static_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; static_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> The expression <tt>static_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+<p/>
+-2- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, 
+static_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> 
+is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> for the second.</ins>
+<p/>
+-3- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(static_cast&lt;T*&gt;(r.get()))</tt> 
+will eventually result in undefined behavior, attempting to delete the same object twice. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; dynamic_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; dynamic_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+-4- <i>Requires:</i> The expression <tt>dynamic_cast&lt;T*&gt;((U*)0)</tt> shall be well formed and shall have 
+well defined behavior.
+<p/>
+-5- <i>Returns:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; When <tt>dynamic_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get())</tt> returns 
+a nonzero value <tt>p</tt>, <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, p)</tt><ins>, where <tt><i>R</i></tt> 
+is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> for the second</ins>.</p></li>
+<li><p>(5.2) &mdash; Otherwise, <tt>shared_ptr&lt;T&gt;()</tt>.</p></li>
+</ol>
+<p>
+-6- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(dynamic_cast&lt;T*&gt;(r.get()))</tt> 
+will eventually result in undefined behavior, attempting to delete the same object twice. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; const_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; const_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+-7- <i>Requires:</i> The expression <tt>const_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+<p/>
+-8- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, const_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
+for the second.</ins>
+<p/>
+-9- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(const_cast&lt;T*&gt;(r.get()))</tt> 
+will eventually result in undefined behavior, attempting to delete the same object twice. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
+<ins>template&lt;class T, class U&gt;
+  shared_ptr&lt;T&gt; reinterpret_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+-10- <i>Requires:</i> The expression <tt>reinterpret_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+<p/>
+-11- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, reinterpret_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
+for the second.</ins>
+<p/>
+-12- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(reinterpret_cast&lt;T*&gt;(r.get()))</tt> 
+will eventually result in undefined behavior, attempting to delete the same object twice. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="2997" href="2997">2997.</a> LWG 491 and the specification of <tt>{forward_,}list::unique</tt></h3>
+<p><b>Section:</b> 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>, 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2017-07-08 14:02:23 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#list.ops">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>.</p>
+<p><b>View all other</b> <a href="lwg-index.html#list.ops">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There are various problems with the specification of <tt>list::unique</tt> and its <tt>forward_list</tt> counterpart, some of which are obvious even on cursory inspection:
+<ul>
+<li>It refers to the identifiers <tt>first</tt> and <tt>last</tt>, which aren't even defined.</li>
+<li>It uses <tt>i - 1</tt> on non-random-access iterators - in the case of <tt>forward_list</tt>, on forward-only iterators.</li>
+<li>The resolution of LWG <a href="202">202</a>, changing the specification of <tt>std::unique</tt> to require an equivalence relation 
+    and adjusting the order of comparison, weren't applied to these member functions.</li>
+</ul>
+<p/>
+LWG <a href="491">491</a>, which pointed out many of those problems with the specification of <tt>list::unique</tt>, was closed as NAD with the rationale that
+<blockquote>
+"All implementations known to the author of this Defect Report comply with these assumption", and "no impact on current code is expected", i.e. there is no evidence of real-world confusion or harm.
+</blockquote>
+That implementations somehow managed to do the right thing in spite of obviously defective standardese doesn't seem like a good reason to not fix the defects.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> as indicated:</p>
+<blockquote>
+<pre>
+void unique();
+template &lt;class BinaryPredicate&gt; void unique(BinaryPredicate binary_pred);
+</pre>
+<blockquote><p>
+<ins>-?- <i>Requires:</i> The comparison function shall be an equivalence relation. </ins>
+<p/>
+-19- <i>Effects:</i> <ins>If <tt>empty()</tt>, has no effects. Otherwise, e</ins><del>E</del>rases all but the first element from every consecutive 
+group of <del>equal</del><ins>equivalent</ins> elements referred to by the iterator <tt>i</tt> in the range <tt><del>[first + 1, last)</del><ins>[next(begin()), end())</ins></tt>
+for which <tt><del>*i == *(i-1)</del><ins>*j == *i</ins></tt> (for the version of <tt>unique</tt> with no arguments) or
+<tt><del>pred(*i, *(i - 1))</del><ins>pred(*j, *i)</ins></tt> (for the version of <tt>unique</tt> with a predicate argument) holds<ins>,
+where <tt>j</tt> is an iterator in <tt>[begin(), end())</tt> such that <tt>next(j) == i</tt></ins>. Invalidates only the iterators and references to the erased elements.
+<p/>
+-20- <i>Throws:</i> Nothing unless an exception is thrown by <del><tt>*i == *(i-1)</tt> or <tt>pred(*i, *(i - 1))</tt></del><ins> the equality comparison or the predicate</ins>.
+<p/>
+-21- <i>Complexity:</i> If <del>the range <tt>[first, last)</tt> is not empty</del><ins><tt>!empty()</tt></ins>, exactly <tt><del>(last - first) - 1</del><ins>size() - 1</ins></tt>
+applications of the corresponding predicate, otherwise no applications of the predicate.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> as indicated:</p>
+<blockquote>
+<pre>
+void unique();
+template &lt;class BinaryPredicate&gt; void unique(BinaryPredicate binary_pred);
+</pre>
+<blockquote><p>
+<ins>-?- <i>Requires:</i> The comparison function shall be an equivalence relation. </ins>
+<p/>
+-16- <i>Effects:</i> <ins>If <tt>empty()</tt>, has no effects. Otherwise, e</ins><del>E</del>rases all but the first element from every consecutive 
+group of <del>equal</del><ins>equivalent</ins> elements referred to by the iterator <tt>i</tt> in the range <tt><del>[first + 1, last)</del><ins>[next(begin()), end())</ins></tt>
+for which <tt><del>*i == *(i-1)</del><ins>*j == *i</ins></tt> (for the version with no arguments) or 
+<tt><del>pred(*i, *(i - 1))</del><ins>pred(*j, *i)</ins></tt> (for the version with a predicate argument) holds<ins>,
+where <tt>j</tt> is an iterator in <tt>[begin(), end())</tt> such that <tt>next(j) == i</tt></ins>. Invalidates only the iterators and references to the erased elements.
+<p/>
+-17- <i>Throws:</i> Nothing unless an exception is thrown by the equality comparison or the predicate.
+<p/>
+-18- <i>Complexity:</i> If <del>the range <tt>[first, last)</tt> is not empty</del><ins><tt>!empty()</tt></ins>, exactly 
+<tt><del>(last - first) - 1</del><ins>distance(begin(), end()) - 1</ins></tt> applications of the corresponding predicate,
+ otherwise no applications of the predicate.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="2998" href="2998">2998.</a> Requirements on function objects passed to <tt>{forward_,}list</tt>-specific algorithms</h3>
+<p><b>Section:</b> 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>, 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2017-07-08 14:21:32 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#list.ops">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>.</p>
+<p><b>View all other</b> <a href="lwg-index.html#list.ops">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Some specialized algorithms for <tt>forward_list</tt> and <tt>list</tt> take template parameters named <tt>Predicate</tt>, 
+<tt>BinaryPredicate</tt>, or <tt>Compare</tt>. 
+However, there's no wording importing the full requirements for template type parameters with such names from 
+28.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> and 28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>,
+which means, for instance, that there appears to be no rule prohibiting <tt>Compare</tt> from modifying its arguments, 
+because we only refer to 28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a> for the definition of strict weak ordering. Is that intended?
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> as indicated:</p>
+<blockquote>
+<p>-1- Since lists allow fast insertion and erasing from the middle of a list, certain operations are provided specifically 
+for them.<sup>259)</sup> <ins>In this subclause, arguments for a template parameter named <tt>Predicate</tt>, 
+<tt>BinaryPredicate</tt>, or <tt>Compare</tt> shall meet the corresponding requirements in 
+28.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> and 28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Edit 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> as indicated:</p>
+<blockquote>
+<pre>
+void merge(list&amp; x);
+void merge(list&amp;&amp; x);
+template &lt;class Compare&gt; void merge(list&amp; x, Compare comp);
+template &lt;class Compare&gt; void merge(list&amp;&amp; x, Compare comp);
+</pre>
+<blockquote>
+<p>-22- <i>Requires:</i> <del><tt>comp</tt> shall define a strict weak ordering (28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>), and b</del><ins>B</ins>oth the list and the argument list shall be sorted
+according to <del>this ordering</del><ins>the strict weak ordering defined by <tt>operator&lt;</tt> (for the first two overloads) or <tt>comp</tt> (for the last two overloads)</ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Delete 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a>/28 as redundant:</p>
+<blockquote>
+<pre>
+void sort();
+template &lt;class Compare&gt; void sort(Compare comp);
+</pre>
+<blockquote>
+<p>
+<del>-28- <i>Requires:</i> <tt>operator&lt;</tt> (for the first version) or <tt>comp</tt> (for the second version) shall 
+define a strict weak ordering (28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>).</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Insert a new paragraph at the beginning of 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a>:</p>
+<blockquote>
+<p><ins>-?- In this subclause, arguments for a template parameter named <tt>Predicate</tt>, <tt>BinaryPredicate</tt>, 
+or <tt>Compare</tt> shall meet the corresponding requirements in 28.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> and 
+28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>.</ins>
+</p>
+<pre>
+void splice_after(const_iterator position, forward_list&amp; x);
+void splice_after(const_iterator position, forward_list&amp;&amp; x);
+</pre>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+<li><p>Edit 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> as indicated:</p>
+<blockquote>
+<pre>
+void merge(forward_list&amp; x);
+void merge(forward_list&amp;&amp; x);
+template &lt;class Compare&gt; void merge(forward_list&amp; x, Compare comp);
+template &lt;class Compare&gt; void merge(forward_list&amp;&amp; x, Compare comp);
+</pre>
+<blockquote>
+<p>-22- <i>Requires:</i> <del><tt>comp</tt> defines a strict weak ordering (28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>), and</del> 
+<tt>*this</tt> and <tt>x</tt> are both sorted according to <del>this ordering</del><ins>the strict weak ordering 
+defined by <tt>operator&lt;</tt> (for the first two overloads) or <tt>comp</tt> (for the last two overloads)</ins>.
+<tt>get_allocator() == x.get_allocator()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Delete 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a>/23 as redundant:</p>
+<blockquote>
+<pre>
+void sort();
+template &lt;class Compare&gt; void sort(Compare comp);
+</pre>
+<blockquote>
+<p>
+<del>-23- <i>Requires:</i> <tt>operator&lt;</tt> (for the version with no arguments) or <tt>comp</tt> (for the version 
+with a comparison argument) defines a strict weak ordering (28.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>).</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
 </ol>
 
 
