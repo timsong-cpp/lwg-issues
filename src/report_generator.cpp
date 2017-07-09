@@ -272,13 +272,22 @@ R"(<table border="1" cellpadding="4">
    out << "</table>\n";
 }
 
+enum class print_issue_type { in_list, individual };
+
 template<class SAI, class SIBS>
 void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & section_db,
-                 const SAI& all_issues, const SIBS& issues_by_status, const SAI& active_issues) {
+                 const SAI& all_issues, const SIBS& issues_by_status, const SAI& active_issues, print_issue_type type = print_issue_type::in_list) {
          out << "<hr>\n";
 
-         // Number and title
-         out << "<h3><a name=\"" << iss.num << "\" href=\"" << iss.num << "\">" << iss.num << ".</a>" << " " << iss.title << "</h3>\n";
+         // Number
+         if(type == print_issue_type::in_list) {
+              out << "<h3><a name=\"" << iss.num << "\" href=\"" << iss.num << "\">" << iss.num << ".</a>";
+         }
+         else {
+              out << "<h3><a name=\"" << iss.num << "\" href=\"" << lwg::filename_for_status(iss.stat) << '#' << iss.num << "\">" << iss.num << ".</a>";
+         }
+         // Title
+         out << " " << iss.title << "</h3>\n";
 
          // Section, Status, Submitter, Date
          out << "<p><b>Section:</b> ";
@@ -841,7 +850,7 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
        if (!out)
          throw std::runtime_error{"Failed to open " + filename};
        print_file_header(out, std::string("Issue ") + std::to_string(iss.num) + ": " + prune_title_tags(iss.title));
-       print_issue(out, iss, section_db, all_issues, issues_by_status, active_issues);
+       print_issue(out, iss, section_db, all_issues, issues_by_status, active_issues, print_issue_type::individual);
        print_file_trailer(out);
    }
 }
