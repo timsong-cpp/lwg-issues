@@ -17,6 +17,7 @@ then
    cp section.data tmp/meta-data/
 fi
 
+rm -rf tmp/mailing
 mkdir -p tmp/mailing
 bin/lists tmp/
 rm gh-pages/*.html
