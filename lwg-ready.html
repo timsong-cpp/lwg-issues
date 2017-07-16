@@ -105,30 +105,174 @@ template&lt;class T&gt; complex&lt;T&gt; polar(const T&amp; rho, const T&amp; th
 
 
 <hr>
-<h3><a name="2901" href="2901">2901.</a> Variants cannot properly support allocators</h3>
-<p><b>Section:</b> 23.7.3 <a href="https://timsong-cpp.github.io/cppwp/variant.variant">[variant.variant]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2017-06-29 16:47:13 UTC</p>
+<h3><a name="2935" href="2935">2935.</a> What should <tt>create_directories</tt> do when <tt>p</tt> already exists but is not a directory?</h3>
+<p><b>Section:</b> 30.10.15.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directories">[fs.op.create_directories]</a>, 30.10.15.7 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directory">[fs.op.create_directory]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Billy Robert O'Neal III <b>Opened:</b> 2017-02-15 <b>Last modified:</b> 2017-07-15 23:15:19 UTC</p>
 <p><b>Priority: </b>0
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#variant.variant">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/variant.variant">[variant.variant]</a>.</p>
-<p><b>View all other</b> <a href="lwg-index.html#variant.variant">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/variant.variant">[variant.variant]</a>.</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
 <p><b>Discussion:</b></p>
-<b>Addresses US 113</b>
+<p>
+The <tt>create_directory</tt> and <tt>create_directories</tt> functions have a postcondition that says 
+<tt>is_directory(p)</tt>, but it is unclear how they are supposed to provide this. Both of their effects say that 
+they create a directory and return whether it was actually created. It is possible to interpret this as "if 
+creation fails due to the path already existing, issue another system call to see if the path is a directory, 
+and change the result if so" &mdash; but it seems unfortunate to require both Windows and POSIX to issue more 
+system calls in this case.
+<p/>
+In email discussion Davis Herring and Billy O'Neal discussed this issue and agreed that this was probably 
+unintentional. Special thanks for Jonathan Wakely's suggested change to <tt>create_directories</tt>' 
+<em>Returns</em> clause.
+</p>
 
-<p>Variants cannot properly support allocators, as any assignment of a subsequent value throws away the allocator used at 
-construction. This is not an easy problem to solve, so <tt>variant</tt> would be better served dropping the illusion of 
-allocator support for now, leaving open the possibility to provide proper support once the problems are fully understood.</p>
+<p><i>[2017-07 Toronto Thurs Issue Prioritization]</i></p>
 
-<p>Proposed change: Strike the 8 allocator aware constructor overloads from the class definition, and strike 
-20.7.2.1 [variant.ctor] p34/35. Strike clause 20.7.12 [variant.traits]. Strike the specialization of 
-<tt>uses_allocator</tt> for <tt>variant</tt> in the <tt>&lt;variant&gt;</tt> header synopsis, 20.7.1 [variant.general].</p>
-
-<p><i>[2017-02-28, Kona, Casey provides wording]</i></p>
+<p>Priority 0; move to Ready</p>
 
 
-<p><i>[2017-06-29 Moved to Tentatively Ready after 7 positive votes on c++std-lib.]</i></p>
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
 
+<ol>
+<li><p>Make the following edits to 30.10.15.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directories">[fs.op.create_directories]</a>:</p>
+
+<blockquote>
+<pre>
+bool create_directories(const path&amp; p);
+bool create_directories(const path&amp; p, error_code&amp; ec) noexcept;
+</pre>
+</blockquote>
+<p>
+-1- <em>Effects:</em><del> Establishes the postcondition by calling </del><ins>Calls </ins><tt>create_directory()</tt> for <del>any</del><ins>each</ins> element of <tt>p</tt> that does not exist.
+<p/>
+<del>-2- <em>Postconditions:</em> <tt>is_directory(p)</tt>.</del>
+<p/>
+-3- <em>Returns:</em> <tt>true</tt> if a new directory was created <ins>for the directory <tt>p</tt> resolves to</ins>, 
+otherwise <tt>false</tt>. The signature with argument <tt>ec</tt> returns <tt>false</tt> if an error occurs.
+<p/>
+-4- <em>Throws:</em> As specified in 30.10.7 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.</p>
+<p>
+-5- <em>Complexity:</em> &#x1d4aa;(<i>n</i>) where <i>n</i> is the number of elements of <tt>p</tt><del> that do not exist</del>.
+</p>
+</li>
+
+<li><p>Make the following edits to 30.10.15.7 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directory">[fs.op.create_directory]</a>:</p>
+
+<blockquote>
+<pre>
+bool create_directory(const path&amp; p);
+bool create_directory(const path&amp; p, error_code&amp; ec) noexcept;
+</pre>
+</blockquote>
+<p>
+-1- <em>Effects:</em><del> Establishes the postcondition by attempting to create</del><ins>Creates</ins> the directory 
+<tt>p</tt> resolves to, as if by POSIX <tt>mkdir()</tt> with a second argument of <tt>static_cast&lt;int&gt;(perms::all)</tt>. 
+Creation failure because <tt>p</tt> <del>resolves to an existing directory shall not be treated as</del><ins>already exists 
+is not</ins> an error.
+<p/>
+<del>-2- <em>Postconditions:</em> <tt>is_directory(p)</tt>.</del>
+<p/>
+-3- <em>Returns:</em> <tt>true</tt> if a new directory was created, otherwise <tt>false</tt>. The signature with argument 
+<tt>ec</tt> returns <tt>false</tt> if an error occurs.
+<p/>
+-4- <em>Throws:</em> As specified in 30.10.7 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+</p>
+</li>
+</ol>
+
+
+
+
+
+
+
+<hr>
+<h3><a name="2941" href="2941">2941.</a> &sect;[thread.req.timing] wording should apply to both member and namespace-level functions</h3>
+<p><b>Section:</b> 33.2.4 <a href="https://timsong-cpp.github.io/cppwp/thread.req.timing">[thread.req.timing]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Mcdougall <b>Opened:</b> 2017-03-07 <b>Last modified:</b> 2017-07-15 22:58:07 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.req.timing">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/thread.req.timing">[thread.req.timing]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 33.2.4 <a href="https://timsong-cpp.github.io/cppwp/thread.req.timing">[thread.req.timing]</a>, both /3 and /4 talk about "member
+functions whose names end in <tt>_for</tt>" and "<tt>_until</tt>", but these clauses
+also apply to <tt>this_thread::sleep_for()</tt> and <tt>this_thread::sleep_until()</tt>,
+which are namespace-level functions (30.3.2).
+</p>
+
+<p><i>[2017-07 Toronto Wed Issue Prioritization]</i></p>
+
+<p>Priority 0; Move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.
+</p>
+<ol>
+<li><p>Modify 33.2.4 <a href="https://timsong-cpp.github.io/cppwp/thread.req.timing">[thread.req.timing]</a> as indicated::</p>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-3- The <del>member</del> functions whose names end in <tt>_for</tt> take an argument that specifies a duration. [&hellip;]
+<p/>
+-4- The <del>member</del> functions whose names end in <tt>_until</tt> take an argument that specifies a time point. [&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="2944" href="2944">2944.</a> LWG 2905 accidentally removed requirement that construction of the deleter doesn't throw an exception</h3>
+<p><b>Section:</b> 23.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-03-11 <b>Last modified:</b> 2017-07-15 22:58:07 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single.ctor">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording simplification in LWG <a href="2905">2905</a> accidentally deleted the
+requirement that construction of the deleter doesn't throw an
+exception. While this isn't the end of the world since any exception
+will just run into the noexcept on the constructor and result in a
+call to <tt>std::terminate()</tt>, the other <tt>unique_ptr</tt> constructors still have
+a similar no-exception <i>Requires:</i> clause, leaving us in the odd
+situation where throwing an exception results in undefined behavior
+for some constructors and <tt>terminate()</tt> for others. If guaranteeing
+<tt>std::terminate()</tt> on exception is desirable, that should be done across
+the board.
+<p/>
+The proposed wording below simply restores the nothrow requirement
+along with the <tt>Copy/MoveConstructible</tt> requirement. Wording for the
+other alternative (guaranteed <tt>std::terminate()</tt>) can be produced if
+desired.
+</p>
+
+<p><i>[2017-03-16, Daniel comments]</i></p>
+
+<p>
+The publication of the new working draft is awaited, before proposed wording against that
+new working draft is formally possible.
+</p>
+  
+<p><i>[2017-05-03, Tim comments]</i></p>
+
+<p>
+The suggested wording has been moved to the PR section now that the new working draft is available.
+</p>
+
+<p><i>[2017-07 Toronto Wed Issue Prioritization]</i></p>
+
+<p>Priority 0; Move to Ready</p>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -137,89 +281,271 @@ This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.
 </p>
 
 <ol>
-<li><p>Change 23.7.2 <a href="https://timsong-cpp.github.io/cppwp/variant.syn">[variant.syn]</a>, header <tt>&lt;variant&gt;</tt>  synopsis, as follows:</p>
-
-<blockquote><pre>
-[&hellip;]
-<del><i>// 23.7.13 <a href="https://timsong-cpp.github.io/cppwp/variant.traits">[variant.traits]</a>, allocator-related traits</i>
-template &lt;class T, class Alloc&gt; struct uses_allocator;
-template &lt;class... Types, class Alloc&gt; struct uses_allocator&lt;variant&lt;Types...&gt;, Alloc&gt;;</del>
-</pre></blockquote>
-</li>
-
-<li><p>Change 23.7.3 <a href="https://timsong-cpp.github.io/cppwp/variant.variant">[variant.variant]</a>, class template <tt>variant</tt>  synopsis, as follows:</p>
-
-<blockquote><pre>
-[&hellip;]
-<del><i>// allocator-extended constructors</i>
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp;);
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp;, const variant&amp;);
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp;, variant&amp;&amp;);
-template &lt;class Alloc, class T&gt;
-  variant(allocator_arg_t, const Alloc&amp;, T&amp;&amp;);
-template &lt;class Alloc, class T, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp;, in_place_type_t&lt;T&gt;, Args&amp;&amp;...);
-template &lt;class Alloc, class T, class U, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp;, in_place_type_t&lt;T&gt;,
-          initializer_list&lt;U&gt;, Args&amp;&amp;...);
-template &lt;class Alloc, size_t I, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp;, in_place_index_t&lt;I&gt;, Args&amp;&amp;...);
-template &lt;class Alloc, size_t I, class U, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp;, in_place_index_t&lt;I&gt;,
-          initializer_list&lt;U&gt;, Args&amp;&amp;...);</del>
-</pre></blockquote>
-</li>
-
-<li><p>Modify 23.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/variant.ctor">[variant.ctor]</a> as indicated:</p>
-<blockquote><pre>
-<del><i>// allocator-extended constructors</i>
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp; a);
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, const variant&amp; v);
-template &lt;class Alloc&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, variant&amp;&amp; v);
-template &lt;class Alloc, class T&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, T&amp;&amp; t);
-template &lt;class Alloc, class T, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, in_place_type_t&lt;T&gt;, Args&amp;&amp;... args);
-template &lt;class Alloc, class T, class U, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, in_place_type_t&lt;T&gt;,
-          initializer_list&lt;U&gt; il, Args&amp;&amp;... args);
-template &lt;class Alloc, size_t I, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, in_place_index_t&lt;I&gt;, Args&amp;&amp;... args);
-template &lt;class Alloc, size_t I, class U, class... Args&gt;
-  variant(allocator_arg_t, const Alloc&amp; a, in_place_index_t&lt;I&gt;,
-          initializer_list&lt;U&gt; il, Args&amp;&amp;... args);</del>
+<li><p>Insert a paragraph after 23.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> p11:</p>
+<blockquote>
+<pre>
+unique_ptr(pointer p, <i>see below</i> d1) noexcept;
+unique_ptr(pointer p, <i>see below</i> d2) noexcept;
 </pre>
 <blockquote>
 <p>
-<del>-34- <i>Requires:</i> <tt>Alloc</tt> shall meet the requirements for an Allocator 
-(20.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>).</del>
+-9- The signature of these constructors depends upon whether <tt>D</tt> is a reference type. If <tt>D</tt> 
+is a non-reference type <tt>A</tt>, then the signatures are:
 <p/>
-<del>-35- <i>Effects:</i> Equivalent to the preceding constructors except that the contained value is constructed with
-uses-allocator construction (23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).</del>
+[&hellip;]
+<p/>
+-10- If <tt>D</tt> is an lvalue reference type <tt>A&amp;</tt>, then the signatures are:
+<p/>
+[&hellip;]
+<p/>
+-11- If <tt>D</tt> is an lvalue reference type <tt>const A&amp;</tt>, then the signatures are:
+<p/>
+[&hellip;]
+<p/>
+<ins>-??- <i>Requires:</i> For the first constructor, if <tt>D</tt> is not a reference
+type, <tt>D</tt> shall satisfy the requirements of <tt>CopyConstructible</tt> and such
+construction shall not exit via an exception. For the second
+constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> shall satisfy the
+requirements of <tt>MoveConstructible</tt> and such construction shall not exit
+via an exception.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li></ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="2948" href="2948">2948.</a> <tt>unique_ptr</tt> does not define <tt>operator&lt;&lt;</tt> for stream output</h3>
+<p><b>Section:</b> 23.11.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr">[unique.ptr]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2017-03-19 <b>Last modified:</b> 2017-07-15 22:58:07 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/unique.ptr">[unique.ptr]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>shared_ptr</tt> does define <tt>operator&lt;&lt;</tt>, and <tt>unique_ptr</tt> should too, for consistency and usability reasons.
+</p>
+
+<p><i>[2017-07 Toronto Wed Issue Prioritization]</i></p>
+
+<p>Priority 0; move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.
+</p>
+<ol>
+<li><p>Change 23.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  
+  <i>// 23.11.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr">[unique.ptr]</a>, class template unique_ptr</i>
+  [&hellip;]
+  template &lt;class T, class D&gt;
+  bool operator&gt;=(nullptr_t, const unique_ptr&lt;T, D&gt;&amp; y);
+  
+  <ins>template&lt;class E, class T, class Y, class D&gt;
+  basic_ostream&lt;E, T&gt;&amp; operator&lt;&lt; (basic_ostream&lt;E, T&gt;&amp; os, const unique_ptr&lt;Y, D&gt;&amp; p);</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 23.11.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr">[unique.ptr]</a>, class template <tt>unique_ptr</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  template &lt;class T, class D&gt;
+  bool operator&gt;=(nullptr_t, const unique_ptr&lt;T, D&gt;&amp; y);
+  
+  <ins>template&lt;class E, class T, class Y, class D&gt;
+  basic_ostream&lt;E, T&gt;&amp; operator&lt;&lt; (basic_ostream&lt;E, T&gt;&amp; os, const unique_ptr&lt;Y, D&gt;&amp; p);</ins>
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add a new subclause following subclause 23.11.1.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.special">[unique.ptr.special]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins>23.11.1.?? <tt>unique_ptr</tt> I/O [unique.ptr.io]</ins>
+</p>
+<pre>
+<ins>template&lt;class E, class T, class Y, class D&gt;
+  basic_ostream&lt;E, T&gt;&amp; operator&lt;&lt; (basic_ostream&lt;E, T&gt;&amp; os, const unique_ptr&lt;Y, D&gt;&amp; p);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to <tt>os &lt;&lt; p.get();</tt></ins>
+<p/>
+<ins>-?- <i>Returns</i>: <tt>os</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>os &lt;&lt; p.get()</tt> 
+is a valid expression.</ins>
 </p>
 </blockquote>
 </blockquote>
 </li>
+</ol>
 
-<li><p>Modify 23.7.13 <a href="https://timsong-cpp.github.io/cppwp/variant.traits">[variant.traits]</a> as indicated:</p>
+
+
+
+
+
+<hr>
+<h3><a name="2952" href="2952">2952.</a> <tt>iterator_traits</tt> should work for pointers to <i>cv</i> <tt>T</tt></h3>
+<p><b>Section:</b> 27.4.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Billy Robert O'Neal III <b>Opened:</b> 2017-03-27 <b>Last modified:</b> 2017-07-15 22:58:07 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.traits">active issues</a> in <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a>.</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.traits">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>iterator_traits</tt> accepts pointer to <tt>volatile T*</tt>, but then says that the <tt>value_type</tt> is 
+<tt>volatile T</tt>, instead of <tt>T</tt>, which is inconsistent for what it does for pointer to <tt>const T</tt>. 
+We should either reject <tt>volatile</tt> outright or give the right answer.
+</p>
+
+<p><i>[2017-03-30, David Krauss comments]</i></p>
+
+<p>
+<tt>volatile</tt> pointers may not be well-behaved random-access iterators. When simple access incurs side effects, 
+the multiple-pass guarantee depends on underlying (hardware) semantics.
+</p>
+
+<p><i>[2017-07 Toronto Wed Issue Prioritization]</i></p>
+
+<p>Priority 0; move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Change 27.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a> as indicated:</p>
 
 <blockquote>
 <pre>
-<del>template &lt;class... Types, class Alloc&gt;
-struct uses_allocator&lt;variant&lt;Types...&gt;, Alloc&gt; : true_type { };</del>
+<i>// 27.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.primitives">[iterator.primitives]</a>, primitives</i>
+template&lt;class Iterator&gt; struct iterator_traits;
+template&lt;class T&gt; struct iterator_traits&lt;T*&gt;;
+<del>template&lt;class T&gt; struct iterator_traits&lt;const T*&gt;;</del>
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 27.4.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- It is specialized for pointers as
+</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; struct iterator_traits&lt;T*&gt; {
+    using difference_type = ptrdiff_t;
+    using value_type = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>;
+    using pointer = T*;
+    using reference = T&amp;;
+    using iterator_category = random_access_iterator_tag;
+  };
+}
+</pre>
+</blockquote>
+<p>
+<del>and for pointers to <tt>const</tt> as</del>
+</p>
+<blockquote>
+<pre>
+<del>namespace std {
+  template&lt;class T&gt; struct iterator_traits&lt;const T*&gt; {
+    using difference_type = ptrdiff_t;
+    using value_type = T;
+    using pointer = const T*;
+    using reference = const T&amp;;
+    using iterator_category = random_access_iterator_tag;
+  };
+}</del>
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2953" href="2953">2953.</a> LWG 2853 should apply to <tt>deque::erase</tt> too</h3>
+<p><b>Section:</b> 26.3.8.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-03-30 <b>Last modified:</b> 2017-07-15 22:58:07 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#deque.modifiers">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Most of the discussion of LWG <a href="2853">2853</a> applies, mutatis mutandis, to
+<tt>deque::erase</tt>. The relevant requirements table requires neither
+<tt>Copy/MoveInsertable</tt> nor <tt>Copy/MoveConstructible</tt> for the erase
+operations, so there's no way a copy/move constructor can safely be
+called.
+<p/>
+And "assignment operator or move assignment operator" is just
+"assignment operator", since "move assignment operator" is just a
+species of "assignment operator".
+</p>
+
+<p><i>[2017-07 Toronto Wed Issue Prioritization]</i></p>
+
+<p>Priority 0; Move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Change 26.3.8.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+iterator erase(const_iterator position);
+iterator erase(const_iterator first, const_iterator last);
+void pop_front();
+void pop_back();
 </pre>
 <blockquote>
 <p>
-<del>-1- <i>Requires:</i> <tt>Alloc</tt> shall be an Allocator (20.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>).</del>
+-4- <i>Effects:</i> [&hellip;]
 <p/>
-<del>-2- [<i>Note:</i> Specialization of this trait informs other library components that variant can be constructed
-with an allocator, even though it does not have a nested <tt>allocator_type</tt>. &mdash; <i>end note</i>]</del>
+-5- <i>Complexity:</i> The number of calls to the destructor of <tt>T</tt> is the same as the number of elements erased,
+but the number of calls to the assignment operator of <tt>T</tt> is no more than the lesser of the number of
+elements before the erased elements and the number of elements after the erased elements.
+<p/>
+-6- <i>Throws:</i> Nothing unless an exception is thrown by the <del>copy constructor, move constructor,</del> assignment
+operator<del>, or move assignment operator</del> of <tt>T</tt>.
 </p>
 </blockquote>
 </blockquote>
