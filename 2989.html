@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="2989" href="lwg-active.html#2989">2989.</a> <tt>path</tt>'s stream insertion operator lets you insert everything under the sun</h3>
 <p><b>Section:</b> 30.10.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-06-27 <b>Last modified:</b> 2017-07-12 01:35:02 UTC</p>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-06-27 <b>Last modified:</b> 2017-07-16 12:45:57 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -53,7 +53,7 @@ foo PROC
   sub      rsp, 104   ; 00000068H
   lea      rdx, OFFSET FLAT:$SG44895
   lea      rcx, QWORD PTR val$[rsp]
-  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; 
+  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt;
            &gt;::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; &gt;
   lea      rdx, QWORD PTR val$[rsp]
   lea      rcx, QWORD PTR $T1[rsp]
@@ -64,14 +64,14 @@ foo PROC
   lea      rcx, QWORD PTR $T1[rsp]
   <span style="color:#C80000;font-weight:bold">call     std::experimental::filesystem::v1::path::~path</span>
   lea      rcx, QWORD PTR val$[rsp]
-  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; 
+  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt;
            &gt;::~basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; &gt;
   add      rsp, 104   ; 00000068H
   ret      0
 foo ENDP
 </pre></blockquote>
 <p>
-This should either be disabled with a SFINAE constraint, use the <tt>auto_ptr</tt> user-defined conversion 
+This should either be disabled with a SFINAE constraint, use the <tt>auto_ptr</tt> user-defined conversion
 trick, or the stream insertion operators should be made "hidden friends" to prevent conversions to <tt>path</tt>
 from being considered here.
 </p>
@@ -80,8 +80,69 @@ from being considered here.
 
 <p>Priority 2</p>
 
+<p><i>[2017-07 Toronto Saturday afternoon]</i></p>
+
+<p>LWG confirmed they want the hidden friend solution, Billy O'Neal to provide wording.</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li><p>Edit 30.10.6 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+<del><i>// 30.10.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a>,</i> path <i>inserter and extractor</i>
+template &lt;class charT, class traits&gt;
+  basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+template &lt;class charT, class traits&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);</del>
+</pre></blockquote></li>
+
+<li><p>Edit 30.10.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The project editor is kindly asked to consider to move sub-clause 30.10.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> 
+<em>before</em> sub-clause 30.10.8.6 <a href="https://timsong-cpp.github.io/cppwp/fs.path.nonmember">[fs.path.nonmember]</a> (as a peer of it) &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote><pre>
+template &lt;class charT, class traits&gt;
+  <ins>friend</ins> basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+
+[&hellip;]
+
+template &lt;class charT, class traits&gt;
+  <ins>friend</ins> basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);
+</pre></blockquote></li>
+
+<li><p>Edit 30.10.8 <a href="https://timsong-cpp.github.io/cppwp/fs.class.path">[fs.class.path]</a> p2, class <tt>path</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std::filesystem {
+  class path {
+  public:
+    [&hellip;]
+    iterator begin() const;
+    iterator end() const;
+
+    <ins><i>// 30.10.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a></i> path <i>inserter and extractor</i>
+    template &lt;class charT, class traits&gt;
+      friend basic_ostream&lt;charT, traits&gt;&amp;
+        operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+    template &lt;class charT, class traits&gt;
+      friend basic_istream&lt;charT, traits&gt;&amp;
+        operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);</ins>
+  };
+}
+</pre></blockquote></li>
+</ol>
 
 
 
