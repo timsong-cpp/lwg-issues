@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2017-07-16 at 20:47:13 UTC</p>
+<td align="left"><p>Revised 2017-07-17 at 16:58:47 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,6 +42,195 @@
 </tr>
 </table>
 <h2>Ready Issues</h2>
+<hr>
+<h3><a name="2779" href="2779">2779.</a> [networking.ts] Relax requirements on buffer sequence iterators</h3>
+<p><b>Section:</b> 99 [networking.ts::buffer.reqmts.mutablebuffersequence] <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2016-10-05 <b>Last modified:</b> 2017-07-16 21:18:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: networking.ts</b></p>
+<p>
+We propose to relax the <b>ForwardIterator</b> requirements of buffer sequences
+in [networking.ts] by allowing buffer sequence iterators to return rvalues when
+dereferenced, and skip providing <tt>operator-&gt;</tt>.
+A paraphrased explanation of why the referential equality rules of <b>ForwardIterator</b>
+are harmful to the buffer sequence requirements comes from <a href="http://wg21.link/n4128">N4128</a>,
+3.3.7 "Ranges For The Standard Library":
+</p>
+<blockquote><p>
+The [networking.ts] dependence on <b>ForwardIterator</b> in the buffer
+sequence requirements ties together the traversal and access properties of
+iterators. For instance, no forward iterator may return an <i>rvalue</i> proxy
+when it is dereferenced; the <b>ForwardIterator</b> concept requires that
+unary <tt>operator*</tt> return an lvalue. This problem has serious consequences
+for lazy evaluation that applies transformations to buffer sequence elements on
+the fly. If the transformation function does not return an <i>lvalue</i>, the
+range's iterator can model no concept stronger than <b>InputIterator</b>, even
+if the resulting iterator could in theory support
+<b>BidirectionalIterator</b>. The result in practice is that most range
+adaptors today will not be compatible with [networking.ts], thereby limiting the
+types that [networking.ts] can be passed, for no good reason.
+</p></blockquote>
+
+<p>
+Consider a user defined function <tt>trim</tt> which lazily adapts a
+<tt>ConstBufferSequence</tt>, such that when iterating the buffers in the new
+sequence, each buffer appears one byte shorter than in the underlying sequence:
+</p>
+
+<blockquote><pre>
+#include &lt;boost/range/adaptor/transformed.hpp&gt;
+
+struct trim
+{
+  using result_type = const_buffer;
+  result_type operator()(const_buffer b)
+  {
+    return const_buffer{b.data(), b.size() - 1};
+  }
+};
+
+template &lt;ConstBufferSequence&gt;
+auto
+trim(ConstBufferSequence const&amp; buffers)
+{
+  using namespace boost::adaptors;
+  return buffers | transformed(trim{});
+}
+</pre></blockquote>
+
+<p>
+<tt>trim</tt> returns a <b>BidirectionalRange</b>, whose
+<tt>const_iterator</tt> returns an rvalue when dereferenced. This breaks the
+requirements of <b>ForwardIterator</b>. A solution that meets the referential equality 
+rules of <b>ForwardIterator</b>, would be to evaluate the transformed
+sequence upon construction (for example, by storing each transformed
+<tt>const_buffer</tt> in a <tt>vector</tt>). Unfortunately this work-around is
+more expensive since it would add heap allocation which the original example avoids.
+</p>
+
+<p>
+The requirement of <b>InputIterator</b> <tt>operator-&gt;</tt> is also
+unnecessary for buffer sequence iterators, and should be removed. Because
+[networking.ts] only requires that a buffer sequence iterator's
+<tt>value_type</tt> be convertible to <tt>const_buffer</tt> or
+<tt>mutable_buffer</tt>, implementations of [networking.ts] cannot assume the
+existence of any particular member functions or data members other than an
+implicit conversion to <tt>const_buffer</tt> or <tt>mutable_buffer</tt>.
+Removing the requirement for <tt>operator-&gt;</tt> to be present, provides
+additional relief from the referential equality requirements of
+<b>ForwardIterator</b> and allows transformations of buffer sequences to meet
+the requirements of buffer sequences.
+</p>
+
+<p>
+This proposal imposes no changes on existing implementations of [networking.ts].
+It does not change anything in the standard. The proposal is precise, minimal,
+and allows range adapters to transform buffer sequences in optimized, compatible
+ways.
+</p>
+
+<p><i>[Issues processing Telecon 2016-10-07]</i></p>
+
+<p>Status set to LEWG</p>
+
+<p><i>[2017-02-21, Jonathan comments]</i></p>
+
+<p>
+The use of the term "strict aliasing" in the issue discussion is
+misleading as that refers to type-based alias analysis in compilers,
+but the rule for <tt>ForwardIterator</tt>s is related to referential equality
+and not strict aliasing.
+</p>
+
+<p><i>[2017-02-22, Vinnie Falco comments]</i></p>
+
+<p>
+We have eliminated the use of the term "strict aliasing" from the discussion.
+</p>
+
+<p><i>[2017-07-10, Toronto, LEWG comments]</i></p>
+
+<p>Status change: LEWG &rarr; Open.</p>
+<p>
+Forward to LWG with the note that they may want to use "input +"
+instead of "bidirectional -". Unanimous yes.
+</p>
+<p><i>[2017-07 Toronto Wednesday night issue processing]</i></p>
+
+<p>Status to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4588">N4588</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Modify 16.2.1 [buffer.reqmts.mutablebuffersequence] as indicated:
+</p>
+<blockquote>
+<p>
+<del>An iterator type meeting the requirements for bidirectional
+iterators (C++Std [bidirectional.iterators]) whose value type is
+convertible to <tt>mutable_buffer</tt></del>
+</p>
+<p><ins>
+An iterator type whose <tt>reference</tt> type is convertible to
+<tt>mutable_buffer</tt>, and which satisfies all the requirements for
+bidirectional iterators (C++Std [bidirectional.iterators]) except
+that:
+</ins></p>
+<ol style="list-style-type:lower-alpha">
+<li>
+<ins>there is no requirement that <tt>operator-&gt;</tt> is provided, and</ins>
+</li>
+<li>
+<ins>there is no requirement that <tt>reference</tt> be a reference type.</ins>
+</li>
+</ol>
+</blockquote>
+</li>
+
+<li>
+<p>
+Modify 16.2.2 [buffer.reqmts.constbuffersequence] as indicated:
+</p>
+<blockquote>
+<p>
+<del>An iterator type meeting the requirements for bidirectional
+iterators (C++Std [bidirectional.iterators]) whose value type is
+convertible to <tt>const_buffer</tt>.</del>
+</p>
+
+<p>
+<ins>An iterator type whose <tt>reference</tt> type is convertible to
+<tt>const_buffer</tt>, and which satisfies all the requirements for
+bidirectional iterators (C++Std [bidirectional.iterators]) except
+that:
+</ins></p>
+<ol style="list-style-type:lower-alpha">
+<li>
+<ins>there is no requirement that <tt>operator-&gt;</tt> is provided, and</ins>
+</li>
+<li>
+<ins>there is no requirement that <tt>reference</tt> be a reference type.</ins>
+</li>
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+
 <hr>
 <h3><a name="2870" href="2870">2870.</a> Default value of parameter <tt>theta</tt> of <tt>polar</tt> should be dependent</h3>
 <p><b>Section:</b> 29.5.7 <a href="https://timsong-cpp.github.io/cppwp/complex.value.ops">[complex.value.ops]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
@@ -2018,6 +2207,88 @@ with a comparison argument) defines a strict weak ordering (28.7 <a href="https:
 </blockquote>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3001" href="3001">3001.</a> <tt>weak_ptr::element_type</tt> needs <tt>remove_extent_t</tt></h3>
+<p><b>Section:</b> 23.11.2.3 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak">[util.smartptr.weak]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2017-07-14 <b>Last modified:</b> 2017-07-17 16:37:46 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.weak">issues</a> in <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak">[util.smartptr.weak]</a>.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+C++17's <tt>shared_ptr&lt;T&gt;::element_type</tt> is <tt>remove_extent_t&lt;T&gt;</tt>, but <tt>weak_ptr&lt;T&gt;::element_type</tt> 
+is <tt>T</tt>. They should be the same, but this was lost over time.
+<p/>
+First, <a href="http://wg21.link/n4562">N4562</a> "Working Draft, C++ Extensions for Library Fundamentals, Version 2" 8.2.2 [memory.smartptr.weak] specified:
+</p>
+<blockquote>
+<pre>
+namespace std {
+namespace experimental {
+inline namespace fundamentals_v2 {
+
+  template&lt;class T&gt; class weak_ptr {
+  public:
+    typedef typename remove_extent_t&lt;T&gt; element_type;
+</pre>
+</blockquote>
+<p>
+(The <tt>typename</tt> here was spurious.)
+<p/>
+Then, <a href="http://wg21.link/p0220r1">P0220R1</a> "Adopt Library Fundamentals V1 TS Components for C++17 (R1)" listed:
+</p>
+<blockquote>
+<ul>
+<li>
+<p>8.2.2 Class template <tt>weak_ptr</tt></p>
+<ul>
+<li>
+<p>8.2.2.1 <tt>weak_ptr</tt> constructors</p>
+</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<p>
+This obscured the fact that the Library Fundamentals TS had altered <tt>weak_ptr::element_type</tt>.
+<p/>
+Finally, <a href="http://wg21.link/p0414r2">P0414R2</a> "Merging <tt>shared_ptr</tt> changes from Library Fundamentals 
+to C++17" missed the change to <tt>weak_ptr::element_type</tt>, so it wasn't applied to C++17.
+<p/>
+Peter Dimov has confirmed that this was unintentionally lost, and that "<tt>boost::weak_ptr</tt> defines 
+<tt>element_type</tt> in the same way as <tt>shared_ptr</tt>".
+</p>
+
+<p><i>[
+2017-07-17 Moved to Tentatively Ready after 6 positive votes on c++std-lib.
+]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li><p>Edit 23.11.2.3 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak">[util.smartptr.weak]</a>, class template <tt>weak_ptr</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; class weak_ptr {
+public:
+  using element_type = <ins>remove_extent_t&lt;</ins>T<ins>&gt;</ins>;
+  [&hellip;]
+};
+</pre>
+</blockquote>
+</li>
+
 </ol>
 
 
