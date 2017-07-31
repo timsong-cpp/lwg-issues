@@ -17,6 +17,11 @@ then
    cp section.data tmp/meta-data/
 fi
 
+if [ -f lwg-toc.old.html ]
+then
+   cp lwg-toc.old.html tmp/meta-data/
+fi
+
 rm -rf tmp/mailing
 mkdir -p tmp/mailing
 bin/lists tmp/
