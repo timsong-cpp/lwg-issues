@@ -87,6 +87,7 @@ auto lwg::filename_for_status(std::string stat) -> std::string {
    stat = remove_qualifier(stat);
    return (stat == "TC1")           ? LWG_DEFECTS
         : (stat == "CD1")           ? LWG_DEFECTS
+        : (stat == "TS")            ? LWG_DEFECTS
         : (stat == "C++11")         ? LWG_DEFECTS
         : (stat == "C++14")         ? LWG_DEFECTS
         : (stat == "C++17")         ? LWG_DEFECTS
