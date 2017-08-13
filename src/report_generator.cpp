@@ -14,6 +14,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <regex>
 
 namespace
@@ -70,12 +71,11 @@ struct order_by_major_section {
       }
 
    auto operator()(lwg::issue const & x, lwg::issue const & y) const -> bool {
-assert(!x.tags.empty());
-assert(!y.tags.empty());
+      assert(!x.tags.empty());
+      assert(!y.tags.empty());
       lwg::section_num const & xn = section_db.get()[x.tags[0]];
       lwg::section_num const & yn = section_db.get()[y.tags[0]];
-      return  xn.prefix < yn.prefix
-          or (xn.prefix == yn.prefix  and  xn.num[0] < yn.num[0]);
+      return std::tie(xn.prefix, xn.num[0]) < std::tie(yn.prefix, yn.num[0]);
    }
 
 private:
@@ -193,18 +193,6 @@ void print_file_trailer(std::ostream& out) {
     out << "</html>\n";
 }
 
-void print_tag(std::ostream& out, lwg::section_map& section_db, lwg::section_tag const& tag, bool tagonly = false){
-    const auto& num = section_db[tag];
-    if(!tagonly) { out << num << ' '; }
-    if(num.num.empty() || num.num.front() == 99) {
-        out << nolink(tag);
-    }
-    else {
-        out << tag;
-    }
-}
-
-
 void print_table(std::ostream& out, std::vector<lwg::issue>::const_iterator i, std::vector<lwg::issue>::const_iterator e, lwg::section_map & section_db) {
 #if defined (DEBUG_LOGGING)
    std::cout << "\t" << std::distance(i,e) << " items to add to table" << std::endl;
@@ -236,7 +224,7 @@ R"(<table border="1" cellpadding="4">
       // Section
       out << "<td align=\"left\">";
       assert(!i->tags.empty());
-      print_tag(out, section_db, i->tags[0]);
+      out << section_db[i->tags[0]] << " " << i->tags[0];
       if (i->tags[0] != prev_tag) {
          prev_tag = i->tags[0];
          out << "<a name=\"" << as_string(prev_tag) << "\"></a>";
@@ -274,9 +262,12 @@ R"(<table border="1" cellpadding="4">
 
 enum class print_issue_type { in_list, individual };
 
-template<class SAI, class SIBS>
+using issue_set_by_first_tag = std::multiset<lwg::issue, order_by_first_tag>;
+using issue_set_by_status    = std::multiset<lwg::issue, order_by_status>;
+
 void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & section_db,
-                 const SAI& all_issues, const SIBS& issues_by_status, const SAI& active_issues, print_issue_type type = print_issue_type::in_list) {
+                 issue_set_by_first_tag const & all_issues, issue_set_by_status const & issues_by_status,
+                 issue_set_by_first_tag const & active_issues, print_issue_type type = print_issue_type::in_list) {
          out << "<hr>\n";
 
          // Number
@@ -291,10 +282,9 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 
          // Section, Status, Submitter, Date
          out << "<p><b>Section:</b> ";
-         print_tag(out, section_db, iss.tags[0]);
+         out << lwg::format_section_tag_as_link(section_db, iss.tags[0]);
          for (unsigned k = 1; k < iss.tags.size(); ++k) {
-            out << ", ";
-            print_tag(out, section_db, iss.tags[k]);
+            out << ", " << lwg::format_section_tag_as_link(section_db, iss.tags[k]);
          }
 
          out << " <b>Status:</b> <a href=\"lwg-active.html#" << lwg::remove_qualifier(iss.stat) << "\">" << iss.stat << "</a>\n";
@@ -316,17 +306,13 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
          // view active issues in []
          if (active_issues.count(iss) > 1) {
             out << "<p><b>View other</b> <a href=\"lwg-index-open.html#"
-              << as_string(iss.tags[0]) << "\">active issues</a> in ";
-            print_tag(out, section_db, iss.tags[0], true);
-            out << ".</p>\n";
+              << as_string(iss.tags[0]) << "\">active issues</a> in " << iss.tags[0] << ".</p>\n";
          }
 
          // view all issues in []
          if (all_issues.count(iss) > 1) {
             out << "<p><b>View all other</b> <a href=\"lwg-index.html#"
-              << as_string(iss.tags[0]) << "\">issues</a> in ";
-            print_tag(out, section_db, iss.tags[0], true);
-            out  << ".</p>\n";
+              << as_string(iss.tags[0]) << "\">issues</a> in " << iss.tags[0] << ".</p>\n";
          }
          // view all issues with same status
          if (issues_by_status.count(iss) > 1) {
@@ -347,10 +333,10 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 
 template <typename Pred>
 void print_issues(std::ostream & out, std::vector<lwg::issue> const & issues, lwg::section_map & section_db, Pred pred) {
-   std::multiset<lwg::issue, order_by_first_tag> const  all_issues{ issues.begin(), issues.end()} ;
-   std::multiset<lwg::issue, order_by_status>    const  issues_by_status{ issues.begin(), issues.end() };
+   issue_set_by_first_tag const  all_issues{ issues.begin(), issues.end()} ;
+   issue_set_by_status    const  issues_by_status{ issues.begin(), issues.end() };
 
-   std::multiset<lwg::issue, order_by_first_tag> active_issues;
+   issue_set_by_first_tag active_issues;
    for (auto const & elem : issues ) {
       if (lwg::is_active(elem.stat)) {
          active_issues.insert(elem);
@@ -834,10 +820,10 @@ void report_generator::make_sort_by_section(std::vector<issue>& issues, std::str
 // Create individual HTML files for each issue, to make linking easier
 void report_generator::make_individual_issues(std::vector<issue> const & issues, std::string const & path) {
    assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
-   std::multiset<lwg::issue, order_by_first_tag> const  all_issues{ issues.begin(), issues.end()} ;
-   std::multiset<lwg::issue, order_by_status>    const  issues_by_status{ issues.begin(), issues.end() };
+   issue_set_by_first_tag const  all_issues{ issues.begin(), issues.end()} ;
+   issue_set_by_status    const  issues_by_status{ issues.begin(), issues.end() };
 
-   std::multiset<lwg::issue, order_by_first_tag> active_issues;
+   issue_set_by_first_tag active_issues;
    for (auto const & elem : issues ) {
       if (lwg::is_active(elem.stat)) {
          active_issues.insert(elem);
@@ -854,8 +840,5 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
        print_file_trailer(out);
    }
 }
-
-
-
 } // close namespace lwg
 

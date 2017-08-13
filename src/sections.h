@@ -21,12 +21,6 @@ struct section_num {
                                // in relevant doc, e.g,, 17.5.2.1.4.2
 };
 
-struct section_tag_nolink {
-    const section_tag& tag;
-};
-
-inline section_tag_nolink nolink(section_tag const & t) { return {t}; }
-
 using section_map = std::map<section_tag, section_num>;
 
 auto operator <  (section_tag const & x, section_tag const & y) noexcept -> bool;
@@ -34,8 +28,6 @@ auto operator == (section_tag const & x, section_tag const & y) noexcept -> bool
 auto operator != (section_tag const & x, section_tag const & y) noexcept -> bool;
 auto operator << (std::ostream & os,
   section_tag const & tag) -> std::ostream &; // with square brackets
-auto operator << (std::ostream & os,
-  section_tag_nolink const & tag) -> std::ostream &; // with square brackets
 std::string as_string(section_tag const & x); // without square brackets
 
 auto operator <  (section_num const & x, section_num const & y) noexcept -> bool;
@@ -55,6 +47,8 @@ auto read_section_db(std::istream & stream) -> section_map;
    // Read the current C++ standard tag -> section number index
    // from the specified 'stream', and return it as a new
    // 'section_map' object.
+
+auto format_section_tag_as_link(section_map & section_db, section_tag const & tag) -> std::string;
 
 } // close namespace lwg
 

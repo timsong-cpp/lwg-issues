@@ -56,6 +56,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -350,19 +351,9 @@ void format_issue_as_html(lwg::issue & is,
                    //std::cout << "section_tag=\"" << tag.prefix << "\", \"" << tag.name << "\"\n";
                  }    
                }
- 
-               {
-                  std::ostringstream t;
-                  auto num = section_db[tag];
-                  t << num << ' ';
-                  if(num.num.empty() || num.num.front() == 99)
-                     t << nolink(tag);
-                  else
-                     t << tag;
-                  r = t.str();
-               }
 
                j -= i - 1;
+               r = lwg::format_section_tag_as_link(section_db, tag);
                s.replace(i, j, r);
                i += r.size() - 1;
                continue;
