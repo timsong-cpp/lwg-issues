@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2017-08-18 at 19:58:35 UTC</p>
+<p><p>Revised 2017-08-19 at 17:44:52 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -29686,6 +29686,73 @@ is the right condition, or if we should use comparison to zero instead.
 
 
 <p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3012" href="3012">3012.</a> <tt>atomic&lt;T&gt;</tt> is unimplementable for non-<tt>is_trivially_copy_constructible T</tt></h3>
+<p><b>Section:</b> 32.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-08-16 <b>Last modified:</b> 2017-08-19 17:44:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.types.generic">issues</a> in [atomics.types.generic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+32.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> requires that <tt>T</tt> for <tt>std::atomic</tt> is trivially copyable. 
+Unfortunately, that's not sufficient to implement <tt>atomic</tt>. Consider <tt>atomic&lt;T&gt;::load</tt>, which 
+wants to look something like this:
+</p>
+<blockquote><pre>
+template&lt;class T&gt;
+struct atomic {
+  __compiler_magic_storage_for_t storage;
+
+  T load(memory_order = memory_order_seq_cst) const {
+    return __magic_intrinsic(storage);
+  }
+
+};
+</pre></blockquote>
+<p>
+Forming this return statement, though, requires that <tt>T</tt> is copy constructible &mdash; trivially copyable things 
+aren't necessarily copyable! For example, the following is trivially copyable but breaks libc++, libstdc++, and msvc++:
+</p>
+<blockquote><pre>
+struct NonAssignable {
+  int i;
+  NonAssignable() = delete;
+  NonAssignable(int) : i(0) {}
+  NonAssignable(const NonAssignable&amp;) = delete;
+  NonAssignable(NonAssignable&amp;&amp;) = default;
+  NonAssignable&amp; operator=(const NonAssignable&amp;) = delete;
+  NonAssignable&amp; operator=(NonAssignable&amp;&amp;) = delete;
+  ~NonAssignable() = default;
+};
+</pre></blockquote>
+<p>
+All three standard libraries are happy as long as <tt>T</tt> is trivially copy constructible, assignability is not required. 
+Casey Carter says that we might want to still require trivially copy assignable though, since what happens when you do an 
+<tt>atomic&lt;T&gt;::store</tt> is morally an "assignment" even if it doesn't use the user's assignment operator.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 32.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <ins>If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>false</tt>, the program is ill-formed</ins><del>The 
+template argument for <tt>T</tt> shall be trivially copyable (6.9 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>)</del>. [<i>Note:</i> Type 
+arguments that are not also statically initializable may be difficult to use. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+</ol>
 
 
 
