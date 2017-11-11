@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2017-11-05 at 17:38:26 UTC</p>
+<td align="left"><p>Revised 2017-11-11 at 01:14:27 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,6 +42,438 @@
 </tr>
 </table>
 <h2>Ready Issues</h2>
+<hr>
+<h3><a name="2843" href="2843">2843.</a> Unclear behavior of <tt>std::pmr::memory_resource::do_allocate()</tt></h3>
+<p><b>Section:</b> 23.12.2.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.private">[mem.res.private]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2016-12-13 <b>Last modified:</b> 2017-11-10 03:05:33 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.res.private">issues</a> in [mem.res.private].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of <tt>do_allocate()</tt> (23.12.2.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.private">[mem.res.private]</a> p2+p3) says:
+</p>
+<blockquote>
+<p>
+<i>Returns:</i> A derived class shall implement this function to return a
+pointer to allocated storage (3.7.4.2) with a size of at least <tt>bytes</tt>.
+The returned storage is aligned to the specified alignment, if such
+alignment is supported (3.11); otherwise it is aligned to <tt>max_align</tt>.
+<p/>
+<i>Throws:</i> A derived class implementation shall throw an appropriate
+exception if it is unable to allocate memory with the requested size
+and alignment.
+</p>
+</blockquote>
+<p>
+It is unclear whether a request for an unsupported alignment
+(e.g. larger than <tt>max_align</tt>) yields an exception or the returned
+storage is silently aligned to <tt>max_align</tt>.
+<p/>
+This is <a href="https://github.com/cplusplus/draft/issues/966">editorial issue #966</a>.
+</p>
+
+<p><i>[2017-01-27 Telecon]</i></p>
+
+<p>Priority 3; Marshall to ping Pablo for intent and provide wording.</p>
+
+<p><i>[2017-02-12 Pablo responds and provides wording]</i></p>
+
+<p>The original intent was:</p>
+<ul>
+  <li>If the alignment is supported by the implementation (see below), then it must use that alignment or else throw.</li>
+  <li>If the alignment is not supported it must use max_align else throw.</li>
+</ul>
+<p>However, the description of do_allocate might have gone stale as the
+aligned-allocation proposal made its way into the standard.</p>
+
+<p>The understanding I take from the definition of extended alignment in
+(the current text of) 3.11/3 [basic.align] and "assembling an argument
+list" in 5.3.4/14 [expr.new] is that it is intended that, when
+allocating space for an object with extended alignment in a well-formed
+program, the alignment <i>will</i> be honored and <i>will not be</i>
+truncated to max_align. I think this is a change from earlier drafts of
+the extended-alignment proposal, where silent truncation to <tt>max_align</tt>
+was permitted (I could be wrong). Anyway, it seems wrong to ever ignore
+the alignment parameter in <tt>do_allocate()</tt>.</p>
+
+<p><i>[2017-11 Albuquerque Wednesday issue processing]</i></p>
+
+<p>Move to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>Change the specification of <tt>do_allocate()</tt> (23.12.2.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.private">[mem.res.private]</a> p2+p3) as follows:</p>
+
+<blockquote>
+  <p><i>Returns</i>: A derived class shall implement this function to
+  return a pointer to allocated storage (3.7.4.2) with a size of at
+  least <tt>bytes</tt><ins>, aligned to the specified
+  <tt>alignment</tt></ins>. <del>The returned storage is aligned to the
+  specified alignment, if such alignment is supported; otherwise it is
+  aligned to <tt>max_align</tt>.</del></p>
+
+<p><i>Throws:</i> A derived class implementation shall throw an
+appropriate exception if it is unable to allocate memory with the
+requested size and alignment.</p>
+</blockquote>
+
+
+
+
+
+<hr>
+<h3><a name="2969" href="2969">2969.</a> <tt>polymorphic_allocator::construct()</tt> shouldn't pass <tt>resource()</tt></h3>
+<p><b>Section:</b> 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2017-05-30 <b>Last modified:</b> 2017-11-10 03:05:33 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mem.poly.allocator.mem">active issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Section 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> defines the effect of <tt>polymorphic_allocator&lt;T&gt;::construct</tt> as:
+</p>
+<blockquote>
+<p>
+<i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by uses-allocator
+construction with allocator <tt>resource()</tt> and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt>.
+</p>
+</blockquote>
+<p>
+The use of <tt>resource()</tt> is a hold-over from the LFTS, which contains a modified definition of uses-allocator construction. This revised definition was not carried over into the C++17 WP when allocator_resource and polymorphic_allocator were moved over.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li>
+<p>Edit 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt><del>resource()</del><ins>*this</ins></tt> (see 
+23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use 
+allocators. &mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt><del>resource()</del><ins>*this</ins></tt> and constructor arguments 
+<tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+</p>
+</blockquote>
+<pre>
+template &lt;class T1, class T2, class... Args1, class... Args2&gt;
+  void construct(pair&lt;T1,T2&gt;* p, piecewise_construct_t,
+                 tuple&lt;Args1...&gt; x, tuple&lt;Args2...&gt; y);
+</pre>
+<blockquote>
+<p>
+-8- [<i>Note:</i> This method and the <tt>construct</tt> methods that follow are overloads for piecewise construction
+of pairs (23.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>). &mdash; <i>end note</i>]
+<p/>
+-9- <i>Effects:</i> Let <tt>xprime</tt> be a <tt>tuple</tt> constructed from <tt>x</tt> according to the appropriate rule 
+from the following list. [<i>Note:</i> The following description can be summarized as constructing a 
+<tt>pair&lt;T1, T2&gt;</tt> object in the storage whose address is represented by <tt>p</tt>, as if by separate 
+uses-allocator construction with allocator <tt><del>resource()</del><ins>*this</ins></tt> 
+(23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) of <tt>p-&gt;first</tt> using the elements of <tt>x</tt> and 
+<tt>p-&gt;second</tt> using the elements of <tt>y</tt>. &mdash; <i>end note</i>]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2017-06-12, Pablo comments]</i></p>
+
+<p>
+The current description is correct and does not depend on changes to uses-allocator construction. It relies on the fact 
+that <tt>memory_resource*</tt> is convertible to <tt>polymorphic_allocator</tt>.
+</p>
+
+<p><i>[2017-06-13, Tim Song reopens]</i></p>
+
+<p>
+While it is true that <tt>memory_resource*</tt> is convertible to <tt>polymorphic_allocator</tt>,
+uses-allocator construction still requires allocators, and a
+<tt>memory_resource*</tt> isn't an allocator.
+<p/>
+To take a concrete example from the current WP, a <tt>pmr::vector&lt;std::promise&lt;int&gt;&gt;</tt>, as specified, 
+will be attempting to uses-allocator construct a <tt>promise&lt;int&gt;</tt> with a <tt>memory_resource*</tt>, but
+<tt>std::promise</tt>'s allocator-taking constructor expects something that satisfies the allocator requirements, 
+rather than a <tt>memory_resource*</tt>.
+</p>
+
+<p><i>[2017-06-13, Daniel and Tim restore and improve the previously proposed wording]</i></p>
+
+<p>
+</p>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Priority 2; Dietmar to check the P/R before Albuquerque.</p>
+
+<p><i>[2017-11 Albuquerque Wednesday issue processing]</i></p>
+
+<p>Move to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li>
+<p>Edit 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt><del>resource()</del><ins>*this</ins></tt> (see 
+23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use 
+allocators. &mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt><del>resource()</del><ins>*this</ins></tt> and constructor arguments 
+<tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+</p>
+</blockquote>
+<pre>
+template &lt;class T1, class T2, class... Args1, class... Args2&gt;
+  void construct(pair&lt;T1,T2&gt;* p, piecewise_construct_t,
+                 tuple&lt;Args1...&gt; x, tuple&lt;Args2...&gt; y);
+</pre>
+<blockquote>
+<p>
+-8- [<i>Note:</i> This method and the <tt>construct</tt> methods that follow are overloads for piecewise construction
+of pairs (23.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>). &mdash; <i>end note</i>]
+<p/>
+-9- <i>Effects:</i> Let <tt>xprime</tt> be a <tt>tuple</tt> constructed from <tt>x</tt> according to the appropriate rule 
+from the following list. [<i>Note:</i> The following description can be summarized as constructing a 
+<tt>pair&lt;T1, T2&gt;</tt> object in the storage whose address is represented by <tt>p</tt>, as if by separate 
+uses-allocator construction with allocator <tt><del>resource()</del><ins>*this</ins></tt> 
+(23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) of <tt>p-&gt;first</tt> using the elements of <tt>x</tt> and 
+<tt>p-&gt;second</tt> using the elements of <tt>y</tt>. &mdash; <i>end note</i>]
+</p>
+<ol style="list-style-type: none">
+<li><p>(9.1) &mdash; If <tt>uses_allocator_v&lt;T1,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>false</tt>
+and <tt>is_constructible_v&lt;T1,Args1...&gt;</tt> is <tt>true</tt>, then <tt>xprime</tt> is <tt>x</tt>.</p></li>
+<li><p>(9.2) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T1,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt>
+and <tt>is_constructible_v&lt;T1,allocator_arg_t,<del>memory_resource*</del><ins>polymorphic_allocator</ins>,Args1...&gt;</tt> is <tt>true</tt>, then 
+<tt>xprime</tt> is <tt>tuple_cat(make_tuple(allocator_arg, <del>resource()</del><ins>*this</ins>), 
+std::move(x))</tt>.</p></li>
+<li><p>(9.3) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T1,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt> and 
+<tt>is_constructible_v&lt;T1,Args1...,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt>, then <tt>xprime</tt> is 
+<tt>tuple_cat(std::move(x), make_tuple(<del>resource()</del><ins>*this</ins>))</tt>.</p></li>
+<li><p>(9.4) &mdash; Otherwise the program is ill formed.</p></li>
+</ol>
+<p>
+Let <tt>yprime</tt> be a tuple constructed from <tt>y</tt> according to the appropriate rule from the following list:
+</p>
+<ol style="list-style-type: none">
+<li><p>(9.5) &mdash; If <tt>uses_allocator_v&lt;T2,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>false</tt>
+and <tt>is_constructible_v&lt;T2,Args2...&gt;</tt> is <tt>true</tt>, then <tt>yprime</tt> is <tt>y</tt>.</p></li>
+<li><p>(9.6) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T2,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt> and 
+<tt>is_constructible_v&lt;T2,allocator_arg_t,<del>memory_resource*</del><ins>polymorphic_allocator</ins>,Args2...&gt;</tt> is <tt>true</tt>, then <tt>yprime</tt> 
+is <tt>tuple_cat(make_tuple(allocator_arg, <del>resource()</del><ins>*this</ins>), std::move(y))</tt>.</p></li>
+<li><p>(9.7) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T2,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt> and 
+<tt>is_constructible_v&lt;T2,Args2...,<del>memory_resource*</del><ins>polymorphic_allocator</ins>&gt;</tt> is <tt>true</tt>,
+then <tt>yprime</tt> is <tt>tuple_cat(std::move(y), make_tuple(<del>resource()</del><ins>*this</ins>))</tt>.</p></li>
+<li><p>(9.8) &mdash; Otherwise the program is ill formed.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="2975" href="2975">2975.</a> Missing case for <tt>pair</tt> construction in scoped and polymorphic allocators</h3>
+<p><b>Section:</b> 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a>, 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2017-06-13 <b>Last modified:</b> 2017-11-10 03:05:33 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mem.poly.allocator.mem">active issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>scoped_allocator_adaptor</tt> ([allocator.adaptor.syn]) and <tt>polymorphic_allocator</tt> ([mem.poly.allocator.class]) 
+have identical families of members named <tt>construct</tt>:
+</p>
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+
+template &lt;class T1, class T2, class... Args1, class... Args2&gt;
+  void construct(pair&lt;T1,T2&gt;* p, piecewise_construct_t,
+                 tuple&lt;Args1...&gt; x, tuple&lt;Args2...&gt; y);
+template &lt;class T1, class T2&gt;
+  void construct(pair&lt;T1,T2&gt;* p);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, U&amp;&amp; x, V&amp;&amp; y);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, const pair&lt;U, V&gt;&amp; pr);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, pair&lt;U, V&gt;&amp;&amp; pr);
+</pre>
+</blockquote>
+<p>
+Both allocators perform <tt>uses_allocator</tt> construction, and therefore need special handling for <tt>pair</tt> 
+constructions since <tt>pair</tt> doesn't specialize <tt>uses_allocator</tt> (<tt>tuple</tt> gets all of that magic 
+and <tt>pair</tt> is left out in the cold). Presumably, the intent is that the <tt>construct</tt> overloads whose first 
+argument is a pointer to <tt>pair</tt> capture all <tt>pair</tt> constructions. This is not the case: invoking 
+<tt>construct</tt> with a <tt>pair</tt> pointer and a non-constant lvalue <tt>pair</tt> resolves to the <em>first</em> 
+overload when it is viable: it's a better match than the <tt>pair</tt>-pointer-and-<tt>const</tt>-lvalue-<tt>pair</tt> 
+overload. The first overload notably does not properly perform piecewise <tt>uses_allocator</tt> construction for 
+<tt>pair</tt>s as intended.
+</p>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Priority 2; Marshall to work with Casey to reduce the negations in the wording.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<ol>
+<li>
+<p>Modify 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt>resource()</tt> (see 
+23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use allocators.
+&mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt>resource()</tt> and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>T</tt> is not a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> [&hellip;]
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>T</tt> is not a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2017-11-02 Marshall and Casey provide updated wording]</i></p>
+
+
+<p><i>[2017-11 Albuquerque Wednesday issue processing]</i></p>
+
+<p>Move to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li>
+<p>Modify 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt>resource()</tt> (see 
+23.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use allocators.
+&mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt>resource()</tt> and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution if <tt>T</tt> is a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> [&hellip;]
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution if <tt>T</tt> is a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
 <hr>
 <h3><a name="3000" href="3000">3000.</a> <tt>monotonic_memory_resource::do_is_equal</tt> uses <tt>dynamic_cast</tt> unnecessarily</h3>
 <p><b>Section:</b> 23.12.6.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.monotonic.buffer.mem">[mem.res.monotonic.buffer.mem]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
@@ -820,6 +1252,143 @@ bool is_empty(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
 
 
 <hr>
+<h3><a name="3014" href="3014">3014.</a> More <tt>noexcept</tt> issues with filesystem operations</h3>
+<p><b>Section:</b> 30.10.14.4 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy_file">[fs.op.copy_file]</a>, 30.10.14.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directories">[fs.op.create_directories]</a>, 30.10.14.31 <a href="https://timsong-cpp.github.io/cppwp/fs.op.remove_all">[fs.op.remove_all]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-08-23 <b>Last modified:</b> 2017-11-09 15:13:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.op.copy_file">active issues</a> in [fs.op.copy_file].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.op.copy_file">issues</a> in [fs.op.copy_file].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>create_directories</tt> may need to create temporary <tt>path</tt>s, and <tt>remove_all</tt> may need to create temporary 
+<tt>path</tt>s and/or <tt>directory_iterator</tt>s. These operations may require a potentially throwing memory allocation.
+<p/>
+Implementations of <tt>copy_file</tt> may wish to dynamically allocate the buffer used for copying when the underlying OS 
+doesn't supply a copy API directly. This can happen indirectly, e.g., by using <tt>&lt;fstream&gt;</tt> facilities to 
+perform the copying without supplying a custom buffer. Unless LWG wishes to prohibit using a dynamically allocated buffer 
+in this manner, the <tt>noexcept</tt> should be removed.
+</p>
+
+<p><i>[2017-11 Albuquerque Wednesday night issues processing]</i></p>
+
+<p>Moved to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 30.10.5 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std::filesystem {
+
+  [&hellip;]
+  
+  bool copy_file(const path&amp; from, const path&amp; to);
+  bool copy_file(const path&amp; from, const path&amp; to, error_code&amp; ec) <del>noexcept</del>;
+  bool copy_file(const path&amp; from, const path&amp; to, copy_options option);
+  bool copy_file(const path&amp; from, const path&amp; to, copy_options option,
+                 error_code&amp; ec) <del>noexcept</del>;
+
+  [&hellip;]
+
+  bool create_directories(const path&amp; p);
+  bool create_directories(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+  
+  [&hellip;]
+  
+  uintmax_t remove_all(const path&amp; p);
+  uintmax_t remove_all(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+  
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 30.10.14.4 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy_file">[fs.op.copy_file]</a> as indicated:</p>
+<blockquote>
+<pre>
+bool copy_file(const path&amp; from, const path&amp; to);
+bool copy_file(const path&amp; from, const path&amp; to, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns:</i> [&hellip;]
+<p/>
+-2- <i>Throws:</i> [&hellip;]
+</p>
+</blockquote>
+<pre>
+bool copy_file(const path&amp; from, const path&amp; to, copy_options options);
+bool copy_file(const path&amp; from, const path&amp; to, copy_options options,
+               error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Requires:</i> [&hellip;]
+<p/>
+-4- <i>Effects:</i> [&hellip;]
+<p/>
+-5- <i>Returns:</i> [&hellip;]
+<p/>
+-6- <i>Throws:</i> [&hellip;]
+<p/>
+-7- <i>Complexity:</i> [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 30.10.14.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.create_directories">[fs.op.create_directories]</a> as indicated:</p>
+<blockquote>
+<pre>
+bool create_directories(const path&amp; p);
+bool create_directories(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> [&hellip;]
+<p/>
+-2- <i>Postconditions:</i> [&hellip;]
+<p/>
+-3- <i>Returns:</i> [&hellip;]
+<p/>
+-4- <i>Throws:</i> [&hellip;]
+<p/>
+-5- <i>Complexity:</i> [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Edit 30.10.14.31 <a href="https://timsong-cpp.github.io/cppwp/fs.op.remove_all">[fs.op.remove_all]</a> as indicated:</p>
+<blockquote>
+<pre>
+uintmax_t remove_all(const path&amp; p);
+uintmax_t remove_all(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> [&hellip;]
+<p/>
+-2- <i>Postconditions:</i> [&hellip;]
+<p/>
+-3- <i>Returns:</i> [&hellip;]
+<p/>
+-4- <i>Throws:</i> [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3017" href="3017">3017.</a> <tt>list splice</tt> functions should use <tt>addressof</tt></h3>
 <p><b>Section:</b> 26.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a>, 26.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-09-05 <b>Last modified:</b> 2017-11-03 17:20:12 UTC</p>
@@ -1195,6 +1764,77 @@ For the second form, <tt>canonical()</tt> is called with ec as an <tt>error_code
 at the first error occurrence, if any.
 <p/>
 [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3030" href="3030">3030.</a> Who shall meet the requirements of <tt>try_lock</tt>?</h3>
+<p><b>Section:</b> 33.4.5 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.algorithm">[thread.lock.algorithm]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-11-07 <b>Last modified:</b> 2017-11-09 15:13:04 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.lock.algorithm">issues</a> in [thread.lock.algorithm].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+33.4.5 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.algorithm">[thread.lock.algorithm]</a> says:
+</p>
+<blockquote><p>
+"If a call to <tt>try_lock()</tt> fails, <tt>unlock()</tt> shall be called for all prior
+arguments and there shall be no further calls to <tt>try_lock()</tt>."
+</p></blockquote>
+<p>
+We try to use "shall" for requirements on the user (e.g. as in the
+previous paragraph) which is absolutely not what is meant here.
+</p>
+
+<p><i>[2017-11 Albuquerque Wednesday night issues processing]</i></p>
+
+<p>Moved to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Change 33.4.5 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.algorithm">[thread.lock.algorithm]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class L1, class L2, class... L3&gt; int try_lock(L1&amp;, L2&amp;, L3&amp;...);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> [&hellip;]
+<p/>
+-2- <i>Effects:</i> Calls <tt>try_lock()</tt> for each argument in order beginning with the first until all arguments have
+been processed or a call to <tt>try_lock()</tt> fails, either by returning <tt>false</tt> or by throwing an exception.
+If a call to <tt>try_lock()</tt> fails, <tt>unlock()</tt> <del>shall be</del><ins>is</ins> called for all prior arguments 
+<del>and there shall be</del><ins>with</ins> no further calls to <tt>try_lock()</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class L1, class L2, class... L3&gt; void lock(L1&amp;, L2&amp;, L3&amp;...);
+</pre>
+<blockquote>
+<p>
+-4- <i>Requires:</i> [&hellip;]
+<p/>
+-5- <i>Effects:</i> All arguments are locked via a sequence of calls to <tt>lock()</tt>, <tt>try_lock()</tt>, 
+or <tt>unlock()</tt> on each argument. The sequence of calls <del>shall</del><ins>does</ins> not result in deadlock, 
+but is otherwise unspecified. [<i>Note:</i> A deadlock avoidance algorithm such as try-and-back-off must be used, but the 
+specific algorithm is not specified to avoid over-constraining implementations. &mdash; <i>end note</i>] If a 
+call to <tt>lock()</tt> or <tt>try_lock()</tt> throws an exception, <tt>unlock()</tt> <del>shall be</del><ins>is</ins> 
+called for any argument that had been locked by a call to <tt>lock()</tt> or <tt>try_lock()</tt>.
 </p>
 </blockquote>
 </blockquote>
