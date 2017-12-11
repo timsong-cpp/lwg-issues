@@ -1,0 +1,98 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3043: Bogus postcondition for filesystem_error constructor</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3043" href="lwg-active.html#3043">3043.</a> Bogus postcondition for <tt>filesystem_error</tt> constructor</h3>
+<p><b>Section:</b> 30.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem_error.members">[fs.filesystem_error.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-12-06 <b>Last modified:</b> 2017-12-08 20:28:23 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.filesystem_error.members">issues</a> in [fs.filesystem_error.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+30.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem_error.members">[fs.filesystem_error.members]</a> says that constructors of
+<tt>filesystem_error</tt> have the postcondition that <tt>runtime_error::what()</tt> has the
+value <tt>what_arg.c_str()</tt>. That's obviously incorrect: these are pointers
+to distinct copies of the string in any sane implementation and cannot
+possibly compare equal.
+<p/>
+The requirement seems suspect for a further reason: it mandates the content of the string
+returned by <tt>runtime_error::what()</tt>, but <tt>filesystem_error</tt>
+has no direct control over the construction of its indirect
+non-virtual base class <tt>runtime_error</tt>. Instead, what is passed to <tt>runtime_error</tt>'s
+constructor is determined by <tt>system_error</tt>'s constructor, which in many implementations
+is an eagerly crafted error string. This is permitted by the specification of
+<tt>system_error</tt> (see 22.5.7 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr">[syserr.syserr]</a>) but would make the requirement unimplementable.
+<p/>
+The proposed wording below adjusts the postcondition using the formula of <tt>system_error</tt>'s 
+constructor. As an editorial change, it also replaces the postcondition tables with normal postcondition clauses,
+in the spirit of <a href="https://github.com/cplusplus/draft/issues/1875">editorial issue 1875</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Replace 30.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem_error.members">[fs.filesystem_error.members]</a> p2-4, including Tables 119 through 121, with the following:</p>
+<pre>
+filesystem_error(const string&amp; what_arg, error_code ec);
+</pre>
+<blockquote>
+-2- <i>Postconditions</i>: <tt>code() == ec</tt>, <tt>path1().empty() == true</tt>, <tt>path2().empty() == true</tt>,
+and <tt>string_view(what()).find(what_arg) != string_view::npos</tt>.
+</blockquote>
+<pre>
+filesystem_error(const string&amp; what_arg, const path&amp; p1, error_code ec);
+</pre>
+<blockquote>
+-3- <i>Postconditions</i>: <tt>code() == ec</tt>, <tt>path1()</tt> returns a reference to the stored copy of <tt>p1</tt>, <tt>path2().empty() == true</tt>,
+and <tt>string_view(what()).find(what_arg) != string_view::npos</tt>.
+</blockquote>
+<pre>
+filesystem_error(const string&amp; what_arg, const path&amp; p1, const path&amp; p2, error_code ec);
+</pre>
+<blockquote>
+-4- <i>Postconditions</i>: <tt>code() == ec</tt>, <tt>path1()</tt> returns a reference to the stored copy of <tt>p1</tt>,
+<tt>path2()</tt> returns a reference to the stored copy of <tt>p2</tt>, and <tt>string_view(what()).find(what_arg) != string_view::npos</tt>.
+</blockquote>
+</li>
+<li><p>Edit 30.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem_error.members">[fs.filesystem_error.members]</a> p7 as indicated:</p>
+<pre>
+const char* what() const noexcept override;
+</pre>
+<blockquote>
+-7- <i>Returns</i>: <del>A string containing <tt>runtime_error::what()</tt>.</del><ins>An <span style="font-variant:small-caps">ntbs</span> that
+incorporates the <tt>what_arg</tt> argument supplied to the constructor.</ins> The exact format is unspecified. Implementations should include
+the <tt>system_error::what()</tt> string and the pathnames of <tt>path1</tt> and <tt>path2</tt> in the native format in the returned string.
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
