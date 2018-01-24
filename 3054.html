@@ -1,0 +1,74 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3054: uninitialized_copy appears to not be able to meet its exception-safety guarantee</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3054" href="lwg-active.html#3054">3054.</a> <tt>uninitialized_copy</tt> appears to not be able to meet its exception-safety guarantee</h3>
+<p><b>Section:</b> 23.10.11.4 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jon Cohen <b>Opened:</b> 2018-01-24 <b>Last modified:</b> 2018-01-24 21:05:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#uninitialized.copy">issues</a> in [uninitialized.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I believe that <tt>uninitialized_copy</tt> is unable to meet its exception-safety guarantee in the 
+presence of throwing move constructors:
+<p/>
+23.10.11 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms">[specialized.algorithms]</a>/1 has two statements of note for the specialized algorithms such 
+as <tt>uninitialized_copy</tt>:
+<p/>
+<ul>
+<li><p>the provided iterators satisfy the <tt>InputIterator</tt> requirements (27.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a>)</p></li>
+<li><p>if an exception is thrown during the algorithm then there are no effects</p></li>
+</ul>
+<p/>
+Suppose we have an input iterator <tt>Iter</tt>. Then <tt>std::move_iterator&lt;Iter&gt;</tt> appears 
+to also be an input iterator. Notably, it still satisfies that <tt>(void)*a, *a</tt> is equivalent to 
+<tt>*a</tt> for move iterator <tt>a</tt> since the dereference only forms an rvalue reference, it 
+doesn't actually perform the move operation (27.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a> Table 95 &mdash; "Input iterator requirements"). 
+<p/>
+Suppose also that we have a type <tt>T</tt> whose move constructor can throw, a range of <tt>T</tt>'s 
+<tt>[t<sub>begin</sub>, t<sub>end</sub>)</tt>, and a pointer to an uninitialized buffer of <tt>T</tt>'s 
+<tt>buf</tt>. Then <tt>std::uninitialized_copy(std::make_move_iterator(t<sub>begin</sub>), 
+std::make_move_iterator(t<sub>end</sub>), buf)</tt> can't possibly satisfy the property that it has 
+no effects if one of the moves throws &mdash; we'll have a <tt>T</tt> left in a moved-from state with 
+no way of recovering.  
+<p/>
+See <a href="https://wandbox.org/permlink/aYdtwlPckvXp59eJ">here</a> for an example in code.
+<p/>
+It seems like the correct specification for <tt>uninitialized_copy</tt> should be that if 
+<tt>InputIterator</tt>'s <tt>operator*</tt> returns an rvalue reference and 
+<tt>InputIterator::value_type</tt>'s move constructor is not marked <tt>noexcept</tt>, then 
+<tt>uninitialized_copy</tt> will leave the objects in the underlying range in a valid but 
+unspecified state.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
