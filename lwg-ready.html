@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2018-01-27 at 03:09:29 UTC</p>
+<td align="left"><p>Revised 2018-01-30 at 21:56:15 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,6 +42,248 @@
 </tr>
 </table>
 <h2>Ready Issues</h2>
+<hr>
+<h3><a name="2164" href="2164">2164.</a> What are the semantics of <tt>vector.emplace(vector.begin(), vector.back())</tt>?</h3>
+<p><b>Section:</b> 26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>, 26.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements">[container.requirements]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2012-07-07 <b>Last modified:</b> 2018-01-28 19:43:07 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#vector.modifiers">issues</a> in [vector.modifiers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Nikolay Ivchenkov recently brought the following example on the
+<a href="https://groups.google.com/a/isocpp.org/d/topic/std-discussion/dhy23mDFXj4/discussion">std-discussion</a> 
+newsgroup, asking whether the following program well-defined:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;vector&gt;
+
+int main()
+{
+  std::vector&lt;int&gt; v;
+  v.reserve(4);
+  v = { 1, 2, 3 };
+  v.emplace(v.begin(), v.back());
+  for (int x : v)
+    std::cout &lt;&lt; x &lt;&lt; std::endl;
+}
+</pre></blockquote>
+<p>
+Nikolay Ivchenkov:
+<p/>
+I think that an implementation of <tt>vector</tt>'s 'emplace' should initialize an intermediate object with 
+<tt>v.back()</tt> before any shifts take place, then perform all necessary shifts and finally replace the 
+value pointed to by <tt>v.begin()</tt> with the value of the intermediate object. So, I would expect the 
+following output:
+</p>
+<blockquote><pre>
+3
+1
+2
+3
+</pre></blockquote>
+<p>
+GNU C++ 4.7.1 and GNU C++ 4.8.0 produce other results:
+</p>
+<blockquote><pre>
+2
+1
+2
+3
+</pre></blockquote>
+<p>
+Howard Hinnant:
+<p/>
+I believe Nikolay is correct that vector should initialize an intermediate object with <tt>v.back()</tt> 
+before any shifts take place. As Nikolay pointed out in another email, this appears to be the only way to 
+satisfy the strong exception guarantee when an exception is not thrown by <tt>T</tt>'s copy constructor, 
+move constructor, copy assignment operator, or move assignment operator as specified by 
+26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/p1. I.e. if the emplace construction throws, the vector must remain unaltered.
+<p/>
+That leads to an implementation that tolerates objects bound to the function parameter pack of the <tt>emplace</tt> 
+member function may be elements or sub-objects of elements of the container.
+<p/>
+My position is that the standard is correct as written, but needs a clarification in this area. Self-referencing 
+<tt>emplace</tt> should be legal and give the result Nikolay expects. The proposed resolution of LWG <a href="760">760</a> 
+is not correct.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+LWG agrees with the analysis including the assessment of LWG <a href="760">760</a> and would appreciate a concrete wording proposal.
+</p>
+
+<p><i>[2015-04-07 dyp comments]</i></p>
+
+<p>
+The Standard currently does not require that creation of such
+intermediate objects is legal. 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> Table 100
+&mdash; "Sequence container requirements" currently specifies:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 100 &mdash; Sequence container requirements</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.emplace(p, args);</tt>
+</td>
+<td>
+<tt>iterator</tt>
+</td>
+<td>
+<i>Requires</i>: <tt>T</tt> is <tt>EmplaceConstructible</tt> into
+<tt>X</tt> from <tt>args</tt>. For <tt>vector</tt> and <tt>deque</tt>,
+<tt>T</tt> is also <tt>MoveInsertable</tt> into <tt>X</tt> and
+<tt>MoveAssignable</tt>. [&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+<p>
+The <tt>EmplaceConstructible</tt> concept is defined via
+<tt>allocator_traits&lt;A&gt;::construct</tt> in 26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p15.5 That's surprising to me
+since the related concepts use the suffix <tt>Insertable</tt> if they
+refer to the allocator. An additional requirement such as
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> is necessary to allow
+creation of intermediate objects.
+</p>
+
+<p>
+The creation of intermediate objects also affects other functions, such
+as <tt>vector.insert</tt>. Since aliasing the vector is only allowed for
+the single-element forms of <tt>insert</tt> and <tt>emplace</tt> (see
+<a href="526">526</a>), the range-forms are not affected. Similarly,
+aliasing is not allowed for the rvalue-reference overload. See also LWG
+<a href="2266">2266</a>.
+</p>
+
+<p>
+There might be a problem with a requirement of
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> related to the issues
+described in LWG <a href="2461">2461</a>. For example, a scoped allocator
+adapter passes additional arguments to the constructor of the value
+type. This is currently not done in recent implementations of libstdc++
+and libc++ when creating the intermediate objects, they simply create
+the intermediate object by perfectly forwarding the arguments. If such
+an intermediate object is then moved to its final destination in the
+vector, a change of the allocator instance might be required &mdash;
+potentially leading to an expensive copy. One can also imagine worse
+problems, such as run-time errors (allocators not comparing equal at
+run-time) or compile-time errors (if the value type cannot be created
+without the additional arguments). I have not looked in detail into this
+issue, but I'd be reluctant adding a requirement such as
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> without further
+investigation.
+</p>
+
+<p>
+It should be noted that the creation of intermediate objects currently
+is inconsistent in libstdc++ vs libc++. For example, libstdc++ creates
+an intermediate object for <tt>vector.insert</tt>, but not
+<tt>vector.emplace</tt>, whereas libc++ does the exact opposite in this
+respect.
+</p>
+
+<p>
+A live demo of the inconsistent creation of intermediate objects can be
+found <a href="http://coliru.stacked-crooked.com/a/449253d3d329ef4c">here</a>.
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>HH: If it were easy, it'd have wording. Over the decades I have flipped 180 degrees on this. My current position is that it should work even if the element is in the same container.</p>
+<p>TK: What's the implentation status? JW: Broken in GCC. STL: Broken in MSVS. Users complain about this every year.</p>
+<p>MC: 526 says push_back has to work.</p>
+<p>HH: I think you have to make a copy of the element anyway for reasons of exception safety. [Discussion of exception guarantees] </p>
+<p>STL: vector has strong exception guarantees. Could we not just provide the Basic guarantee here. </p>
+<p>HH: It would terrify me to relax that guarantee. It'd be an ugly, imperceptible runtime error. </p>
+<p>HH: I agree if we had a clean slate that strong exception safety is costing us here, and we shouldn't provide it if it costs us.</p>
+<p>STL: I have a mail here, "how can vector provide the strong guarantee when inserting in the middle". </p>
+<p>HH: The crucial point is that you only get the strong guarantee if the exception is thrown by something other than the copy and move operations that are used to make the hole. </p>
+<p>STL: I think we need to clean up the wording. But it does mandate currently that the self-emplacement must work, because nothings says that you can't do it. TK clarifies that a) self-emplacement must work, and b) you get the strong guarantee only if the operations for making the hole don't throw, otherwise basic. HH agrees. STL wants this to be clear in the Standard.</p>
+<p>STL: Should it work for deque, too? HH: Yes.</p>
+<p>HH: I will attempt wording for this. </p>
+<p>TK: Maybe mail this to the reflector, and maybe someone has a good idea? </p>
+<p>JW: I will definitely not come up with anything better, but I can critique wording.</p>
+<p>Moved to Open; Howard to provide wording, with feedback from Jonathan.</p>
+
+<p><i>[2017-01-25, Howard suggests wording]</i></p>
+
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready' after adding a period to Howard's wording.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Modify in 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> Table 87 &mdash; "Sequence container requirements" as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Sequence container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr>
+<tr>
+<td colspan="3" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td>
+<tt>a.emplace(p, args)</tt>
+</td>
+<td><tt>iterator</tt></td>
+<td>
+<i>Requires</i>: <tt>T</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt><br/>
+from <tt>args</tt>. For <tt>vector</tt> and <tt>deque</tt>, <tt>T</tt> is also<br/>
+<tt>MoveInsertable</tt> into <tt>X</tt> and <tt>MoveAssignable</tt>.<br/>
+<i>Effects:</i> Inserts an object of type <tt>T</tt><br/>
+constructed with<br/>
+<tt>std::forward&lt;Args&gt;(args)...</tt> before <tt>p</tt>.<br/>
+<ins>[<i>Note:</i> <tt>args</tt> may directly or indirectly refer to a value<br/> 
+in <tt>a</tt>. &mdash; <i>end note</i>]</ins>
+</td>
+</tr>
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
 <hr>
 <h3><a name="2243" href="2243">2243.</a> <tt>istream::putback</tt> problem</h3>
 <p><b>Section:</b> 30.7.4.3 <a href="https://timsong-cpp.github.io/cppwp/istream.unformatted">[istream.unformatted]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
@@ -117,6 +359,80 @@ first clears <tt>eofbit</tt>. After constructing a sentry object, if <tt>!good()
 </p>
 </blockquote>
 </blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2816" href="2816">2816.</a> <tt>resize_file</tt> has impossible postcondition</h3>
+<p><b>Section:</b> 30.11.14.33 <a href="https://timsong-cpp.github.io/cppwp/fs.op.resize_file">[fs.op.resize_file]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2016-11-07 <b>Last modified:</b> 2018-01-28 19:43:07 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>resize_file</tt> has this postcondition (after resolving late comment 42, see <a href="http://wg21.link/p0489r0">P0489R0</a>):
+</p>
+<blockquote><p>
+<i>Postcondition:</i> <tt>file_size(p) == new_size</tt>.
+</p></blockquote>
+<p>
+This is impossible for an implementation to satisfy, due to the possibility of file system races. 
+This is not actually a postcondition; rather, it is an effect that need no longer hold when the function returns.
+</p>
+
+<p><i>[Issues Telecon 16-Dec-2016]</i></p>
+
+<p>Priority 3</p>
+
+<p><i>[2018-01-16, Jonathan provides wording]</i></p>
+
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready'</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> I considered a slightly more verbose form: "Causes the
+size in bytes of the file <tt>p</tt> resolves to, as determined by <tt>file_size</tt>
+(30.11.14.14 <a href="https://timsong-cpp.github.io/cppwp/fs.op.file_size">[fs.op.file_size]</a>), to be equal to <tt>new_size</tt>, as if by POSIX
+<tt>truncate</tt>." but I don't think it's an improvement. The intent of the
+proposed wording is that if either <tt>file_size(p)</tt> or <tt>truncate(p.c_str())</tt>
+would fail then an error occurs, but no call to <tt>file_size</tt> is required,
+and file system races might change the size before any such call does occur.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 30.11.14.33 <a href="https://timsong-cpp.github.io/cppwp/fs.op.resize_file">[fs.op.resize_file]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void resize_file(const path&amp; p, uintmax_t new_size);
+void resize_file(const path&amp; p, uintmax_t new_size, error_code&amp; ec) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <del><i>Postconditions:</i> <tt>file_size(p) == new_size</tt></del><ins><i>Effects:</i> Causes 
+the size that would be returned by <tt>file_size(p)</tt> to be equal to <tt>new_size</tt>, as if 
+by POSIX <tt>truncate</tt></ins>.
+<p/>
+-2- <i>Throws:</i> As specified in 30.11.6 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+<p/>
+<del>-3- <i>Remarks:</i> Achieves its postconditions as if by POSIX <tt>truncate()</tt>.</del>
+</p>
+</blockquote>
+</blockquote>
+
 </li>
 </ol>
 
@@ -269,6 +585,79 @@ bool copy_file(const path&amp; from, const path&amp; to, copy_options options,
 </blockquote>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2851" href="2851">2851.</a> <tt>std::filesystem</tt> enum classes are now underspecified</h3>
+<p><b>Section:</b> 30.11.9.2 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.file_type">[fs.enum.file_type]</a>, 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>, 30.11.9.6 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.dir.opts">[fs.enum.dir.opts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2016-12-18 <b>Last modified:</b> 2018-01-28 19:43:07 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.enum.file_type">issues</a> in [fs.enum.file_type].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="2678">2678</a> stripped the numerical values of the enumerators from three enum classes in 30.11.9 <a href="https://timsong-cpp.github.io/cppwp/fs.enum">[fs.enum]</a>; 
+in doing so it also removed the implicit specification 1) of the bitmask elements for the two bitmask types (<tt>copy_options</tt> 
+and <tt>directory_options</tt>) and 2) that the <tt>file_type</tt> constants are distinct.
+</p>
+
+<p><i>[2017-01-27 Telecon]</i></p>
+
+<p>Priority 2; Jonathan to work with Tim to tweak wording.</p>
+
+<p><i>[2018-01-16, Jonathan comments]</i></p>
+
+<p>
+I no longer remember what I didn't like about Tim's P/R so I think we should accept the original P/R.
+</p>
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready'</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Edit 30.11.9.2 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.file_type">[fs.enum.file_type]</a>/1 as indicated:</p>
+<blockquote>
+<p>
+This enum class specifies constants used to identify file types, with the meanings listed in Table 123. 
+<ins>The values of the constants are distinct.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Edit 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>/1 as indicated:</p>
+<blockquote>
+<p>
+The <tt>enum class</tt> type <tt>copy_options</tt> is a bitmask type (20.4.2.1.4 <a href="https://timsong-cpp.github.io/cppwp/bitmask.types">[bitmask.types]</a>) that 
+specifies bitmask constants used to control the semantics of copy operations. The constants are specified 
+in option groups with the meanings listed in Table 124. <ins>The constant <tt>none</tt> represents the empty bitmask, and </ins><del>Constant <tt>none</tt></del> is shown in each option group for purposes of 
+exposition; implementations shall provide only a single definition. <ins>Every other constant in the 
+table represents a distinct bitmask element.</ins> Calling a library function with more than a single 
+constant for an option group results in undefined behavior.
+</p>
+</blockquote>
+</li>
+
+<li><p>Edit 30.11.9.6 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.dir.opts">[fs.enum.dir.opts]</a>/1 as indicated:</p>
+<blockquote>
+<p>
+The <tt>enum class</tt> type <tt>directory_options</tt> is a bitmask type (20.4.2.1.4 <a href="https://timsong-cpp.github.io/cppwp/bitmask.types">[bitmask.types]</a>) 
+that specifies bitmask constants used to identify directory traversal options, with the meanings listed 
+in Table 127. <ins>The constant <tt>none</tt> represents the empty bitmask; every other constant in the 
+table represents a distinct bitmask element.</ins>
+</p>
+</blockquote>
+</li>
+
 </ol>
 
 
@@ -622,6 +1011,136 @@ of <tt>pair</tt>.</ins>
 </ol>
 
 
+
+
+
+
+<hr>
+<h3><a name="2989" href="2989">2989.</a> <tt>path</tt>'s stream insertion operator lets you insert everything under the sun</h3>
+<p><b>Section:</b> 30.11.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-06-27 <b>Last modified:</b> 2018-01-28 19:43:07 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The rules for converting a <tt>path</tt> to a narrow character sequence aren't necessarily the same as that iostreams should use. Note that this program creates a temporary path and stream inserts that, which likely destroys information.
+</p>
+
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;filesystem&gt;
+#include &lt;string&gt;
+
+void foo() {
+  using namespace std;
+  using namespace std::experimental::filesystem::v1;
+  wstring val(L"abc");
+  std::cout &lt;&lt; val;
+}
+</pre></blockquote>
+<p>
+Using <a href="https://godbolt.org/g/dTQ8Pw">the godbolt online compiler</a> we get:
+</p>
+<blockquote><pre>
+foo PROC
+  sub      rsp, 104   ; 00000068H
+  lea      rdx, OFFSET FLAT:$SG44895
+  lea      rcx, QWORD PTR val$[rsp]
+  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt;
+           &gt;::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; &gt;
+  lea      rdx, QWORD PTR val$[rsp]
+  lea      rcx, QWORD PTR $T1[rsp]
+  call     ??$?0_WU?$char_traits@_W@std@@V?$allocator@_W@1@@path@v1@filesystem@experimental@std@@QEAA@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@4@@Z
+  lea      rdx, QWORD PTR $T1[rsp]
+  lea      rcx, OFFSET FLAT:std::cout
+  <span style="color:#C80000;font-weight:bold">call     std::experimental::filesystem::v1::operator&lt;&lt;&lt;char,std::char_traits&lt;char&gt; &gt;</span>
+  lea      rcx, QWORD PTR $T1[rsp]
+  <span style="color:#C80000;font-weight:bold">call     std::experimental::filesystem::v1::path::~path</span>
+  lea      rcx, QWORD PTR val$[rsp]
+  call     std::basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt;
+           &gt;::~basic_string&lt;wchar_t,std::char_traits&lt;wchar_t&gt;,std::allocator&lt;wchar_t&gt; &gt;
+  add      rsp, 104   ; 00000068H
+  ret      0
+foo ENDP
+</pre></blockquote>
+<p>
+This should either be disabled with a SFINAE constraint, use the <tt>auto_ptr</tt> user-defined conversion
+trick, or the stream insertion operators should be made "hidden friends" to prevent conversions to <tt>path</tt>
+from being considered here.
+</p>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Priority 2</p>
+
+<p><i>[2017-07 Toronto Saturday afternoon]</i></p>
+
+<p>LWG confirmed they want the hidden friend solution, Billy O'Neal to provide wording.</p>
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready'</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li><p>Edit 30.11.5 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+<del><i>// 30.11.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a>,</i> path <i>inserter and extractor</i>
+template &lt;class charT, class traits&gt;
+  basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+template &lt;class charT, class traits&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);</del>
+</pre></blockquote></li>
+
+<li><p>Edit 30.11.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The project editor is kindly asked to consider to move sub-clause 30.11.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a> 
+<em>before</em> sub-clause 30.11.7.6 <a href="https://timsong-cpp.github.io/cppwp/fs.path.nonmember">[fs.path.nonmember]</a> (as a peer of it) &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<blockquote><pre>
+template &lt;class charT, class traits&gt;
+  <ins>friend</ins> basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+
+[&hellip;]
+
+template &lt;class charT, class traits&gt;
+  <ins>friend</ins> basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);
+</pre></blockquote></li>
+
+<li><p>Edit 30.11.7 <a href="https://timsong-cpp.github.io/cppwp/fs.class.path">[fs.class.path]</a> p2, class <tt>path</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std::filesystem {
+  class path {
+  public:
+    [&hellip;]
+    iterator begin() const;
+    iterator end() const;
+
+    <ins><i>// 30.11.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.io">[fs.path.io]</a></i> path <i>inserter and extractor</i>
+    template &lt;class charT, class traits&gt;
+      friend basic_ostream&lt;charT, traits&gt;&amp;
+        operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const path&amp; p);
+    template &lt;class charT, class traits&gt;
+      friend basic_istream&lt;charT, traits&gt;&amp;
+        operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp; is, path&amp; p);</ins>
+  };
+}
+</pre></blockquote></li>
+</ol>
 
 
 
@@ -1533,6 +2052,137 @@ uintmax_t remove_all(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
 -4- <i>Throws:</i> [&hellip;]
 </p>
 </blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3015" href="3015">3015.</a> <tt>copy_options::<i>unspecified</i></tt> underspecified</h3>
+<p><b>Section:</b> 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-08-24 <b>Last modified:</b> 2018-01-28 19:43:07 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.op.copy">active issues</a> in [fs.op.copy].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.op.copy">issues</a> in [fs.op.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a>/4.8.2 says in the copy-a-directory case <tt>filesystem::copy</tt> performs:
+<blockquote>
+<pre>
+for (const directory_entry&amp; x : directory_iterator(from))
+  copy(x.path(), to/x.path().filename(), options | copy_options::<i>unspecified</i>);
+</pre>
+</blockquote>
+<p/>
+Presumably this does not actually mean that the implementation is free to set whatever <tt>copy_option</tt> element it wishes 
+(<tt>directories_only</tt>? <tt>recursive</tt>? <tt>create_hard_links</tt>?), or <tt>none</tt> at all, or &ndash; since 
+unspecified behavior corresponds to the nondeterministic aspects of the abstract machine (6.8.1 <a href="https://timsong-cpp.github.io/cppwp/intro.execution">[intro.execution]</a>/3) 
+&ndash; a nondeterministically picked element for every iteration of the loop. That would be outright insane.
+<p/>
+I'm fairly sure that what's intended here is to set an otherwise-unused bit in <tt>options</tt> so as to prevent recursion in the <tt>options == copy_options::none</tt> case.
+</p>
+
+<p><i>[2017-11-08]</i></p>
+
+<p>Priority set to 3 after five votes on the mailing list</p>
+
+<strong>Previous resolution: [SUPERSEDED]</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> p4, bullet 4.8.2 as indicated:</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.7) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
+<blockquote>
+[&hellip;]
+</blockquote>
+</li>
+<li><p>(4.8) &mdash; Otherwise, if</p>
+<blockquote>
+<blockquote><pre>
+is_directory(f) &amp;&amp;
+((options &amp; copy_options::recursive) != copy_options::none ||
+options == copy_options::none)
+</pre></blockquote>
+<p>
+then:
+</p>
+</blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.8.1) &mdash; If <tt>exists(t)</tt> is <tt>false</tt>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>(4.8.2) &mdash; Then, iterate over the files in <code>from</code>, as if by </p>
+<blockquote>
+<blockquote><pre>
+for (const directory_entry&amp; x : directory_iterator(from))
+  copy(x.path(), to/x.path().filename(), options | copy_options::<i><del>unspecified</del><ins>in-recursive-copy</ins></i>)<ins>;</ins>
+</pre></blockquote>
+<p>
+<ins>where <tt><i>in-recursive-copy</i></tt> is an exposition-only bitmask element of <tt>copy_options</tt> that is not one of the elements in 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>.</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</li>
+<li><p>(4.9) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
+<li><p>(4.10) &mdash; Otherwise, no effects.</p></li>
+</ol>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready' after striking the words 'Exposition-only' from the added text</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> p4, bullet 4.8.2 as indicated:</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.7) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
+<blockquote>
+[&hellip;]
+</blockquote>
+</li>
+<li><p>(4.8) &mdash; Otherwise, if</p>
+<blockquote>
+<blockquote><pre>
+is_directory(f) &amp;&amp;
+((options &amp; copy_options::recursive) != copy_options::none ||
+options == copy_options::none)
+</pre></blockquote>
+<p>
+then:
+</p>
+</blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.8.1) &mdash; If <tt>exists(t)</tt> is <tt>false</tt>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>(4.8.2) &mdash; Then, iterate over the files in <code>from</code>, as if by </p>
+<blockquote>
+<blockquote><pre>
+for (const directory_entry&amp; x : directory_iterator(from))
+  copy(x.path(), to/x.path().filename(), options | copy_options::<i><del>unspecified</del><ins>in-recursive-copy</ins></i>)<ins>;</ins>
+</pre></blockquote>
+<p>
+<ins>where <tt><i>in-recursive-copy</i></tt> is an bitmask element of <tt>copy_options</tt> that is not one of the elements in 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>.</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</li>
+<li><p>(4.9) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
+<li><p>(4.10) &mdash; Otherwise, no effects.</p></li>
+</ol>
 </blockquote>
 </li>
 </ol>
@@ -2480,6 +3130,104 @@ multiplies&lt;&gt;());
 </blockquote>
 </blockquote>
 
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3051" href="3051">3051.</a> Floating point classifications were inadvertently changed in P0175</h3>
+<p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2018-01-23 <b>Last modified:</b> 2018-01-30 19:37:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#cmath.syn">active issues</a> in [cmath.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmath.syn">issues</a> in [cmath.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The paper <a href="http://wg21.link/p0175">P0175</a> was meant to be a purely editorial change to 
+spell out the synopses of the "C library" headers. However it contained the following inadvertent 
+normative change: The floating point classification functions <tt>isinf</tt>, <tt>isfinite</tt>, 
+<tt>signbit</tt>, etc. (but not <tt>fpclassify</tt>) used to be specified to return "<tt>bool</tt>" 
+in C++14. In C, those are macros, but in C++ they have always been functions. During the preparation 
+of P0175, I recreated the function signatures copying the return type "<tt>int</tt>" from C, but 
+failed to notice that we had already specified those functions differently, so the return type was 
+changed to "<tt>int</tt>".
+<p/>
+To restore the intended specification, we should change the return types of all the <tt>is...</tt> 
+and <tt>signbit</tt> classification functions back to <tt>bool</tt>. Alternatively, we could decide 
+that the return type should actually be <tt>int</tt>, but that would be a larger discussion.
+<p/>
+Proposed resolution for restoring the original wording: Replace return type "<tt>int</tt>" with 
+return type "<tt>bool</tt>" and for all the classification/comparison functions after 
+"<i>// classification/comparison functions</i>" in [cmath.syn] <em>except</em> the <tt>fpclassify</tt> 
+functions.
+<p/>
+Related previous issue was LWG <a href="1327">1327</a> and the corresponding 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2010/n3141.pdf#page=188">NB comment US-136</a> 
+resolution.
+</p>
+
+<p><i>[
+2018-01-29 Moved to Tentatively Ready after 8 positive votes on c++std-lib.
+]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Modify 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std {
+  [&hellip;]
+  <i>// 29.9.4 <a href="https://timsong-cpp.github.io/cppwp/c.math.fpclass">[c.math.fpclass]</a>, classification / comparison functions</i>
+  int fpclassify(float x);
+  int fpclassify(double x);
+  int fpclassify(long double x);
+  <ins>bool</ins><del>int</del> isfinite(float x);
+  <ins>bool</ins><del>int</del> isfinite(double x);
+  <ins>bool</ins><del>int</del> isfinite(long double x);
+  <ins>bool</ins><del>int</del> isinf(float x);
+  <ins>bool</ins><del>int</del> isinf(double x);
+  <ins>bool</ins><del>int</del> isinf(long double x);
+  <ins>bool</ins><del>int</del> isnan(float x);
+  <ins>bool</ins><del>int</del> isnan(double x);
+  <ins>bool</ins><del>int</del> isnan(long double x);
+  <ins>bool</ins><del>int</del> isnormal(float x);
+  <ins>bool</ins><del>int</del> isnormal(double x);
+  <ins>bool</ins><del>int</del> isnormal(long double x);
+  <ins>bool</ins><del>int</del> signbit(float x);
+  <ins>bool</ins><del>int</del> signbit(double x);
+  <ins>bool</ins><del>int</del> signbit(long double x);
+  <ins>bool</ins><del>int</del> isgreater(float x, float y);
+  <ins>bool</ins><del>int</del> isgreater(double x, double y);
+  <ins>bool</ins><del>int</del> isgreater(long double x, long double y);
+  <ins>bool</ins><del>int</del> isgreaterequal(float x, float y);
+  <ins>bool</ins><del>int</del> isgreaterequal(double x, double y);
+  <ins>bool</ins><del>int</del> isgreaterequal(long double x, long double y);
+  <ins>bool</ins><del>int</del> isless(float x, float y);
+  <ins>bool</ins><del>int</del> isless(double x, double y);
+  <ins>bool</ins><del>int</del> isless(long double x, long double y);
+  <ins>bool</ins><del>int</del> islessequal(float x, float y);
+  <ins>bool</ins><del>int</del> islessequal(double x, double y);
+  <ins>bool</ins><del>int</del> islessequal(long double x, long double y);
+  <ins>bool</ins><del>int</del> islessgreater(float x, float y);
+  <ins>bool</ins><del>int</del> islessgreater(double x, double y);
+  <ins>bool</ins><del>int</del> islessgreater(long double x, long double y);
+  <ins>bool</ins><del>int</del> isunordered(float x, float y);
+  <ins>bool</ins><del>int</del> isunordered(double x, double y);
+  <ins>bool</ins><del>int</del> isunordered(long double x, long double y);
+  [&hellip;]
+}
+</pre>
+</blockquote>
 </li>
 </ol>
 
