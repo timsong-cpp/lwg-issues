@@ -139,7 +139,7 @@ int main (int argc, char** argv)
 {
     std::string prefix;
     if(argc > 1)
-        prefix = std::string(argv[1]) + ' ';
+        prefix = std::string(argv[1]);
 
     std::vector<std::pair<section_num, section_tag> > v;
     while (std::cin)
