@@ -135,8 +135,12 @@ replace_all(std::string s, const std::string& old, const std::string& nw)
     return s;
 }
 
-int main ()
+int main (int argc, char** argv)
 {
+    std::string prefix;
+    if(argc > 1)
+        prefix = std::string(argv[1]) + ' ';
+
     std::vector<std::pair<section_num, section_tag> > v;
     while (std::cin)
     {
@@ -148,6 +152,9 @@ int main ()
         std::cin >> n;
         if (std::cin.fail())
             throw std::runtime_error("incomplete tag / num pair");
+        if(!prefix.empty())
+            n.prefix = prefix;
+
         t = replace_all(t, "&", "&amp;");
         t = replace_all(t, "<", "&lt;");
         t = replace_all(t, ">", "&gt;");
