@@ -197,8 +197,11 @@ auto lwg::format_section_tag_as_link(section_map & section_db, section_tag const
    std::ostringstream o;
    const auto& num = section_db[tag];
    o << num << ' ';
-   if(num.num.empty() || num.num.front() == 99 || !tag.prefix.empty()) {
+   if(num.num.empty() || num.num.front() == 99 || (!tag.prefix.empty() && tag.prefix != "networking.ts")) {
       o << tag;
+   }
+   else if(tag.prefix == "networking.ts") {
+      o << "<a href=\"https://timsong-cpp.github.io/cppwp/networking-ts/" << tag.name << "\">" << tag << "</a>";
    }
    else {
       o << "<a href=\"https://timsong-cpp.github.io/cppwp/" << tag.name << "\">[" << tag.name << "]</a>";
