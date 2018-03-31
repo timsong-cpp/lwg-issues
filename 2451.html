@@ -1,0 +1,332 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2451: [fund.ts.v2] optional&lt;T&gt; should 'forward' T's implicit conversions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2451" href="lwg-defects.html#2451">2451.</a> [fund.ts.v2] <tt>optional&lt;T&gt;</tt> should 'forward' <tt>T</tt>'s implicit conversions</h3>
+<p><b>Section:</b> 99 [fund.ts.v2::optional.optional] <b>Status:</b> <a href="lwg-active.html#TS">TS</a>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2014-10-31 <b>Last modified:</b> 2017-07-30 20:10:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fund.ts.v2::optional.optional">issues</a> in [fund.ts.v2::optional.optional].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#TS">TS</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v2</b></p>
+<p>
+Code such as the following is currently ill-formed (thanks to STL for the compelling example):
+</p>
+<blockquote><pre>
+optional&lt;string&gt; opt_str = "meow";
+</pre></blockquote>
+<p>
+This is because it would require two user-defined conversions (from <tt>const char*</tt> to <tt>string</tt>, 
+and from <tt>string</tt> to <tt>optional&lt;string&gt;</tt>) where the language permits only one. This is 
+likely to be a surprise and an inconvenience for users.
+<p/>
+<tt>optional&lt;T&gt;</tt> should be implicitly convertible from any <tt>U</tt> that is implicitly convertible 
+to <tt>T</tt>. This can be implemented as a non-explicit constructor template <tt>optional(U&amp;&amp;)</tt>, 
+which is enabled via SFINAE only if <tt>is_convertible_v&lt;U, T&gt;</tt> and <tt>is_constructible_v&lt;T, U&gt;</tt>, 
+plus any additional conditions needed to avoid ambiguity with other constructors (see 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4064.html">N4064</a>, particularly the 
+"Odd" example, for why <tt>is_convertible</tt> and <tt>is_constructible</tt> are both needed; thanks to Howard 
+Hinnant for spotting this). 
+<p/>
+In addition, we may want to support explicit construction from <tt>U</tt>, which would mean providing a corresponding 
+explicit constructor with a complementary SFINAE condition (this is the single-argument case of the "perfect 
+initialization" pattern described in N4064).
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>STL: This has status LEWG, but it should be priority 1, since we cannot ship an IS without this. </p>
+<p>TK: We assigned our own priorities to LWG-LEWG issues, but haven't actually processed any issues yet. </p>
+<p>MC: This is important.</p>
+
+<p><i>[2016-02-17, Ville comments and provides concrete wording]</i></p>
+
+<p>
+I have prototype-implemented this wording in libstdc++. I didn't edit
+the copy/move-assignment operator tables into the new
+<tt>operator=</tt> templates that take <tt>optional</tt>s of a different
+type; there's a drafting note that suggests copying them
+from the existing tables.
+</p>
+
+<p><i>[2016-03, Jacksonville]</i></p>
+
+<p>
+Discussion of whether <tt>variant</tt> supports this. We think it does.
+<p/>
+Take it for C++17.
+<p/>
+Unanimous yes.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4562.html">N4562</a>.
+</p>
+
+<ol>
+<li><p>Edit 99 [fund.ts.v2::optional.optional] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T&gt;
+class optional
+{
+public:
+  typedef T value_type;
+  
+  <i>// 5.3.1, Constructors</i>
+  constexpr optional() noexcept;
+  constexpr optional(nullopt_t) noexcept;
+  optional(const optional&amp;);
+  optional(optional&amp;&amp;) noexcept(<i>see below</i>);
+  constexpr optional(const T&amp;);
+  constexpr optional(T&amp;&amp;);
+  template &lt;class... Args&gt; constexpr explicit optional(in_place_t, Args&amp;&amp;...);
+  template &lt;class U, class... Args&gt;
+    constexpr explicit optional(in_place_t, initializer_list&lt;U&gt;, Args&amp;&amp;...);
+  <ins>template &lt;class U&gt; constexpr optional(U&amp;&amp;);
+  template &lt;class U&gt; constexpr optional(const optional&lt;U&gt;&amp;);
+  template &lt;class U&gt; constexpr optional(optional&lt;U&gt;&amp;&amp;);</ins>
+  
+  [&hellip;]
+  
+  <i>// 5.3.3, Assignment</i>
+  optional&amp; operator=(nullopt_t) noexcept;
+  optional&amp; operator=(const optional&amp;);
+  optional&amp; operator=(optional&amp;&amp;) noexcept(see below);
+  template &lt;class U&gt; optional&amp; operator=(U&amp;&amp;);
+  <ins>template &lt;class U&gt; optional&amp; operator=(const optional&lt;U&gt;&amp;);
+  template &lt;class U&gt; optional&amp; operator=(optional&lt;U&gt;&amp;&amp;);</ins>
+  template &lt;class... Args&gt; void emplace(Args&amp;&amp;...);
+  template &lt;class U, class... Args&gt;
+    void emplace(initializer_list&lt;U&gt;, Args&amp;&amp;...);
+
+  [&hellip;]
+  
+};
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>In 99 [fund.ts.v2::optional.object.ctor], insert new signature specifications after p33:</p>
+
+<blockquote>
+<p>
+<ins>[<i>Note</i>: The following constructors are conditionally specified as <tt>explicit</tt>. This is typically 
+implemented by declaring two such constructors, of which at most one participates in overload resolution. &mdash; 
+<i>end note</i>]</ins>
+</p>
+<pre>
+<ins>template &lt;class U&gt;
+constexpr optional(U&amp;&amp; v);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Initializes the contained value as if direct-non-list-initializing an object of type <tt>T</tt> 
+with the expression <tt>std::forward&lt;U&gt;(v)</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>*this</tt> contains a value.</ins>
+<p/>
+<ins>-?- <i>Throws</i>: Any exception thrown by the selected constructor of <tt>T</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: If <tt>T</tt>'s selected constructor is a <tt>constexpr</tt> constructor, this constructor 
+    shall be a <tt>constexpr</tt> constructor. This constructor shall not participate in overload resolution unless 
+    <tt>is_constructible_v&lt;T, U&amp;&amp;&gt;</tt> is <tt>true</tt> and <tt>U</tt> is not the same type as <tt>T</tt>.
+    The constructor is <tt>explicit</tt> if and only if <tt>is_convertible_v&lt;U&amp;&amp;, T&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class U&gt;
+constexpr optional(const optional&lt;U&gt;&amp; rhs);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: If <tt>rhs</tt> contains a value, initializes the contained value as if direct-non-list-initializing 
+an object of type <tt>T</tt> with the expression <tt>*rhs</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>bool(rhs) == bool(*this)</tt>.</ins>
+<p/>
+<ins>-?- <i>Throws</i>: Any exception thrown by the selected constructor of <tt>T</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: If <tt>T</tt>'s selected constructor is a <tt>constexpr</tt> constructor, this constructor shall 
+be a <tt>constexpr</tt> constructor. This constructor shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;T, const U&amp;&gt;</tt> is <tt>true</tt>, <tt>is_same&lt;decay_t&lt;U&gt;, T&gt;</tt> is 
+<tt>false</tt>, <tt>is_constructible_v&lt;T, const optional&lt;U&gt;&amp;&gt;</tt> is <tt>false</tt> and 
+<tt>is_convertible_v&lt;const optional&lt;U&gt;&amp;, T&gt;</tt> is <tt>false</tt>. The constructor is <tt>explicit</tt> 
+if and only if <tt>is_convertible_v&lt;const U&amp;, T&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class U&gt;
+constexpr optional(optional&lt;U&gt;&amp;&amp; rhs);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: If <tt>rhs</tt> contains a value, initializes the contained value as if 
+direct-non-list-initializing an object of type <tt>T</tt> with the expression <tt>std::move(*rhs)</tt>. 
+<tt>bool(rhs)</tt> is unchanged.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>bool(rhs) == bool(*this)</tt>.</ins>
+<p/>
+<ins>-?- <i>Throws</i>: Any exception thrown by the selected constructor of <tt>T</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: If <tt>T</tt>'s selected constructor is a <tt>constexpr</tt> constructor, this constructor 
+shall be a <tt>constexpr</tt> constructor. This constructor shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;T, U&amp;&amp;&gt;</tt> is <tt>true</tt>, <tt>is_same&lt;decay_t&lt;U&gt;, T&gt;</tt> is 
+<tt>false</tt>, <tt>is_constructible_v&lt;T, optional&lt;U&gt;&amp;&amp;&gt;</tt> is <tt>false</tt> and 
+<tt>is_convertible_v&lt;optional&lt;U&gt;&amp;&amp;, T&gt;</tt> is <tt>false</tt> and <tt>U</tt> is not the same type 
+as <tt>T</tt>. The constructor is <tt>explicit</tt> if and only if <tt>is_convertible_v&lt;U&amp;&amp;, T&gt;</tt>
+is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In  [fund.ts.v2::optional.object.assign], change as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class U&gt; optional&lt;T&gt;&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-22- <i>Remarks:</i> If any exception is thrown, the result of the expression <tt>bool(*this)</tt> remains unchanged. 
+If an exception is thrown during the call to <tt>T</tt>'s constructor, the state of <tt>v</tt> is determined by the 
+exception safety guarantee of <tt>T</tt>'s constructor. If an exception is thrown during the call to <tt>T</tt>'s 
+assignment, the state of <tt>*val</tt> and <tt>v</tt> is determined by the exception safety guarantee of <tt>T</tt>'s 
+assignment. The function shall not participate in overload resolution unless 
+<ins><ins><tt>decay_t&lt;U&gt;</tt> is not <tt>nullopt_t</tt> and <tt>decay_t&lt;U&gt;</tt> is not a specialization of 
+<tt>optional</tt></ins></ins><del><tt>is_same_v&lt;decay_t&lt;U&gt;, T&gt;</tt> is <tt>true</tt></del>.
+<p/>
+<del>-23- <i>Notes</i>: The reason for providing such generic assignment and then constraining it so that effectively 
+<tt>T == U</tt> is to guarantee that assignment of the form <tt>o = {}</tt> is unambiguous.</del>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class U&gt; optional&lt;T&gt;&amp; operator=(const optional&lt;U&gt;&amp; rhs);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_constructible_v&lt;T, const U&amp;&gt;</tt> is <tt>true</tt> and 
+<tt>is_assignable_v&lt;T&amp;, const U&amp;&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>:</ins>
+</p>
+<table border="1">
+<caption><ins>Table ? &mdash; <tt>optional::operator=(const optional&lt;U&gt;&amp;)</tt> effects</ins></caption>
+
+<tr>
+<th></th>
+<th><ins><b><tt>*this</tt> contains a value</b></ins></th>
+<th><ins><b><tt>*this</tt> does not contain a value</b></ins></th>
+</tr>
+
+<tr>
+<td><ins><b><tt>rhs</tt> contains a value</b></ins></td>
+<td><ins>assigns <tt>*rhs</tt> to the contained value</ins></td>
+<td><ins>initializes the contained value as if direct-non-list-initializing an object of type 
+<tt>T</tt> with <tt>*rhs</tt></ins></td>
+</tr>
+
+<tr>
+<td><ins><b><tt>rhs</tt> does not contain a value</b></ins></td>
+<td><ins>destroys the contained value by calling <tt>val-&gt;T::~T()</tt></ins></td>
+<td><ins>no effect</ins></td>
+</tr>
+
+</table> 
+<p>
+<ins>-?- <i>Returns</i>: <tt>*this</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>bool(rhs) == bool(*this)</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: If any exception is thrown, the result of the expression <tt>bool(*this)</tt> remains unchanged. 
+If an exception is thrown during the call to <tt>T</tt>'s constructor, the state of <tt>*rhs.val</tt> is determined by the 
+exception safety guarantee of <tt>T</tt>'s constructor. If an exception is thrown during the call to <tt>T</tt>'s assignment, 
+the state of <tt>*val</tt> and <tt>*rhs.val</tt> is determined by the exception safety guarantee of <tt>T</tt>'s assignment. 
+The function shall not participate in overload resolution unless <tt>is_same_v&lt;decay_t&lt;U&gt;, T&gt;</tt> is 
+<tt>false</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template &lt;class U&gt; optional&lt;T&gt;&amp; operator=(optional&lt;U&gt;&amp;&amp; rhs);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>is_constructible_v&lt;T, U&gt;</tt> is <tt>true</tt> and 
+<tt>is_assignable_v&lt;T&amp;, U&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: The result of the expression <tt>bool(rhs)</tt> remains unchanged. </ins>
+</p>
+<table border="1">
+<caption><ins>Table ? &mdash; <tt>optional::operator=(optional&lt;U&gt;&amp;&amp;)</tt> effects</ins></caption>
+
+<tr>
+<th></th>
+<th><ins><b><tt>*this</tt> contains a value</b></ins></th>
+<th><ins><b><tt>*this</tt> does not contain a value</b></ins></th>
+</tr>
+
+<tr>
+<td><ins><b><tt>rhs</tt> contains a value</b></ins></td>
+<td><ins>assigns <tt>std::move(*rhs)</tt> to the contained value</ins></td>
+<td><ins>initializes the contained value as if direct-non-list-initializing an object of type 
+<tt>T</tt> with <tt>std::move(*rhs)</tt></ins></td>
+</tr>
+
+<tr>
+<td><ins><b><tt>rhs</tt> does not contain a value</b></ins></td>
+<td><ins>destroys the contained value by calling <tt>val-&gt;T::~T()</tt></ins></td>
+<td><ins>no effect</ins></td>
+</tr>
+
+</table> 
+<p>
+<ins>-?- <i>Returns</i>: <tt>*this</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions</i>: <tt>bool(rhs) == bool(*this)</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: If any exception is thrown, the result of the expression <tt>bool(*this)</tt> remains unchanged. 
+If an exception is thrown during the call to <tt>T</tt>'s constructor, the state of <tt>*rhs.val</tt> is determined by the 
+exception safety guarantee of <tt>T</tt>'s constructor. If an exception is thrown during the call to <tt>T</tt>'s 
+assignment, the state of <tt>*val</tt> and <tt>*rhs.val</tt> is determined by the exception safety guarantee of <tt>T</tt>'s 
+assignment. The function shall not participate in overload resolution unless
+<tt>is_same_v&lt;decay_t&lt;U&gt;, T&gt;</tt> is <tt>false</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

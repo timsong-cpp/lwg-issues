@@ -1,0 +1,198 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2328: Rvalue stream extraction should use perfect forwarding</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2328" href="lwg-defects.html#2328">2328.</a> Rvalue stream extraction should use perfect forwarding</h3>
+<p><b>Section:</b> 30.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2013-09-21 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream.rvalue">issues</a> in [istream.rvalue].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+30.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> declares <tt>operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp; x)</tt>.  
+However,  [istream::extractors]/7 declares <tt>operator&gt;&gt;(basic_istream&lt;charT,traits&gt;&amp; in, charT* s)</tt>, 
+plus additional overloads for <tt>unsigned char*</tt> and <tt>signed char*</tt>. This means that 
+"<tt>return_rvalue_istream() &gt;&gt; &amp;arr[0]</tt>" won't compile, because <tt>T&amp;</tt> won't bind to the rvalue 
+<tt>&amp;arr[0]</tt>.
+</p>
+
+<p><i>[2014-02-12 Issaquah : recategorize as P3]</i></p>
+
+
+<p>
+Jonathan Wakely: Bill was certain the change is right, I think so with less certainty
+</p>
+
+<p>
+Jeffrey Yaskin: I think he's right, hate that we need this
+</p>
+
+<p>
+Jonathan Wakely: is this the security issue Jeffrey raised on lib reflector?
+</p>
+
+<p>
+Move to P3
+</p>
+
+<p><i>[2015-05-06 Lenexa: Move to Review]</i></p>
+
+
+<p>WEB, MC: Proposed wording changes one signature (in two places) to take a forwarding reference.</p>
+<p>TK: Should be consistent with an istream rvalue?</p>
+<p>MC: This is the case where you pass the stream by rvalue reference.</p>
+<p>RP: I would try it before standardizing.</p>
+<p>TK: Does it break anything?</p>
+<p>RP, TK: It will take all arguments, will be an exact match for everything.</p>
+<p>RS, TK: This adapts streaming into an rvalue stream to make it act like streaming into an lvalue stream.</p>
+<p>RS: Should this really return the stream by lvalue reference instead of by rvalue reference? &rArr; new LWG issue.</p>
+<p>RP: Security issue?</p>
+<p>MC: No. That's <tt>istream &gt;&gt; char*</tt>, C++ version of <tt>gets()</tt>. Remove it, as we did for 
+<tt>gets()</tt>? &rArr; new LWG issue.</p>
+<p>RS: Proposed resolution looks correct to me.</p>
+<p>MC: Makes me (and Jonathan Wakely) feel uneasy.</p>
+<p>Move to Review, consensus.</p>
+
+<p><i>[2016-01-15, Daniel comments and suggests improved wording]</i></p>
+
+<p>
+It has been pointed out by Tim Song, that the initial P/R (deleting the <i>Returns</i> paragraph and making the <i>Effects</i> 
+"equivalent to <tt>return is &gt;&gt; /* stuff */;</tt>") breaks cases where the applicable <tt>operator&gt;&gt;</tt> doesn't 
+return a type that is convertible to a reference to the stream:
+</p>
+<blockquote><pre>
+struct A{};
+void operator&gt;&gt;(std::istream&amp;, A&amp;){ }
+
+void f() {
+  A a;
+  std::istringstream() &gt;&gt; a; // was OK, now error
+}
+</pre></blockquote>
+<p>
+This seems like an unintended wording artifact of the "Equivalent to" Phrase Of Power
+and could be easily fixed by changing the second part of the P/R slightly as follows:
+</p>
+<blockquote><pre>
+template &lt;class charT, class traits, class T&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+  operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp;<ins>&amp;</ins> x);
+</pre><blockquote>
+<p>
+-1- <i>Effects:</i> <ins>Equivalent to:</ins><del><tt>is &gt;&gt;x</tt></del>
+</p>
+<blockquote><pre>
+<ins>is &gt;&gt; std::forward&lt;T&gt;(x);
+return is;</ins>
+</pre></blockquote>
+<p>
+<del>-2- <i>Returns:</i> <tt>is</tt></del>
+</p>
+</blockquote></blockquote>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Edit  [iostream.format.overview], header <tt>&lt;istream&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std {
+  [&hellip;]
+  template &lt;class charT, class traits, class T&gt;
+    basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp;<ins>&amp;</ins> x);
+}
+</pre></blockquote>
+</li>
+
+<li><p>Edit 30.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> as indicated:</p>
+
+<blockquote><pre>
+template &lt;class charT, class traits, class T&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+  operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp;<ins>&amp;</ins> x);
+</pre><blockquote>
+<p>
+-1- <i>Effects:</i> <ins>Equivalent to <tt>return </tt></ins><tt>is &gt;&gt;<del>x</del> <ins>std::forward&lt;T&gt;(x)</ins></tt>
+<p/>
+<del>-2- <i>Returns:</i> <tt>is</tt></del>
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-03 Jacksonville: Move to Ready]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Edit  [iostream.format.overview], header <tt>&lt;istream&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std {
+  [&hellip;]
+  template &lt;class charT, class traits, class T&gt;
+    basic_istream&lt;charT, traits&gt;&amp;
+    operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp;<ins>&amp;</ins> x);
+}
+</pre></blockquote>
+</li>
+
+<li><p>Edit 30.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> as indicated:</p>
+
+<blockquote><pre>
+template &lt;class charT, class traits, class T&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+  operator&gt;&gt;(basic_istream&lt;charT, traits&gt;&amp;&amp; is, T&amp;<ins>&amp;</ins> x);
+</pre><blockquote>
+<p>
+-1- <i>Effects:</i> <ins>Equivalent to:</ins><del><tt>is &gt;&gt;x</tt></del>
+</p>
+<blockquote><pre>
+<ins>is &gt;&gt; std::forward&lt;T&gt;(x);
+return is;</ins>
+</pre></blockquote>
+<p>
+<del>-2- <i>Returns:</i> <tt>is</tt></del>
+</p>
+</blockquote></blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

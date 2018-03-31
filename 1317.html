@@ -1,0 +1,218 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 1317: make_hash</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="1317" href="lwg-active.html#1317">1317.</a> make_hash</h3>
+<p><b>Section:</b> 23.14.15 <a href="https://timsong-cpp.github.io/cppwp/unord.hash">[unord.hash]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Nicolai M. Josuttis <b>Opened:</b> 2010-02-10 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unord.hash">active issues</a> in [unord.hash].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unord.hash">issues</a> in [unord.hash].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the library lacks a convenient way to provide a hash function that
+can be used with the provided unordered containers to allow the usage of non
+trivial element types.
+</p>
+
+<p>
+While we can easily declare an
+</p>
+
+<blockquote><pre>
+std::unordered_set&lt;int&gt;
+</pre></blockquote>
+
+<p>
+or
+</p>
+
+<blockquote><pre>
+std::unordered_set&lt;std::string&gt;
+</pre></blockquote>
+
+<p>
+we have no easy way to declare an <tt>unordered_set</tt> for a user defined
+type. IMO, this is a big obstacle to use unordered containers in practice. Note
+that in Java, the wide usage of <tt>HashMap</tt> is based on the fact that there
+is always a default hash function provided.
+</p>
+
+<p>
+Of course, a default hash function implies the risk to provide poor hash
+functions. But often even poor hash functions are good enough.
+</p>
+
+<p>
+While I really would like to see a default hash function, I don't propose it
+here because this would probably introduce a discussion that's too big for this
+state of C++0x.
+</p>
+
+<p>
+However, I strongly suggest at least to provide a convenience variadic template
+function <tt>make_hash&lt;&gt;()</tt> to allow an easy definition of a (possibly
+poor) hash function.
+</p>
+
+<p>
+As a consequence for a user-defined type such as
+</p>
+
+<blockquote><pre>
+class Customer {
+   friend class CustomerHash;
+   private:
+     string firstname;
+     string lastname;
+     long   no;
+   ...
+ };
+</pre></blockquote>
+
+<p>
+would allow to specify:
+</p>
+
+<blockquote><pre>
+class CustomerHash : public std::unary_function&lt;Customer, std::size_t&gt;
+{
+  public:
+    std::size_t operator() (const Customer&amp; c) const  {
+       return make_hash(c.firstname,c.lastname,c.no);
+    }
+};
+</pre></blockquote>
+
+<p>
+instead of:
+</p>
+
+<blockquote><pre>
+class CustomerHash : public std::unary_function&lt;Customer, std::size_t&gt;
+{
+  public:
+    std::size_t operator() (const Customer&amp; c) const  {
+       return std::hash&lt;std::string&gt;()(c.firstname) +
+              std::hash&lt;std::string&gt;()(c.lastname) +
+              std::hash&lt;long&gt;()(c.no);
+    }
+};
+</pre></blockquote>
+
+<p>
+Note that, in principle, we can either specify that
+</p>
+
+<blockquote><p>
+<tt>make_hash</tt> returns the sum of a call of
+<tt>std::hash&lt;T&gt;()(x)</tt> for each argument <tt>x</tt> of type
+<tt>T</tt>
+</p></blockquote>
+
+<p>
+or we can specify that
+</p>
+
+<blockquote><p>
+<tt>make_hash</tt> provides a hash value for each argument, for which a
+<tt>std::hash()</tt> function is provided
+</p></blockquote>
+
+<p>
+with the possible note that the hash value may be poor or only a good hash value
+if the ranges of all passed arguments is equally distributed.
+</p>
+
+<p>
+For my convenience, I propose wording that describes
+the concrete implementation.
+</p>
+
+<p><i>[
+2010 Pittsburgh:  Moved to NAD Editorial, rationale added below.
+]</i></p>
+
+
+
+
+<p><b>Rationale:</b></p>
+<p>
+There is no consensus to make this change at this time.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+In Function objects 23.14 <a href="https://timsong-cpp.github.io/cppwp/function.objects">[function.objects]</a>
+in paragraph 2 at the end of the Header <tt>&lt;functional&gt;</tt> synopsis
+insert:
+</p>
+
+<blockquote><pre>
+// convenience functions
+template &lt;class T&gt;
+  size_t make_hash (const T&amp;);
+template &lt;class T, class... Types&gt;
+  size_t make_hash (const T&amp;, const Types&amp;...);
+</pre></blockquote>
+
+<p>
+In Class template hash 23.14.15 <a href="https://timsong-cpp.github.io/cppwp/unord.hash">[unord.hash]</a>
+add:
+</p>
+
+<blockquote>
+<p>
+<b>20.7.16.1 Hash creation functions [hash.creation]</b>
+</p>
+
+<pre>
+template &lt;class T&gt;
+  size_t make_hash (const T&amp; val);
+</pre>
+
+<blockquote><p>
+<i>Returns:</i> <tt>hash&lt;T&gt;()(val);</tt>
+</p></blockquote>
+
+<pre>
+template &lt;class T, class... Types&gt;
+  size_t make_hash (const T&amp; val, const Types&amp;... args);
+</pre>
+
+<blockquote><p>
+<i>Returns:</i> <tt>hash&lt;T&gt;()(val) + std::make_hash(args...)</tt>
+</p></blockquote>
+
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

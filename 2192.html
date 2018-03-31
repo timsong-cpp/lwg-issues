@@ -1,0 +1,296 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2192: Validity and return type of std::abs(0u) is unclear</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2192" href="lwg-defects.html#2192">2192.</a> Validity and return type of <tt>std::abs(0u)</tt> is unclear</h3>
+<p><b>Section:</b> 29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2012-10-02 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#c.math">issues</a> in [c.math].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+In C++03 the following two programs are invalid:
+</p>
+<ol style="list-style-type:upper-alpha"><li>
+<blockquote><pre>
+#include &lt;cmath&gt;
+
+int main() {
+  std::abs(0u);
+}
+</pre></blockquote>
+</li>
+<li>
+<blockquote><pre>
+#include &lt;cstdlib&gt;
+
+int main() {
+  std::abs(0u);
+}
+</pre></blockquote>
+</li>
+</ol>
+<p>
+because none of the <tt>std::abs()</tt> overloads is a best match.
+</p>
+<p>
+In C++11 the additional "sufficient overload" rule from 29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a> p11 (see also LWG
+<a href="2086">2086</a>) can be read to be applicable to the <tt>std::abs()</tt> overloads as well, which
+can lead to the following possible conclusions:
+<p/>
+<ol>
+<li><p>The program</p>
+<blockquote><pre>
+#include &lt;type_traits&gt;
+#include &lt;cmath&gt;
+
+static_assert(std::is_same&lt;decltype(std::abs(0u)), double&gt;(), "Oops");
+
+int main() {
+  std::abs(0u); // Calls std::abs(double)
+}
+</pre></blockquote>
+<p>
+is required to be well-formed, because of sub-bullet 2 ("[..] or an integer type [..]") of 
+29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a> p11 (Note that the current resolution of LWG <a href="2086">2086</a> doesn't
+fix this problem).
+</p>
+</li>
+<li><p>Any translation unit including both <tt>&lt;cmath&gt;</tt> and <tt>&lt;cstdlib&gt;</tt>
+might be ill-formed because of two conflicting requirements for the return type of the overload
+<tt>std::abs(int)</tt>.
+</p>
+</li>
+</ol>
+</p>
+
+<p>
+It seems to me that at least the second outcome is not intended, personally I think that both
+are unfortunate: In contrast to all other floating-point functions explicitly listed in sub-clause 
+29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a>, the <tt>abs</tt> overloads have a special and well-defined meaning for 
+signed integers and thus have explicit overloads returning a signed integral type. I also believe that 
+there is no problem accepting that <tt>std::fabs(0u)</tt> is well-defined with return type <tt>double</tt>, 
+because the leading 'f' clearly signals that we have a floating point function here. But the expected 
+return type of <tt>std::abs(0u)</tt> seems less than clear to me. A very reasonable answer could be that 
+this has the same type as its argument type, alternatively it could be a reasonably chosen signed 
+integer type, or a floating point type. It should also be noted, that the corresponding
+"generic type function" rule set from C99/C1x in 7.25 p2+3 is restricted to the floating-point functions
+from <tt>&lt;math.h&gt;</tt> and <tt>&lt;complex.h&gt;</tt>, so cannot be applied to the <tt>abs</tt>
+functions (but to the <tt>fabs</tt> functions!).
+<p/>
+Selecting a signed integer return type for unsigned input values can also problematic: The directly
+corresponding signed integer type would give half of the possible argument values an implementation-defined
+result value. Choosing the first signed integer value that can represent all positive values would solve this
+problem for <tt>unsigned int</tt>, but there would be no clear answer for the input type <tt>std::uintmax_t</tt>.
+</p>
+<p>
+Based on this it seems to me that the C++03 state in regard to unsigned integer values was the better
+situation, alerting the user that this code is ambigious at the moment (This might be change with different core-language
+rules as described in N3387).
+</p>
+
+<p><i>[2013-04-20, Bristol]</i></p>
+
+
+<p>
+Resolution: leave as new and bring it back in Chicago. 
+</p>
+
+<p><i>[2013-09 Chicago]</i></p>
+
+<p>
+This issue also relates to LWG <a href="2294">2294</a>
+<p/> 
+STL: these two issues should be bundled 
+<p/>
+Stefanus: do what Pete says, and add overloads for unsigned to return directly 
+<p/>
+STL: agree Consensus that this is an issue 
+<p/>
+Walter: motion to move to Open 
+<p/>
+STL: no wording for <a href="2294">2294</a> 
+<p/>
+Stefanus: move to open and note the 2 issues are related and should be moved together 
+<p/>
+Stefanus: add and define unsigned versions of <tt>abs()</tt>
+</p>
+
+<p><i>[2014-02-03 Howard comments]</i></p>
+
+<p>
+Defining <tt>abs()</tt> for unsigned integers is a bad idea. Doing so would turn compile time errors into run time errors, 
+especially in C++ where we have templates, and the types involved are not always apparent to the programmer at design time.  
+For example, consider:
+</p>
+<blockquote><pre>
+template &lt;class Int&gt;
+Int
+analyze(Int x, Int y)
+{
+  // ...
+  if (std::abs(<span style="color:#C80000;font-weight:bolder">x - y</span>) &lt; threshold)
+  {
+    // ...
+  }
+  // ...
+}
+</pre></blockquote>
+<p>
+<tt>std::abs(<i>expr</i>)</tt> is often used to ask: Are these two numbers sufficiently close?  When the assumption is that 
+the two numbers are signed (either signed integral, or floating point), the logic is sound. But when the same logic is 
+accidentally used with an arithmetic type not capable of representing negative numbers, and especially if unsigned overflow 
+will silently happen, then the logic is no longer correct:
+</p>
+<blockquote><pre>
+auto i = analyze(20u, 21u);  // Today a compile time error
+    // But with <tt>abs(unsigned)</tt> becomes a run time error
+</pre></blockquote>
+<p>
+This is not idle speculation. Search the net for "<tt>abs unsigned</tt>" 
+<a href="http://www.avrfreaks.net/index.php?name=PNphpBB2&amp;file=printview&amp;t=35514&amp;start=0">here</a> or 
+<a href="http://fischerlaender.de/mysql/surprising-mysql-behaviour-using-unsigned-int">here</a>.
+<p/>
+In C++11, <tt>chrono</tt> <tt>duration</tt>s and <tt>time_point</tt>s are allowed to be based on unsigned integers. Taking the 
+absolute value of the difference of two such <tt>time_point</tt>s would be easy to accidentally do (say in code templated on 
+<tt>time_point</tt>s), and would certainly be a logic bug, caught at compile time unless we provide the error prone <tt>abs(unsigned)</tt>.
+</p>
+
+<p><i>[2015-02, Cologne]</i></p>
+
+<p>
+GR: Do we want to make the changes to both <tt>&lt;cmath&gt;</tt> and <tt>&lt;cstdlib&gt;</tt>?<br/> 
+AM: I think so; we should provide consistent overloads.<br/> 
+GR: Then we're imposing restrictions on what users put in the global namespace.<br/> 
+AM: I'm not so worried about that. Users already know not to use C library names.<br/>
+VV: So what are we going to do about unsigned integers? AM: We will say that they are ill-formed.<br/>
+AM: Does anyone volunteer to send updated wording to Daniel? GR, can you do it? GR: Sure.<br/>
+GR: To clarify: we want to make unsigned types ill-formed?<br/> 
+AM: With promotion rank at least <tt>unsigned int</tt>.<br/>
+GR: And NL suggests to just list those types.
+<p/>
+Conclusion: Merge the resolution into a single issue. 
+</p>
+
+<strong>Previous resolution from Daniel [SUPERSEDED]:</strong>
+<blockquote class = "note">
+<p>This wording is relative to N3376.</p>
+
+<ol>
+<li><p>Change 29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a> p11 as indicated:</p>
+<blockquote><p>
+-11- Moreover<ins>, except for the <tt>abs</tt> functions</ins>, there shall be additional overloads sufficient to ensure:
+<p/>
+[&hellip;]
+</p></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-03-03, Geoffrey Romer provides improved wording]</i></p>
+
+<p>
+In the following I've drafted combined wording to resolve LWG <a href="2192">2192</a> and <a href="2294">2294</a>. Note that the first 
+two paragraphs are taken verbatim from the P/R of LWG <a href="2294">2294</a>, but the third is newly drafted:
+</p>
+
+<p><i>[2015-05-05 Lenexa: Howard to draft updated wording]</i></p>
+
+
+<p><i>[2015-09-11: Howard updated wording]</i></p>
+
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>HH: abs() for unsigned types is really dangerous. People often use abs(x - y), which would be a disaster. </p>
+<p>TK: That's why you need a two-argument abs_diff(x, y), especially for unsigned types. </p>
+<p>JW: Lawrence has a proposal for abs_diff in the mailing.</p>
+<p>STL: As an alternative to considering promotions, I would just ban all unsigned types, even unsigned char.</p>
+<p>STL: Does the PR change any implementation? Is the final paragraph just a consequence? </p><p>HH: It's a consequence. It could just be a note. </p><p>VV: Ship it as is.</p>
+<p>STL: Editorial: capitalize the first letter in the Note.</p>
+<p>Move to Tentatively ready.</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4527.</p>
+
+<ol>
+<li><p>Insert the following new paragraphs after 29.9 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a> p7:</p>
+<blockquote>
+<p>
+-6- In addition to the <tt>int</tt> versions of certain math functions in <tt>&lt;cstdlib&gt;</tt>, C++ adds <tt>long</tt> 
+and <tt>long long</tt> overloaded versions of these functions, with the same semantics.
+<p/>
+-7- The added signatures are:
+</p>
+<blockquote>
+<pre>
+long abs(long); <i>// labs()</i>
+long long abs(long long); <i>// llabs()</i>
+ldiv_t div(long, long); <i>// ldiv()</i>
+lldiv_t div(long long, long long); <i>// lldiv()</i>
+</pre>
+</blockquote>
+<p>
+<ins>-?- To avoid ambiguities, C++ also adds the following overloads of <tt>abs()</tt> to <tt>&lt;cstdlib&gt;</tt>, 
+with the semantics defined in <tt>&lt;cmath&gt;</tt>:</ins>
+</p>
+<blockquote>
+<pre>
+<ins>float abs(float);
+double abs(double);
+long double abs(long double);</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- To avoid ambiguities, C++ also adds the following overloads of <tt>abs()</tt> to <tt>&lt;cmath&gt;</tt>, 
+with the semantics defined in <tt>&lt;cstdlib&gt;</tt>:</ins>
+</p>
+<blockquote>
+<pre>
+<ins>int abs(int);
+long abs(long);
+long long abs(long long);</ins>
+</pre>
+</blockquote>
+<p>
+<ins>-?- If <tt>abs()</tt> is called with an argument of type <tt>X</tt> for which
+<tt>is_unsigned&lt;X&gt;::value</tt> is <tt>true</tt> and if <tt>X</tt> cannot be converted to
+<tt>int</tt> by integral promotion (7.6 <a href="https://timsong-cpp.github.io/cppwp/conv.prom">[conv.prom]</a>), the program is ill-formed.
+[<i>Note</i>: arguments that can be promoted to <tt>int</tt> are permitted for
+compatibility with C. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

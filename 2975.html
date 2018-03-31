@@ -1,0 +1,189 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2975: Missing case for pair construction in scoped and polymorphic allocators</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2975" href="lwg-defects.html#2975">2975.</a> Missing case for <tt>pair</tt> construction in scoped and polymorphic allocators</h3>
+<p><b>Section:</b> 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a>, 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2017-06-13 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>scoped_allocator_adaptor</tt> ([allocator.adaptor.syn]) and <tt>polymorphic_allocator</tt> ([mem.poly.allocator.class]) 
+have identical families of members named <tt>construct</tt>:
+</p>
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+
+template &lt;class T1, class T2, class... Args1, class... Args2&gt;
+  void construct(pair&lt;T1,T2&gt;* p, piecewise_construct_t,
+                 tuple&lt;Args1...&gt; x, tuple&lt;Args2...&gt; y);
+template &lt;class T1, class T2&gt;
+  void construct(pair&lt;T1,T2&gt;* p);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, U&amp;&amp; x, V&amp;&amp; y);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, const pair&lt;U, V&gt;&amp; pr);
+template &lt;class T1, class T2, class U, class V&gt;
+  void construct(pair&lt;T1,T2&gt;* p, pair&lt;U, V&gt;&amp;&amp; pr);
+</pre>
+</blockquote>
+<p>
+Both allocators perform <tt>uses_allocator</tt> construction, and therefore need special handling for <tt>pair</tt> 
+constructions since <tt>pair</tt> doesn't specialize <tt>uses_allocator</tt> (<tt>tuple</tt> gets all of that magic 
+and <tt>pair</tt> is left out in the cold). Presumably, the intent is that the <tt>construct</tt> overloads whose first 
+argument is a pointer to <tt>pair</tt> capture all <tt>pair</tt> constructions. This is not the case: invoking 
+<tt>construct</tt> with a <tt>pair</tt> pointer and a non-constant lvalue <tt>pair</tt> resolves to the <em>first</em> 
+overload when it is viable: it's a better match than the <tt>pair</tt>-pointer-and-<tt>const</tt>-lvalue-<tt>pair</tt> 
+overload. The first overload notably does not properly perform piecewise <tt>uses_allocator</tt> construction for 
+<tt>pair</tt>s as intended.
+</p>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Priority 2; Marshall to work with Casey to reduce the negations in the wording.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<ol>
+<li>
+<p>Modify 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt>resource()</tt> (see 
+23.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use allocators.
+&mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt>resource()</tt> and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>T</tt> is not a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> [&hellip;]
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution unless <tt>T</tt> is not a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2017-11-02 Marshall and Casey provide updated wording]</i></p>
+
+
+<p><i>[2017-11 Albuquerque Wednesday issue processing]</i></p>
+
+<p>Move to Ready.</p>
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li>
+<p>Modify 23.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> Uses-allocator construction of <tt>T</tt> with allocator <tt>resource()</tt> (see 
+23.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>) and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt> 
+is well-formed. [<i>Note:</i> Uses-allocator construction is always well formed for types that do not use allocators.
+&mdash; <i>end note</i>]
+<p/>
+-6- <i>Effects:</i> Construct a <tt>T</tt> object in the storage whose address is represented by <tt>p</tt> by 
+uses-allocator construction with allocator <tt>resource()</tt> and constructor arguments <tt>std::forward&lt;Args&gt;(args)...</tt>.
+<p/>
+-7- <i>Throws:</i> Nothing unless the constructor for <tt>T</tt> throws.
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution if <tt>T</tt> is a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class... Args&gt;
+  void construct(T* p, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> [&hellip;]
+<p/>
+<ins>-?- <i>Remarks:</i> This function shall not participate in overload resolution if <tt>T</tt> is a specialization 
+of <tt>pair</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

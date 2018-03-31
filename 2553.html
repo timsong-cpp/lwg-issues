@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2553: [fund.ts.v2] basic_string_view substring constructor</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2553" href="lwg-closed.html#2553">2553.</a> [fund.ts.v2] <tt>basic_string_view</tt> substring constructor</h3>
+<p><b>Section:</b> 99 [fund.ts.v2::string.view.cons] <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Evan Teran <b>Opened:</b> 2015-10-29 <b>Last modified:</b> 2016-03-07 04:46:57 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v2</b></p>
+<p>
+<tt>string_view</tt> can be tremendously useful for dealing with sub-strings without copying. However, the 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n3921.html">current proposal</a> for <tt>basic_string_view</tt>, 
+has no constructor which provides a direct way of creating a view of a sub-string of a <tt>basic_string</tt>. 
+Instead, we construct a view of the whole <tt>basic_string</tt>, and then as a second step create a sub-string, 
+for example using <tt>substr</tt>. To simplify what I believe to be a common use case, I suggest adding an additional constructor.
+<p/>
+The proposed wording for this is as follows:
+</p>
+<blockquote>
+<pre>
+template &lt;class Allocator&gt;
+basic_string_view(const basic_string&lt;charT, traits, Allocator&gt;&amp; str, size_type pos, size_type count = npos);
+</pre>
+<blockquote>
+<p>
+<i>Throws</i>: <tt>out_of_range</tt> if <tt>pos &gt;= str.size()</tt>.
+<p/>
+<i>Effects</i>: Determines the effective length <tt>rlen</tt> of the string to reference as the smaller of <tt>count</tt> and 
+<tt>size() - pos</tt>.
+<p/>
+<i>Postcondition</i>:
+</p>
+<blockquote>
+<table border="1">
+<tr>
+<td>
+<tt>data_ = str.data() + pos</tt>
+</td>
+<td>
+<tt>size_ = rlen</tt>
+</td>
+</tr>
+</table>
+</blockquote>
+</blockquote>
+</blockquote>
+<p>
+In other words, the result is as if constructed via: <tt>basic_string_view(basic_string_view(str).substr(pos, count));</tt>
+<p/>
+An example implementation could look like this:
+</p>
+<blockquote><pre>
+template &lt;class Allocator&gt;
+basic_string_view(const basic_string&lt;charT, traits, Allocator&gt;&amp; str, size_type pos, size_type count = npos) 
+  : data_(nullptr), size_(0) 
+{
+  basic_string_view(str).substr(pos, count).swap(*this);
+}
+</pre></blockquote>
+<p>
+Note that while we have a default parameter for <tt>count</tt>, <tt>pos</tt> does not. I believe that it is best to have 
+this as a separate overload, as opposed to default parameters on the current constructor for two reasons:
+</p>
+<ol>
+<li><p>The current constructor taking a <tt>basic_string</tt> does not throw, this overload can throw if <tt>pos &gt;= str.size()</tt>.</p></li>
+<li><p>This constructor performs slightly more work, it is not necessary to impose this extra work on the basic case of 
+constructing a view of a whole string.</p></li>
+</ol>
+<p>
+This has been briefly discussed in the <a href="https://groups.google.com/a/isocpp.org/forum/#!topic/std-proposals/ZtYnPdK9vIY">isocpp forums</a>. 
+There were no obvious objections to this small improvement. Additionally, another reason to consider this addition is 
+to provide a more consistent interface. With raw strings, we have the ability to construct a <tt>basic_string_view</tt> 
+which is a sub-string. For example:
+</p>
+<blockquote><pre>
+const char* s = "hello world";
+auto v = string_view(s + 6);
+</pre></blockquote>
+<p>
+But there is no constructor which easily does the same when starting with a <tt>basic_string</tt>.
+<p/>
+Finally, As a example, consider the following (trivial) code:
+</p>
+<blockquote><pre>
+void print_string(string_view v) {
+  std::cout &lt;&lt; v &lt;&lt; '\n';
+}
+
+int main() {
+  std::string s = "hello world"; // for example, we want to print the sub-string "world", without copies
+
+  // current method:
+  print_substring(string_view(s).substr(6));
+
+  // suggested method:
+  print_substring(string_view(s, 6);
+}
+</pre></blockquote>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4529.html">N4529</a>.
+</p>
+
+<ol>
+<li><p>Insert between 99 [fund.ts.v2::string.view.cons] p5 and p6 the following sequence of paragraphs:</p>
+
+<blockquote>
+<pre>
+<ins>template &lt;class Allocator&gt;
+basic_string_view(const basic_string&lt;charT, traits, Allocator&gt;&amp; str, size_type pos, size_type count = npos);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Throws</i>: <tt>out_of_range</tt> if <tt>pos &gt;= str.size()</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: Determines the effective length <tt>rlen</tt> of the string to reference as the smaller of <tt>count</tt> and 
+<tt>size() - pos</tt>.</ins>
+<p/>
+<ins>-?- <i>Postcondition</i>: Constructs a <tt>basic_string_view</tt>, with the postconditions in Table ?</ins>
+</p>
+<blockquote>
+<table border="1">
+<caption><ins>Table ? &mdash; <tt>basic_string_view(const basic_string&lt;charT, traits, Allocator&gt;&amp;, size_type, size_type)</tt> effects</ins></caption>
+<tr>
+<th><ins>Element</ins></th>
+<th><ins>Value</ins></th>
+</tr>
+
+<tr>
+<td>
+<ins><tt>data_</tt></ins>
+</td>
+<td>
+<ins><tt>str.data() + pos</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>size_</tt></ins>
+</td>
+<td>
+<ins><tt>rlen</tt></ins>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2016-03, Jacksonville]</i></p>
+
+Change status to "LEWG"
+
+<p>
+Want this constructor?
+<p/>
+SF F N A  SA
+<p/>
+0  3 2 13 1
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Not a defect. The LWG believes this missing feature is not sufficiently serious to constitute a defect.
+</p>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2585: forward_list::resize(size_type, const value_type&amp;) effects incorrect</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2585" href="lwg-defects.html#2585">2585.</a> <tt>forward_list::resize(size_type, const value_type&amp;)</tt> effects incorrect</h3>
+<p><b>Section:</b> 26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2016-01-14 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#forwardlist.modifiers">issues</a> in [forwardlist.modifiers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a>/29 says that the effects of <tt>forward_list::resize(size_type sz, const value_type&amp; c)</tt> 
+are:
+</p>
+<blockquote class="note"><p>
+<i>Effects</i>: If <tt>sz &lt; distance(begin(), end())</tt>, erases the last <tt>distance(begin(), end()) - sz</tt> elements
+from the list. Otherwise, inserts <tt>sz - distance(begin(), end())</tt> elements at the end of
+the list such that each new element, <tt>e</tt>, is initialized by a method equivalent to calling 
+<tt>allocator_traits&lt;allocator_type&gt;::construct(get_allocator(), std::addressof(e), c)</tt>.
+</p></blockquote>
+<p>
+In light of LWG <a href="2218">2218</a>, the use of <tt>allocator_traits&lt;allocator_type&gt;::construct</tt> is incorrect, 
+as a rebound allocator may be used. There's no need to repeat this information, in any event &mdash; no other specification 
+of <tt>resize()</tt> does it.
+</p>
+
+<p><i>[2016-02, Issues Telecon]</i></p>
+
+<p>
+P0; move to Tentatively Ready.
+</p>
+
+<p><i>[2016-02-11, Alisdair requests reopening]</i></p>
+
+<p>
+I believe the standard is correct as written, and that by removing the clear direction
+to make the copy with uses-allocator-construction, we open ourselves to disputing
+this very point again at some point in the future.
+<p/>
+The issue seems to be complaining that a rebound allocator may be used instead of
+the allocator returned by <tt>get_allocator()</tt> call, and nailing us down to exactly which
+instantiation of <tt>allocator_traits</tt> is used. Given the requirements on allocators being
+constructible from within the same template "family" though, and specifically that
+copies compare equal and can allocate/deallocate on each other's behalf, this should
+clearly fall under existing as-if freedom. The construct call is even more clear, as
+there is no requirement that the allocator to construct be of a kind that can allocate
+the specific type being constructed &mdash; a freedom granted precisely so this kind of code
+can be written, and be correct, regardless of internal node type of any container and
+the actual rebound allocator used internally.
+<p/>
+I think the new wording is less clear than the current wording, and would prefer to
+resolve as NAD.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4567.
+</p>
+
+<ol>
+<li><p>Edit 26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a>/29 as indicated:</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: "copies of <tt>c</tt>" is the phrase used by <tt>vector::resize</tt> and <tt>deque::resize</tt>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+void resize(size_type sz, const value_type&amp; c);
+</pre>
+<blockquote>
+<p>
+-29- <i>Effects</i>: If <tt>sz &lt; distance(begin(), end())</tt>, erases the last <tt>distance(begin(), end()) - sz</tt> elements
+from the list. Otherwise, inserts <tt>sz - distance(begin(), end())</tt> <del>elements</del><ins>copies of <tt>c</tt></ins> at 
+the end of the list <del>such that each new element, <tt>e</tt>, is initialized by a method equivalent to calling 
+<tt>allocator_traits&lt;allocator_type&gt;::construct(get_allocator(), std::addressof(e), c)</tt></del>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

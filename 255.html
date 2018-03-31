@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 255: Why do basic_streambuf&lt;&gt;::pbump() and gbump() take an int?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="255" href="lwg-closed.html#255">255.</a> Why do <tt>basic_streambuf&lt;&gt;::pbump()</tt> and <tt>gbump()</tt> take an int?</h3>
+<p><b>Section:</b> 30.6.3 <a href="https://timsong-cpp.github.io/cppwp/streambuf">[streambuf]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Martin Sebor <b>Opened:</b> 2000-08-12 <b>Last modified:</b> 2017-06-06 14:03:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#streambuf">issues</a> in [streambuf].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The basic_streambuf members gbump() and pbump() are specified to take an
+int argument. This requirement prevents the functions from effectively
+manipulating buffers larger than std::numeric_limits&lt;int&gt;::max()
+characters. It also makes the common use case for these functions
+somewhat difficult as many compilers will issue a warning when an
+argument of type larger than int (such as ptrdiff_t on LLP64
+architectures) is passed to either of the function. Since it's often the
+result of the subtraction of two pointers that is passed to the
+functions, a cast is necessary to silence such warnings. Finally, the
+usage of a native type in the functions signatures is inconsistent with
+other member functions (such as sgetn() and sputn()) that manipulate the
+underlying character buffer. Those functions take a streamsize argument.
+</p>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote>
+<p>
+This is part of a bigger problem. If anyone cares enough, they should
+write a paper solving the bigger problem of offset types in iostreams.
+</p>
+<p>
+This is related to the paper about large file sizes. Beman has already
+agreed to drop the section of that paper that deals with this.
+</p>
+<p>
+int is big enough for reasonable buffers.
+</p>
+<p>
+Move to NAD Future.
+</p>
+<p>
+This is related to LWG <a href="423">423</a>.
+</p>
+</blockquote>
+
+<p><i>[2017-02 in Kona, LEWG recommends NAD]</i></p>
+
+
+<p><i>[2017-06-02 Issues Telecon]</i></p>
+
+<p>Resolve as NAD</p>
+<p>The previous rationale given suggested that LWG believes the change
+is too big for now. Actually, changing the parameter type is too big
+a change more or less forever, because that would break every
+custom streambuf type; there are too many such types in the wild
+to make a breaking change. The overload approach may be more plausible,
+but is not an entirely breakage-free solution; it can produce
+ambiguities, and can still break streambuf hierarchies.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Change the signatures of these functions in the synopsis of template
+class basic_streambuf (27.5.2) and in their descriptions (27.5.2.3.1, p4
+and 27.5.2.3.2, p4) to take a streamsize argument.
+</p>
+
+<p>
+Although this change has the potential of changing the ABI of the
+library, the change will affect only platforms where int is different
+than the definition of streamsize. However, since both functions are
+typically inline (they are on all known implementations), even on such
+platforms the change will not affect any user code unless it explicitly
+relies on the existing type of the functions (e.g., by taking their
+address). Such a possibility is IMO quite remote.
+</p>
+
+<p>
+Alternate Suggestion from Howard Hinnant, c++std-lib-7780:
+</p>
+
+<p>
+This is something of a nit, but I'm wondering if streamoff wouldn't be a 
+better choice than streamsize.  The argument to pbump and gbump MUST be 
+signed.  But the standard has this to say about streamsize 
+(27.4.1/2/Footnote):
+</p>
+
+<blockquote><p>
+     [Footnote: streamsize is used in most places where ISO C would use
+     size_t.  Most of the uses of streamsize could use size_t, except for
+     the strstreambuf constructors, which require negative values. It
+     should probably be the signed type corresponding to size_t (which is
+     what Posix.2 calls ssize_t). &mdash; end footnote]
+</p></blockquote>
+
+<p>
+This seems a little weak for the argument to pbump and gbump.  Should we 
+ever really get rid of strstream, this footnote might go with it, along 
+with the reason to make streamsize signed.
+</p>
+
+
+<p><b>Rationale:</b></p>
+<p>The LWG believes this change is too big for now.  We may wish to
+reconsider this for a future revision of the standard.  One
+possibility is overloading pbump, rather than changing the
+signature.</p>
+<p><i>[
+[2006-05-04: Reopened at the request of Chris (Krzysztof &#379;elechowski)]
+]</i></p>
+
+
+
+
+
+</body>
+</html>

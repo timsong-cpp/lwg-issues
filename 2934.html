@@ -1,0 +1,306 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2934: optional&lt;const T&gt; doesn't compare with T</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2934" href="lwg-defects.html#2934">2934.</a> <tt>optional&lt;const T&gt;</tt> doesn't compare with <tt>T</tt></h3>
+<p><b>Section:</b> 23.6.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp_with_t">[optional.comp_with_t]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2017-02-17 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.comp_with_t">issues</a> in [optional.comp_with_t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider:
+</p>
+<blockquote><pre>
+optional&lt;const int&gt; x = 42;
+int y = 666;
+x == y; // ill-formed
+</pre></blockquote>
+<p>
+The comparison is ill-formed, because in [optional.comp_with_t]/1,
+</p>
+<pre>
+template &lt;class T&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const T&amp; v);
+</pre>
+<p>
+the <tt>T</tt> is deduced to be both <tt>const int</tt> and <tt>int</tt>, which is ill-formed.
+</p>
+<p>
+Since it became apparent that the root cause of this issue is also causing difficulties with e.g. 
+comparing <tt>optional&lt;string&gt;</tt> with literals etc., here's a p/r that
+</p>
+<ol>
+<li><p>adds requirements for <tt>optional</tt>'s comparisons with <tt>T</tt></p></li>
+<li><p>turns <tt>optional</tt>-<tt>optional</tt> comparisons into two-template-parameter
+templates, allowing comparing mixed optionals</p></li>
+<li><p>turns <tt>optional</tt>-<tt>T</tt> comparisons into two-template-parameter templates,
+allowing comparing optionals with <tt>T</tt> and types comparable with <tt>T</tt></p></li>
+</ol>
+
+<p><i>[Kona 2017-02-28]</i></p>
+
+<p>Accepted as Immediate to avoid having break ABI later.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
+
+<ol>
+<li><p>Modify 23.6.2 <a href="https://timsong-cpp.github.io/cppwp/optional.syn">[optional.syn]</a>, header <tt>&lt;optional&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+
+<i>// 23.6.6 <a href="https://timsong-cpp.github.io/cppwp/optional.relops">[optional.relops]</a>, relational operators</i>
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator==(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator!=(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator&lt;(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator&gt;(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator&lt;=(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt;
+constexpr bool operator&gt;=(const optional&lt;T&gt;&amp;, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp;);
+
+[&hellip;]
+
+<i>// 23.6.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp_with_t">[optional.comp_with_t]</a>, comparison with T</i>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator==(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator==(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator!=(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator!=(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;=(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;=(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;=(const optional&lt;T&gt;&amp;, const <del>T</del><ins>U</ins>&amp;);
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;=(const <del>T</del><ins>U</ins>&amp;, const optional&lt;T&gt;&amp;);
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.6.6 <a href="https://timsong-cpp.github.io/cppwp/optional.relops">[optional.relops]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator!=(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;=(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;=(const optional&lt;T&gt;&amp; x, const optional&lt;<del>T</del><ins>U</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.6.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp_with_t">[optional.comp_with_t]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x == v</tt> shall be well-formed and its result shall be convertible to <tt>bool</tt>.
+ [<i>Note:</i> <tt>T</tt> need not be <tt>EqualityComparable</tt>. &mdash; <i>end note</i>]</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x == v : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator==(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v == *x</tt> shall be well-formed and its result shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-2- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v == *x : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator!=(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x != v</tt> shall be well-formed and its result shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-3- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x != v : true;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator!=(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v != *x</tt> shall be well-formed and its result shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-4- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v != *x : true;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x &lt; v</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-5- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x &lt; v : true;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v &lt; *x</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-6- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v &lt; *x : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;=(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x &lt;= v</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-7- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x &lt;= v : true;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&lt;=(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v &lt;= *x</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-8- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v &lt;= *x : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x &gt; v</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-9- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x &gt; v : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v &gt; *x</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-10- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v &gt; *x : true;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;=(const optional&lt;T&gt;&amp; x, const <del>T</del><ins>U</ins>&amp; v);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>*x &gt;= v</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-11- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? *x &gt;= v : false;</tt>
+</p>
+</blockquote>
+<pre>
+template &lt;class T<ins>, class U</ins>&gt; constexpr bool operator&gt;=(const <del>T</del><ins>U</ins>&amp; v, const optional&lt;T&gt;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> The expression <tt>v &gt;= *x</tt> shall be well-formed and its result
+ shall be convertible to <tt>bool</tt>.</ins>
+<p/>
+-12- <i>Effects:</i> Equivalent to: <tt>return bool(x) ? v &gt;= *x : true;</tt>
+</p>
+</blockquote>
+<pre>
+
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

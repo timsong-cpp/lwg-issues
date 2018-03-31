@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3061: What is the return type of compare_3way?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3061" href="lwg-active.html#3061">3061.</a> What is the return type of <tt>compare_3way</tt>?</h3>
+<p><b>Section:</b> 28.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.3way">[alg.3way]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2018-02-07 <b>Last modified:</b> 2018-02-12 18:22:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <a href="http://wiki.edg.com/pub/Wg21albuquerque/StrawPolls/p0768r1_spaceship_library.pdf">P0768R1 
+specification of compare_3way</a> says:
+</p>
+<blockquote><pre>
+template&lt;class T, class U&gt; constexpr auto compare_3way(const T&amp; a, const U&amp; b);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Compares two values and produces a result of the strongest applicable comparison
+category type:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; Returns <tt>a &lt;=&gt; b</tt> if that expression is well-formed.</p></li>
+<li><p>(1.2) &mdash; Otherwise, if the expressions <tt>a == b</tt> and <tt>a &lt; b</tt> are each 
+well-formed and convertible to <tt>bool</tt>, returns <tt>strong_ordering::equal</tt> when 
+<tt>a == b</tt> is <tt>true</tt>, otherwise returns <tt>strong_ordering::less</tt> when 
+<tt>a &lt; b</tt> is <tt>true</tt>, and otherwise returns <tt>strong_ordering::greater</tt>.</p></li>
+<li><p>(1.3) &mdash; Otherwise, if the expression <tt>a == b</tt> is well-formed and convertible to 
+<tt>bool</tt>, returns <tt>strong_equality::equal</tt> when <tt>a == b</tt> is <tt>true</tt>, and 
+otherwise returns <tt>strong_equality::nonequal</tt>.</p></li>
+<li><p>(1.4) &mdash; Otherwise, the function shall be defined as deleted.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+<p>
+So, it returns <tt>strong_ordering::...</tt> or <tt>strong_equality::</tt> or <tt>a &lt;=&gt; b</tt>. 
+By the normal core deduction rules, that means it's always ill-formed, because one return type 
+deduction deduces <tt>strong_ordering</tt> and another deduces <tt>strong_equality</tt>.
+<p/>
+I'm guessing the idea was actually that the above happens as if by four separate overloads / 
+<tt>constexpr if</tt> / else. But I think you need to actually say that.
+</p>
+
+<p><i>[Tomasz suggests proposed wording]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Modify 28.2 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <tt>&lt;algorithm&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+<i>// 28.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.3way">[alg.3way]</a>, three-way comparison algorithms</i>
+template&lt;class T, class U&gt;
+constexpr <del>auto</del><ins><i>see below</i></ins> compare_3way(const T&amp; a, const U&amp; b);
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 28.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.3way">[alg.3way]</a> as indicated:</p>
+
+<blockquote><pre>
+template&lt;class T, class U&gt; constexpr <del>auto</del><ins><i>see below</i></ins> compare_3way(const T&amp; a, const U&amp; b);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Compares two values and produces a result of the strongest applicable comparison 
+category type:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; <del>Returns <tt>a &lt;=&gt; b</tt> if that expression is 
+well-formed</del><ins>If the expression <tt>a &lt;=&gt; b</tt> is well-formed, returns a 
+value of type <tt>decay_t&lt;decltype(a &lt;=&gt; b)&gt;</tt> initialized from 
+<tt>a &lt;=&gt; b</tt></ins>.</p></li>
+<li><p>(1.2) &mdash; Otherwise, if the expressions <tt>a == b</tt> and <tt>a &lt; b</tt> are each 
+well-formed and convertible to <tt>bool</tt>, returns <ins>a value of type <tt>strong_ordering</tt> 
+equal to</ins> <tt>strong_ordering::equal</tt> when <tt>a == b</tt> is <tt>true</tt>, otherwise 
+returns <tt>strong_ordering::less</tt> when <tt>a &lt; b</tt> is <tt>true</tt>, and otherwise 
+returns <tt>strong_ordering::greater</tt>.</p></li>
+<li><p>(1.3) &mdash; Otherwise, if the expression <tt>a == b</tt> is well-formed and convertible to 
+<tt>bool</tt>, returns <ins>a value of type <tt>strong_equality</tt> equal to</ins> 
+<tt>strong_equality::equal</tt> when <tt>a == b</tt> is <tt>true</tt>, and otherwise returns 
+<tt>strong_equality::nonequal</tt>.</p></li>
+<li><p>(1.4) &mdash; Otherwise, the <ins>return type is <tt>void</tt> and the</ins> function is defined 
+as deleted.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 1102: std::vector's reallocation policy still unclear</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="1102" href="lwg-closed.html#1102">1102.</a> <tt>std::vector</tt>'s reallocation policy still unclear</h3>
+<p><b>Section:</b> 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2009-04-20 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#vector.capacity">issues</a> in [vector.capacity].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I have the impression that even the wording of current draft
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2857.pdf">N2857</a>
+does insufficiently express the intent of <tt>vector</tt>'s
+reallocation strategy. This has produced not too old library
+implementations which release memory in the <tt>clear()</tt> function
+and even modern articles about C++ programming cultivate
+the belief that <tt>clear</tt> is allowed to do exactly this. A typical
+example is something like this:
+</p>
+
+<blockquote><pre>
+const int buf_size = ...;
+std::vector&lt;T&gt; buf(buf_size);
+for (int i = 0; i &lt; some_condition; ++i) {
+  buf.resize(buf_size);
+  write_or_read_data(buf.data());
+  buf.clear(); // Ensure that the next round get's 'zeroed' elements
+}
+</pre></blockquote>
+<p>
+where still the myth is ubiquitous that <tt>buf</tt> might be
+allowed to reallocate it's memory *inside* the <tt>for</tt> loop.
+</p>
+<p>
+IMO the problem is due to the fact, that
+</p>
+
+<ol style="list-style-type:lower-alpha">
+<li>
+the actual memory-reallocation stability of <tt>std::vector</tt>
+is explained in 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/3 and /6 which
+are describing just the effects of the <tt>reserve</tt>
+function, but in many examples (like above) there
+is no explicit call to <tt>reserve</tt> involved. Further-more
+26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/6 does only mention <em>insertions</em>
+and never mentions the consequences of erasing
+elements.
+</li>
+<li>
+<p>
+the effects clause of <tt>std::vector</tt>'s <tt>erase</tt> overloads in
+26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/4 is silent about capacity changes. This
+easily causes a misunderstanding, because the counter
+parting insert functions described in 26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/2
+explicitly say, that
+</p>
+<blockquote><p>
+Causes reallocation if the new size is greater than the
+old capacity. If no reallocation happens, all the iterators
+and references before the insertion point remain valid.
+</p></blockquote>
+<p>
+It requires a complex argumentation chain about four
+different places in the standard to provide the - possibly
+weak - proof that calling <tt>clear()</tt> also does <em>never</em> change
+the capacity of the <tt>std::vector</tt> container. Since <tt>std::vector</tt>
+is the de-facto replacement of C99's dynamic arrays this
+type is near to a built-in type and it's specification should
+be clear enough that usual programmers can trust their
+own reading.
+</p>
+</li>
+</ol>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote>
+<p>
+Bill believes paragraph 1 of the proposed resolution is unnecessary
+because it is already implied (even if tortuously) by the current wording.
+</p>
+<p>
+Move to Review.
+</p>
+</blockquote>
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Mark as NAD. Rationale: there is no consensus to clarify the standard,
+general consensus that the standard is correct as written.
+</p></blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p><i>[
+This is a minimum version. I also
+suggest that the wording explaining the allocation strategy
+of <tt>std::vector</tt> in 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/3 and /6 is moved into
+a separate sub paragraph of 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <em>before</em>
+any of the prototype's are discussed, but I cannot provide
+reasonable wording changes now
+]</i></p>
+
+
+<ol>
+<li>
+<p>
+Change 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/6 as follows:
+</p>
+<blockquote><p>
+It is guaranteed that no reallocation takes place during
+insertions <ins>or erasures</ins> that happen after a call
+to <tt>reserve()</tt> until the time when an insertion would make
+the size of the vector greater than the value of <tt>capacity()</tt>.
+</p></blockquote>
+</li>
+<li>
+<p>
+Change 26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/4 as follows:
+</p>
+<blockquote><p>
+<i>Effects:</i> <ins>The capacity shall remain unchanged and no reallocation shall
+happen.</ins>
+Invalidates iterators and references at or after the point
+of the erase.
+</p></blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

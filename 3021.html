@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3021: [networking.ts] Relax pointer equivalence requirement for ConstBufferSequence</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3021" href="lwg-active.html#3021">3021.</a> [networking.ts] Relax pointer equivalence requirement for <tt>ConstBufferSequence</tt></h3>
+<p><b>Section:</b> 16.2.2 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.reqmts.constbuffersequence">[networking.ts::buffer.reqmts.constbuffersequence]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2017-09-20 <b>Last modified:</b> 2017-11-03 19:00:24 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: networking.ts</b></p>
+<p>
+The post-condition buffer sequence requirements mandate pointer equivalence. This means that a copies of buffer sequences must 
+point to the same pieces of underlying memory. While this is appropriate for <tt>MutableBufferSequence</tt>, it is unnecessary 
+for <tt>ConstBufferSequence</tt> and can actually prevent useful implementation strategies such as the following constant buffer 
+sequence which avoids dynamic allocations:  
+</p>
+<blockquote>
+<pre>
+/// A buffer sequence containing a chunk-encoding header
+class chunk_size
+{
+public:
+    // Storage for the longest hex string we might need
+    class value_type
+    {
+        friend class chunk_size;
+
+        // First byte holds the length
+        char buf_[1 + 2 * sizeof(std::size_t)];
+
+        template&lt;class = void&gt;
+        void prepare(std::size_t n);
+
+        template&lt;class OutIter&gt;
+        static OutIter to_hex(OutIter last, std::size_t n)
+        {
+            if (n == 0)
+            {
+                *--last = '0';
+                return last;
+            }
+            while (n)
+            {
+                *--last = "0123456789abcdef"[n &amp; 0xf];
+                n >>= 4;
+            }
+            return last;
+        }
+    public:
+        operator boost::asio::const_buffer() const
+        {
+            return {
+                buf_ + sizeof(buf_) - buf_[0],
+                static_cast(buf_[0])
+            };
+        }
+    };
+
+    using const_iterator = value_type const*;
+
+    chunk_size(chunk_size const&amp; other) = default;
+
+    /** Construct a chunk header
+
+        @param n The number of octets in this chunk.
+    */
+    chunk_size(std::size_t n)
+    {
+        value_.prepare(n);
+    }
+
+    const_iterator begin() const
+    {
+        return &amp;value_;
+    }
+
+    const_iterator end() const
+    {
+        return begin() + 1;
+    }
+
+private:
+    value_type value_;
+};
+</pre>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4588">N4588</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Modify 16.2.2 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.reqmts.constbuffersequence">[networking.ts::buffer.reqmts.constbuffersequence]</a> Table 13 "<tt>ConstBufferSequence</tt> requirements" as indicated:
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 13 &mdash; <tt>ConstBufferSequence</tt> requirements</caption>
+<tr>
+<th>expression</th>
+<th>return type</th>
+<th>assertion/note<br/>pre/post-condition</th>
+</tr>
+<tr>
+<td colspan="3" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td>
+<tt>X u(x);</tt>
+</td>
+<td>
+</td>
+<td>
+post:<br/>
+<pre>
+equal(
+  net::buffer_sequence_begin(x),
+  net::buffer_sequence_end(x),
+  net::buffer_sequence_begin(u),
+  net::buffer_sequence_end(u),
+  [](const typename X::value_type&amp; v1,
+     const typename X::value_type&amp; v2)
+    {
+      const_buffer b1(v1);
+      const_buffer b2(v2);
+      <del>return b1.data() == b2.data()
+          &amp;&amp; b1.size() == b2.size()</del>
+      <ins>return b1.size() == b2.size()
+          &amp;&amp; memcmp(b1.data(), b2.data(), b1.size()) == 0</ins>;
+    })
+</pre>
+</td>
+</tr>
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

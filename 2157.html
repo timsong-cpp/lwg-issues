@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2157: How does std::array&lt;T,0&gt; initialization work when T is not default-constructible?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2157" href="lwg-active.html#2157">2157.</a> How does <tt>std::array&lt;T,0&gt;</tt> initialization work when <tt>T</tt> is not default-constructible?</h3>
+<p><b>Section:</b> 26.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/array.zero">[array.zero]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Daryle Walker <b>Opened:</b> 2012-05-08 <b>Last modified:</b> 2018-03-19 00:12:24 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#array.zero">issues</a> in [array.zero].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Objects of <tt>std::array&lt;T,N&gt;</tt> are supposed to be initialized with aggregate initialization (when 
+not the destination of a copy or move). This clearly works when <tt>N</tt> is positive. What happens when <tt>N</tt> 
+is zero?  To continue using an (inner) set of braces for initialization, a <tt>std::array&lt;T,0&gt;</tt> implementation 
+must have an array member of at least one element, and let default initialization take care of those secret elements.  
+This cannot work when <tt>T</tt> has a set of constructors and the default constructor is deleted from that set.
+Solution: Add a new paragraph in 26.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/array.zero">[array.zero]</a>:
+</p>
+<blockquote><p>
+The unspecified internal structure of array for this case shall allow initializations like:
+</p>
+<blockquote><pre>
+array&lt;T, 0&gt; a = { };
+</pre></blockquote>
+<p>
+and said initializations must be valid even when <tt>T</tt> is not default-constructible.
+</p></blockquote>
+
+<p><i>[2012, Portland: Move to Open]</i></p>
+
+<p>
+Some discussion to understand the issue, which is that implementations currently have freedom to implement
+an empty <tt>array</tt> by holding a dummy element, and so might not support value initialization, which is
+surprising when trying to construct an empty container.  However, this is not mandated, it is an unspecified
+implementation detail.
+</p>
+
+<p>
+Jeffrey points out that the implication of 26.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> is that this initialization syntax
+must be supported by empty <tt>array</tt> objects already.  This is a surprising inference that was not
+obvious to the room, but consensus is that the reading is accurate, so the proposed resolution is not necessary,
+although the increased clarity may be useful.
+</p>
+
+<p>
+Further observation is that the same clause effectively implies that <tt>T</tt> must always be DefaultConstructible,
+regardless of <tt>N</tt> for the same reasons - as an <i>initializer-list</i> may not supply enough values, and the
+remaining elements must all be value initialized.
+</p>
+
+<p>
+Concern that we are dancing angels on the head of pin, and that relying on such subtle implications in wording is
+not helpful. We need a clarification of the text in this area, and await wording.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+DK: What was the outcome of Portland? AM: Initially we thought we already had the intended behaviour. 
+We concluded that <tt>T</tt> must always be <tt>DefaultConstructible</tt>, but I'm not sure why. GR: It's p2 in 
+<tt>std::array</tt>, "up to <tt>N</tt>". AM: That wording already implies that "<tt>{}</tt>" has to work when <tt>N</tt> 
+is zero. But the wording of p2 needs to be fixed to make clear that it does <em>not</em> imply that <tt>T</tt> must be 
+<tt>DefaultConstructible</tt>.
+<p/>
+Conclusion: Update wording, revisit later. 
+</p>
+
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>MC: How important is this? Can you not just use default construction for empty arrays? </p>
+<p>TK: It needs to degenerate properly from a pack. STL agrees.</p> 
+<p>JW: Yes, this is important, and we have to make it work.</p>
+<p>MC: I hate the words "initialization like". </p>
+<p>JW: I'll reword this.</p>
+<p>WEB: Can I ask that once JW has reworded this we move it to Review rather than Open? </p>
+<p>MC: We'll try to review it in a telecon and hopefully get it to tentatively ready.</p>
+<p>STL: Double braces must also work: <tt>array&lt;T, 0&gt; a = {{}};</tt>.</p>
+<p>Jonathan to reword.</p>
+
+<p><i>[2018-3-14 Wednesday evening issues processing]</i></p>
+
+<p>Jens suggested that we remove the requirement that <tt>begin() == end() == </tt><i>unique-value</i>, specifically the unique value part.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3376.</p>
+
+<p>Add the following new paragraph between the current 26.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/array.zero">[array.zero]</a> p1 and p2:</p>
+
+<blockquote><p>
+-1- <tt>array</tt> shall provide support for the special case <tt>N == 0</tt>.
+<p/>
+<ins>-?- The unspecified internal structure of <tt>array</tt> for this case shall allow initializations like:</ins>
+</p>
+<blockquote><pre>
+<ins>array&lt;T, 0&gt; a = { };</ins>
+</pre></blockquote>
+<p>
+<ins>and said initializations must be valid even when <tt>T</tt> is not default-constructible.</ins>
+<p/>
+-2- In the case that <tt>N == 0</tt>, <tt>begin() == end() ==</tt> unique value. The return value of 
+<tt>data()</tt> is unspecified.
+<p/>
+-3- The effect of calling <tt>front()</tt> or <tt>back()</tt> for a zero-sized array is undefined.
+<p/>
+-4- Member function <tt>swap()</tt> shall have a <em>noexcept-specification</em> which is equivalent to 
+<tt>noexcept(true)</tt>.
+</p></blockquote>
+
+
+
+
+
+</body>
+</html>
