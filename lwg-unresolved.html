@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2018-04-09 at 14:26:34 UTC</p>
+<p><p>Revised 2018-04-10 at 20:37:39 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> effects of negative streamsize in iostreams</h3>
@@ -31462,7 +31462,7 @@ available whenever either <tt>&lt;cstdlib&gt;</tt> or <tt>&lt;cinttypes&gt;</tt>
 <hr>
 <h3><a name="3094" href="3094">3094.</a> &sect;[time.duration.io]p4 makes surprising claims about encoding</h3>
 <p><b>Section:</b> 23.17.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Richard Smith <b>Opened:</b> 2018-04-02 <b>Last modified:</b> 2018-04-08 14:20:44 UTC</p>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2018-04-02 <b>Last modified:</b> 2018-04-10 20:35:18 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -31496,7 +31496,7 @@ If <tt>Period::type</tt> is <tt>micro</tt>, but the character U+00B5 cannot be r
 
 <p><b>Proposed resolution:</b></p>
 <p>
-This wording is relative to <a href="http://wg21.link/n4xxx">N4xxx</a>.
+This wording is relative to <a href="http://wg21.link/n4741">N4741</a>.
 </p>
 
 <ol>
@@ -31600,7 +31600,7 @@ Otherwise, the function determines <tt>newoff</tt> from <tt><ins>static_cast&lt;
 <hr>
 <h3><a name="3096" href="3096">3096.</a> <tt>path::lexically_relative</tt> is confused by trailing slashes</h3>
 <p><b>Section:</b> 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-04-04 <b>Last modified:</b> 2018-04-08 15:11:49 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-04-04 <b>Last modified:</b> 2018-04-10 18:27:01 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#fs.path.gen">active issues</a> in [fs.path.gen].</p>
@@ -31622,6 +31622,33 @@ The two calls should yield the same result, and when iteration of a <tt>path</tt
 element they did yield the same result. In the final C++17 spec the trailing slash produces an empty filename in the 
 iteration sequence, and <tt>lexically_relative</tt> doesn't handle that correctly.
 </p>
+
+<p><i>[2018-04-10, Jonathan comments]</i></p>
+
+<p>
+There are more inconsistencies with paths that are "obviously" equivalent to the human reader:
+</p>
+<blockquote><pre>
+path("a/b/c").lexically_relative("a/b/c")    <i>// yields</i> "."
+path("a/b/c").lexically_relative("a/b/c/")   <i>// yields</i> ".."
+path("a/b/c").lexically_relative("a/b/c/.")  <i>// yields</i> ""
+path("a/b/c/").lexically_relative("a/b/c")   <i>// yields</i> ""
+path("a/b/c/.").lexically_relative("a/b/c")  <i>// yields</i> "."
+path("a/b/c/.").lexically_relative("a/b/c/") <i>// yields</i> "../."
+</pre></blockquote>
+<p>
+I think the right solution is:
+</p>
+<ol>
+<li><p>
+when counting <tt>[b, base.end())</tt> in bullet (4.2) handle empty filename elements (which can only occur as the last 
+element, due to a trailing slash) equivalently to dot elements; and
+</p></li>
+<li><p>
+add a new condition for the case where <tt>n == 0</tt> and <tt>[a, end())</tt> contains no non-empty elements, i.e. the 
+paths are equivalent except for final dots or a final slash, which don't introduce any relative difference between the paths.
+</p></li>
+</ol>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -31655,7 +31682,8 @@ Then,
 <li><p>(4.1) &mdash; if <tt>a == end()</tt> and <tt>b == base.end()</tt>, returns <tt>path(".")</tt>; otherwise</p></li>
 <li><p>(4.2) &mdash; let <tt>n</tt> be the number of <i>filename</i> elements in <tt>[b, base.end())</tt> that are not dot 
 or dot-dot <ins>or empty,</ins> minus the number that are dot-dot. If <tt>n&lt;0</tt>, returns <tt>path()</tt>; otherwise</p></li>
-<li><p>[&hellip;]</p></li>
+<li><p><ins>(4.?) &mdash; if <tt>n == 0</tt> and <tt>(a == end() || a-&gt;empty())</tt>, returns <tt>path(".")</tt>; otherwise</ins></p></li>
+<li><p>(4.3) &mdash; returns an object of class <tt>path</tt> that is default-constructed, followed by [&hellip;]</p></li>
 </ol>
 
 </blockquote>
@@ -31765,6 +31793,106 @@ path("..").filename();           <i>// yields</i> ".."
 </blockquote>
 </li>
 </ol>
+
+
+
+
+
+<hr>
+<h3><a name="3099" href="3099">3099.</a> <tt>is_assignable&lt;Incomplete&amp;, Incomplete&amp;&gt;</tt></h3>
+<p><b>Section:</b> 23.15.2 <a href="https://timsong-cpp.github.io/cppwp/meta.type.synop">[meta.type.synop]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2018-04-10 <b>Last modified:</b> 2018-04-10 20:37:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.type.synop">active issues</a> in [meta.type.synop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.type.synop">issues</a> in [meta.type.synop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="2939">2939</a> suggests that the the preconditions of the type traits need reevaluation.
+This issue focuses specifically on <tt>is_assignable</tt> and, by extension, its variants:
+<ul>
+<li><tt>is_copy_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, const T&amp;&gt;</tt>,
+</li>
+<li><tt>is_move_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, T&gt;</tt>,
+</li>
+<li><tt>is_trivially_assignable&lt;T, U&gt;</tt>, equivalent to <tt>is_assignable&lt;T, U&gt; &amp;&amp;
+  /* magic */</tt>,
+</li>
+<li><tt>is_trivially_copy_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, const T&amp;&gt; &amp;&amp;
+  /* magic */</tt>,
+</li>
+<li><tt>is_trivially_move_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, T&gt; &amp;&amp;
+  /* magic */</tt>,
+</li>
+<li><tt>is_nothrow_assignable&lt;T, U&gt;</tt>, equivalent to <tt>is_assignable&lt;T, U&gt; &amp;&amp;
+    noexcept(declval&lt;T&gt;() = declval&lt;U&gt;())</tt>,
+</li>
+<li><tt>is_nothrow_copy_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, const T&amp;&gt; &amp;&amp;
+    noexcept(declval&lt;T&amp;&gt;() = declval&lt;const T&amp;&gt;())</tt>,
+</li>
+<li><tt>is_nothrow_move_assignable&lt;T&gt;</tt>, equivalent to <tt>is_assignable&lt;T&amp;, T&gt; &amp;&amp;
+    noexcept(declval&lt;T&amp;&gt;() = declval&lt;T&gt;())</tt>, and
+</li>
+</ul>
+</p>
+<p>
+Firstly, we note a discrepancy: <tt>is_copy_assignable&lt;T&gt;</tt> requires <tt>T</tt> to be a complete type, but the
+equivalent form <tt>is_assignable&lt;T&amp;, const T&amp;&gt;</tt> <em>does not</em>. The requirement for
+<tt>is_copy_assignable&lt;T&gt;</tt> seems sensible, since there's no way to determine whether or not the assignment
+<tt>declval&lt;T&amp;&gt;() = declval&lt;const T&amp;&gt;()</tt> is well-formed when <tt>T</tt> is incomplete.
+It seems that the same argument should apply to all of the above "assignable" traits, and that they must require that
+the referent type is complete when given a reference type parameter to be implementable.
+</p>
+<p>
+LWG <a href="2729">2729</a> constrained the copy and move assignment operators of <tt>pair</tt> and <tt>tuple</tt> to
+participate in overload resolution only when all field types are copy or move assignable. These constraints interact
+with the proposed fix to the preconditions of the assignable traits since both <tt>pair</tt> and <tt>tuple</tt> support
+members of reference type. If we agree that (1) the assignable traits aren't implementable without the stronger
+precondition, and (2) it's necessary to check the constraints at class instantiation time to constrain the assignments
+(which is the case for an implementation that does not support Concepts, or wants to provide conditionally trivial
+special member functions), then <tt>pair&lt;F, S&gt;</tt> (respectively <tt>tuple&lt;Ts...&gt;</tt>) must require that
+<tt>remove_cvref_t&lt;F&gt;</tt> and <tt>remove_cvref_t&lt;S&gt;</tt> (respectively <tt>remove_cvref_t&lt;Ts&gt;...</tt>)
+are complete types.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4741">N4741</a>.</p>
+<blockquote>
+<ol>
+<li><p>Add a new paragraph to 23.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a> before paragraph 1:</p>
+<blockquote>
+<p><ins>-?- Both <tt>remove_cvref_t&lt;T1&gt;</tt> and <tt>remove_cvref_t&lt;T2&gt;</tt> shall be complete types.</ins></p>
+<p>-1- Constructors and member functions of <tt>pair</tt> shall not throw exceptions [&hellip;]</p>
+</blockquote>
+</li>
+
+<li><p>Add a new paragraph to 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/tuple.tuple">[tuple.tuple]</a> after the class synopsis:</p>
+<blockquote>
+<p><ins>-?- All types in <tt>remove_cvref_t&lt;Types&gt;...</tt> shall be complete types.</ins></p>
+</blockquote>
+</li>
+
+<li>In 23.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> Table 42, change the Precondition text for <tt>is_assignable</tt>,
+<tt>is_trivially_assignable</tt>, and <tt>is_nothrow_assignable</tt> as follows:
+<blockquote>
+<ins><tt>remove_cvref_t&lt;</tt></ins><tt>T</tt><ins><tt>&gt;</tt></ins> and
+<ins><tt>remove_cvref_t&lt;</tt></ins><tt>U</tt><ins><tt>&gt;</tt></ins> shall be complete types, <del><i>cv</i></del>
+<tt>void</tt>, or arrays of unknown bound.
+</blockquote>
+</li>
+
+<li>In 23.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> Table 42, change the Precondition text for <tt>is_copy_assignable</tt>,
+<tt>is_move_assignable</tt>, <tt>is_trivially_copy_assignable</tt>, <tt>is_trivially_move_assignable</tt>,
+<tt>is_nothrow_copy_assignable</tt>, and <tt>is_nothrow_move_assignable</tt> as follows:
+<blockquote>
+<ins><tt>remove_cvref_t&lt;</tt></ins><tt>T</tt><ins><tt>&gt;</tt></ins> shall be a complete type, <del><i>cv</i></del>
+<tt>void</tt>, or an array of unknown bound.
+</blockquote>
+</li>
+</ol>
+</blockquote>
 
 
 

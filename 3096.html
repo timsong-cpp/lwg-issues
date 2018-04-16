@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3096" href="lwg-active.html#3096">3096.</a> <tt>path::lexically_relative</tt> is confused by trailing slashes</h3>
 <p><b>Section:</b> 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-04-04 <b>Last modified:</b> 2018-04-08 15:11:49 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-04-04 <b>Last modified:</b> 2018-04-10 18:27:01 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#fs.path.gen">active issues</a> in [fs.path.gen].</p>
@@ -46,6 +46,33 @@ The two calls should yield the same result, and when iteration of a <tt>path</tt
 element they did yield the same result. In the final C++17 spec the trailing slash produces an empty filename in the 
 iteration sequence, and <tt>lexically_relative</tt> doesn't handle that correctly.
 </p>
+
+<p><i>[2018-04-10, Jonathan comments]</i></p>
+
+<p>
+There are more inconsistencies with paths that are "obviously" equivalent to the human reader:
+</p>
+<blockquote><pre>
+path("a/b/c").lexically_relative("a/b/c")    <i>// yields</i> "."
+path("a/b/c").lexically_relative("a/b/c/")   <i>// yields</i> ".."
+path("a/b/c").lexically_relative("a/b/c/.")  <i>// yields</i> ""
+path("a/b/c/").lexically_relative("a/b/c")   <i>// yields</i> ""
+path("a/b/c/.").lexically_relative("a/b/c")  <i>// yields</i> "."
+path("a/b/c/.").lexically_relative("a/b/c/") <i>// yields</i> "../."
+</pre></blockquote>
+<p>
+I think the right solution is:
+</p>
+<ol>
+<li><p>
+when counting <tt>[b, base.end())</tt> in bullet (4.2) handle empty filename elements (which can only occur as the last 
+element, due to a trailing slash) equivalently to dot elements; and
+</p></li>
+<li><p>
+add a new condition for the case where <tt>n == 0</tt> and <tt>[a, end())</tt> contains no non-empty elements, i.e. the 
+paths are equivalent except for final dots or a final slash, which don't introduce any relative difference between the paths.
+</p></li>
+</ol>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -79,7 +106,8 @@ Then,
 <li><p>(4.1) &mdash; if <tt>a == end()</tt> and <tt>b == base.end()</tt>, returns <tt>path(".")</tt>; otherwise</p></li>
 <li><p>(4.2) &mdash; let <tt>n</tt> be the number of <i>filename</i> elements in <tt>[b, base.end())</tt> that are not dot 
 or dot-dot <ins>or empty,</ins> minus the number that are dot-dot. If <tt>n&lt;0</tt>, returns <tt>path()</tt>; otherwise</p></li>
-<li><p>[&hellip;]</p></li>
+<li><p><ins>(4.?) &mdash; if <tt>n == 0</tt> and <tt>(a == end() || a-&gt;empty())</tt>, returns <tt>path(".")</tt>; otherwise</ins></p></li>
+<li><p>(4.3) &mdash; returns an object of class <tt>path</tt> that is default-constructed, followed by [&hellip;]</p></li>
 </ol>
 
 </blockquote>
