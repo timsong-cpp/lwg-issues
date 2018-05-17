@@ -28,7 +28,7 @@
 </tr>
 <tr>
   <td align="left">Date:</td>
-  <td align="left">2018-05-13</td>
+  <td align="left">2018-05-17</td>
 </tr>
 <tr>
   <td align="left">Project:</td>
@@ -40,7 +40,7 @@
 </tr>
 </table>
 <h1>C++ Standard Library Active Issues List (Revision D111)</h1>
-<p><p>Revised 2018-05-10 at 20:39:16 UTC</p>
+<p><p>Revised 2018-05-17 at 03:36:44 UTC</p>
 </p>
   <p>Reference ISO/IEC IS 14882:2014(E)</p>
   <p>Also see:</p>
@@ -20117,7 +20117,7 @@ Replaces elements in <tt>a</tt> with <tt>n</tt> copies of <tt>t</tt>.
 <hr>
 <h3><a name="2708" href="2708">2708.</a> <tt>recursive_directory_iterator::recursion_pending()</tt> is incorrectly specified</h3>
 <p><b>Section:</b> 30.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> <b>Status:</b> <a href="lwg-active.html#Review">Review</a>
- <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2016-05-09 <b>Last modified:</b> 2018-01-29 21:34:17 UTC</p>
+ <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2016-05-09 <b>Last modified:</b> 2018-05-17 03:36:44 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#fs.rec.dir.itr.members">active issues</a> in [fs.rec.dir.itr.members].</p>
@@ -20219,9 +20219,8 @@ recursive_directory_iterator&amp; increment(error_code&amp; ec) noexcept;
 <p><i>[2018-01-29: Casey provides a PR with an exposition-only member]</i></p>
 
 <p>Status to 'Review'.</p>
-
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution from Casey [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>
 This wording is relative to N4713.
 </p>
@@ -20363,6 +20362,135 @@ void disable_recursion_pending();
 <blockquote>
 <p>
 -28- <i>Postcondition<del>s</del>:</i> <tt><del>recursion_pending()</del><ins>recurse_</ins> == false</tt>.
+</p><p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-05-17: Casey restores the intended design with an expansion of the original PR]</i></p>
+
+<p>The intended design is that all copies of a single <tt>recursive_directory_iterator</tt> share a common block of state which includes the values returned by <tt>options</tt>, <tt>depth</tt>, and <tt>recursion_pending</tt> - hence the mandate that those functions not be called on a non-dereferenceable iterator in 30.11.13 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a> para 2. To allow an implementation with such shared state, it's necessary to make changes to the value returned by <tt>recursion_pending()</tt> visible to <em>all copies</em> of the same dereferenceable iterator.</p>
+<p>Also:</p>
+<ul>
+<li><p><tt>options</tt> is not valid for all constructor signatures described by 30.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> para 2</p></li>
+<li><p>the copies and moves don't specify what they actually <i>do</i></p></li>
+<li><p>it's not quite kosher for the copies and moves to have postconditions on the value of expressions that have UB if the iterator copied/moved from is not dereferenceable.</p></li>
+</ul>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4750.
+</p>
+
+<ol>
+<li><p>Change 30.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit recursive_directory_iterator(const path&amp; p);
+recursive_directory_iterator(const path&amp; p, directory_options options);
+recursive_directory_iterator(const path&amp; p, directory_options options, error_code&amp; ec) noexcept;
+recursive_directory_iterator(const path&amp; p, error_code&amp; ec) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- For the signatures with no parameter <tt>options</tt>, let <tt>options</tt> be <tt>directory_options::none</tt>.</ins>
+</p><p>
+-2- <i>Effects</i>: [&hellip;]
+</p><p>
+-3- <i>Postconditions</i>: <del><tt>options() == options</tt> for the signatures with a <tt>directory_options</tt> argument, otherwise <tt>options() == directory_options::none</tt>.</del>
+</p>
+<ul>
+<li><p><ins><tt>options() == options</tt></ins></p></li>
+<li><p><ins><tt>recursion_pending() == true</tt></ins></p></li>
+</ul>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator(const recursive_directory_iterator&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Constructs an <del>object of class <tt>recursive_directory_iterator</tt></del> <ins>iterator that denotes the same directory entry as <tt>rhs</tt>, if any.</ins>.
+</p><p>
+-8- <i>Postconditions</i>: <ins>If <tt>rhs</tt> is dereferenceable,</ins>
+</p><p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator(recursive_directory_iterator&amp;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: Constructs an <del>object of class <tt>recursive_directory_iterator</tt></del> <ins>iterator that denotes the directory entry denoted by <tt>rhs</tt> before the function call, if any.</ins>.
+</p><p>
+-10- <i>Postconditions</i>: <ins>If <tt>rhs</tt> is dereferenceable,</ins>  [&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator&amp; operator=(const recursive_directory_iterator&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: <del>If <tt>*this</tt> and <tt>rhs</tt> are the same object, the member has no effect.</del> <ins>Causes <tt>*this</tt> to denote the same directory entry denoted by <tt>rhs</tt>, if any.</ins>
+</p><p>
+-12- <i>Postconditions</i>: <ins>If <tt>rhs</tt> is dereferenceable,</ins>
+</p><p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator&amp; operator=(recursive_directory_iterator&amp;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects</i>: <del>If <tt>*this</tt> and <tt>rhs</tt> are the same object, the member has no effect.</del> <ins>Causes <tt>*this</tt> to denote the directory entry denoted by <tt>rhs</tt> before the function call, if any.</ins>
+</p><p>
+-15- <i>Postconditions</i>: <ins>If <tt>rhs</tt> was dereferenceable before the function call,</ins> [&hellip;]
+</p><p>
+-16- <i>Returns</i>: <tt>*this</tt>.
+</p><p>
+<ins>-x- <i>Remarks</i>: If <tt>*this</tt> and <tt>rhs</tt> do not refer to the same object, the resulting state of <tt>rhs</tt> is unspecified (20.5.5.15 <a href="https://timsong-cpp.github.io/cppwp/lib.types.movedfrom">[lib.types.movedfrom]</a>).</ins>
+</p>
+</blockquote>
+<pre>
+directory_options options() const;
+</pre>
+<blockquote>
+<p>
+-17- <i>Returns</i>: The value <del>of the argument passed to the constructor for the <tt>options</tt> parameter, if present,
+otherwise <tt>directory_options::none</tt></del> <ins>established by the most recently called member that has a postcondition for <tt>options()</tt></ins>.
+</p><p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+bool recursion_pending() const;
+</pre>
+<blockquote>
+<p>
+-21- <i>Returns</i>: <del><tt>true</tt> if <tt>disable_recursion_pending()</tt> has not been called subsequent to the prior construction or increment operation, otherwise <tt>false</tt>.</del> <ins>If <tt>disable_recursion_pending()</tt> has been called on a copy of <tt>*this</tt>, an unspecified value. Otherwise, the value established for <tt>recursion_pending()</tt> by the postcondition of the most recent construction, assignment, increment, or <tt>disable_recursion_pending</tt> operation.</ins>
+</p><p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator&amp; operator++();
+recursive_directory_iterator&amp; increment(error_code&amp; ec);
+</pre>
+<blockquote>
+<p>
+-23- <i>Effects</i>: As specified for the prefix increment operation of Input iterators (27.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a>), except that: [&hellip;]
+</p><p>
+<ins>-?- <i>Postconditions</i>: <tt>recursion_pending() == true</tt>.</ins>
 </p><p>
 [&hellip;]
 </p>
@@ -35147,26 +35275,32 @@ copy of the array whose first element is pointed at by <tt>s</tt><del>,</del><in
 
 
 <hr>
-<h3><a name="3112" href="3112">3112.</a> <tt>system_error</tt> and <tt>filesystem_error</tt> constructors taking a <tt>string</tt> may not be able to meet their postconditions</h3>
+<h3><a name="3112" href="3112">3112.</a> <tt>system_error</tt> and <tt>filesystem_error</tt> constructors taking a <tt>string</tt> may not be able 
+to meet their postconditions</h3>
 <p><b>Section:</b> 22.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr.members">[syserr.syserr.members]</a>, 30.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem_error.members">[fs.filesystem_error.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2018-05-10 <b>Last modified:</b> 2018-05-10 20:39:16 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2018-05-10 <b>Last modified:</b> 2018-05-14 10:57:08 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#syserr.syserr.members">issues</a> in [syserr.syserr.members].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The constructors of <tt>system_error</tt> and <tt>filesystem_error</tt> taking a <tt>std::string</tt> <tt>what_arg</tt> are specified to have a postcondition of
-<tt>string(what()).find(what_arg) != string::npos</tt> (or the equivalent with <tt>string_view</tt>). This is not possible if <tt>what_arg</tt> contains
-an embedded null character.
+The constructors of <tt>system_error</tt> and <tt>filesystem_error</tt> taking a <tt>std::string</tt> <tt>what_arg</tt> 
+are specified to have a postcondition of <tt>string(what()).find(what_arg) != string::npos</tt> (or the equivalent with 
+<tt>string_view</tt>). This is not possible if <tt>what_arg</tt> contains an embedded null character.
 </p>
 
 
 <p><b>Proposed resolution:</b></p>
 <p>This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.</p>
+
 <blockquote class="note"> 
-<i>Drafting note:</i> This contains a drive-by editorial change to use <tt>string_view</tt> for these postconditions rather than <tt>string</tt>.
+<p>
+<i>Drafting note:</i> This contains a drive-by editorial change to use <tt>string_view</tt> for these postconditions rather 
+than <tt>string</tt>.
+</p>
 </blockquote>
+
 <ol>
 <li><p>Edit 22.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr.members">[syserr.syserr.members]</a> p1-4 as indicated:</p>
 <blockquote>
@@ -35177,7 +35311,8 @@ system_error(error_code ec, const string&amp; what_arg);
 <p>
 -1- <i>Effects:</i> Constructs an object of class <tt>system_error</tt>.
 <p/>
--2- <i>Postconditions:</i> <tt>code() == ec</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg<ins>.c_str()</ins>) != string<ins>_view</ins>::npos</tt>.
+-2- <i>Postconditions:</i> <tt>code() == ec</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg<ins>.c_str()</ins>) 
+!= string<ins>_view</ins>::npos</tt>.
 </p>
 </blockquote>
 <pre>
@@ -35187,7 +35322,8 @@ system_error(error_code ec, const char* what_arg);
 <p>
 -3- <i>Effects:</i> Constructs an object of class <tt>system_error</tt>.
 <p/>
--4- <i>Postconditions:</i> <tt>code() == ec</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg) != string<ins>_view</ins>::npos</tt>.
+-4- <i>Postconditions:</i> <tt>code() == ec</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg) 
+!= string<ins>_view</ins>::npos</tt>.
 </p>
 </blockquote>
 </blockquote>
@@ -35201,7 +35337,8 @@ system_error(int ev, const error_category&amp; ecat, const std::string&amp; what
 <p>
 -7- <i>Effects:</i> Constructs an object of class <tt>system_error</tt>.
 <p/>
--8- <i>Postconditions:</i> <tt>code() == error_code(ev, ecat)</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg<ins>.c_str()</ins>) != string<ins>_view</ins>::npos</tt>.
+-8- <i>Postconditions:</i> <tt>code() == error_code(ev, ecat)</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg<ins>.c_str()</ins>) 
+!= string<ins>_view</ins>::npos</tt>.
 </p>
 </blockquote>
 <pre>
@@ -35211,7 +35348,8 @@ system_error(int ev, const error_category&amp; ecat, const char* what_arg);
 <p>
 -9- <i>Effects:</i> Constructs an object of class <tt>system_error</tt>.
 <p/>
--10- <i>Postconditions:</i> <tt>code() == error_code(ev, ecat)</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg) != string<ins>_view</ins>::npos</tt>.
+-10- <i>Postconditions:</i> <tt>code() == error_code(ev, ecat)</tt> and <tt>string<ins>_view</ins>(what()).find(what_arg) 
+!= string<ins>_view</ins>::npos</tt>.
 </p>
 </blockquote>
 </blockquote>
