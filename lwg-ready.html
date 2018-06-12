@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2018-06-04 at 20:24:42 UTC</p>
+<td align="left"><p>Revised 2018-06-12 at 04:35:59 UTC</p>
 </td>
 </tr>
 <tr>
@@ -43,13 +43,1163 @@
 </table>
 <h2>Ready Issues</h2>
 <hr>
+<h3><a name="2183" href="2183">2183.</a> Muddled allocator requirements for <tt>match_results</tt> constructors</h3>
+<p><b>Section:</b> 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a>, 31.10.6 <a href="https://timsong-cpp.github.io/cppwp/re.results.all">[re.results.all]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Pete Becker <b>Opened:</b> 2012-08-29 <b>Last modified:</b> 2018-06-06 21:13:21 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#re.results.const">active issues</a> in [re.results.const].</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.results.const">issues</a> in [re.results.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a> p1 says:
+</p>
+<blockquote><p>
+In all <tt>match_results</tt> constructors, a copy of the <tt>Allocator</tt> argument shall be used for any memory 
+allocation performed by the constructor or member functions during the lifetime of the object.
+</p></blockquote>
+<p>
+There are three constructors:
+</p>
+<blockquote><pre>
+match_results(const Allocator&amp; = Allocator());
+match_results(const match_results&amp; m);
+match_results(match_results&amp;&amp; m) noexcept;
+</pre></blockquote>
+<p>
+The second and third constructors do no have an <tt>Allocator</tt> argument, so despite the "all <tt>match_results</tt> 
+constructors", it is not possible to use "the <tt>Allocator</tt> argument" for the second and third constructors.
+<p/>
+The requirements for those two constructors also does not give any guidance. The second constructor has no language 
+about allocators, and the third states that the stored <tt>Allocator</tt> value is move constructed from 
+<tt>m.get_allocator()</tt>, but doesn't require using that allocator to allocate memory.
+<p/>
+The same basic problem recurs in 31.10.6 <a href="https://timsong-cpp.github.io/cppwp/re.results.all">[re.results.all]</a>, which gives the required return value for 
+<tt>get_allocator()</tt>:
+</p>
+<blockquote><p>
+<i>Returns</i>: A copy of the <tt>Allocator</tt> that was passed to the object's constructor or, if that allocator 
+has been replaced, a copy of the most recent replacement.
+</p></blockquote>
+<p>
+Again, the second and third constructors do not take an <tt>Allocator</tt>, so there is nothing that meets this 
+requirement when those constructors are used.
+</p>
+
+<p><i>[2018-06-02, Daniel comments and provides wording]</i></p>
+
+<p>
+The introductory wording of <tt>match_results</tt> says in 31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> p2:
+</p>
+<blockquote><p>
+The class template <tt>match_results</tt> satisfies the requirements of an allocator-aware container and of a sequence
+container (26.2.1, 26.2.3) except that only operations defined for const-qualified sequence containers are
+supported and that the semantics of comparison functions are different from those required for a container.
+</p></blockquote>
+<p>
+This wording essentially brings us to 26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> which describes in p8 in general the
+usage of allocators:
+</p>
+<blockquote><p>
+[&hellip;] Copy constructors for these container types obtain an allocator by calling <tt>allocator_traits&lt;allocator_
+type&gt;::select_on_container_copy_construction</tt> on the allocator belonging to the container being copied.
+Move constructors obtain an allocator by move construction from the allocator belonging to the container being moved.
+[&hellip;]
+</p></blockquote>
+<p>
+The constructors referred to in the issue discussion are the copy constructor and move constructor of <tt>match_results</tt>,
+so we know already what the required effects are supposed to be.
+<p/>
+26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p8 also says more to this allocator topic a bit latter:
+</p>
+<blockquote><p>
+[&hellip;] All other constructors for these container types take a <tt>const allocator_type&amp;</tt> argument. 
+[<i>Note:</i> If an invocation of a constructor uses the default value of an optional allocator argument, then the 
+Allocator type must support value-initialization. &mdash; <i>end note</i>] A copy of this allocator is used for any 
+memory allocation and element construction performed, by these constructors and by all member functions, during the 
+lifetime of each container object or until the allocator is replaced.
+[&hellip;]
+</p></blockquote>
+<p>
+Further requirements imposed on two of the three <tt>match_results</tt> constructors can be derived from Table 80 &mdash; 
+"Allocator-aware container requirements" via the specified expressions
+</p>
+<blockquote><pre>
+X()
+X(m)
+X(rv)
+</pre></blockquote>
+<p>
+In other words: The existing wording does already say <em>everything</em> that it said by 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a> p1 (end 
+even more), except for possibly the tiny problem that
+</p>
+<blockquote><pre>
+match_results(const Allocator&amp; a = Allocator());
+</pre></blockquote>
+<p>
+uses "<tt>const Allocator&amp;</tt>" instead of "<tt>const allocator_type&amp;</tt>" in the signature, albeit even 
+that deviation shouldn't change the intended outcome, which is IMO crystal-clear when looking at sub-clauses 
+26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> and 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> as a whole.
+<p/>
+That directly makes two mutually exclusive solutions feasible:
+</p>
+<ul>
+<li><p>Either strike 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a> p1 completely; or</p></li>
+<li><p>Replace 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a> p1 by referring to the specification of allocators in
+26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> and 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>.</p></li>
+</ul>
+<p>
+My suggestion is to favour for the first option, because attempting to provide extra wording that refers to allocators
+and the three constructors may lead to the false impression that no further allocator-related
+requirements hold for type <tt>match_results</tt> which are not explicitly repeated here again.
+</p>
+
+<p><i>[2018-06, Rapperswil]</i></p>
+
+<p>
+The group agrees with the provided resolution. Move to Ready.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Edit 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a> as indicated:</p>
+<blockquote>
+<p>
+<del>-1- In all <tt>match_results</tt> constructors, a copy of the <tt>Allocator</tt> argument shall be used for any memory allocation
+performed by the constructor or member functions during the lifetime of the object.</del>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2184" href="2184">2184.</a> Muddled allocator requirements for <tt>match_results</tt> assignments</h3>
+<p><b>Section:</b> 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/re.results.const">[re.results.const]</a>, 31.10.6 <a href="https://timsong-cpp.github.io/cppwp/re.results.all">[re.results.all]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Pete Becker <b>Opened:</b> 2012-08-29 <b>Last modified:</b> 2018-06-06 21:13:21 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#re.results.const">active issues</a> in [re.results.const].</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.results.const">issues</a> in [re.results.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+The effects of the two assignment operators are specified in Table 141. Table 141 makes no mention of allocators, 
+so, presumably, they don't touch the target object's allocator. That's okay, but it leaves the question: 
+<tt>match_results::get_allocator()</tt> is supposed to return "A copy of the Allocator that was passed to the 
+object's constructor or, if that allocator has been replaced, a copy of the most recent replacement"; if assignment 
+doesn't replace the allocator, how can the allocator be replaced?
+</p>
+
+<p><i>[2018-06-04, Daniel comments and provides wording]</i></p>
+
+<p>
+Similar to the reasoning provided in the 2018-06-02 comment in LWG <a href="2183">2183</a>, it is possible to refer to 
+the introductory wording of <tt>match_results</tt> which says in 31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> p2:
+</p>
+<blockquote><p>
+The class template <tt>match_results</tt> satisfies the requirements of an allocator-aware container and 
+of a sequence container (26.2.1, 26.2.3) except that only operations defined for const-qualified sequence 
+containers are supported and that the semantics of comparison functions are different from those required 
+for a container.
+</p></blockquote>
+<p>
+Again, similar to LWG <a href="2183">2183</a>, this allows us to deduce the required effects of the copy/move
+assignment operators discussed here, because 26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p8 also says:
+</p>
+<blockquote><p>
+[&hellip;] The allocator may be replaced only via assignment or <tt>swap()</tt>. Allocator replacement is 
+performed by copy assignment, move assignment, or swapping of the allocator only if 
+<tt>allocator_traits&lt;allocator_type&gt;::propagate_on_container_copy_assignment::value</tt>,
+<tt>allocator_traits&lt;allocator_type&gt;::propagate_on_container_move_assignment::value</tt>, or 
+<tt>allocator_traits&lt;allocator_type&gt;::propagate_on_container_swap::value</tt> is <tt>true</tt> 
+within the implementation of the corresponding container operation. In all container types defined in 
+this Clause, the member <tt>get_allocator()</tt> returns a copy of the allocator used to construct the 
+container or, if that allocator has been replaced, a copy of the most recent replacement. [&hellip;]
+</p></blockquote>
+<p>
+So this wording already specifies everything we need, <em>except</em> for the problem that
+31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> p2 quoted above restricts to operations supported by a const-qualified sequence 
+container, which of-course would exclude the copy assignment and the move assignment operators.
+But given that these mutable definitions are defined for <tt>match_results</tt>, it seems that the only fix 
+needed is to adjust 31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> p2 a bit to ensure that both assignment operators are 
+covered (again) by the general allocator-aware container wording. 
+</p>
+
+<p><i>[2018-06, Rapperswil]</i></p>
+
+<p>
+The group generally likes the suggested direction, but would prefer the changed wording to say effectively
+"except that only copy assignment, move assignment, and operations defined...". Once applied, move to ready.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Edit 31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> as indicated:</p>
+<blockquote>
+<p>
+-2- The class template <tt>match_results</tt> satisfies the requirements of an allocator-aware container 
+and of a sequence container (26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>, 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>) 
+except that <ins>besides copy assignment and move assignment</ins> only operations defined for 
+const-qualified sequence containers are supported and that the semantics of comparison functions are 
+different from those required for a container.
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-06-06, Daniel updates wording]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Edit 31.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a> as indicated:</p>
+<blockquote>
+<p>
+-2- The class template <tt>match_results</tt> satisfies the requirements of an allocator-aware container 
+and of a sequence container (26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>, 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>) 
+except that only <ins>copy assignment, move assignment, and</ins> operations defined for 
+const-qualified sequence containers are supported and that the semantics of comparison functions are 
+different from those required for a container.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2412" href="2412">2412.</a> <tt>promise::set_value()</tt> and <tt>promise::get_future()</tt> should not race</h3>
+<p><b>Section:</b> 33.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a>, 33.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2014-06-23 <b>Last modified:</b> 2018-06-12 02:06:47 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#futures.promise">active issues</a> in [futures.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.promise">issues</a> in [futures.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code has a data race according to the standard:
+</p>
+<blockquote>
+<pre>
+std::promise&lt;void&gt; p;
+std::thread t{ []{
+  p.get_future().wait();
+}};
+p.set_value();
+t.join();
+</pre>
+</blockquote>
+<p>
+The problem is that both <tt>promise::set_value()</tt> and
+<tt>promise::get_future()</tt> are non-const member functions which modify the
+same object, and we only have wording saying that the <tt>set_value()</tt> and
+<tt>wait()</tt> calls (i.e. calls setting and reading the shared state) are
+synchronized.
+<p/>
+The calls don't actually access the same memory locations, so the
+standard should allow it. My suggestion is to state that calling
+<tt>get_future()</tt> does not conflict with calling the various functions that
+make the shared state ready, but clarify with a note that this does
+not imply any synchronization or "happens before", only being free
+from data races.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Handed over to SG1.
+</p>
+
+<p><i>[2016-10-21, Nico comments]</i></p>
+
+<p>
+After creating a promise or packaged task one thread can call <tt>get_future()</tt>
+while another thread can set values/exceptions (either directly or via function call).
+This happens very easily.
+<p/>
+Consider:
+</p>
+<blockquote><pre>
+promise&lt;string&gt; p;
+thread t(doSomething, ref(p));
+cout &lt;&lt; "result: " &lt;&lt; p.get_future().get() &lt;&lt; endl;
+</pre></blockquote>
+<p>
+AFAIK, this is currently UB due to a data race (calling <tt>get_future()</tt> for the 
+promise might happen while setting the value in the promise).
+<p/>
+Yes, a fix is pretty easy:
+</p>
+<blockquote><pre>
+promise&lt;string&gt; p;
+future&lt;string&gt; f(p.get_future());
+thread t(doSomething, ref(p));
+cout &lt;&lt; "result: " &lt;&lt; f.get() &lt;&lt; endl;
+</pre></blockquote>
+<p>
+but I would like to have <tt>get_future()</tt> and setters be synchronized to avoid this UB.
+<p/>
+This would especially make the use of packaged tasks a lot easier. Consider:
+</p>
+<blockquote><pre>
+vector&lt;packaged_task&lt;int(char)&gt;&gt; tasks;
+packaged_task&lt;int(char)&gt; t1(func);
+
+// start separate thread to run all tasks:
+auto futCallTasks = async(launch::async, callTasks, ref(tasks));
+
+for (auto&amp; fut : tasksResults) {
+  cout &lt;&lt; "result: " &lt;&lt; fut.get_future().get() &lt;&lt; endl; // OOPS: UB
+}
+</pre></blockquote>
+<p>
+Again, AFAIK, this program currently is UB due to a data race.
+Instead, currently I'd have to program, which is a lot less convenient:
+</p>
+<blockquote><pre>
+vector&lt;packaged_task&lt;int(char)&gt;&gt; tasks;
+vector&lt;future&lt;int&gt;&gt; tasksResults;
+packaged_task&lt;int(char)&gt; t1(func);
+tasksResults.push_back(t1.getFuture()));
+tasks.push_back(move(t1));
+
+// start separate thread to run all tasks:
+auto futCallTasks = async(launch::async, callTasks, ref(tasks));
+
+for (auto&amp; fut : tasksResults) {
+  cout &lt;&lt; "result: " &lt;&lt; fut.get() &lt;&lt; endl;
+}
+</pre></blockquote>
+<p>
+With my naive thinking I see not reason not to guarantee
+that these calls synchronize (as <tt>get_future</tt> returns an "address/reference"
+while all setters set the values there).
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 33.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> around p12 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-12- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object with the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not conflict (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+with calls to <tt>set_value</tt>, <tt>set_exception</tt>, <tt>set_value_at_thread_exit</tt>, or
+<tt>set_exception_at_thread_exit</tt>. [<i>Note</i>: Such calls need not be synchronized, but implementations 
+must ensure they do not introduce data races. &mdash; <i>end note</i>]</ins>
+<p/>
+-13- <i>Throws</i>: <tt>future_error</tt> if <tt>*this</tt> has no shared state or if <tt>get_future</tt> has already been called on a
+<tt>promise</tt> with the same shared state as <tt>*this</tt>.
+<p/>
+-14- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 33.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> around p13 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-13- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object that shares the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not conflict (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+with calls to <tt>operator()</tt> or <tt>make_ready_at_thread_exit</tt>. [<i>Note</i>: Such calls need not be 
+synchronized, but implementations must ensure they do not introduce data races. &mdash; <i>end note</i>]</ins>
+<p/>
+-14- <i>Throws</i>: a <tt>future_error</tt> object if an error occurs.
+<p/>
+-15- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-02-28, Kona]</i></p>
+
+<p>
+SG1 has updated wording for LWG 2412. SG1 voted to move this to Ready status by unanimous consent.
+</p>
+
+<p><i>[2017-03-01, Kona, SG1]</i></p>
+
+<p>
+GeoffR to forward revised wording.
+</p>
+
+<p><i>[2018-06, Rapperswil, Wednesday evening session]</i></p>
+
+<p>
+JW: lets move on and I'll file another issue to make the wording better<br/>
+BO: the current wording is better than what there before<br/>
+JM: ACTION I should file an editorial issue to clean up on how to refer to [res.on.data.races]: raised editorial issue 2097<br/>
+ACTION: move to Ready
+<p/>
+Daniel rebases wording to N4750.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Change 33.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> around p12 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-12- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object with the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not introduce data races (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) with 
+calls to <tt>set_value</tt>, <tt>set_exception</tt>, <tt>set_value_at_thread_exit</tt>, or <tt>set_exception_at_thread_exit</tt>. 
+[<i>Note</i>: Such calls need not synchronize with each other. &mdash; <i>end note</i>]</ins>
+<p/>
+-13- <i>Throws</i>: <tt>future_error</tt> if <tt>*this</tt> has no shared state or if <tt>get_future</tt> has already been called on a
+<tt>promise</tt> with the same shared state as <tt>*this</tt>.
+<p/>
+-14- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 33.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> around p13 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-13- <i>Returns</i>: A <tt>future</tt> object that shares the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not introduce data races (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) with calls 
+to <tt>operator()</tt> or <tt>make_ready_at_thread_exit</tt>. [<i>Note</i>: Such calls need not synchronize with each other. 
+&mdash; <i>end note</i>]</ins>
+<p/>
+-14- <i>Throws</i>: a <tt>future_error</tt> object if an error occurs.
+<p/>
+-15- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2682" href="2682">2682.</a> <code>filesystem::copy()</code> won't create a symlink to a directory</h3>
+<p><b>Section:</b> 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-04-19 <b>Last modified:</b> 2018-06-07 21:18:04 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.op.copy">active issues</a> in [fs.op.copy].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.op.copy">issues</a> in [fs.op.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>(First raised in c++std-lib-38544)</p>
+
+<p><code>filesystem::copy</code> doesn't create a symlink to a directory in this case:</p>
+
+<blockquote>
+<code>copy("/", "root", copy_options::create_symlinks);</code>
+</blockquote>
+
+<p>
+If the first path is a file then a symlink is created, but I think my
+implementation is correct to do nothing for a directory. We get to
+bullet 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> (3.6) where <code>is_directory(f)</code> is true, but <code>options
+== create_symlinks</code>, so we go to the next bullet (3.7) which says
+"Otherwise, no effects."
+<p/>
+I think the case above should either create a symlink, or should
+report an error. GNU cp -s gives an error in this case, printing
+"omitting directory '/'". An error seems reasonable, you can use
+<code>create_symlink</code> to create a symlink to a directory.
+</p>
+
+<p><i>[2016-05 Issues Telecon]</i></p>
+
+<p>
+This is related to <a href="2681">2681</a>; and should be considered together.
+</p>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Wed AM: Move to Tentatively Ready</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>Add a new bullet following (3.6) in 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> as shown:</p>
+
+<blockquote>
+<ul>
+<li><p>If <code>!exists(t)</code>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>Then, iterate over the files in <code>from</code>, as if by <code>for (directory_entry&amp; x :
+ directory_iterator(from))</code>, and for each iteration
+  <code>copy(x.path(), to/x.path().filename(), options | copy_options::unspecified )</code></p></li>
+<li><p><ins>Otherwise, if <code>is_directory(f) &amp;&amp; (options &amp;
+copy_options::create_symlinks) != copy_options::none</code>, then report an
+error with an <code>error_code</code> argument equal to
+<code>make_error_code(errc::is_a_directory)</code>.</ins></p></li>
+<li><p>Otherwise, no effects.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+
+<p><i>[2016-10-16, Eric reopens and provides improved wording]</i></p>
+
+<p>
+The current PR makes using <tt>copy(...)</tt> to copy/create a directory symlink an error. For example, the following 
+is now an error:
+</p>
+<blockquote><pre>
+copy("/", "root", copy_options::create_symlinks);
+</pre></blockquote>
+<p>
+However the current PR doesn't handle the case where both <tt>copy_options::create_symlinks</tt> and 
+<tt>copy_options::recursive</tt> are specified. This case is still incorrectly handled by bullet (3.6) [fs.op.copy].
+<p/>
+I suggest we move the PR before this bullet so that it catches the recursive copy case, since currently the conditions 
+are ordered:
+</p>
+<blockquote>
+<p>
+3.6 Otherwise if <tt>is_directory(f) &amp;&amp; (bool(options &amp; copy_options::recursive) || ...)</tt><br/>
+3.X Otherwise if <tt>is_directory(f) &amp;&amp; bool(options &amp; copy_options::create_symlinks)</tt>
+</p>
+</blockquote>
+<p>
+So 3.6 catches <tt>create_symlinks | recursive</tt> but I believe we want 3.X to handle it instead.
+</p>
+
+<p><i>[2018-01-26 issues processing telecon]</i></p>
+
+<p>Status to 'Review'; we think this is OK but want some implementation experience before adopting it.</p>
+
+<p><i>[2018-01-29 Jonathan says]</i></p>
+
+<p>The proposed resolution for LWG 2682 has been in GCC's Filesystem TS implementation for more than a year. 
+It's also in our <tt>std::filesystem</tt> implementation on the subversion trunk.</p>
+
+<p><i>[2018-06; Rapperswil Wednesday evening]</i></p>
+
+<p>
+JW: can we use the words we are shipping already since two years?<br/>
+BO: what we got is better than what we had before<br/>
+no objection to moving to Ready<br/>
+ACTION move to Ready<br/>
+ACTION link 2682 and LWG <a href="3057">3057</a> and set a priority 2 and look at 3057 in San Diego 
+<p/>
+Daniel rebases wording to N4750.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Add a new bullet before (4.8) in 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> as shown:</p>
+
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.7) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
+<blockquote>
+[&hellip;]
+</blockquote>
+</li>
+<li><p><ins>(4.?) &mdash; Otherwise, if</ins></p>
+<blockquote>
+<blockquote><pre>
+<ins>is_directory(f) &amp;&amp; 
+(options &amp; copy_options::create_symlinks) != copy_options::none</ins>
+</pre></blockquote>
+<p> 
+<ins>then report an error with an <code>error_code</code> argument equal to
+<code>make_error_code(errc::is_a_directory)</code>.</ins></p></blockquote></li>
+<li><p>(4.8) &mdash; Otherwise, if</p>
+<blockquote>
+<blockquote><pre>
+is_directory(f) &amp;&amp;
+((options &amp; copy_options::recursive) != copy_options::none ||
+options == copy_options::none)
+</pre></blockquote>
+<p>
+then:
+</p>
+</blockquote>
+<ol style="list-style-type: none">
+<li><p>(4.8.1) &mdash; If <code>exists(t)</code> is <tt>false</tt>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>(4.8.2) &mdash; Then, iterate over the files in <code>from</code>, as if by</p> 
+<blockquote><pre>
+for (const directory_entry&amp; x : directory_iterator(from))
+  copy(x.path(), to/x.path().filename(),
+    options | copy_options::<i>in-recursive-copy</i>);
+</pre></blockquote>
+<p>where <tt><i>in-recursive-copy</i></tt> is a bitmask element of <tt>copy_options</tt> that is not one of the
+elements in 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>.</p>
+</li>
+</ol>
+</li>
+<li><p>(4.9) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
+<li><p>(4.10) &mdash; Otherwise, no effects.</p></li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2697" href="2697">2697.</a> [concurr.ts] Behavior of <tt>future/shared_future</tt> unwrapping constructor when given an invalid <tt>future</tt></h3>
+<p><b>Section:</b> 99 [concurr.ts::futures.unique_future], 99 [concurr.ts::futures.shared_future] <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2016-04-22 <b>Last modified:</b> 2018-06-08 06:29:08 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#concurr.ts::futures.unique_future">active issues</a> in [concurr.ts::futures.unique_future].</p>
+<p><b>View all other</b> <a href="lwg-index.html#concurr.ts::futures.unique_future">issues</a> in [concurr.ts::futures.unique_future].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: concurr.ts</b></p>
+
+<p>
+In the concurrency TS, the future/shared_future unwrapping constructors
+</p>
+<blockquote><pre>
+future(future&lt;future&lt;R&gt;&gt;&amp;&amp;) noexcept;
+shared_future(future&lt;shared_future&lt;R&gt;&gt;&amp;&amp; rhs) noexcept;
+</pre></blockquote>
+<p>
+appear to implicitly require <tt>rhs</tt> be valid (e.g., by referring to its shared state, and by requiring a 
+<tt>valid() == true</tt> postcondition). However, they are also marked <tt>noexcept</tt>, suggesting that they 
+are wide-contract, and also makes the usual suggested handling for invalid futures, throwing a 
+<tt>future_error</tt>, impossible.
+<p/>
+Either the <tt>noexcept</tt> should be removed, or the behavior with an invalid future should be specified.
+</p>
+
+<p>
+<strong>Original resolution alternative #1 [NOT CHOSEN]:</strong>
+</p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4577">N4577</a>.
+</p>
+
+<p>Strike the <tt>noexcept</tt> on these constructors in 99 [concurr.ts::futures.unique_future]/1-2 and 
+99 [concurr.ts::futures.shared_future]/1-2, and optionally add a <i>Requires</i>: <tt>rhs.valid() == true</tt> 
+paragraph.</p>
+</blockquote>
+
+<p><i>[2016-11-12, Issaquah]</i></p>
+
+<p>Sat PM: We prefer alternative #2 - Move to review</p>
+
+<p><i>[2018-06; Rapperswil, Wednesday evening session]</i></p>
+
+<p>
+DR: there is a sentence ended followed by an entirely new sentence<br/>
+JM: so the period should be a semicolon in both edits<br/>
+MC: ACTION I can make the change editorially<br/>
+ACTION move to Ready 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4577">N4577</a>.
+</p>
+
+<blockquote class="note">
+<p>
+Alternative #2: Specify that an empty (<tt>shared_</tt>)<tt>future</tt> object is constructed if <tt>rhs</tt> is invalid, and adjust 
+the postcondition accordingly.
+</p>
+</blockquote>
+<ol>
+<li><p>Edit 99 [concurr.ts::futures.unique_future] as indicated:</p>
+
+<blockquote><pre>
+future(future&lt;future&lt;R&gt;&gt;&amp;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: <ins>If <tt>rhs.valid() == false</tt>, constructs an empty <tt>future</tt> object that does not 
+refer to a shared state. Otherwise, c</ins><del>C</del>onstructs a <tt>future</tt> object from the shared state 
+referred to by <tt>rhs</tt><del>. T</del><ins>; t</ins>he <tt>future</tt> becomes ready when one of the following occurs:
+</p>
+<ul>
+<li><p>Both the <tt>rhs</tt> and <tt>rhs.get()</tt> are ready. The value or the exception from
+<tt>rhs.get()</tt> is stored in the <tt>future</tt>'s shared state.</p></li>
+<li><p><tt>rhs</tt> is ready but <tt>rhs.get()</tt> is invalid. An exception of type
+<tt>std::future_error</tt>, with an error condition of <tt>std::future_errc::broken_promise</tt>
+is stored in the <tt>future</tt>'s shared state.</p></li>
+</ul>
+<p>
+-4- <i>Postconditions</i>:
+</p>
+<ul>
+<li><p><del><tt>valid() == true</tt></del><ins><tt>valid()</tt> returns the same value as <tt>rhs.valid()</tt> prior to 
+the constructor invocation.</ins>.</p></li>
+<li><p><tt>rhs.valid() == false</tt>.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 99 [concurr.ts::futures.shared_future] as indicated:</p>
+
+<blockquote><pre>
+shared_future(future&lt;shared_future&lt;R&gt;&gt;&amp;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: <ins>If <tt>rhs.valid() == false</tt>, constructs an empty <tt>shared_future</tt> object that does not 
+refer to a shared state. Otherwise, c</ins><del>C</del>onstructs a <tt>shared_future</tt> object from the shared state 
+referred to by <tt>rhs</tt><del>. T</del><ins>; t</ins>he <tt>shared_future</tt> becomes ready when one of the following occurs:
+</p>
+<ul>
+<li><p>Both the <tt>rhs</tt> and <tt>rhs.get()</tt> are ready. The value or the exception from
+<tt>rhs.get()</tt> is stored in the <tt>shared_future</tt>'s shared state.</p></li>
+<li><p><tt>rhs</tt> is ready but <tt>rhs.get()</tt> is invalid. The <tt>shared_future</tt>
+stores an exception of type <tt>std::future_error</tt>, with an error condition of
+<tt>std::future_errc::broken_promise</tt>.</p></li>
+</ul>
+<p>
+-4- <i>Postconditions</i>:
+</p>
+<ul>
+<li><p><del><tt>valid() == true</tt></del><ins><tt>valid()</tt> returns the same value as <tt>rhs.valid()</tt> prior to 
+the constructor invocation.</ins>.</p></li>
+<li><p><tt>rhs.valid() == false</tt>.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2936" href="2936">2936.</a> Path comparison is defined in terms of the generic format</h3>
+<p><b>Section:</b> 30.11.7.4.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.compare">[fs.path.compare]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Billy Robert O'Neal III <b>Opened:</b> 2017-02-21 <b>Last modified:</b> 2018-06-07 11:21:36 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, path comparison is defined elementwise, which implies a conversion from the native format (implied by
+<tt>native()</tt> returning <tt>const string&amp;</tt>). However, the conversion from the native format to the generic
+format might not be information preserving. This would allow two paths <tt>a</tt> and <tt>b</tt> to say
+<tt>a.compare(b) == 0</tt>, but <tt>a.native().compare(b.native()) != 0</tt> as a result of this missing information,
+which is undesirable. We only want that condition to happen if there are redundant directory separators. We also don't
+want to change the path comparison to be in terms of the native format, due to Peter Dimov's example where we want
+<tt>path("a/b")</tt> to sort earlier than <tt>path("a.b")</tt>, and we want <tt>path("a/b") == path("a//////b")</tt>.
+<p/>
+Citing a Windows example, conversion to the generic format is going to have to drop alternate data streams. This might
+give <tt>path("a/b:ads") == path("a/b")</tt>. I think I should consider the alternate data streams as part of the path
+element though, so this case might be fine, so long as I make <tt>path("b:ads").native()</tt> be <tt>"b:ads"</tt>.
+This might not work for our z/OS friends though, or for folks where the native format looks nothing like the generic format.
+<p/>
+Additionally, this treats root-directory specially. For example, the current spec wants <tt>path("c:/a/b") == path("c:/a////b")</tt>,
+but <tt>path("c:/a/b") != path("c:///a/b")</tt>, because <tt>native()</tt> for the root-directory path element will literally
+be the slashes or preferred separators.
+<p/>
+This addresses similar issues to those raised in US 57 &mdash; it won't make absolute paths sort at the beginning or end
+but it will make paths of the same kind sort together.
+</p>
+
+<p><i>[2017-03-04, Kona Saturday morning]</i></p>
+
+<p>We decided that this had seen so much churn that we would postpone looking at this until Toronto</p>
+
+<p><i>[2017-07 Toronto Thurs Issue Prioritization]</i></p>
+
+<p>Priority 2</p>
+
+<p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
+
+<p>Billy to reword after Davis researches history about ordering. Status to Open.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
+
+<ol>
+<li><p>Make the following edits to 30.11.7.4.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.compare">[fs.path.compare]</a>:</p>
+
+<blockquote>
+<pre>
+int compare(const path&amp; p) const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <em>Returns</em>:
+</p>
+<blockquote>
+<p>
+<ins>&mdash; Let <tt>rootNameComparison</tt> be the result of <tt>this-&gt;root_name().native().compare(p.root_name().native())</tt>. If <tt>rootNameComparison</tt> is not <tt>0</tt>, <tt>rootNameComparison</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>this-&gt;has_root_directory()</tt> and <tt>!p.has_root_directory()</tt>, a value less than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>!this-&gt;has_root_directory()</tt> and <tt>p.has_root_directory()</tt>, a value greater than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; A value greater than, less than, or equal to 0, ordering the paths in a depth-first traversal order.</ins>
+</p>
+</blockquote>
+<p>
+<ins>-?- [<i>Note:</i> For POSIX and Windows platforms, this is accomplished by lexicographically ordering the half-open ranges <tt>[begin(), end())</tt> of <tt>this-&gt;relative_path()</tt> and <tt>p.relative_path()</tt> as follows:</ins></p>
+<blockquote>
+<p>
+&mdash; A value less than <tt>0</tt>, if <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically less than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt>; otherwise,</p>
+<p>
+&mdash; a value greater than <tt>0</tt>, if <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically greater than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt>; otherwise,</p>
+<p>
+&mdash; <tt>0</tt>.</p>
+</blockquote>
+<p>
+<ins>&mdash; <i>end note</i>]</ins>
+</p>
+<p>
+<del>-2- <em>Remarks</em>: The elements are determined as if by iteration over the half-open range <tt>[begin(), end())</tt>
+for <tt>*this</tt> and <tt>p</tt>.</del>
+</p>
+</blockquote>
+<pre>
+int compare(const string_type&amp; s) const
+int compare(basic_string_view&lt;value_type&gt; s) const;
+</pre>
+<blockquote>
+<p>
+<del>-3- <em>Returns</em>: <tt>compare(path(s))</tt></del>
+</p>
+<blockquote class="note">
+<p>
+[Editor's note: Delete paragraph 3 entirely and merge the <tt>value_type</tt> overload with those above.]
+</p>
+</blockquote>
+</blockquote>
+<pre>
+int compare(const value_type* s) const
+</pre>
+<blockquote>
+<p>
+-4- <em><del>Returns</del><ins>Effects</ins></em>: <ins>Equivalent to <tt>return
+</tt></ins><tt>compare(path(s))<ins>;</ins><del>.</del></tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-01-26 issues processing telecon]</i></p>
+
+<p>Status set to 'Review'. We like the wording, but would like to see some implementation experience.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li><p>Make the following edits to 30.11.7.4.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.compare">[fs.path.compare]</a>:</p>
+
+<blockquote>
+<pre>
+int compare(const path&amp; p) const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <em>Returns</em>:
+</p>
+<blockquote>
+<p>
+<ins>&mdash; Let <tt>rootNameComparison</tt> be the result of <tt>this-&gt;root_name().native().compare(p.root_name().native())</tt>. If <tt>rootNameComparison</tt> is not <tt>0</tt>, <tt>rootNameComparison</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>this-&gt;has_root_directory()</tt> and <tt>!p.has_root_directory()</tt>, a value less than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>!this-&gt;has_root_directory()</tt> and <tt>p.has_root_directory()</tt>, a value greater than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>&mdash; <del>a value less than <tt>0</tt>, i</del><ins>I</ins>f <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically less than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt><ins>, a value less than <tt>0</tt></ins>; otherwise,</p>
+<p>&mdash; <del>a value greater than <tt>0</tt>, i</del><ins>I</ins>f <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically greater than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt><ins>, a value greater than <tt>0</tt></ins>; otherwise,</p>
+<p>
+&mdash; <tt>0</tt>.</p>
+</blockquote>
+<p>
+<del>-2- <em>Remarks</em>: The elements are determined as if by iteration over the half-open range <tt>[begin(), end())</tt>
+for <tt>*this</tt> and <tt>p</tt>.</del>
+</p>
+</blockquote>
+<pre>
+int compare(const string_type&amp; s) const
+int compare(basic_string_view&lt;value_type&gt; s) const;
+</pre>
+<blockquote>
+<p>
+<del>-3- <em>Returns</em>: <tt>compare(path(s))</tt></del>
+</p>
+<blockquote class="note">
+<p>
+[Editor's note: Delete paragraph 3 entirely and merge the <tt>value_type</tt> overload with those above.]
+</p>
+</blockquote>
+</blockquote>
+<pre>
+int compare(const value_type* s) const
+</pre>
+<blockquote>
+<p>
+-4- <em><del>Returns</del><ins>Effects</ins></em>: <ins>Equivalent to <tt>return
+</tt></ins><tt>compare(path(s))<ins>;</ins><del>.</del></tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-02-13 Billy improves wording]</i></p>
+
+<p>
+The revised wording has the effect to invert the ordering of the added new bullets (2) and (3),
+the effect of this change is that
+</p>
+<blockquote><pre>
+path("c:/").compare("c:")
+</pre></blockquote>
+<p>
+compares greater, not less.
+</p>
+
+<p><i>[2018-06, Rapperswil Wednesday evening]</i></p>
+
+<p>
+Agreement to move that to Ready, Daniel rebased to N4750.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Make the following edits to 30.11.7.4.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.compare">[fs.path.compare]</a>:</p>
+
+<blockquote>
+<pre>
+int compare(const path&amp; p) const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <em>Returns</em>:
+</p>
+<blockquote>
+<p>
+<ins>&mdash; Let <tt>rootNameComparison</tt> be the result of <tt>this-&gt;root_name().native().compare(p.root_name().native())</tt>. If <tt>rootNameComparison</tt> is not <tt>0</tt>, <tt>rootNameComparison</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>!this-&gt;has_root_directory()</tt> and <tt>p.has_root_directory()</tt>, a value less than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>
+<ins>&mdash; If <tt>this-&gt;has_root_directory()</tt> and <tt>!p.has_root_directory()</tt>, a value greater than <tt>0</tt>; otherwise,</ins>
+</p>
+<p>&mdash; <del>a value less than <tt>0</tt>, i</del><ins>I</ins>f <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically less than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt><ins>, a value less than <tt>0</tt></ins>; otherwise,</p>
+<p>&mdash; <del>a value greater than <tt>0</tt>, i</del><ins>I</ins>f <tt>native()</tt> for the elements of <tt><del>*</del>this<ins>-&gt;relative_path()</ins></tt> are lexicographically greater than <tt>native()</tt> for the elements of <tt>p<ins>.relative_path()</ins></tt><ins>, a value greater than <tt>0</tt></ins>; otherwise,</p>
+<p>
+&mdash; <tt>0</tt>.</p>
+</blockquote>
+<p>
+<del>-2- <em>Remarks</em>: The elements are determined as if by iteration over the half-open range <tt>[begin(), end())</tt>
+for <tt>*this</tt> and <tt>p</tt>.</del>
+</p>
+</blockquote>
+<pre>
+int compare(const string_type&amp; s) const
+int compare(basic_string_view&lt;value_type&gt; s) const;
+</pre>
+<blockquote>
+<p>
+<del>-3- <em>Returns</em>: <tt>compare(path(s))</tt></del>
+</p>
+<blockquote class="note">
+<p>
+[Editor's note: Delete paragraph 3 entirely and merge the <tt>value_type</tt> overload with those above.]
+</p>
+</blockquote>
+</blockquote>
+<pre>
+int compare(const value_type* s) const
+</pre>
+<blockquote>
+<p>
+-4- <em><del>Returns</del><ins>Effects</ins></em>: <ins>Equivalent to: <tt>return
+</tt></ins><tt>compare(path(s))<ins>;</ins><del>.</del></tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+
+<hr>
+<h3><a name="2995" href="2995">2995.</a> <tt>basic_stringbuf</tt> default constructor forbids it from using SSO capacity</h3>
+<p><b>Section:</b> 30.8.2.1 <a href="https://timsong-cpp.github.io/cppwp/stringbuf.cons">[stringbuf.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2018-06-12 02:06:47 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#stringbuf.cons">active issues</a> in [stringbuf.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#stringbuf.cons">issues</a> in [stringbuf.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[stringbuf.cons] says that the default constructor initializes the
+base class as <tt>basic_streambuf()</tt> which means the all the pointers to
+the input and output sequences (<tt>pbase</tt>, <tt>eback</tt> etc) are all required to
+be null.
+<p/>
+This means that a <tt>stringbuf</tt> that is implemented in terms of a Small
+String Optimised <tt>std::basic_string</tt> cannot make us of the string's
+initial capacity, and so cannot avoid a call to the overflow virtual
+function even for small writes. In other words, the following
+assertions must pass:
+</p>
+<blockquote><pre>
+#include &lt;sstream&gt;
+#include &lt;cassert&gt;
+
+bool overflowed = false;
+
+struct SB : std::stringbuf
+{
+  int overflow(int c) {
+    assert( pbase() == nullptr );
+    overflowed = true;
+    return std::stringbuf::overflow(c);
+  }
+};
+
+int main()
+{
+  SB sb;
+  sb.sputc('1');
+  assert(overflowed);
+}
+</pre></blockquote>
+<p>
+This is an unnecessary pessimisation. Implementations should be
+allowed to use the SSO buffer immediately and write to it without
+calling overflow. Libc++ already does this, so is non-conforming.
+</p>
+
+<p><i>[2017-07 Toronto Tuesday PM issue prioritization]</i></p>
+
+<p>Priority 3; is this affected by Peter Sommerlad's <a href="http://wg21.link/P0407">paper P0407R1</a>?</p>
+
+<p><i>[2018-06 Rapperswil Wednesday issues processing]</i></p>
+
+<p>Status to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 30.8.2.1 <a href="https://timsong-cpp.github.io/cppwp/stringbuf.cons">[stringbuf.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit basic_stringbuf(
+  ios_base::openmode which = ios_base::in | ios_base::out);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Constructs an object of class <tt>basic_stringbuf</tt>, initializing the base class with 
+<tt>basic_streambuf()</tt> (30.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/streambuf.cons">[streambuf.cons]</a>), and initializing <tt>mode</tt> with <tt>which</tt>.
+<ins>It is implementation-defined whether the sequence pointers (<tt>eback()</tt>, <tt>gptr()</tt>, <tt>egptr()</tt>, 
+<tt>pbase()</tt>, <tt>pptr()</tt>, <tt>epptr()</tt>) are initialized to null pointers.</ins>
+<p/>
+-2- <i>Postconditions:</i> <tt>str() == ""</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
 <h3><a name="2996" href="2996">2996.</a> Missing rvalue overloads for <tt>shared_ptr</tt> operations</h3>
 <p><b>Section:</b> 23.11.3 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>, 23.11.3.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2018-06-04 18:30:10 UTC</p>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2017-07-07 <b>Last modified:</b> 2018-06-04 19:31:30 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared">active issues</a> in [util.smartptr.shared].</p>
 <p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared">issues</a> in [util.smartptr.shared].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 The <tt>shared_ptr</tt> aliasing constructor and the <tt>shared_ptr</tt> casts are specified to take a <tt>shared_ptr</tt> 
@@ -68,25 +1218,17 @@ This issue is related to <a href="https://wg21.link/p0390r0">P0390R0</a>.
 
 <p><i>[2018-06 Rapperswil Monday AM]</i></p>
 
-<p>Move to Ready; choosing the PR in the issue as opposed to <a href="https://wg21.link/P0390R0">P0390R0</a></p>
+<p>Move to Ready; choosing the PR in the issue as opposed to <a href="https://wg21.link/P0390R0">P0390R0</a>
+and rebase wording to most recent working draft</p>
 
 
 <p><b>Proposed resolution:</b></p>
 <p>
-This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+This wording is relative to <a href="https://wg21.link/n4750">N4750</a>.
 </p>
 
 <ol>
 <li><p>Edit 23.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
-
-<blockquote class="note">
-<p>
-[<i>Drafting note:</i> The text with light-blue background shows a currently missing declaration of 
-<tt>reinterpret_pointer_cast</tt> in the header <tt>&lt;memory&gt;</tt> synopsis. The project editor 
-is kindly asked to consider adding it for consistency. &mdash; <i>end drafting note</i>]
-</p>
-</blockquote>
-
 <blockquote>
 <pre>
 [&hellip;]
@@ -103,8 +1245,8 @@ template&lt;class T, class U&gt;
 shared_ptr&lt;T&gt; const_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
 <ins>template&lt;class T, class U&gt;
 shared_ptr&lt;T&gt; const_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
-<span style="background-color:powderblue;text-decoration:underline;">template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;</span>
+template&lt;class T, class U&gt;
+shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
 <ins>template&lt;class T, class U&gt;
 shared_ptr&lt;T&gt; reinterpret_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
 [&hellip;]
@@ -127,25 +1269,6 @@ public:
   shared_ptr(const shared_ptr&amp; r) noexcept;
   [&hellip;]
 };
-
-[&hellip;]
-<i>// 23.11.3.9 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cast">[util.smartptr.shared.cast]</a>,</i> shared_ptr <i>casts</i>
-template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; static_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
-<ins>template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; static_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
-template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; dynamic_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
-<ins>template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; dynamic_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
-template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; const_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
-<ins>template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; const_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
-template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; reinterpret_pointer_cast(const shared_ptr&lt;U&gt;&amp; r) noexcept;
-<ins>template&lt;class T, class U&gt;
-shared_ptr&lt;T&gt; reinterpret_pointer_cast(shared_ptr&lt;U&gt;&amp;&amp; r) noexcept;</ins>
 [&hellip;]
 </pre>
 </blockquote>
@@ -194,10 +1317,14 @@ template&lt;class T, class U&gt;
 </pre>
 <blockquote>
 <p>
--1- <i>Requires:</i> The expression <tt>static_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+-1- <i>Requires:</i> The expression <tt>static_cast&lt;T*&gt;((U*)nullptr)</tt> shall be well-formed.
 <p/>
--2- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, 
-static_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> 
+-2- <i>Returns:</i> 
+<blockquote>
+<tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, static_cast&lt;typename 
+  shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt>
+</blockquote>
+<ins>, where <tt><i>R</i></tt> 
 is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> for the second.</ins>
 <p/>
 -3- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(static_cast&lt;T*&gt;(r.get()))</tt> 
@@ -212,15 +1339,16 @@ template&lt;class T, class U&gt;
 </pre>
 <blockquote>
 <p>
--4- <i>Requires:</i> The expression <tt>dynamic_cast&lt;T*&gt;((U*)0)</tt> shall be well formed and shall have 
-well defined behavior.
+-4- <i>Requires:</i> The expression <tt>dynamic_cast&lt;T*&gt;((U*)nullptr)</tt> shall be well-formed. The 
+expression <tt>dynamic_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get())</tt> shall be well formed 
+and shall have well-defined behavior.
 <p/>
 -5- <i>Returns:</i>
 </p>
 <ol style="list-style-type: none">
 <li><p>(5.1) &mdash; When <tt>dynamic_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get())</tt> returns 
-a nonzero value <tt>p</tt>, <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, p)</tt><ins>, where <tt><i>R</i></tt> 
-is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> for the second</ins>.</p></li>
+a non-null value <tt>p</tt>, <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, p)</tt><ins>, where 
+<tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> for the second</ins>.</p></li>
 <li><p>(5.2) &mdash; Otherwise, <tt>shared_ptr&lt;T&gt;()</tt>.</p></li>
 </ol>
 <p>
@@ -236,9 +1364,13 @@ template&lt;class T, class U&gt;
 </pre>
 <blockquote>
 <p>
--7- <i>Requires:</i> The expression <tt>const_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+-7- <i>Requires:</i> The expression <tt>const_cast&lt;T*&gt;((U*)nullptr)</tt> shall be well-formed.
 <p/>
--8- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, const_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
+-8- <i>Returns:</i> 
+<blockquote>
+<tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, const_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt>
+</blockquote>
+<ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
 for the second.</ins>
 <p/>
 -9- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(const_cast&lt;T*&gt;(r.get()))</tt> 
@@ -253,9 +1385,13 @@ template&lt;class T, class U&gt;
 </pre>
 <blockquote>
 <p>
--10- <i>Requires:</i> The expression <tt>reinterpret_cast&lt;T*&gt;((U*)0)</tt> shall be well formed.
+-10- <i>Requires:</i> The expression <tt>reinterpret_cast&lt;T*&gt;((U*)nullptr)</tt> shall be well-formed.
 <p/>
--11- <i>Returns:</i> <tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, reinterpret_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt><ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
+-11- <i>Returns:</i> 
+<blockquote>
+<tt>shared_ptr&lt;T&gt;(<del>r</del><ins><i>R</i></ins>, reinterpret_cast&lt;typename shared_ptr&lt;T&gt;::element_type*&gt;(r.get()))</tt>
+</blockquote>
+<ins>, where <tt><i>R</i></tt> is <tt>r</tt> for the first overload, and <tt>std::move(r)</tt> 
 for the second.</ins>
 <p/>
 -12- [<i>Note:</i> The seemingly equivalent expression <tt>shared_ptr&lt;T&gt;(reinterpret_cast&lt;T*&gt;(r.get()))</tt> 
@@ -266,6 +1402,179 @@ will eventually result in undefined behavior, attempting to delete the same obje
 </li>
 
 </ol>
+
+
+
+
+<hr>
+<h3><a name="3054" href="3054">3054.</a> <tt>uninitialized_copy</tt> appears to not be able to meet its exception-safety guarantee</h3>
+<p><b>Section:</b> 23.10.11.4 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jon Cohen <b>Opened:</b> 2018-01-24 <b>Last modified:</b> 2018-06-12 04:35:59 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#uninitialized.copy">issues</a> in [uninitialized.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I believe that <tt>uninitialized_copy</tt> is unable to meet its exception-safety guarantee in the
+presence of throwing move constructors:
+<p/>
+23.10.11 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms">[specialized.algorithms]</a>/1 has two statements of note for the specialized algorithms such
+as <tt>uninitialized_copy</tt>:
+<p/>
+<ul>
+<li><p>the provided iterators satisfy the <tt>InputIterator</tt> requirements (27.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a>)</p></li>
+<li><p>if an exception is thrown during the algorithm then there are no effects</p></li>
+</ul>
+<p/>
+Suppose we have an input iterator <tt>Iter</tt>. Then <tt>std::move_iterator&lt;Iter&gt;</tt> appears
+to also be an input iterator. Notably, it still satisfies that <tt>(void)*a, *a</tt> is equivalent to
+<tt>*a</tt> for move iterator <tt>a</tt> since the dereference only forms an rvalue reference, it
+doesn't actually perform the move operation (27.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a> Table 95 &mdash; "Input iterator requirements").
+<p/>
+Suppose also that we have a type <tt>T</tt> whose move constructor can throw, a range of <tt>T</tt>'s
+<tt>[t<sub>begin</sub>, t<sub>end</sub>)</tt>, and a pointer to an uninitialized buffer of <tt>T</tt>'s
+<tt>buf</tt>. Then <tt>std::uninitialized_copy(std::make_move_iterator(t<sub>begin</sub>),
+std::make_move_iterator(t<sub>end</sub>), buf)</tt> can't possibly satisfy the property that it has
+no effects if one of the moves throws &mdash; we'll have a <tt>T</tt> left in a moved-from state with
+no way of recovering.
+<p/>
+See <a href="https://wandbox.org/permlink/aYdtwlPckvXp59eJ">here</a> for an example in code.
+<p/>
+It seems like the correct specification for <tt>uninitialized_copy</tt> should be that if
+<tt>InputIterator</tt>'s <tt>operator*</tt> returns an rvalue reference and
+<tt>InputIterator::value_type</tt>'s move constructor is not marked <tt>noexcept</tt>, then
+<tt>uninitialized_copy</tt> will leave the objects in the underlying range in a valid but
+unspecified state.
+</p>
+
+<p><i>[2018-01-24, Casey comments and provides wording]</i></p>
+
+<p>
+This issue points out a particular hole in the "..if an exception is thrown in the following algorithms
+there are no effects." wording for the "uninitialized" memory algorithms
+(23.10.11 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms">[specialized.algorithms]</a>/1) and suggests a PR to patch over said hole. The true problem
+here is that "no effects" is not and never has been implementable. For example, "<tt>first != last</tt>"
+may have observable effects that an implementation is required to somehow reverse if some later operation
+throws an exception.
+<p/>
+Rather than finding problem case after problem case and applying individual patches, we should fix the
+root cause. If we alter the problematic sentence from [specialized.algorithms]/1 we can fix the issue
+once and for all and have implementable algorithms.
+</p>
+
+<p><i>[2018-02-05, Priority set to 2 after mailing list discussion]</i></p>
+
+
+<p><i>[2018-06 Rapperswil Thursday issues processing]</i></p>
+
+<p>Status to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Modify 23.10.11 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms">[specialized.algorithms]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- [&hellip;]
+<p/>
+Unless otherwise specified, if an exception is thrown in the following algorithms <ins>objects
+constructed by a placement <i>new-expression</i> (8.5.2.4 <a href="https://timsong-cpp.github.io/cppwp/expr.new">[expr.new]</a>) are destroyed in an
+unspecified order before allowing the exception to propagate</ins><del>there are no effects</del>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 23.10.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> as indicated (The removed paragraphs are now
+unnecessary):</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator, class ForwardIterator&gt;
+  ForwardIterator uninitialized_move(InputIterator first, InputIterator last,
+                                     ForwardIterator result);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+<del>-2- <i>Remarks:</i> If an exception is thrown, some objects in the range <tt>[first, last)</tt>
+are left in a valid but unspecified state.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;class InputIterator, class Size, class ForwardIterator&gt;
+  pair&lt;InputIterator, ForwardIterator&gt;
+    uninitialized_move_n(InputIterator first, Size n, ForwardIterator result);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+<del>-4- <i>Remarks:</i> If an exception is thrown, some objects in the range <tt>[first,
+std::next(first, n))</tt> are left in a valid but unspecified state.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3116" href="3116">3116.</a> <tt><i>OUTERMOST_ALLOC_TRAITS</i></tt> needs <tt>remove_reference_t</tt></h3>
+<p><b>Section:</b> 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2018-06-04 <b>Last modified:</b> 2018-06-12 04:35:59 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.adaptor.members">issues</a> in [allocator.adaptor.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt><i>OUTERMOST_ALLOC_TRAITS</i>(x)</tt> is currently defined in 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a>p1 as 
+<tt>allocator_traits&lt;decltype(<i>OUTERMOST</i>(x))&gt;</tt>. However, <tt><i>OUTERMOST</i>(x)</tt>, as defined and used
+in this subclause, is an lvalue for which <tt>decltype</tt> produces an lvalue reference. That referenceness needs to be 
+removed before the type can be used with <tt>allocator_traits</tt>.
+<p/>
+While we are here, the current wording for <tt><i>OUTERMOST</i></tt> uses the imprecise "if <tt>x</tt> does not have an 
+<tt>outer_allocator()</tt> member function". What we meant to check is the validity of the expression <tt>x.outer_allocator()</tt>,
+not whether <tt>x</tt> has some (possibly ambiguous and/or inaccessible) member function named <tt>outer_allocator</tt>.
+</p>
+
+<p><i>[2018-06 Rapperswil Thursday issues processing]</i></p>
+
+<p>Status to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The subclause only uses <tt><i>OUTERMOST_ALLOC_TRAITS</i>(*this)</tt> and only in non-<tt>const</tt>
+member functions, so the result is also non-<tt>const</tt>. Thus, <tt>remove_reference_t</tt> is sufficient; there's no need
+to further remove cv-qualification. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+<ol>
+<li><p>Modify 23.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a>p1 as indicated:</p>
+<blockquote>
+<p>
+-1- In the <tt>construct</tt> member functions, <tt><i>OUTERMOST</i>(x)</tt> is <del><tt>x</tt> if <tt>x</tt> does not have an 
+<tt>outer_allocator()</tt> member function and </del><tt><i>OUTERMOST</i>(x.outer_allocator())</tt><ins> if the expression
+<tt>x.outer_allocator()</tt> is valid (17.9.2 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>) and <tt>x</tt></ins> otherwise; 
+<tt><i>OUTERMOST_ALLOC_TRAITS</i>(x)</tt> is <tt>allocator_traits&lt;<ins>remove_reference_t&lt;</ins>decltype(<i>OUTERMOST</i>(x))<ins>&gt;</ins>&gt;</tt>.
+[<i>Note:</i> [&hellip;] &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
 
 
 

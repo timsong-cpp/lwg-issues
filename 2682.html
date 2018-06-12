@@ -23,13 +23,13 @@
 <body>
 <hr>
 <h3><a name="2682" href="lwg-active.html#2682">2682.</a> <code>filesystem::copy()</code> won't create a symlink to a directory</h3>
-<p><b>Section:</b> 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> <b>Status:</b> <a href="lwg-active.html#Review">Review</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-04-19 <b>Last modified:</b> 2018-01-29 21:59:54 UTC</p>
+<p><b>Section:</b> 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-04-19 <b>Last modified:</b> 2018-06-07 21:18:04 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#fs.op.copy">active issues</a> in [fs.op.copy].</p>
 <p><b>View all other</b> <a href="lwg-index.html#fs.op.copy">issues</a> in [fs.op.copy].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Review">Review</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>(First raised in c++std-lib-38544)</p>
 
@@ -107,29 +107,42 @@ are ordered:
 So 3.6 catches <tt>create_symlinks | recursive</tt> but I believe we want 3.X to handle it instead.
 </p>
 
-<p><i>[2018-1-26 issues processing telecon]</i></p>
+<p><i>[2018-01-26 issues processing telecon]</i></p>
 
 <p>Status to 'Review'; we think this is OK but want some implementation experience before adopting it.</p>
 
-<p><i>[2018-1-29 Jonathan says]</i></p>
+<p><i>[2018-01-29 Jonathan says]</i></p>
 
-<p>The proposed resolution for LWG 2682 has been in GCC's Filesystem TS implementation for more than a year. It's also in our std::filesystem implementation on the subversion trunk.</p>
+<p>The proposed resolution for LWG 2682 has been in GCC's Filesystem TS implementation for more than a year. 
+It's also in our <tt>std::filesystem</tt> implementation on the subversion trunk.</p>
+
+<p><i>[2018-06; Rapperswil Wednesday evening]</i></p>
+
+<p>
+JW: can we use the words we are shipping already since two years?<br/>
+BO: what we got is better than what we had before<br/>
+no objection to moving to Ready<br/>
+ACTION move to Ready<br/>
+ACTION link 2682 and LWG <a href="3057">3057</a> and set a priority 2 and look at 3057 in San Diego 
+<p/>
+Daniel rebases wording to N4750.
+</p>
 
 
 <p><b>Proposed resolution:</b></p>
-<p>This wording is relative to N4606.</p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
 
 <ol>
-<li><p>Add a new bullet before (3.6) in 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> as shown:</p>
+<li><p>Add a new bullet before (4.8) in 30.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> as shown:</p>
 
 <blockquote>
 <ol style="list-style-type: none">
-<li><p>(3.5) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
+<li><p>(4.7) &mdash; Otherwise, if <tt>is_regular_file(f)</tt>, then:</p>
 <blockquote>
 [&hellip;]
 </blockquote>
 </li>
-<li><p><ins>(3.?) &mdash; Otherwise, if</ins></p>
+<li><p><ins>(4.?) &mdash; Otherwise, if</ins></p>
 <blockquote>
 <blockquote><pre>
 <ins>is_directory(f) &amp;&amp; 
@@ -138,7 +151,7 @@ So 3.6 catches <tt>create_symlinks | recursive</tt> but I believe we want 3.X to
 <p> 
 <ins>then report an error with an <code>error_code</code> argument equal to
 <code>make_error_code(errc::is_a_directory)</code>.</ins></p></blockquote></li>
-<li><p>(3.6) &mdash; Otherwise, if</p>
+<li><p>(4.8) &mdash; Otherwise, if</p>
 <blockquote>
 <blockquote><pre>
 is_directory(f) &amp;&amp;
@@ -150,17 +163,20 @@ then:
 </p>
 </blockquote>
 <ol style="list-style-type: none">
-<li><p>(3.6.1) &mdash; If <code>!exists(t)</code>, then <code>create_directory(to, from)</code>.</p></li>
-<li><p>(3.6.2) &mdash; Then, iterate over the files in <code>from</code>, as if by <code>for (directory_entry&amp; x :
- directory_iterator(from))</code>, and for each iteration</p>
+<li><p>(4.8.1) &mdash; If <code>exists(t)</code> is <tt>false</tt>, then <code>create_directory(to, from)</code>.</p></li>
+<li><p>(4.8.2) &mdash; Then, iterate over the files in <code>from</code>, as if by</p> 
 <blockquote><pre>
-copy(x.path(), to/x.path().filename(), options | copy_options::<i>unspecified</i>)
+for (const directory_entry&amp; x : directory_iterator(from))
+  copy(x.path(), to/x.path().filename(),
+    options | copy_options::<i>in-recursive-copy</i>);
 </pre></blockquote>
+<p>where <tt><i>in-recursive-copy</i></tt> is a bitmask element of <tt>copy_options</tt> that is not one of the
+elements in 30.11.9.3 <a href="https://timsong-cpp.github.io/cppwp/fs.enum.copy.opts">[fs.enum.copy.opts]</a>.</p>
 </li>
 </ol>
 </li>
-<li><p>(3.7) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
-<li><p>(3.8) &mdash; Otherwise, no effects.</p></li>
+<li><p>(4.9) &mdash; Otherwise, for the signature with argument <tt>ec</tt>, <tt>ec.clear()</tt>.</p></li>
+<li><p>(4.10) &mdash; Otherwise, no effects.</p></li>
 </ol>
 </blockquote>
 
