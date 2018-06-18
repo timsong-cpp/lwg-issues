@@ -28,7 +28,7 @@
 </tr>
 <tr>
   <td align="left">Date:</td>
-  <td align="left">2018-06-16</td>
+  <td align="left">2018-06-18</td>
 </tr>
 <tr>
   <td align="left">Project:</td>
@@ -40,7 +40,7 @@
 </tr>
 </table>
 <h1>C++ Standard Library Active Issues List (Revision D111)</h1>
-<p><p>Revised 2018-06-16 at 15:52:57 UTC</p>
+<p><p>Revised 2018-06-16 at 17:41:11 UTC</p>
 </p>
   <p>Reference ISO/IEC IS 14882:2014(E)</p>
   <p>Also see:</p>
@@ -158,14 +158,14 @@ ownership of it.
 <ul>
 <li>D111: 2018-07-02 2018 post-Rapperswil mailing<ul>
 <li><b>Summary:</b><ul>
-<li>256 open issues, down by 13.</li>
+<li>258 open issues, down by 11.</li>
 <li>2324 closed issues, up by 23.</li>
 <li>61 reassigned issues, up by 0.</li>
-<li>2641 issues total, up by 10.</li>
+<li>2643 issues total, up by 12.</li>
 </ul></li>
 <li><b>Details:</b><ul>
 <li>Added the following Ready issue: <a href="3116">3116</a>.</li>
-<li>Added the following 8 New issues: <a href="3110">3110</a>, <a href="3112">3112</a>, <a href="3113">3113</a>, <a href="3114">3114</a>, <a href="3115">3115</a>, <a href="3117">3117</a>, <a href="3118">3118</a>, <a href="3119">3119</a>.</li>
+<li>Added the following 10 New issues: <a href="3110">3110</a>, <a href="3112">3112</a>, <a href="3113">3113</a>, <a href="3114">3114</a>, <a href="3115">3115</a>, <a href="3117">3117</a>, <a href="3118">3118</a>, <a href="3119">3119</a>, <a href="3120">3120</a>, <a href="3121">3121</a>.</li>
 <li>Added the following Open issue: <a href="3111">3111</a>.</li>
 <li>Changed the following 4 issues to Ready (from Review): <a href="2412">2412</a>, <a href="2682">2682</a>, <a href="2697">2697</a>, <a href="2936">2936</a>.</li>
 <li>Changed the following 4 issues to Ready (from New): <a href="2183">2183</a>, <a href="2184">2184</a>, <a href="2995">2995</a>, <a href="3054">3054</a>.</li>
@@ -34862,6 +34862,172 @@ or an instantiation of a program-defined specialization
 <p>
 I am not sure that the intent of whether closure types are or are not program-defined types if clearly 
 conveyed by the wording.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3120" href="3120">3120.</a> Unclear behavior of <tt>monotonic_buffer_resource::release()</tt></h3>
+<p><b>Section:</b> 23.12.6.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.monotonic.buffer.mem">[mem.res.monotonic.buffer.mem]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2018-06-10 <b>Last modified:</b> 2018-06-16 17:41:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.res.monotonic.buffer.mem">issues</a> in [mem.res.monotonic.buffer.mem].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The effects of <tt>monotonic_buffer_resource::release()</tt> are defined as:
+</p>
+<blockquote>
+<p>
+Calls <tt>upstream_rsrc-&gt;deallocate()</tt> as necessary to release all allocated memory.
+</p>
+</blockquote>
+<p>
+This doesn't give any instruction on what to do with the memory controlled by the <tt>monotonic_buffer_resource</tt> which 
+was not allocated, i.e., what to do with the initial buffer provided to its constructor.
+<p/>
+Boost.Container's pmr implementation expels its initial buffer after a <tt>release()</tt>.
+Arthur O'Dwyer's proposed pmr implementation for libc++ reuses the initial buffer after a <tt>release()</tt>, on the 
+assumption that this is what the average library user will be expecting.
+</p>
+<blockquote>
+<pre>
+#include &lt;memory_resource&gt;
+
+int main() 
+{
+  char buffer[100];
+  {
+    std::pmr::monotonic_buffer_resource mr(buffer, 100, std::pmr::null_memory_resource());
+    mr.release();
+    mr.allocate(60);  // A
+  }
+  {
+    std::pmr::monotonic_buffer_resource mr(buffer, 100, std::pmr::null_memory_resource());
+    mr.allocate(60);  // B
+    mr.release();
+    mr.allocate(60);  // C
+  }
+}
+</pre>
+</blockquote>
+<p>
+Assume that allocation "B" always succeeds.<br/>
+With the proposed libc++ implementation, allocations "A" and "C" both succeed.<br/>
+With Boost.Container's implementation, allocations "A" and "C" both fail.<br/>
+Using another plausible implementation strategy, allocation "A" could succeed but allocation "C" 
+could fail. I have been informed that MSVC's implementation does this.
+<p/>
+Which of these strategies should be permitted by the Standard?
+<p/>
+Arthur considers "A and C both succeed" to be the obviously most user-friendly strategy, and really 
+really hopes it's going to be permitted. Requiring "C" to succeed is unnecessary (and would render MSVC's 
+current implementation non-conforming) but could help programmers concerned with portability between 
+different implementations.
+<p/>
+Another side-effect of <tt>release()</tt> which goes underspecified by the Standard is the effect of 
+<tt>release()</tt> on <tt>next_buffer_size</tt>. As currently written, my interpretation is that 
+<tt>release()</tt> is not permitted to decrease <tt>current_buffer_size</tt>; I'm not sure if this 
+is a feature or a bug.
+<p/>
+Consider this test case (taken from <a href="https://reviews.llvm.org/D47111#inline-421469">here</a>):
+</p>
+<blockquote>
+<pre>
+std::pmr::monotonic_buffer_resource mr(std::pmr::new_delete_resource());
+for (int i=0; i &lt; 100; ++i) {
+  mr.allocate(1);  // D
+  mr.release();
+}
+</pre>
+</blockquote>
+<p>
+Arthur believes it is important that the 100<sup>th</sup> invocation of line "D" does not attempt to allocate 
+2<sup>100</sup> bytes from the upstream resource.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The resolution depicted below would make MSVC's and my-proposed-libc++'s implementations 
+both conforming.]</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 23.12.6.2 <a href="https://timsong-cpp.github.io/cppwp/mem.res.monotonic.buffer.mem">[mem.res.monotonic.buffer.mem]</a> as indicated:</p>
+<blockquote>
+<pre>
+void release();
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Calls <tt>upstream_rsrc-&gt;deallocate()</tt> as necessary to release all allocated memory. 
+<ins>Resets the state of the initial buffer.</ins>
+<p/>
+-2- [<i>Note:</i> The memory is released back to <tt>upstream_rsrc</tt> even if some blocks that were allocated from
+this have not been deallocated from this. <ins>This function has an unspecified effect on <tt>next_buffer_size</tt>.</ins> 
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3121" href="3121">3121.</a> <tt>tuple</tt> constructor constraints for <tt>UTypes&amp;&amp;...</tt> overloads</h3>
+<p><b>Section:</b> 23.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matt Calabrese <b>Opened:</b> 2018-06-12 <b>Last modified:</b> 2018-06-16 17:21:55 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently the <tt>tuple</tt> constructors of the form:
+</p>
+<blockquote>
+<pre>
+template&lt;class... UTypes&gt;
+<i>EXPLICIT</i> constexpr tuple(UTypes&amp;&amp;...);
+</pre>
+</blockquote>
+<p>
+are not properly constrained in that in the 1-element <tt>tuple</tt> case, the constraints do no short-circuit when 
+the constructor would be (incorrectly) considered as a possible copy/move constructor candidate. libc++ has a 
+workaround for this, but the additional short-circuiting does not actually appear in the working draft.
+<p/>
+As an example of why this lack of short circuiting is a problem in practice, consider the following line:
+</p>
+<blockquote>
+<pre>
+bool a = std::is_copy_constructible_v&lt;std::tuple&lt;any&gt;&gt;;
+</pre>
+</blockquote>
+<p>
+The above code will cause a compile error because of a recursive trait definition. The copy constructibility 
+check implies doing substitution into the <tt>UTypes&amp;&amp;...</tt> constructor overloads, which in turn 
+will check if <tt>tuple&lt;any&gt;</tt> is convertible to any, which in turn will check if <tt>tuple&lt;any&gt;</tt> 
+is copy constructible (and so the trait is dependent on itself).
+<p/>
+I do not provide wording for the proposed fix in anticipation of requires clauses potentially changing how we 
+do the specification, however, the basic solution should be similar to what we've done for other standard library 
+types, which is to say that the very first constraint should be to check that if <tt>sizeof...(UTypes) == 1</tt> 
+and the type, after applying <tt>remove_cvref_t</tt>, is the <tt>tuple</tt> type itself, then we should force 
+substitution failure rather than checking any further constraints.
 </p>
 
 
