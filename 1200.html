@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 1200: "surprising" char_traits&lt;T&gt;::int_type requirements</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="1200" href="lwg-closed.html#1200">1200.</a> "surprising" <tt>char_traits&lt;T&gt;::int_type</tt> requirements</h3>
+<p><b>Section:</b> 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.typedefs">[char.traits.typedefs]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Sean Hunt <b>Opened:</b> 2009-09-03 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#char.traits.typedefs">issues</a> in [char.traits.typedefs].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The footnote for <tt>int_type</tt> in 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.typedefs">[char.traits.typedefs]</a> says that
+</p>
+
+<blockquote><p>
+If <tt>eof()</tt> can be held in <tt>char_type</tt> then some iostreams implementations 
+may give surprising results.
+</p></blockquote>
+
+<p>
+This implies that <tt>int_type</tt> should be a superset of
+<tt>char_type</tt>. However, the requirements for <tt>char16_t</tt> and <tt>char32_t</tt> define
+<tt>int_type</tt> to be equal to <tt>int_least16_t</tt> and <tt>int_least32_t</tt> respectively.
+<tt>int_least16_t</tt> is likely to be the same size as <tt>char_16_t</tt>, which may lead
+to surprising behavior, even if <tt>eof()</tt> is not a valid UTF-16 code unit.
+The standard should not prescribe surprising behavior, especially
+without saying what it is (it's apparently not undefined, just
+surprising). The same applies for 32-bit types.
+</p>
+
+<p>
+I personally recommend that behavior be undefined if <tt>eof()</tt> is a member
+of <tt>char_type</tt>, and another type be chosen for <tt>int_type</tt> (my personal
+favorite has always been a <tt>struct {bool eof; char_type c;}</tt>).
+Alternatively, the exact results of such a situation should be defined,
+at least so far that I/O could be conducted on these types as long as
+the code units remain valid. Note that the argument that no one streams
+<tt>char16_t</tt> or <tt>char32_t</tt> is not really valid as it would be perfectly
+reasonable to use a <tt>basic_stringstream</tt> in conjunction with UTF character
+types.
+</p>
+
+<p><i>[
+2009-10-28 Ganesh provides two possible resolutions and expresses a preference
+for the second:
+]</i></p>
+
+
+<blockquote>
+<ol>
+<li>
+<p>
+Replace 24.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char16_t">[char.traits.specializations.char16_t]</a> para 3 with:
+</p>
+
+<blockquote><p>
+The member <tt>eof()</tt> shall return <del>an implementation-defined
+constant that cannot appear as a valid UTF-16 code unit</del>
+<ins><tt>UINT_LEAST16_MAX</tt> [<i>Note:</i> this value is guaranteed to
+be a permanently reserved UCS-2 code position if <tt>UINT_LEAST16_MAX ==
+0xFFFF</tt> and it's not a UCS-2 code position otherwise &mdash; <i>end
+note</i>]</ins>.
+</p></blockquote>
+
+<p>
+Replace 24.2.3.3 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char32_t">[char.traits.specializations.char32_t]</a> para 3 with:
+</p>
+
+<blockquote><p>
+The member <tt>eof()</tt> shall return <del>an implementation-defined constant that
+cannot appear as a Unicode code point</del>
+<ins>
+<tt>UINT_LEAST32_MAX</tt> [<i>Note:</i> this value is guaranteed to be a
+permanently reserved UCS-4 code position if <tt>UINT_LEAST32_MAX ==
+0xFFFFFFFF</tt> and it's not a UCS-4 code position otherwise &mdash; <i>end
+note</i>]</ins>.
+</p></blockquote>
+</li>
+<li>
+<p>
+In 24.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char16_t">[char.traits.specializations.char16_t]</a>, in the
+definition of <tt>char_traits&lt;char16_t&gt;</tt> replace the definition of nested
+typedef <tt>int_type</tt> with:
+</p>
+
+<blockquote><pre>
+namespace std {
+  template&lt;&gt; struct char_traits&lt;char16_t&gt; {
+    typedef char16_t         char_type;
+    typedef <del>uint_least16_t</del> <ins>uint_fast16_t</ins> int_type;
+     ...
+</pre></blockquote>
+
+<p>
+Replace 24.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char16_t">[char.traits.specializations.char16_t]</a> para 3 with:
+</p>
+
+<blockquote><p>
+The member <tt>eof()</tt> shall return <del>an implementation-defined
+constant that cannot appear as a valid UTF-16 code unit</del>
+<ins><tt>UINT_FAST16_MAX</tt> [<i>Note:</i> this value is guaranteed to
+be a permanently reserved UCS-2 code position if <tt>UINT_FAST16_MAX ==
+0xFFFF</tt> and it's not a UCS-2 code position otherwise &mdash; <i>end
+note</i>]</ins>.
+</p></blockquote>
+
+<p>
+In 24.2.3.3 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char32_t">[char.traits.specializations.char32_t]</a>, in the
+definition of <tt>char_traits&lt;char32_t&gt;</tt> replace the definition of nested
+typedef <tt>int_type</tt> with:
+</p>
+
+<blockquote><pre>
+namespace std {
+  template&lt;&gt; struct char_traits&lt;char32_t&gt; {
+    typedef char32_t         char_type;
+    typedef <del>uint_least32_t</del> <ins>uint_fast32_t</ins> int_type;
+     ...
+</pre></blockquote>
+
+<p>
+Replace 24.2.3.3 <a href="https://timsong-cpp.github.io/cppwp/char.traits.specializations.char32_t">[char.traits.specializations.char32_t]</a> para 3 with:
+</p>
+
+<blockquote><p>
+The member <tt>eof()</tt> shall return <del>an implementation-defined constant that
+cannot appear as a Unicode code point</del>
+<ins>
+<tt>UINT_FAST32_MAX</tt> [<i>Note:</i> this value is guaranteed to be a
+permanently reserved UCS-4 code position if <tt>UINT_FAST32_MAX ==
+0xFFFFFFFF</tt> and it's not a UCS-4 code position otherwise &mdash; <i>end
+note</i>]</ins>.
+</p></blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><i>[
+2010 Rapperswil:
+]</i></p>
+
+
+<blockquote><p>
+This seems an overspecification, and it is not clear what problem is being solved - 
+these values can be used portably by using the named functions; there is no need 
+for the value itself to be portable.
+
+Move to Tentatively NAD.
+</p></blockquote>
+
+<p><i>[
+Moved to NAD at 2010-11 Batavia
+]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+</p>
+
+
+
+
+
+</body>
+</html>

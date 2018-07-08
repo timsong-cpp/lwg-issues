@@ -1,0 +1,301 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2659: [filesys.ts] [PDTS] Invalid expressions for bitmask types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2659" href="lwg-closed.html#2659">2659.</a> [filesys.ts] [PDTS] Invalid expressions for bitmask types</h3>
+<p><b>Section:</b> 10 [filesys.ts::fs.enum] <b>Status:</b> <a href="lwg-active.html#NAD Editorial">NAD Editorial</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2014-03-01 <b>Last modified:</b> 2016-08-11 20:23:09 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD Editorial">NAD Editorial</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: filesys.ts</b></p>
+<p/><code>copy_options</code> is declared as <code>enum class</code> type that is a bismask type, but the 
+specification repeatedly uses expressions that are invalid for scoped 
+enums, such as:
+
+<blockquote>
+
+<p/><code>!(options)</code>
+
+</blockquote>
+
+<p/>because there is no contextual conversion to bool, not even the || operator in:
+
+<blockquote>
+<p/><code>((options &amp; copy_options::recursive) || !(options)) </code>
+</blockquote>
+
+<p/>Affected are basically all formulations in the form:
+
+<blockquote>
+
+<p/>&quot;if <code>options &amp; copy_options::create_symlinks</code> [..]&quot;
+
+</blockquote>
+
+<p/>because all rely on contextual conversion to bool. The only other specifically 
+mention scoped enumeration in the standard that is also a bit mask type is the 
+<code>launch</code> enum and 
+the wording there always uses forms such as:
+
+<blockquote>
+
+<p/>&quot;if <code>policy &amp; launch::deferred</code> is non-zero&quot;
+
+</blockquote>
+
+<p/>which better acknowledges the fact that the obtained values does not necessarily 
+undergo an implicit conversion.
+
+<p/>I think the current wording in the file system spec. must be changed, especially for 
+invalid expressions of the form:
+
+<blockquote>
+
+<p/><code>((options &amp; copy_options::recursive) || !(options)) </code>
+</blockquote>
+
+<p/>A similar problem arises in the usage of the bitmask type <code>perms</code> for the 
+expression:
+
+<blockquote>
+
+<p/><code>((prms &amp; add_perms) &amp;&amp; (prms &amp; remove_perms)) </code>
+</blockquote>
+
+<p/>The only way how to describe this with a scoped enum is the lengthier form
+
+<blockquote>
+
+<p/><code>((prms &amp; perms::add_perms) != perms::none &amp;&amp; (prms &amp; perms::remove_perms) != 
+perms::none) </code>
+</blockquote>
+
+<p/>thus fixing several problems:
+
+<ul>
+  <li>The unscoped access to <code>add_perms</code> and <code>remove_perms</code> is incorrect</li>
+  <li>The result of &amp; is the bitmask type again and cannot be implicitly 
+  converted to bool</li>
+</ul>
+
+  <p><i>[20 May 2014 Beman Dawes provides proposed wording. Fixing invalid C++ is editorial, but treating
+  this as an issue ensures more people review the proposed changes.]</i></p>
+
+
+  <p><i>[17 Jun 2014 Rapperswil LWG requests issue be handled as editorial.]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+  <p>
+    <i>Change 15.3 Copy [fs.op.copy]:</i>
+  </p>
+
+  <blockquote>
+
+    <blockquote>
+      <p>
+        Before the first use of <code>f</code> and <code>t</code>:
+      </p>
+
+      <ul>
+        <li>
+          If <code>
+            (options &amp; copy_options::create_symlinks) <ins>
+              !=
+              copy_options::none
+            </ins> || (options &amp; copy_options::skip_symlinks) <ins>
+              !=
+              copy_options::none</ins></code>, then <code>
+            auto f =
+            symlink_status(from)
+          </code> and if needed <code>auto t = symlink_status(to)</code>.
+        </li>
+        <li>
+          Otherwise, <code>auto f = status(from)</code> and if needed <code>
+            auto
+            t = status(to)
+          </code>.
+        </li>
+      </ul>
+      <p>
+        Report an error as specified in
+        Error reporting (7)
+        if:
+      </p>
+
+      <ul>
+        <li>
+          <code>!exists(f)</code>, or
+        </li>
+        <li>
+          <code>equivalent(from, to)</code>, or
+        </li>
+        <li>
+          <code>is_other(f) || is_other(t)</code>, or
+        </li>
+        <li>
+          <code>is_directory(f) &amp;&amp; is_regular_file(t)</code>.
+        </li>
+      </ul>
+      <p>
+        If <code>is_symlink(f)</code>, then:
+      </p>
+
+      <ul>
+        <li>
+          If <code>
+            <ins>(</ins>options &amp; copy_options::skip_symlinks<ins>) !=
+              copy_options::none</ins></code>, then return.
+        </li>
+        <li>
+          Otherwise if <code>!exists(t)</code>, then <code>
+            copy_symlink(from,
+            to, options)
+          </code>.
+        </li>
+        <li>
+          Otherwise report an error as specified in
+          Error reporting (7).
+        </li>
+      </ul>
+      <p>
+        Otherwise if <code>is_regular_file(f)</code>, then:
+      </p>
+
+      <ul>
+        <li>
+          If <code>
+            <ins>(</ins>options &amp; copy_options::directories_only<ins>) !=
+              copy_options::none</ins></code>, then return.
+        </li>
+        <li>
+          Otherwise if <code>
+            <ins>(</ins>options &amp; copy_options::create_symlinks<ins>
+              ) !=
+              copy_options::none</ins></code>, then
+          create a symbolic link to the source file.
+        </li>
+        <li>
+          Otherwise if <code>
+            <ins>(</ins>options &amp; copy_options::create_hard_links<ins>) !=
+              copy_options::none</ins></code>,
+          then create a hard link to the source file.
+        </li>
+        <li>
+          Otherwise if <code>is_directory(t)</code>, then <code>
+            copy_file(from, to/from.filename(),
+            options)
+          </code>.
+        </li>
+        <li>
+          Otherwise, <code>copy_file(from, to, options)</code>.
+        </li>
+      </ul>
+    </blockquote>
+  </blockquote>
+  <blockquote>
+    <blockquote>
+      <p>
+        Otherwise if <code>
+          is_directory(f) &amp;&amp; ((options &amp;
+          copy_options::recursive)<ins> != copy_options::none</ins> || <del>!(</del>options <ins>
+            ==
+            copy_options::none</ins><del>)</del>)
+        </code>
+        then:
+      </p>
+
+      <ul>
+        <li>
+          If&nbsp; <code>!exists(t)</code>, then <code>
+            create_directory(to,
+            from)
+          </code>.
+        </li>
+        <li>
+          Then, iterate over the files in <code>from</code>, as if by <code>
+            for
+            (directory_entry&amp; x : directory_iterator(from))
+          </code>, and for each
+          iteration <code>
+            copy(x.path(), to/x.path().filename(), options |
+            copy_options::<i>unspecified</i>)
+          </code>.
+        </li>
+      </ul>
+
+    </blockquote>
+
+  </blockquote>
+
+  <p>
+    <i>Change 15.4 Copy file [fs.op.copy_file]:</i>
+  </p>
+  <blockquote>
+    <p>
+      If&nbsp; <code>exists(to) &amp;&amp;</code> <code>
+        <del>!</del>(options &amp; (copy_options::skip_existing
+        | copy_options::overwrite_existing | copy_options::update_existing)) <ins>
+          ==
+          copy_options::none
+        </ins>
+      </code> report a
+      file already exists error as specified in
+      Error reporting (7).
+    </p>
+    <p>
+      If <code>
+        !exists(to) || (options &amp; copy_options::overwrite_existing)<ins>
+          != copy_options::none
+        </ins> || ((options &amp; copy_options::update_existing)<ins>
+          != copy_options::none
+        </ins>
+        &amp;&amp; last_write_time(from) &gt; last_write_time(to)) || <del>!</del>(options &amp;
+        (copy_options::skip_existing
+        | copy_options::overwrite_existing | copy_options::update_existing))<ins> == copy_options::none</ins>
+      </code>
+      copy the contents and attributes of the file <code>from</code> resolves to
+      the file <code>to</code> resolves to.
+    </p>
+  </blockquote>
+
+  <p>
+    <i>Change 15.26 Permissions  [fs.op.permissions]:</i>
+  </p>
+  <blockquote>
+    <p>
+      <i>Requires:</i> <code>!((prms &amp; <ins>perms::</ins>add_perms) <ins>!= perms::none</ins> &amp;&amp; (prms &amp; <ins>perms::</ins>remove_perms) <ins>!= perms::none</ins>)</code>.
+    </p>
+  </blockquote>
+
+
+
+
+
+
+</body>
+</html>

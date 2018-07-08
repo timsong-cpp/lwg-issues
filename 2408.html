@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2408: SFINAE-friendly common_type/iterator_traits is missing in C++14</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2408" href="lwg-defects.html#2408">2408.</a> SFINAE-friendly <tt>common_type/iterator_traits</tt> is missing in C++14</h3>
+<p><b>Section:</b> 23.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a>, 27.4.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2014-06-19 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.trans.other">issues</a> in [meta.trans.other].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+During the Rapperswil meeting the proposal <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4041.html">N4041</a>
+had been discussed and there seemed to be strong consensus to apply the SFINAE-friendly definitions
+that currently exist within the fundamentals-ts to the C++ Standard working draft. This issue requests this change to happen.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 23.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a> p3 as indicated:</p>
+
+<blockquote>
+<p>
+-3- <ins>For the <tt>common_type</tt> trait applied to a parameter pack <tt>T</tt> of types, 
+the member <tt>type</tt> shall be either defined or not present as follows:</ins>
+<ul>
+<li><p><ins>If <tt>sizeof...(T)</tt> is zero, there shall be no member <tt>type</tt>.</ins></p></li>
+<li><p><ins>If <tt>sizeof...(T)</tt> is one, let <tt>T0</tt> denote the sole type comprising <tt>T</tt>. 
+The member typedef <tt>type</tt> shall denote the same type as <tt>decay_t&lt;T0&gt;</tt>.</ins></p></li>
+<li><p><ins>If <tt>sizeof...(T)</tt> is greater than one, let <tt>T1</tt>, <tt>T2</tt>, and <tt>R</tt>, 
+respectively, denote the first, second, and (pack of) remaining types comprising <tt>T</tt>. 
+[<i>Note</i>: <tt>sizeof...(R)</tt> may be zero. &mdash; <i>end note</i>] Finally, let <tt>C</tt> denote 
+the type, if any, of an unevaluated conditional expression (8.5.16 <a href="https://timsong-cpp.github.io/cppwp/expr.cond">[expr.cond]</a>) whose first operand is an arbitrary value 
+of type <tt>bool</tt>, whose second operand is an xvalue of type <tt>T1</tt>, and whose third operand is 
+an xvalue of type <tt>T2</tt>. If there is such a type <tt>C</tt>, the member typedef <tt>type</tt> shall 
+denote the same type, if any, as <tt>common_type_t&lt;C,R...&gt;</tt>. Otherwise, there shall be no member 
+<tt>type</tt>.</ins></p></li>
+</ul>
+<del>The nested typedef <tt>common_type::type</tt> shall be defined as follows:</del>
+</p>
+<blockquote>
+<pre>
+<del>template &lt;class ...T&gt; struct common_type;
+
+template &lt;class T&gt;
+struct common_type&lt;T&gt; {
+  typedef decay_t&lt;T&gt; type;
+};
+
+template &lt;class T, class U&gt;
+struct common_type&lt;T, U&gt; {
+  typedef decay_t&lt;decltype(true ? declval&lt;T&gt;() : declval&lt;U&gt;())&gt; type;
+};
+
+template &lt;class T, class U, class... V&gt;
+struct common_type&lt;T, U, V...&gt; {
+  typedef common_type_t&lt;common_type_t&lt;T, U&gt;, V...&gt; type;
+};</del>
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 27.4.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> p2 as indicated:</p>
+
+<blockquote>
+<p>
+-2- The template <tt>iterator_traits&lt;Iterator&gt;</tt> <del>is defined as</del><ins>shall have 
+the following as publicly accessible members, and have no other members, if and only if 
+<tt>Iterator</tt> has valid (17.9.2 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>) member types <tt>difference_type</tt>, 
+<tt>value_type</tt>, <tt>pointer</tt>, <tt>reference</tt>, and <tt>iterator_category</tt>; otherwise, 
+the template shall have no members:</ins>
+</p>
+<blockquote>
+<pre>
+<del>namespace std {
+  template&lt;class Iterator&gt; struct iterator_traits {</del>
+    typedef typename Iterator::difference_type difference_type;
+    typedef typename Iterator::value_type value_type;
+    typedef typename Iterator::pointer pointer;
+    typedef typename Iterator::reference reference;
+    typedef typename Iterator::iterator_category iterator_category;
+  <del>};
+}</del>
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

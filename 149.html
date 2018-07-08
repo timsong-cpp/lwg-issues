@@ -1,0 +1,474 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 149: Insert should return iterator to first element inserted</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="149" href="lwg-defects.html#149">149.</a> Insert should return iterator to first element inserted</h3>
+<p><b>Section:</b> 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Andrew Koenig <b>Opened:</b> 1999-06-28 <b>Last modified:</b> 2016-11-12 20:15:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#sequence.reqmts">active issues</a> in [sequence.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#sequence.reqmts">issues</a> in [sequence.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>Suppose that c and c1 are sequential containers and i is an
+iterator that refers to an element of c.  Then I can insert a copy of
+c1's elements into c ahead of element i by executing </p>
+
+<blockquote>
+
+<pre>c.insert(i, c1.begin(), c1.end());</pre>
+
+</blockquote>
+
+<p>If c is a vector, it is fairly easy for me to find out where the
+newly inserted elements are, even though i is now invalid: </p>
+
+<blockquote>
+
+<pre>size_t i_loc = i - c.begin();
+c.insert(i, c1.begin(), c1.end());</pre>
+
+</blockquote>
+
+<p>and now the first inserted element is at c.begin()+i_loc and one
+past the last is at c.begin()+i_loc+c1.size().<br/>
+<br/>
+But what if c is a list?  I can still find the location of one    
+past the last inserted element, because i is still valid.    
+To find the location of the first inserted element, though,    
+I must execute something like </p>
+
+<blockquote>
+
+<pre>for (size_t n = c1.size(); n; --n)
+   --i;</pre>
+
+</blockquote>
+
+<p>because i is now no longer a random-access iterator.<br/>
+<br/>
+Alternatively, I might write something like </p>
+
+<blockquote>
+
+<pre>bool first = i == c.begin();
+list&lt;T&gt;::iterator j = i;
+if (!first) --j;
+c.insert(i, c1.begin(), c1.end());
+if (first)
+   j = c.begin();
+else
+   ++j;</pre>
+
+</blockquote>
+
+<p>which, although wretched, requires less overhead.<br/>
+<br/>
+But I think the right solution is to change the definition of insert
+so that instead of returning void, it returns an iterator that refers
+to the first element inserted, if any, and otherwise is a copy of its
+first argument.&nbsp; </p>
+
+<p><i>[
+Summit:
+]</i></p>
+
+
+<blockquote><p>
+Reopened by Alisdair.
+</p></blockquote>
+
+<p><i>[
+Post Summit Alisdair adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+In addition to the original rationale for C++03, this change also gives a
+consistent interface for all container insert operations i.e. they all
+return an iterator to the (first) inserted item.
+</p>
+
+<p>
+Proposed wording provided.
+</p>
+</blockquote>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote>
+<p>
+Q: why isn't this change also proposed for associative containers?
+</p>
+
+<p>
+A: The returned iterator wouldn't necessarily point to a contiguous range.
+</p>
+
+<p>
+Moved to Ready.
+</p>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> Table 83
+change return type from <tt>void</tt> to <tt>iterator</tt> for the following rows:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 83 &mdash; Sequence container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+</tr>
+<tr>
+<td>
+<tt>a.insert(p,n,t)</tt>
+</td>
+<td>
+<tt><del>void</del> <ins>iterator</ins></tt>
+</td>
+<td>
+Inserts <tt>n</tt> copies of <tt>t</tt> before <tt>p</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.insert(p,i,j)</tt>
+</td>
+<td>
+<tt><del>void</del> <ins>iterator</ins></tt>
+</td>
+<td>
+Each iterator in the range <tt>[i,j)</tt> shall be 
+dereferenced exactly once. 
+pre: <tt>i</tt> and <tt>j</tt> are not iterators into <tt>a</tt>. 
+Inserts copies of elements in <tt>[i, j)</tt> before <tt>p</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.insert(p,il)</tt>
+</td>
+<td>
+<tt><del>void</del> <ins>iterator</ins></tt>
+</td>
+<td>
+<tt>a.insert(p, il.begin(), il.end())</tt>.
+</td>
+</tr>
+</table>
+</blockquote>
+
+<p>
+Add after p6 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>:
+</p>
+
+<blockquote>
+<p>-6- ...</p>
+
+<p><ins>
+The iterator returned from <tt>a.insert(p,n,t)</tt> points to the copy of the
+first element inserted into <tt>a</tt>, or <tt>p</tt> if <tt>n == 0</tt>.
+</ins></p>
+
+<p><ins>
+The iterator returned from <tt>a.insert(p,i,j)</tt> points to the copy of the
+first element inserted into <tt>a</tt>, or <tt>p</tt> if <tt>i == j</tt>.
+</ins></p>
+
+<p><ins>
+The iterator returned from <tt>a.insert(p,il)</tt> points to the copy of the
+first element inserted into <tt>a</tt>, or <tt>p</tt> if <tt>il</tt> is empty.
+</ins></p>
+
+</blockquote>
+
+<p>
+p2 26.3.8 <a href="https://timsong-cpp.github.io/cppwp/deque">[deque]</a> Update class definition, change return type
+from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, initializer_list&lt;T&gt;);
+</pre></blockquote>
+
+<p>
+26.3.8.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt> on following declarations:
+</p>
+
+<blockquote><pre>
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+Add the following (missing) declaration
+</p>
+
+<blockquote><pre>
+<ins>iterator insert(const_iterator position, initializer_list&lt;T&gt;);</ins>
+</pre></blockquote>
+
+<p>
+26.3.9 <a href="https://timsong-cpp.github.io/cppwp/forwardlist">[forwardlist]</a> Update class definition, change return type
+from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert_after(const_iterator position, initializer_list&lt;T&gt; il);
+<del>void</del> <ins>iterator</ins> insert_after(const_iterator position, size_type n, const T&amp; x);
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert_after(const_iterator position, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+p8 26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert_after(const_iterator position, size_type n, const T&amp; x);
+</pre></blockquote>
+
+<p>
+Add paragraph:
+</p>
+
+<blockquote><p>
+Returns: position.
+</p></blockquote>
+
+<p>
+p10 26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert_after(const_iterator position, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+Add paragraph:
+</p>
+
+<blockquote><p>
+Returns: position.
+</p></blockquote>
+
+<p>
+p12 26.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.modifiers">[forwardlist.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt> on following declarations:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert_after(const_iterator position, initializer_list&lt;T&gt; il);
+</pre></blockquote>
+
+<p>
+change return type from <tt>void</tt> to <tt>iterator</tt> on following declarations:
+</p>
+
+<p>
+p2 26.3.10 <a href="https://timsong-cpp.github.io/cppwp/list">[list]</a> Update class definition, change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+
+template &lt;class InputIterator&gt;
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, initializer_list&lt;T&gt;);
+</pre></blockquote>
+
+<p>
+26.3.10.4 <a href="https://timsong-cpp.github.io/cppwp/list.modifiers">[list.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt> on following declarations:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+Add the following (missing) declaration
+</p>
+
+<blockquote><pre>
+iterator insert(const_iterator position, initializer_list&lt;T&gt;);
+</pre></blockquote>
+
+<p>
+p2 26.3.11 <a href="https://timsong-cpp.github.io/cppwp/vector">[vector]</a>
+</p>
+
+<p>
+Update class definition, change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, T&amp;&amp; x);
+
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, initializer_list&lt;T&gt;);
+</pre></blockquote>
+
+<p>
+26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a> change return type from <tt>void</tt> to <tt>iterator</tt> on following declarations:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator position, size_type n, const T&amp; x);
+
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+Add the following (missing) declaration
+</p>
+
+<blockquote><pre>
+iterator insert(const_iterator position, initializer_list&lt;T&gt;);
+</pre></blockquote>
+
+
+<p>
+p1 26.3.12 <a href="https://timsong-cpp.github.io/cppwp/vector.bool">[vector.bool]</a> Update class definition, change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert (const_iterator position, size_type n, const bool&amp; x);
+
+template &lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, InputIterator first, InputIterator last);
+
+  <del>void</del> <ins>iterator</ins> insert(const_iterator position, initializer_list&lt;bool&gt; il);
+</pre></blockquote>
+
+<p>
+p5 24.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a> Update class definition, change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator p, size_type n, charT c);
+
+template&lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator p, InputIterator first, InputIterator last);
+
+<del>void</del> <ins>iterator</ins> insert(const_iterator p, initializer_list&lt;charT&gt;);
+</pre></blockquote>
+
+<p>
+p13 24.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a> change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator p, size_type n, charT c);
+</pre></blockquote>
+
+<p>
+Add paragraph:
+</p>
+
+<blockquote><p>
+<i>Returns:</i> an iterator which refers to the copy of the first inserted
+character, or <tt>p</tt> if <tt>n == 0</tt>.
+</p></blockquote>
+
+<p>
+p15 24.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a> change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+template&lt;class InputIterator&gt;
+  <del>void</del> <ins>iterator</ins> insert(const_iterator p, InputIterator first, InputIterator last);
+</pre></blockquote>
+
+<p>
+Add paragraph:
+</p>
+
+<blockquote><p>
+<i>Returns:</i> an iterator which refers to the copy of the first inserted
+character, or <tt>p</tt> if <tt>first == last</tt>.
+</p></blockquote>
+
+<p>
+p17 24.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a> change return type from <tt>void</tt> to <tt>iterator</tt>:
+</p>
+
+<blockquote><pre>
+<del>void</del> <ins>iterator</ins> insert(const_iterator p, initializer_list&lt;charT&gt; il);
+</pre></blockquote>
+
+<p>
+Add paragraph:
+</p>
+
+<blockquote><p>
+<i>Returns:</i> an iterator which refers to the copy of the first inserted
+character, or <tt>p</tt> if <tt>il</tt> is empty.
+</p></blockquote>
+
+
+
+<p><b>Rationale:</b></p>
+
+<p><i>[
+The following was the C++98&#47;03 rationale and does not necessarily apply to the
+proposed resolution in the C++0X time frame:
+]</i></p>
+
+
+<blockquote>
+<p>The LWG believes this was an intentional design decision and so is
+not a defect. It may be worth revisiting for the next standard.</p>
+</blockquote>
+
+
+
+
+</body>
+</html>

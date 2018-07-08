@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3103: Errors in taking subview of span should be ill-formed where possible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3103" href="lwg-active.html#3103">3103.</a> Errors in taking subview of <tt>span</tt> should be ill-formed where possible</h3>
+<p><b>Section:</b> 26.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/span.sub">[span.sub]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2018-04-13 <b>Last modified:</b> 2018-05-05 12:47:02 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently all out-of-bound/inputs errors in the functions taking an subview of <tt>span</tt> lead to undefined behavior, 
+even in the situation when they could be detected at compile time. This is inconsistent with the behavior of the <tt>span</tt> 
+constructors, which make similar constructs ill-formed.
+<p/>
+Furthermore, with the current specification of the <tt>subspan</tt> function, the following invocation:
+</p>
+<blockquote><pre>
+span&lt;T, N&gt; s;   // N &gt; 0
+s.subspan&lt;O&gt;(); // with O &gt; 0
+</pre></blockquote>
+<p>
+is ill-formed when <tt>O &gt; N + 1</tt>, as the return of the function is <tt>span&lt;T, K&gt;</tt> with <tt>K &lt; -1</tt>.
+However in case when <tt>O == N + 1</tt>, runtime sized <tt>span</tt> is returned (<tt>span&lt;T, -1&gt;</tt>) instead and 
+the behavior of the function is undefined.
+<p/>
+Firstly, for either run time sized (<tt>N == dynamic_extent</tt>) and fixed sized (<tt>N &gt; 0</tt>) object <tt>s</tt> of 
+type <tt>span&lt;T, N&gt;</tt>, the following constructs should be ill-formed, instead of having undefined behavior:
+</p>
+<ol>
+<li><p><tt>s.first&lt;C&gt;()</tt> with <tt>C &lt; 0</tt></p></li>
+<li><p><tt>s.last&lt;C&gt;()</tt> with <tt>C &lt; 0</tt></p></li>
+<li><p><tt>s.subspan&lt;O, E&gt;</tt> with <tt>O &lt; 0</tt> or <tt>E &lt; 0</tt> and <tt>E != dynamic_extent</tt>.</p></li>
+</ol>
+<p>
+This would follow <tt>span</tt> specification, that make instantiation of <tt>span&lt;T, N&gt;</tt> ill-formed for 
+<tt>N &lt; 0</tt> and <tt>N != dynamic_extent</tt>.
+<p/>
+In addition the following constructs should be made ill-formed for fixed size span <tt>s</tt> of type 
+<tt>span&lt;T, N&gt;</tt> (with <tt>N &gt; 0</tt>):
+</p>
+<ol>
+<li><p><tt>s.first&lt;C&gt;()</tt> with <tt>C &gt; N</tt></p></li>
+<li><p><tt>s.last&lt;C&gt;()</tt> with <tt>C &gt; N</tt></p></li>
+<li><p><tt>s.subspan&lt;O, dynamic_extent&gt;()</tt> with <tt>O &gt; N</tt></p></li>
+<li><p><tt>s.subspan&lt;O, C&gt;()</tt> with <tt>O + C &gt; N</tt></p></li>
+</ol>
+<p>
+This will match the <tt>span</tt> constructor that made construction of fixed size <tt>span&lt;T, N&gt;</tt> from fixed 
+size <tt>span</tt> of different size ill-formed.
+</p>
+
+<p><i>[2018-04-24 Priority set to 3 after discussion on the reflector.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4741">N4741</a>.</p>
+
+<blockquote>
+<ol>
+<li>
+<p>Edit 26.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/span.sub">[span.sub]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;ptrdiff_t Count&gt; constexpr span&lt;element_type, Count&gt; first() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> If <tt>Count &lt; 0 || (Extent != dynamic_extent &amp;&amp; Count &gt; Extent)</tt>, 
+the program is ill-formed.</ins>
+<p/>
+-1- <i>Requires:</i> <tt><del>0 &lt;= Count &amp;&amp;</del> Count &lt;= size()</tt>.
+<p/>
+-2- <i>Effects:</i> Equivalent to: <tt>return {data(), Count};</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;ptrdiff_t Count&gt; constexpr span&lt;element_type, Count&gt; last() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> If <tt>Count &lt; 0 || (Extent != dynamic_extent &amp;&amp; Count &gt; Extent)</tt>, 
+the program is ill-formed.</ins>
+<p/>
+-3- <i>Requires:</i> <tt><del>0 &lt;= Count &amp;&amp;</del> Count &lt;= size()</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to: <tt>return {data() + (size() - Count), Count};</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;ptrdiff_t Offset, ptrdiff_t Count = dynamic_extent&gt;
+  constexpr span&lt;element_type, <i>see below</i>&gt; subspan() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> The program is ill-formed if:</ins>
+<ul>
+<li><p><ins><tt>Offset &lt; 0 || (Count &lt; 0 &amp;&amp; Count != dynamic_extent)</tt>, or</ins></p></li>
+<li><p><ins><tt>Extend != dynamic_extent &amp;&amp; (Offset &gt; Extent || (Count != dynamic_extent &amp;&amp; 
+Offset + Count &gt; Extent))</tt>.</ins></p></li>
+</ul>
+<p/>
+-5- <i>Requires:</i> <tt><del>(0 &lt;= Offset &amp;&amp;</del> Offset &lt;= size()<del>)</del> &amp;&amp; 
+(Count == dynamic_extent || <del>Count &gt;= 0 &amp;&amp;</del> Offset + Count &lt;= size())</tt>.
+<p/>
+-6- <i>Effects:</i> Equivalent to: <tt>return span&lt;ElementType, <i>see below</i>&gt;(
+data() + Offset, Count != dynamic_extent ? Count : size() - Offset);</tt>
+<p/>
+-7- <i>Remarks:</i> The second template argument of the returned <tt>span</tt> type is:
+</p>
+<blockquote><pre>
+Count != dynamic_extent ? Count
+                        : (Extent != dynamic_extent ? Extent - Offset
+                                                    : dynamic_extent)
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+
+
+
+</body>
+</html>

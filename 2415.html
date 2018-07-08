@@ -1,0 +1,92 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2415: Inconsistency between unique_ptr and shared_ptr</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2415" href="lwg-defects.html#2415">2415.</a> Inconsistency between <tt>unique_ptr</tt> and <tt>shared_ptr</tt></h3>
+<p><b>Section:</b> 23.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2014-07-03 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.const">issues</a> in [util.smartptr.shared.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>unique_ptr</tt> guarantees that it will not invoke its deleter if it stores
+a null pointer, which is useful for deleters that must not be called
+with a null pointer e.g.
+</p>
+<blockquote><pre>
+unique_ptr&lt;FILE, int(*)(FILE*)&gt; fptr(file, &amp;::fclose);
+</pre></blockquote>
+<p>
+However, <tt>shared_ptr</tt> does invoke the deleter if it owns a null pointer,
+which is a silent change in behaviour when transferring
+ownership from <tt>unique_ptr</tt> to <tt>shared_ptr</tt>. That means the following
+leads to undefined behaviour:
+</p>
+<blockquote><pre>
+std:shared_ptr&lt;FILE&gt; fp = std::move(fptr);
+</pre></blockquote>
+<p>
+Peter Dimov's suggested fix is to construct an empty <tt>shared_ptr</tt> from a
+<tt>unique_ptr</tt> that contains a null pointer.
+</p>
+
+<p><i>[2015-01-18 Library reflector vote]</i></p>
+
+<p>
+The issue has been identified as Tentatively Ready based on eight votes in favour.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4296.</p>
+
+<ol>
+<li><p>Change 23.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> p29 as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class Y, class D&gt; shared_ptr(unique_ptr&lt;Y, D&gt;&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-29- <i>Effects</i>: <ins>If <tt>r.get() == nullptr</tt>, equivalent to <tt>shared_ptr()</tt>. Otherwise, if <tt>D</tt> is
+not a reference type, equivalent to <tt>shared_ptr(r.release(), r.get_deleter())</tt>. Otherwise, equivalent to 
+<tt>shared_ptr(r.release(), ref(r.get_deleter()))</tt></ins><del>Equivalent to <tt>shared_ptr(r.release(), 
+r.get_deleter())</tt> when <tt>D</tt> is not a reference type, otherwise <tt>shared_ptr(r.release(), 
+ref(r.get_deleter()))</tt></del>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

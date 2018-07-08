@@ -1,0 +1,180 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2198: max_load_factor(z) makes no strong guarantees, but bans useful behavior</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2198" href="lwg-active.html#2198">2198.</a> <tt>max_load_factor(z)</tt> makes no strong guarantees, but bans useful behavior</h3>
+<p><b>Section:</b> 26.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2012-10-09 <b>Last modified:</b> 2016-12-10 13:58:32 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unord.req">active issues</a> in [unord.req].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unord.req">issues</a> in [unord.req].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+The user cannot specify a <tt>max_load_factor</tt> for their unordered container
+at construction, it must be supplied after the event, when the container is
+potentially not empty.  The contract for this method is deliberately vague, not
+guaranteeing to use the value supplied by the user, and any value actually used
+will be used as a ceiling that the container will <i>attempt</i> to respect.
+</p>
+<p>
+The only guarantee we have is that, if user requests a <tt>max_load_factor</tt>
+that is less than the current <tt>load_factor</tt>, then the operation will take
+constant time, thus outlawing an implementation that chooses to rehash and so
+preserve as a class invariant that <tt>load_factor &lt; max_load_factor</tt>.
+</p>
+<p>
+Reasonable options conforming to the standard include ignoring the user's request
+if the requested value is too low, or deferring the rehash to the next <tt>insert</tt>
+operation and allowing the container to have a strange state (wrt <tt>max_load_factor</tt>)
+until then - and there is still the question of rehashing if the next <tt>insert</tt>
+is for a duplicate key in a unique container.
+</p>
+<p>
+Given the deliberate vagueness of the current wording, to support a range of reasonable
+(but not <i>perfect</i>) behaviors, it is not clear why the equally reasonable rehash
+to restore the constraint should be outlawed.  It is not thought that this is a performance
+critical operation, where users will be repeatedly setting low load factors on populated
+containers, in a tight or (less unlikely) an instant response scenario.
+</p>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Open.
+</p>
+<p>
+Alisdair to provide wording.
+</p>
+<p><i>[2016-11-12, Issaquah]</i></p>
+
+<p>Sat PM: Howard to provide wording</p>
+
+<p><i>[2016-11-17 Howard provided wording.]</i></p>
+
+
+<blockquote>
+<p>
+The provided wording is consistent with LWG discussion in Issaquah.  An implementation
+of the proposed wording would be setting <tt>max_load_factor()</tt> to
+<tt>max(z, load_factor())</tt>.  This preserves the container invariant:
+</p>
+<blockquote><pre>
+load_factor() &lt;= max_load_factor()
+</pre></blockquote>
+<p>
+And it preserves the existing behavior that no rehash is done by this operation.
+</p>
+<p>
+If it is desired to change the <tt>max_load_factor()</tt> to something smaller than
+the current <tt>load_factor()</tt> that can be done by <i>first reducing</i> the
+current <tt>load_factor()</tt> by either increasing <tt>bucket_count()</tt> (via
+<tt>rehash</tt> or <tt>reserve</tt>), or decreasing <tt>size()</tt> (e.g.
+<tt>erase</tt>), <i>and then</i> changing <tt>max_load_factor()</tt>.
+</p>
+
+<p>
+This resolution reaffirms that <tt>load_factor() &lt;= max_load_factor()</tt> is a
+container invariant which can <i>never</i> be violated.
+</p>
+</blockquote>
+
+<p><i>[2016-11-27, Nico comments]</i></p>
+
+<p>
+Current implementations behave differently. 
+<p/>
+In regard to the sentence
+<blockquote>
+"The only guarantee we have is that, if user requests a <tt>max_load_factor</tt>
+that is less than the current <tt>load_factor</tt>, then the operation will take
+constant time, thus outlawing an implementation that chooses to rehash
+and so preserve as a class invariant that <tt>load_factor &lt; max_load_factor</tt>."
+</blockquote>
+Note that the current spec says that there is constant complexity
+<em>without</em> any precondition. So, rehashing to keep the invariant would
+violate the spec (which is probably not be the intention).
+<p/>
+This issue is related to LWG <a href="2199">2199</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>
+Modify Table 87 as follows:
+</p>
+
+<table border="1">
+<caption>Table 87 &mdash; Unordered associative container requirements</caption>
+
+<tr>
+<th>
+Expression
+</th>
+<th>
+Return type
+</th>
+<th>
+Assertion/note pre-/post-condition
+</th>
+<th>
+Complexity
+</th>
+</tr>
+
+<tr>
+<td>
+<tt>a.max_load_factor(z)</tt>
+</td>
+<td>
+<tt>void</tt>
+</td>
+<td>
+<p>
+Pre: <tt>z</tt> shall be positive.  May change the container's maximum
+load factor, uing <tt>z</tt> as a hint.
+</p>
+<p>
+<ins>Post: <tt>a.load_factor() &lt;= a.max_load_factor()</tt></ins>
+</p>
+<p>
+<ins><i>Note:</i> <tt>a.load_factor()</tt> is not modified by this operation.</ins>
+</p>
+</td>
+<td>
+Constant
+</td>
+</tr>
+
+</table>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3096: path::lexically_relative is confused by trailing slashes</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3096" href="lwg-active.html#3096">3096.</a> <tt>path::lexically_relative</tt> is confused by trailing slashes</h3>
+<p><b>Section:</b> 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-04-04 <b>Last modified:</b> 2018-06-19 05:49:11 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.path.gen">active issues</a> in [fs.path.gen].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.path.gen">issues</a> in [fs.path.gen].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>filesystem::proximate("/dir", "/dir/")</tt> returns <tt>"."</tt> when <tt>"/dir"</tt> exists, and <tt>".."</tt> 
+otherwise. It should always be <tt>"."</tt> because whether it exists shouldn't matter.
+<p/>
+The problem is in <tt>filesystem::path::lexically_relative</tt>, as shown by:
+</p>
+<blockquote><pre>
+path("/dir").lexically_relative("/dir/.");  <i>// yields ""</i>
+path("/dir").lexically_relative("/dir/");   <i>// yields ".."</i>
+</pre></blockquote>
+<p>
+The two calls should yield the same result, and when iteration of a <tt>path</tt> with a trailing slash gave "." as the final 
+element they did yield the same result. In the final C++17 spec the trailing slash produces an empty filename in the 
+iteration sequence, and <tt>lexically_relative</tt> doesn't handle that correctly.
+</p>
+
+<p><i>[2018-04-10, Jonathan comments]</i></p>
+
+<p>
+There are more inconsistencies with paths that are "obviously" equivalent to the human reader:
+</p>
+<blockquote><pre>
+path("a/b/c").lexically_relative("a/b/c")    <i>// yields</i> "."
+path("a/b/c").lexically_relative("a/b/c/")   <i>// yields</i> ".."
+path("a/b/c").lexically_relative("a/b/c/.")  <i>// yields</i> ""
+path("a/b/c/").lexically_relative("a/b/c")   <i>// yields</i> ""
+path("a/b/c/.").lexically_relative("a/b/c")  <i>// yields</i> "."
+path("a/b/c/.").lexically_relative("a/b/c/") <i>// yields</i> "../."
+</pre></blockquote>
+<p>
+I think the right solution is:
+</p>
+<ol>
+<li><p>
+when counting <tt>[b, base.end())</tt> in bullet (4.2) handle empty filename elements (which can only occur as the last 
+element, due to a trailing slash) equivalently to dot elements; and
+</p></li>
+<li><p>
+add a new condition for the case where <tt>n == 0</tt> and <tt>[a, end())</tt> contains no non-empty elements, i.e. the 
+paths are equivalent except for final dots or a final slash, which don't introduce any relative difference between the paths.
+</p></li>
+</ol>
+
+<p><i>[2018-06-18 after reflector discussion]</i></p>
+
+<p>Priority set to 2</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> as indicated:</p>
+<blockquote>
+<pre>
+path lexically_relative(const path&amp; base) const;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> <tt>*this</tt> made relative to <tt>base</tt>. Does not resolve (30.11.7 <a href="https://timsong-cpp.github.io/cppwp/fs.class.path">[fs.class.path]</a>) symlinks. 
+Does not first normalize (30.11.7.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.generic">[fs.path.generic]</a>) <tt>*this</tt> or <tt>base</tt>.
+<p/>
+-4- <i>Effects:</i> If <tt>root_name() != base.root_name()</tt> is <tt>true</tt> or <tt>is_absolute() != base.is_absolute()</tt>
+is <tt>true</tt> or <tt>!has_root_directory() &amp;&amp; base.has_root_directory()</tt> is <tt>true</tt>, returns <tt>path()</tt>. 
+Determines the first mismatched element of <tt>*this</tt> and <tt>base</tt> as if by:
+</p>
+<blockquote><pre>
+auto [a, b] = mismatch(begin(), end(), base.begin(), base.end());
+</pre></blockquote>
+<p>
+Then,
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; if <tt>a == end()</tt> and <tt>b == base.end()</tt>, returns <tt>path(".")</tt>; otherwise</p></li>
+<li><p>(4.2) &mdash; let <tt>n</tt> be the number of <i>filename</i> elements in <tt>[b, base.end())</tt> that are not dot 
+or dot-dot <ins>or empty,</ins> minus the number that are dot-dot. If <tt>n&lt;0</tt>, returns <tt>path()</tt>; otherwise</p></li>
+<li><p><ins>(4.?) &mdash; if <tt>n == 0</tt> and <tt>(a == end() || a-&gt;empty())</tt>, returns <tt>path(".")</tt>; otherwise</ins></p></li>
+<li><p>(4.3) &mdash; returns an object of class <tt>path</tt> that is default-constructed, followed by [&hellip;]</p></li>
+</ol>
+
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

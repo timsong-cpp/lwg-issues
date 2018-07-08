@@ -1,0 +1,232 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 907: Bitset's immutable element retrieval is inconsistently defined</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="907" href="lwg-defects.html#907">907.</a> Bitset's immutable element retrieval is inconsistently defined</h3>
+<p><b>Section:</b> 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a> <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2008-09-26 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#bitset.members">issues</a> in [bitset.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current standard 14882::2003(E) as well as the current draft
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2723.pdf">N2723</a>
+have in common a contradiction of the operational semantics of member function 
+<tt>test</tt> 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a> p.56-58 and the immutable
+member <tt>operator[]</tt> overload 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a> p.64-66 (all references
+are defined in terms of
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2723.pdf">N2723</a>):
+</p>
+
+<ol>
+<li><pre>
+bool test(size_t pos) const;
+</pre>
+<blockquote>
+<p>
+<i>Requires:</i> <tt>pos</tt> is valid
+</p>
+<p>
+<i>Throws:</i> <tt>out_of_range</tt> if <tt>pos</tt> does not correspond
+to a valid bit position.
+</p>
+<p>
+<i>Returns:</i> <tt>true</tt> if the bit at position <tt>pos</tt> in <tt>*this</tt>
+has the value one.
+</p>
+</blockquote>
+</li>
+<li><pre>
+constexpr bool operator[](size_t pos) const;
+</pre>
+<blockquote>
+<p>
+<i>Requires:</i> <tt>pos</tt> shall be valid.
+</p>
+<p>
+<i>Throws:</i> nothing.
+</p>
+<p>
+<i>Returns:</i> <tt>test(pos)</tt>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+<p>
+Three interpretations:
+</p>
+
+<ol style="list-style-type:upper-alpha">
+<li>
+The <tt>operator[]</tt> overload is indeed allowed to throw an exception
+(via <tt>test()</tt>, if <tt>pos</tt> corresponds to an invalid bit position) which does
+not leave the call frame. In this case this function cannot be a
+<tt>constexpr</tt> function, because <tt>test()</tt> is not, due to
+8.6 <a href="https://timsong-cpp.github.io/cppwp/expr.const">[expr.const]</a>/2, last bullet.
+</li>
+<li>
+The intend was not to throw an exception in <tt>test</tt> in case of an
+invalid bit position. There is only little evidence for this interpretation.
+</li>
+<li>
+The intend was that <tt>operator[]</tt> should not throw any exception,
+but that <tt>test</tt> has the contract to do so, if the provided bit position
+is invalid.
+</li>
+</ol>
+
+<p>
+The problem became worse, because issue <a href="720">720</a>
+recently voted into WP argued that member <tt>test</tt> logically must be
+a <tt>constexpr</tt> function, because it was used to define the semantics
+of another <tt>constexpr</tt> function (the <tt>operator[]</tt> overload).
+</p>
+
+<p>
+Three alternatives are proposed, corresponding to the three bullets
+(A), (B), and (C), the author suggests to follow proposal (C).
+</p>
+
+<p><b>
+Proposed alternatives:
+</b></p>
+
+<ol style="list-style-type:upper-alpha">
+<li>
+<p>
+Remove the <tt>constexpr</tt> specifier in front of <tt>operator[]</tt> overload and
+undo that of member <tt>test</tt> (assuming <a href="720">720</a> is accepted) in both the
+class declaration 23.9.2 <a href="https://timsong-cpp.github.io/cppwp/template.bitset">[template.bitset]</a>/1 and in the member description
+before 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a>/56 and before /64 to read:
+</p>
+<blockquote><pre>
+<del>constexpr</del> bool test(size_t pos) const;
+..
+<del>constexpr</del> bool operator[](size_t pos) const;
+</pre></blockquote>
+
+<p>
+Change the throws clause of p. 65 to read:
+</p>
+
+<blockquote><p>
+<i>Throws:</i> <del>nothing</del>
+<ins><tt>out_of_range</tt> if <tt>pos</tt> does not correspond to a valid bit
+position</ins>.
+</p></blockquote>
+</li>
+<li>
+<p>
+Replace the throws clause p. 57 to read:
+</p>
+
+<blockquote><p>
+<i>Throws:</i> <del><tt>out_of_range</tt> if <tt>pos</tt> does not correspond to a valid bit
+position</del> <ins>nothing</ins>.
+</p></blockquote>
+</li>
+<li>
+<p>
+Undo the addition of the <tt>constexpr</tt> specifier to the <tt>test</tt> member
+function in both class declaration 23.9.2 <a href="https://timsong-cpp.github.io/cppwp/template.bitset">[template.bitset]</a>/1 and in the
+member description before 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a>/56, assuming that <a href="720">720</a>
+was applied.
+</p>
+
+<blockquote><pre>
+<del>constexpr</del> bool test(size_t pos) const;
+</pre></blockquote>
+
+<p>
+Change the returns clause p. 66 to read:
+</p>
+
+<blockquote><p>
+<i>Returns:</i> <del><tt>test(pos)</tt></del> <ins><tt>true</tt> if the bit at position <tt>pos</tt> in <tt>*this</tt>
+has the value one, otherwise <tt>false</tt></ins>.
+</p></blockquote>
+</li>
+</ol>
+
+<p><i>[
+Post Summit:
+]</i></p>
+
+
+<blockquote>
+<p>
+Lawrence: proposed resolutions A, B, C are mutually exclusive.
+</p>
+<p>
+Recommend Review with option C.
+</p>
+</blockquote>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote><p>
+We agree with the proposed resolution.
+Move to Tentatively Ready.
+</p></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<ol style="list-style-type:upper-alpha">
+<li>[&hellip;]</li>
+<li>[&hellip;]</li>
+<li>
+<p>
+Undo the addition of the <tt>constexpr</tt> specifier to the <tt>test</tt> member
+function in both class declaration 23.9.2 <a href="https://timsong-cpp.github.io/cppwp/template.bitset">[template.bitset]</a> p.1 and in the
+member description before 23.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/bitset.members">[bitset.members]</a> p.56, assuming that <a href="720">720</a>
+was applied.
+</p>
+
+<blockquote><pre>
+<del>constexpr</del> bool test(size_t pos) const;
+</pre></blockquote>
+
+<p>
+Change the returns clause p. 66 to read:
+</p>
+
+<blockquote><p>
+<i>Returns:</i> <del><tt>test(pos)</tt></del> <ins><tt>true</tt> if the bit at position <tt>pos</tt> in <tt>*this</tt>
+has the value one, otherwise <tt>false</tt></ins>.
+</p></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

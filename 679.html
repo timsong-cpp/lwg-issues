@@ -1,0 +1,175 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 679: resize parameter by value</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="679" href="lwg-defects.html#679">679.</a> resize parameter by value</h3>
+<p><b>Section:</b> 26.3 <a href="https://timsong-cpp.github.io/cppwp/sequences">[sequences]</a> <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2007-06-11 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#sequences">issues</a> in [sequences].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The C++98 standard specifies that one member function alone of the containers
+passes its parameter (<tt>T</tt>) by value instead of by const reference:
+</p>
+
+<blockquote><pre>
+void resize(size_type sz, T c = T());
+</pre></blockquote>
+
+<p>
+This fact has been discussed / debated repeatedly over the years, the first time
+being even before C++98 was ratified.  The rationale for passing this parameter by
+value has been:
+</p>
+
+<blockquote>
+<p>
+So that self referencing statements are guaranteed to work, for example:
+</p>
+<blockquote><pre>
+v.resize(v.size() + 1, v[0]);
+</pre></blockquote>
+</blockquote>
+
+<p>
+However this rationale is not convincing as the signature for <tt>push_back</tt> is:
+</p>
+
+<blockquote><pre>
+void push_back(const T&amp; x);
+</pre></blockquote>
+
+<p>
+And <tt>push_back</tt> has similar semantics to <tt>resize</tt> (append).
+And <tt>push_back</tt> must also work in the self referencing case:
+</p>
+
+<blockquote><pre>
+v.push_back(v[0]);  // must work
+</pre></blockquote>
+
+<p>
+The problem with passing <tt>T</tt> by value is that it can be significantly more
+expensive than passing by reference.  The converse is also true, however when it is
+true it is usually far less dramatic (e.g. for scalar types).
+</p>
+
+<p>
+Even with move semantics available, passing this parameter by value can be expensive.
+Consider for example <tt>vector&lt;vector&lt;int&gt;&gt;</tt>:
+</p>
+
+<blockquote><pre>
+std::vector&lt;int&gt; x(1000);
+std::vector&lt;std::vector&lt;int&gt;&gt; v;
+...
+v.resize(v.size()+1, x);
+</pre></blockquote>
+
+<p>
+In the pass-by-value case, <tt>x</tt> is copied once to the parameter of
+<tt>resize</tt>.  And then internally, since the code can not know at compile
+time by how much <tt>resize</tt> is growing the <tt>vector</tt>, <tt>x</tt> is
+usually copied (not moved) a second time from <tt>resize</tt>'s parameter into its proper place
+within the <tt>vector</tt>.
+</p>
+
+<p>
+With pass-by-const-reference, the <tt>x</tt> in the above example need be copied
+only once.  In this case, <tt>x</tt> has an expensive copy constructor and so any
+copies that can be saved represents a significant savings.
+</p>
+
+<p>
+If we can be efficient for <tt>push_back</tt>, we should be efficient for <tt>resize</tt>
+as well.  The resize taking a reference parameter has been coded and shipped in the
+CodeWarrior library with no reports of problems which I am aware of.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Change 26.3.8 <a href="https://timsong-cpp.github.io/cppwp/deque">[deque]</a>, p2:
+</p>
+
+<blockquote><pre>
+class deque {
+   ...
+   void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+<p>
+Change 26.3.8.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a>, p3:
+</p>
+
+<blockquote><pre>
+void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+<p>
+Change 26.3.10 <a href="https://timsong-cpp.github.io/cppwp/list">[list]</a>, p2:
+</p>
+
+<blockquote><pre>
+class list {
+   ...
+   void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+<p>
+Change 26.3.10.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a>, p3:
+</p>
+
+<blockquote><pre>
+void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+<p>
+Change 26.3.11 <a href="https://timsong-cpp.github.io/cppwp/vector">[vector]</a>, p2:
+</p>
+
+<blockquote><pre>
+class vector {
+   ...
+   void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+<p>
+Change 26.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>, p11:
+</p>
+
+<blockquote><pre>
+void resize(size_type sz, <ins>const </ins>T<ins>&amp;</ins> c);
+</pre></blockquote>
+
+
+
+
+
+
+</body>
+</html>

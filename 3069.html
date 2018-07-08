@@ -1,0 +1,155 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3069: Move assigning variant's subobject corrupts data</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3069" href="lwg-active.html#3069">3069.</a> Move assigning <tt>variant</tt>'s subobject corrupts data</h3>
+<p><b>Section:</b> 23.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Antony Polukhin <b>Opened:</b> 2018-02-20 <b>Last modified:</b> 2018-06-19 13:02:31 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#variant.assign">issues</a> in [variant.assign].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>variant::emplace</tt> functions in 23.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.mod">[variant.mod]</a> destroy the currently
+contained value before initializing it to a new value. Assignments in 
+23.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> are described in terms on <tt>emplace</tt>.
+<p/>
+This leads to situation, when move/copy assigning subobject from <tt>variant</tt> into the same 
+<tt>variant</tt> corrupts data:
+</p>
+<blockquote><pre>
+#include &lt;variant&gt;
+#include &lt;memory&gt;
+#include &lt;iostream&gt;
+
+using str_t = std::string;
+using str_ptr_t = std::unique_ptr&lt;str_t&gt;;
+using var_t = std::variant&lt;str_t, str_ptr_t&gt;;
+
+int main() 
+{
+  var_t v = str_ptr_t{
+    new str_t{"Long string that does not fit into SS buffer and forces dynamic allocation"}
+  };
+
+  // Any of the following lines corrupt the variant's content:
+  v = *std::get&lt;str_ptr_t&gt;(v);
+  //v = std::move(*std::get&lt;str_ptr_t&gt;(v));
+
+  std::cout &lt;&lt; std::get&lt;str_t&gt;(v) &lt;&lt; std::endl; // SEGV - 'str_t' inside 'v' is invalid
+}
+</pre></blockquote>
+<p>
+Such behavior confuses users, especially those users who are used to
+<tt>boost::variant</tt>'s behavior. Consider making <tt>variant</tt> assignments safer
+by defining them close to copy-and-swap.
+</p>
+
+<p><i>[2018-06-18 after reflector discussion]</i></p>
+
+<p>Priority set to 3; Antony volunteered to write a paper for Rapperswil.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<ol>
+<li><p>Change 23.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> as indicated:</p>
+<blockquote>
+<pre>
+variant&amp; operator=(const variant&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-1- Let <tt><i>j</i></tt> be <tt>rhs.index()</tt>.
+<p/>
+-2- <i>Effects:</i>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; If neither <tt>*this</tt> nor <tt>rhs</tt> holds a value, there is no effect.</p></li>
+<li><p>(2.2) &mdash; Otherwise, if <tt>*this</tt> holds a value but <tt>rhs</tt> does not, 
+destroys the value contained in <tt>*this</tt> and sets <tt>*this</tt> to not hold a value.</p></li>
+<li><p>(2.3) &mdash; Otherwise, if <tt>index() == <i>j</i></tt>, assigns the value contained in <tt>rhs</tt> 
+to the value contained in <tt>*this</tt>.</p></li>
+<li><p><del>(2.4) &mdash; Otherwise, if either <tt>is_nothrow_copy_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> 
+is <tt>true</tt> or <tt>is_nothrow_move_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> is 
+<tt>false</tt>, equivalent to <tt>emplace&lt;<i>j</i>&gt;(get&lt;<i>j</i>&gt;(rhs))</tt>.</del></p></li>
+<li><p>(2.5) &mdash; Otherwise, equivalent to <ins><tt>emplace&lt;<i>j</i>&gt;(T<sub><i>j</i></sub>{get&lt;<i>j</i>&gt;(rhs)})</tt></ins><del><tt>operator=(variant(rhs))</tt></del>.</p></li>
+</ol>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+variant&amp; operator=(variant&amp;&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-6- Let <tt><i>j</i></tt> be <tt>rhs.index()</tt>.
+<p/>
+-7- <i>Effects:</i>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; If neither <tt>*this</tt> nor <tt>rhs</tt> holds a value, there is no effect.</p></li>
+<li><p>(7.2) &mdash; Otherwise, if <tt>*this</tt> holds a value but <tt>rhs</tt> does not, 
+destroys the value contained in <tt>*this</tt> and sets <tt>*this</tt> to not hold a value.</p></li>
+<li><p>(7.3) &mdash; Otherwise, if <tt>index() == <i>j</i></tt>, assigns 
+<tt>get&lt;<i>j</i>&gt;(std::move(rhs))</tt> to the value contained in <tt>*this</tt>.</p></li>
+<li><p>(7.4) &mdash; Otherwise, equivalent to 
+<tt>emplace&lt;<i>j</i>&gt;(<ins>T<sub><i>j</i></sub>{</ins>get&lt;<i>j</i>&gt;(std::move(rhs))<ins>}</ins>)</tt>.</p></li>
+</ol>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+</pre>
+<blockquote>
+<p>
+-10- Let <tt>T<sub><i>j</i></sub></tt> be a type that is determined as follows: build an imaginary function 
+<tt><i>FUN</i>(T<sub><i>i</i></sub>)</tt> for each alternative type <tt>T<sub><i>i</i></sub></tt>. The overload 
+<tt><i>FUN</i>(T<sub><i>j</i></sub>)</tt> selected by overload resolution for the expression 
+<tt><i>FUN</i>(std::forward&lt;T&gt;(t))</tt> defines the alternative <tt>T<sub><i>j</i></sub></tt> which is the 
+type of the contained value after assignment.
+<p/>
+-11- <i>Effects:</i>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; If <tt>*this</tt> holds a <tt>T<sub><i>j</i></sub></tt>, assigns 
+<tt>std::forward&lt;T&gt;(t)</tt> to the value contained in <tt>*this</tt>.</p></li>
+<li><p><del>(11.2) &mdash; Otherwise, if <tt>is_nothrow_constructible_v&lt;T<sub><i>j</i></sub>, T&gt; || !is_nothrow_move_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> is <tt>true</tt>, equivalent to 
+<tt>emplace&lt;<i>j</i>&gt;(std::forward&lt;T&gt;(t))</tt>.</del></p></li>
+<li><p>(11.3) &mdash; Otherwise, equivalent to 
+<tt><ins>emplace&lt;<i>j</i>&gt;(T<sub><i>j</i></sub>{std::forward&lt;T&gt;(t)})</ins><del>operator=(variant(std::forward&lt;T&gt;(t)))</del></tt>.</p></li>
+</ol>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

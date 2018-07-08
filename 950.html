@@ -1,0 +1,297 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 950: unique_ptr converting ctor shouldn't accept array form</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="950" href="lwg-defects.html#950">950.</a> <tt>unique_ptr</tt> converting ctor shouldn't accept array form</h3>
+<p><b>Section:</b> 23.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2009-01-07 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single.ctor">issues</a> in [unique.ptr.single.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>unique_ptr</tt>'s of array type should not convert to
+<tt>unique_ptr</tt>'s which do not have an array type.
+</p>
+
+<blockquote><pre>
+struct Deleter
+{
+   void operator()(void*) {}
+};
+
+int main()
+{
+   unique_ptr&lt;int[], Deleter&gt; s;
+   unique_ptr&lt;int, Deleter&gt; s2(std::move(s));  <span style="color:#C80000">// should not compile</span>
+}
+</pre></blockquote>
+
+<p><i>[
+Post Summit:
+]</i></p>
+
+
+<blockquote>
+<p>
+Walter: Does the "diagnostic required" apply to both arms of the "and"?
+</p>
+<p>
+Tom Plum: suggest to break into several sentences
+</p>
+<p>
+Walter: suggest "comma" before the "and" in both places
+</p>
+<p>
+Recommend Review.
+</p>
+</blockquote>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote><p>
+The post-Summit comments have been applied to the proposed resolution.
+We now agree with the proposed resolution.
+Move to Tentatively Ready.
+</p></blockquote>
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote><p>
+Moved from Tentatively Ready to Open only because the wording needs to be
+improved for <tt>enable_if</tt> type constraining, possibly following Robert's
+formula.
+</p></blockquote>
+
+<p><i>[
+2009-08-01 Howard updates wording and sets to Review.
+]</i></p>
+
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Move to Ready.
+</p></blockquote>
+
+<p><i>[
+2010-02-27 Pete Opens:
+]</i></p>
+
+
+<blockquote>
+<p>
+The proposed replacement text doesn't make sense.
+</p>
+
+<blockquote><p>
+If <tt>D</tt> is a reference type, then <tt>E</tt> shall be the same type as
+<tt>D</tt>, else this constructor shall not participate in overload resolution.
+</p></blockquote>
+
+<p>
+This imposes two requirements. 1. If <tt>D</tt> is a reference type, <tt>E</tt>
+has to be <tt>D</tt>. 2. If <tt>D</tt> is not a reference type, the constructor
+shall not participate in overload resolution. If the latter apples, the language
+in the preceding paragraph that this constructor shall not throw an exception if
+<tt>D</tt> is not a reference type is superfluous. I suspect that's not the
+intention, but I can't parse this text any other way.
+</p>
+
+<blockquote><p>
+<tt>U</tt> shall not be an array type, else this constructor shall not
+participate in overload resolution.
+</p></blockquote>
+
+<p>
+I don't know what this means.
+</p>
+</blockquote>
+
+<p><i>[
+2010-02-27 Peter adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+I think that the intent is (proposed text):
+</p>
+
+<blockquote>
+<p>
+<i>Remarks:</i> this constructor shall only participate in overload resolution
+if:
+</p>
+
+<ul>
+<li>
+<tt>unique_ptr&lt;U, E&gt;::pointer</tt> is implicitly convertible to
+<tt>pointer</tt>,
+</li>
+
+<li>
+<tt>U</tt> is not an array type, and
+</li>
+
+<li>
+if <tt>D</tt> is a reference type, <tt>E</tt> is the same type as <tt>D</tt>.
+</li>
+</ul>
+
+</blockquote>
+
+</blockquote>
+
+<p><i>[
+2010-02-28 Howard adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+I like Peter's proposal.  Here is a tweak of it made after looking at my
+implementation.  I believe this fixes a further defect not addressed by the
+current proposed wording:
+</p>
+
+<blockquote>
+<p>
+<i>Remarks:</i> this constructor shall only participate in overload resolution
+if:
+</p>
+
+<ul>
+<li>
+<tt>unique_ptr&lt;U, E&gt;::pointer</tt> is implicitly convertible to
+<tt>pointer</tt>, and
+</li>
+
+<li>
+<tt>U</tt> is not an array type, and
+</li>
+
+<li>
+if <tt>D</tt> is a reference type, <tt>E</tt> is the same type as <tt>D</tt>,
+else <tt>E</tt> shall be implicitly convertible to <tt>D</tt>.
+</li>
+</ul>
+
+</blockquote>
+
+</blockquote>
+
+<p><i>[
+2010 Pittsburgh:  Moved to NAD Editorial.  Rationale added below.
+]</i></p>
+
+
+
+
+<p><b>Rationale:</b></p>
+<p>
+Solved by
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2010/n3073.html">N3073</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Change 23.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a>:
+</p>
+
+<blockquote>
+<pre>
+template &lt;class U, class E&gt; unique_ptr(unique_ptr&lt;U, E&gt;&amp;&amp; u);
+</pre>
+<blockquote>
+<p>
+-20- <i>Requires:</i> If <tt>D</tt> is not a reference type,
+construction of the deleter <tt>D</tt> from an rvalue of type <tt>E</tt>
+shall be well formed and shall not throw an exception. <del>If <tt>D</tt> is
+a reference type, then <tt>E</tt> shall be the same type as <tt>D</tt>
+(diagnostic required). <tt>unique_ptr&lt;U, E&gt;::pointer</tt> shall be
+implicitly convertible to <tt>pointer</tt>. [<i>Note:</i> These requirements
+imply that <tt>T</tt> and <tt>U</tt> are complete types. &mdash; <i>end note</i>]</del>
+</p>
+
+<p><ins>
+<i>Remarks:</i> If <tt>D</tt> is
+a reference type, then <tt>E</tt> shall be the same type as <tt>D</tt>, else this
+constructor shall not participate in overload resolution. <tt>unique_ptr&lt;U, E&gt;::pointer</tt> shall be
+implicitly convertible to <tt>pointer</tt>, else this
+constructor shall not participate in overload resolution. <tt>U</tt> shall not be
+an array type, else this
+constructor shall not participate in overload resolution. [<i>Note:</i> These requirements
+imply that <tt>T</tt> and <tt>U</tt> are complete types. &mdash; <i>end note</i>]
+</ins></p>
+
+</blockquote>
+</blockquote>
+
+<p>
+Change 23.11.1.2.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a>:
+</p>
+
+<blockquote>
+<pre>
+template &lt;class U, class E&gt; unique_ptr&amp; operator=(unique_ptr&lt;U, E&gt;&amp;&amp; u);
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> Assignment of the deleter <tt>D</tt> from an rvalue
+<tt>D</tt> shall not throw an exception. <del><tt>unique_ptr&lt;U,
+E&gt;::pointer</tt> shall be implicitly convertible to <tt>pointer</tt>.
+[<i>Note:</i> These requirements imply that <tt>T</tt> and <tt>U</tt>
+are complete types. &mdash; <i>end note</i>]</del>
+</p>
+
+<p><ins>
+<i>Remarks:</i> <tt>unique_ptr&lt;U,
+E&gt;::pointer</tt> shall be implicitly convertible to <tt>pointer</tt>, else this
+operator shall not participate in overload resolution.
+<tt>U</tt> shall not be an array type, else this
+operator shall not participate in overload resolution.
+[<i>Note:</i> These requirements imply that <tt>T</tt> and <tt>U</tt>
+are complete types. &mdash; <i>end note</i>]
+</ins></p>
+
+</blockquote>
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

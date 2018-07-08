@@ -1,0 +1,328 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2436: Comparators for associative containers should always be CopyConstructible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2436" href="lwg-defects.html#2436">2436.</a> Comparators for associative containers should always be <tt>CopyConstructible</tt></h3>
+<p><b>Section:</b> 26.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a>, 26.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2014-10-01 <b>Last modified:</b> 2018-06-23 17:54:13 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts">active issues</a> in [associative.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#associative.reqmts">issues</a> in [associative.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The associative container requirements attempt to permit comparators that are <tt>DefaultConstructible</tt> 
+but non-<tt>CopyConstructible</tt>. However, the Standard contradicts itself. 26.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a> depicts 
+<tt>map() : map(Compare()) { }</tt> which requires both <tt>DefaultConstructible</tt> and <tt>CopyConstructible</tt>.
+<p/>
+Unlike fine-grained element requirements (which are burdensome for implementers, but valuable for users), such 
+fine-grained comparator requirements are both burdensome for implementers (as the Standard's self-contradiction 
+demonstrates) and worthless for users. We should unconditionally require <tt>CopyConstructible</tt> comparators.  
+(Note that <tt>DefaultConstructible</tt> should remain optional; this is not problematic for implementers, and 
+allows users to use lambdas.)
+<p/>
+Key equality predicates for unordered associative containers are also affected. However, 20.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/hash.requirements">[hash.requirements]</a>/1 
+already requires hashers to be <tt>CopyConstructible</tt>, so 26.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a>'s redundant wording should 
+be removed.
+</p>
+
+<p><i>[2015-02, Cologne]</i></p>
+
+<p>
+GR: I prefer to say "<tt>Compare</tt>" rather than "<tt>X::key_compare</tt>", since the former is what the user supplies. 
+JY: It makes sense to use "<tt>Compare</tt>" when we talk about requirements but "<tt>key_compare</tt>" when we use it. 
+<p/>
+AM: We're adding requirements here, which is a breaking change, even though nobody will ever have had a non-<tt>CopyConstructible</tt> 
+comparator. But the simplification is probably worth it.
+<p/>
+GR: I don't care about unmovable containers. But I do worry that people might want to move they comparators. MC: How do 
+you reconcile that with the function that says "give me the comparator"? GR: That one returns by value? JY: Yes. [To MC] 
+You make it a requirement of that function. [To GR] And it [the <tt>key_comp()</tt> function] is missing its requirements. 
+We need to add them everywhere. GR: map already has the right requirements.
+<p/>
+JM: I dispute this. If in C++98 a type wasn't copyable, it had some interesting internal state, but in C++98 you wouldn't 
+have been able to pass it into the container since you would have had to make a copy. JY: No, you could have 
+default-constructed it and never moved it, e.g. a mutex. AM: So, it's a design change, but one that we should make. 
+That's probably an LEWG issue. AM: There's a contradiction in the Standard here, and we need to fix it one way or another.
+<p/>
+<b>Conclusion</b>: Move to LEWG 
+</p>
+
+<p><i>[LEWG: 2016-03, Jacksonville]</i></p>
+
+<p>
+Adding <tt>CopyConstructible</tt> requirement OK.
+<p/>
+Unanimous yes.
+<p/>
+We discussed allowing <tt>MoveConstructible</tt>. A moved-from <tt>set&lt;&gt;</tt> might still contain elements, 
+and using them would become undefined if the comparator changed behavior.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N3936.
+</p>
+
+<ol>
+<li><p>Change 26.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> Table 102 as indicated (Editorial note: For "expression" <tt>X::key_compare</tt> 
+"defaults to" is redundant with the class definitions for map/etc.):</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 102 &mdash; Associative container requirements</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X::key_compare</tt>
+</td>
+<td>
+<tt>Compare</tt>
+</td>
+<td>
+<del>defaults to <tt>less&lt;key_type&gt;</tt></del><br/>
+<ins><i>Requires</i>: <tt>key_compare</tt> is <tt>CopyConstructible</tt>.</ins>
+</td>
+<td>
+compile time
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(c)<br/>
+X a(c);</tt>
+</td>
+<td>
+</td>
+<td>
+<del><i>Requires</i>: <tt>key_compare</tt> is <tt>CopyConstructible</tt>.</del><br/>
+<i>Effects</i>: Constructs an empty
+container. Uses a copy of <tt>c</tt> as
+a comparison object.
+</td>
+<td>
+constant
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i,j,c)<br/>
+X a(i,j,c);</tt>
+</td>
+<td>
+</td>
+<td>
+<i>Requires</i>: <del><tt>key_compare</tt> is <tt>CopyConstructible</tt>.</del><br/>
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: Constructs [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote></li>
+
+<li><p>Change 26.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a> Table 103 as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 103 &mdash; Unordered associative container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X::key_equal</tt>
+</td>
+<td>
+<tt>Pred</tt>
+</td>
+<td>
+<ins><i>Requires</i>: <tt>Pred</tt> is <tt>CopyConstructible</tt>.</ins><br/>
+<tt>Pred</tt> shall be a binary predicate that takes two arguments of type <tt>Key</tt>.<br/> 
+<tt>Pred</tt> is an equivalence relation.
+</td>
+<td>
+compile time
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(n, hf, eq)<br/>
+X a(n, hf, eq);</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<del><i>Requires</i>: <tt>hasher</tt> and <tt>key_equal</tt> are <tt>CopyConstructible</tt>.</del><br/>
+<i>Effects</i>: Constructs [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(n, hf)<br/>
+X a(n, hf);</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> is <tt>CopyConstructible</tt> and</del><br/>
+<tt>key_equal</tt> is <tt>DefaultConstructible</tt><br/>
+<i>Effects</i>: Constructs [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i, j, n, hf, eq)<br/>
+X a(i, j, n, hf, eq);</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> and <tt>key_equal</tt> are <tt>CopyConstructible</tt>.</del><br/>
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: Constructs [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>X(i, j, n, hf)<br/>
+X a(i, j, n, hf);</tt>
+</td>
+<td>
+<tt>X</tt>
+</td>
+<td>
+<i>Requires</i>: <del><tt>hasher</tt> is <tt>CopyConstructible</tt> and</del><br/>
+<tt>key_equal</tt> is <tt>DefaultConstructible</tt><br/>
+<tt>value_type</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt> from <tt>*i</tt>.<br/>
+<i>Effects</i>: Constructs [&hellip;]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote></li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

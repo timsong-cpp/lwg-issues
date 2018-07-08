@@ -1,0 +1,270 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2164: What are the semantics of vector.emplace(vector.begin(), vector.back())?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2164" href="lwg-defects.html#2164">2164.</a> What are the semantics of <tt>vector.emplace(vector.begin(), vector.back())</tt>?</h3>
+<p><b>Section:</b> 26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>, 26.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements">[container.requirements]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2012-07-07 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#vector.modifiers">issues</a> in [vector.modifiers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+Nikolay Ivchenkov recently brought the following example on the
+<a href="https://groups.google.com/a/isocpp.org/d/topic/std-discussion/dhy23mDFXj4/discussion">std-discussion</a> 
+newsgroup, asking whether the following program well-defined:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;vector&gt;
+
+int main()
+{
+  std::vector&lt;int&gt; v;
+  v.reserve(4);
+  v = { 1, 2, 3 };
+  v.emplace(v.begin(), v.back());
+  for (int x : v)
+    std::cout &lt;&lt; x &lt;&lt; std::endl;
+}
+</pre></blockquote>
+<p>
+Nikolay Ivchenkov:
+<p/>
+I think that an implementation of <tt>vector</tt>'s 'emplace' should initialize an intermediate object with 
+<tt>v.back()</tt> before any shifts take place, then perform all necessary shifts and finally replace the 
+value pointed to by <tt>v.begin()</tt> with the value of the intermediate object. So, I would expect the 
+following output:
+</p>
+<blockquote><pre>
+3
+1
+2
+3
+</pre></blockquote>
+<p>
+GNU C++ 4.7.1 and GNU C++ 4.8.0 produce other results:
+</p>
+<blockquote><pre>
+2
+1
+2
+3
+</pre></blockquote>
+<p>
+Howard Hinnant:
+<p/>
+I believe Nikolay is correct that vector should initialize an intermediate object with <tt>v.back()</tt> 
+before any shifts take place. As Nikolay pointed out in another email, this appears to be the only way to 
+satisfy the strong exception guarantee when an exception is not thrown by <tt>T</tt>'s copy constructor, 
+move constructor, copy assignment operator, or move assignment operator as specified by 
+26.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/p1. I.e. if the emplace construction throws, the vector must remain unaltered.
+<p/>
+That leads to an implementation that tolerates objects bound to the function parameter pack of the <tt>emplace</tt> 
+member function may be elements or sub-objects of elements of the container.
+<p/>
+My position is that the standard is correct as written, but needs a clarification in this area. Self-referencing 
+<tt>emplace</tt> should be legal and give the result Nikolay expects. The proposed resolution of LWG <a href="760">760</a> 
+is not correct.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+LWG agrees with the analysis including the assessment of LWG <a href="760">760</a> and would appreciate a concrete wording proposal.
+</p>
+
+<p><i>[2015-04-07 dyp comments]</i></p>
+
+<p>
+The Standard currently does not require that creation of such
+intermediate objects is legal. 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> Table 100
+&mdash; "Sequence container requirements" currently specifies:
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 100 &mdash; Sequence container requirements</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.emplace(p, args);</tt>
+</td>
+<td>
+<tt>iterator</tt>
+</td>
+<td>
+<i>Requires</i>: <tt>T</tt> is <tt>EmplaceConstructible</tt> into
+<tt>X</tt> from <tt>args</tt>. For <tt>vector</tt> and <tt>deque</tt>,
+<tt>T</tt> is also <tt>MoveInsertable</tt> into <tt>X</tt> and
+<tt>MoveAssignable</tt>. [&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+<p>
+The <tt>EmplaceConstructible</tt> concept is defined via
+<tt>allocator_traits&lt;A&gt;::construct</tt> in 26.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p15.5 That's surprising to me
+since the related concepts use the suffix <tt>Insertable</tt> if they
+refer to the allocator. An additional requirement such as
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> is necessary to allow
+creation of intermediate objects.
+</p>
+
+<p>
+The creation of intermediate objects also affects other functions, such
+as <tt>vector.insert</tt>. Since aliasing the vector is only allowed for
+the single-element forms of <tt>insert</tt> and <tt>emplace</tt> (see
+<a href="526">526</a>), the range-forms are not affected. Similarly,
+aliasing is not allowed for the rvalue-reference overload. See also LWG
+<a href="2266">2266</a>.
+</p>
+
+<p>
+There might be a problem with a requirement of
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> related to the issues
+described in LWG <a href="2461">2461</a>. For example, a scoped allocator
+adapter passes additional arguments to the constructor of the value
+type. This is currently not done in recent implementations of libstdc++
+and libc++ when creating the intermediate objects, they simply create
+the intermediate object by perfectly forwarding the arguments. If such
+an intermediate object is then moved to its final destination in the
+vector, a change of the allocator instance might be required &mdash;
+potentially leading to an expensive copy. One can also imagine worse
+problems, such as run-time errors (allocators not comparing equal at
+run-time) or compile-time errors (if the value type cannot be created
+without the additional arguments). I have not looked in detail into this
+issue, but I'd be reluctant adding a requirement such as
+<tt>std::is_constructible&lt;T, Args...&gt;</tt> without further
+investigation.
+</p>
+
+<p>
+It should be noted that the creation of intermediate objects currently
+is inconsistent in libstdc++ vs libc++. For example, libstdc++ creates
+an intermediate object for <tt>vector.insert</tt>, but not
+<tt>vector.emplace</tt>, whereas libc++ does the exact opposite in this
+respect.
+</p>
+
+<p>
+A live demo of the inconsistent creation of intermediate objects can be
+found <a href="http://coliru.stacked-crooked.com/a/449253d3d329ef4c">here</a>.
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>HH: If it were easy, it'd have wording. Over the decades I have flipped 180 degrees on this. My current position is that it should work even if the element is in the same container.</p>
+<p>TK: What's the implentation status? JW: Broken in GCC. STL: Broken in MSVS. Users complain about this every year.</p>
+<p>MC: 526 says push_back has to work.</p>
+<p>HH: I think you have to make a copy of the element anyway for reasons of exception safety. [Discussion of exception guarantees] </p>
+<p>STL: vector has strong exception guarantees. Could we not just provide the Basic guarantee here. </p>
+<p>HH: It would terrify me to relax that guarantee. It'd be an ugly, imperceptible runtime error. </p>
+<p>HH: I agree if we had a clean slate that strong exception safety is costing us here, and we shouldn't provide it if it costs us.</p>
+<p>STL: I have a mail here, "how can vector provide the strong guarantee when inserting in the middle". </p>
+<p>HH: The crucial point is that you only get the strong guarantee if the exception is thrown by something other than the copy and move operations that are used to make the hole. </p>
+<p>STL: I think we need to clean up the wording. But it does mandate currently that the self-emplacement must work, because nothings says that you can't do it. TK clarifies that a) self-emplacement must work, and b) you get the strong guarantee only if the operations for making the hole don't throw, otherwise basic. HH agrees. STL wants this to be clear in the Standard.</p>
+<p>STL: Should it work for deque, too? HH: Yes.</p>
+<p>HH: I will attempt wording for this. </p>
+<p>TK: Maybe mail this to the reflector, and maybe someone has a good idea? </p>
+<p>JW: I will definitely not come up with anything better, but I can critique wording.</p>
+<p>Moved to Open; Howard to provide wording, with feedback from Jonathan.</p>
+
+<p><i>[2017-01-25, Howard suggests wording]</i></p>
+
+
+<p><i>[2018-1-26 issues processing telecon]</i></p>
+
+<p>Status to 'Tentatively Ready' after adding a period to Howard's wording.</p>
+
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4713">N4713</a>.</p>
+
+<ol>
+<li><p>Modify in 26.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> Table 87 &mdash; "Sequence container requirements" as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 87 &mdash; Sequence container requirements (in addition to container)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+</tr>
+<tr>
+<td colspan="3" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td>
+<tt>a.emplace(p, args)</tt>
+</td>
+<td><tt>iterator</tt></td>
+<td>
+<i>Requires</i>: <tt>T</tt> is <tt>EmplaceConstructible</tt> into <tt>X</tt><br/>
+from <tt>args</tt>. For <tt>vector</tt> and <tt>deque</tt>, <tt>T</tt> is also<br/>
+<tt>MoveInsertable</tt> into <tt>X</tt> and <tt>MoveAssignable</tt>.<br/>
+<i>Effects:</i> Inserts an object of type <tt>T</tt><br/>
+constructed with<br/>
+<tt>std::forward&lt;Args&gt;(args)...</tt> before <tt>p</tt>.<br/>
+<ins>[<i>Note:</i> <tt>args</tt> may directly or indirectly refer to a value<br/> 
+in <tt>a</tt>. &mdash; <i>end note</i>]</ins>
+</td>
+</tr>
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 803: Simplification of seed_seq::seq_seq</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="803" href="lwg-defects.html#803">803.</a> Simplification of <tt>seed_seq::seq_seq</tt></h3>
+<p><b>Section:</b> 29.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Charles Karney <b>Opened:</b> 2008-02-22 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.util.seedseq">issues</a> in [rand.util.seedseq].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>seed_seq(InputIterator begin, InputIterator end);</tt> constructs a <tt>seed_seq</tt>
+object repacking the bits of supplied sequence <tt>[begin, end)</tt> into a
+32-bit vector.
+</p>
+<p>
+This repacking triggers several problems:
+</p>
+<ol>
+<li>
+Distinctness of the output of <tt>seed_seq::generate</tt> required the
+introduction of the initial "<tt>if (w &lt; 32) v.push_back(n);</tt>"  (Otherwise
+the unsigned short vectors [1, 0] and [1] generate the same sequence.)
+</li>
+<li>
+Portability demanded the introduction of the template parameter <tt>u</tt>.
+(Otherwise some sequences could not be obtained on computers where no
+integer types are exactly 32-bits wide.)
+</li>
+<li>
+The description and algorithm have become unduly complicated.
+</li>
+</ol>
+<p>
+I propose simplifying this <tt>seed_seq</tt> constructor to be "32-bit only".
+Despite it's being simpler, there is NO loss of functionality (see
+below).
+</p>
+<p>
+Here's how the description would read
+</p>
+<blockquote>
+<p>
+29.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a> Class <tt>seed_seq</tt>
+</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  seed_seq(InputIterator begin, InputIterator end);
+</pre>
+<blockquote>
+<p>
+5 <i>Requires:</i> NO CHANGE
+</p>
+<p>
+6 <i>Effects:</i> Constructs a <tt>seed_seq</tt> object by
+</p>
+<blockquote><p style="white-space: pre;">
+for (InputIterator s = begin; s != end; ++s)
+   v.push_back((*s) mod 2<sup>32</sup>);
+</p></blockquote>
+</blockquote>
+</blockquote>
+</blockquote>
+
+<p>
+Discussion:
+</p>
+<p>
+The chief virtues here are simplicity, portability, and generality.
+</p>
+<ul>
+<li>
+Simplicity &mdash; compare the above specification with the
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a> proposal.
+</li>
+<li>
+Portability &mdash; with <tt>iterator_traits&lt;InputIterator&gt;::value_type =
+uint_least32_t</tt> the user is guaranteed to get the same behavior across
+platforms.
+</li>
+<li>
+Generality &mdash; any behavior that the
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a>
+proposal can achieve can be
+obtained with this simpler proposal (albeit with a shuffling of bits
+in the input sequence).
+</li>
+</ul>
+<p>
+Arguments (and counter-arguments) against making this change (and
+retaining the
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a>
+behavior) are:
+</p>
+<ul>
+<li>
+<p>
+The user can pass an array of <tt>unsigned char</tt> and <tt>seed_seq</tt> will nicely
+ repack it.
+</p>
+<p>
+ Response: So what?  Consider the seed string "ABC".  The
+ <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a>
+ proposal results in
+</p>
+<blockquote><pre>
+v = { 0x3, 0x434241 };
+</pre></blockquote>
+<p>
+while the simplified proposal yields
+</p>
+<blockquote><pre>
+v = { 0x41, 0x42, 0x43 };
+</pre></blockquote>
+<p>
+The results produced by <tt>seed_seq::generate</tt> with the two inputs are
+different but nevertheless equivalently "mixed up" and this remains
+true even if the seed string is long.
+</p>
+</li>
+<li>
+<p>
+With long strings (e.g., with bit-length comparable to the number of
+ bits in the state), <tt>v</tt> is longer (by a factor of 4) with the simplified
+ proposal and <tt>seed_seq::generate</tt> will be slower.
+</p>
+<p>
+Response: It's unlikely that the efficiency of <tt>seed_seq::generate</tt> will
+ be a big issue.  If it is, the user is free to repack the seed vector
+ before constructing <tt>seed_seq</tt>.
+</p>
+</li>
+<li>
+<p>
+A user can pass an array of 64-bit integers and all the bits will be
+ used.
+</p>
+<p>
+ Response: Indeed.  However, there are many instances in the 
+ <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a>
+ where integers are silently coerced to a narrower width and this
+ should just be a case of the user needing to read the documentation.
+ The user can of course get equivalent behavior by repacking his seed
+ into 32-bit pieces.  Furthermore, the unportability of the 
+ <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2461.pdf">n2461</a>
+ proposal with
+</p>
+<blockquote><pre>
+unsigned long s[] = {1, 2, 3, 4};
+seed_seq q(s, s+4);
+</pre></blockquote>
+<p>
+ which typically results in <tt>v = {1, 2, 3, 4}</tt> on 32-bit machines and in
+<tt>v = {1, 0, 2, 0, 3, 0, 4, 0}</tt> on 64-bit machines is a major pitfall for
+ unsuspecting users.
+</p>
+</li>
+</ul>
+
+<p>
+Note: this proposal renders moot issues <a href="782">782</a> and <a href="800">800</a>.
+</p>
+
+<p><i>[
+Bellevue:
+]</i></p>
+
+
+<blockquote><p>
+Walter needs to ask Fermilab for guidance. Defer till tomorrow. Bill likes the proposed resolution.
+</p></blockquote>
+
+<p><i>[
+Sophia Antipolis:
+]</i></p>
+
+
+<blockquote>
+<p>
+Marc Paterno wants portable behavior between 32bit and 64bit machines;
+we've gone to significant trouble to support portability of engines and
+their values.
+</p>
+<p>
+Jens: the new algorithm looks perfectly portable
+</p>
+<p>
+Marc Paterno to review off-line.
+</p>
+<p>
+Modify the proposed resolution to read "Constructs a seed_seq object by the following algorithm ..."
+</p>
+<p>
+Disposition: move to review; unanimous consent.
+</p>
+<p>
+(moots <a href="782">782</a> and <a href="800">800</a>)
+</p>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Change 29.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a>:
+</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator<del>, 
+  size_t u = numeric_limits&lt;iterator_traits&lt;InputIterator&gt;::value_type&gt;::digits</del>&gt;
+  seed_seq(InputIterator begin, InputIterator end);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> <tt>InputIterator</tt> shall satisfy the requirements of an input iterator (24.1.1)
+such that <tt>iterator_traits&lt;InputIterator&gt;::value_type</tt> shall denote an integral type.
+</p>
+<p>
+-6- Constructs a <tt>seed_seq</tt> object by <ins>the following algorithm</ins> <del>rearranging some or all of the bits of the supplied sequence
+<tt>[begin,end)</tt> of w-bit quantities into 32-bit units, as if by the following: </del>
+</p>
+<p>
+<del>First extract the rightmost <tt>u</tt> bits from each of the <tt>n = end
+- begin</tt> elements of the supplied sequence and concatenate all the
+extracted bits to initialize a single (possibly very large) unsigned
+binary number, <tt>b = &sum;<sup>n-1</sup><sub>i=0</sub> (begin[i] 
+mod 2<sup>u</sup>) &middot; 2<sup>w&middot;i</sup></tt> (in which the bits of each <tt>begin[i]</tt>
+are treated as denoting an unsigned quantity). Then carry out 
+the following algorithm:</del>
+</p>
+<blockquote><p style="white-space: pre;"><del>
+v.clear(); 
+if ($w$ &lt; 32) 
+  v.push_back($n$); 
+for( ; $n$ &gt; 0; --$n$) 
+  v.push_back(b mod 2<sup>32</sup>), b /= 2<sup>32</sup>;
+</del></p></blockquote>
+<blockquote>
+<p style="white-space: pre;"><ins>
+for (InputIterator s = begin; s != end; ++s)
+   v.push_back((*s) mod 2<sup>32</sup>);
+</ins></p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+
+<p><b>Rationale:</b></p><p>
+Addressed by
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2836.pdf">N2836</a> 
+"Wording Tweaks for Concept-enabled Random Number Generation in C++0X".
+</p>
+
+
+
+
+</body>
+</html>

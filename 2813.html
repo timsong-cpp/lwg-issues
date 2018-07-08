@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2813: std::function should not return dangling references</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2813" href="lwg-active.html#2813">2813.</a> <tt>std::function</tt> should not return dangling references</h3>
+<p><b>Section:</b> 23.14.13.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Brian Bi <b>Opened:</b> 2016-11-03 <b>Last modified:</b> 2017-07-16 20:43:29 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+If a <tt>std::function</tt> has a reference as a return type, and that reference binds to a prvalue 
+returned by the callable that it wraps, then the reference is always dangling. Because any use of such 
+a reference results in undefined behaviour, the <tt>std::function</tt> should not be allowed to be 
+initialized with such a callable. Instead, the program should be ill-formed.
+<p/>
+A minimal example of well-formed code under the current standard that exhibits this issue:
+</p>
+<blockquote><pre>
+#include &lt;functional&gt;
+
+int main() 
+{
+  std::function&lt;const int&amp;()&gt; F([]{ return 42; });
+  int x = F(); // oops!
+}
+</pre></blockquote>
+
+<p><i>[2016-11-22, David Krauss comments and suggests wording]</i></p>
+
+<p>
+Indirect bindings may also introduce temporaries inside <tt>std::function</tt>, e.g.:
+</p>
+<blockquote><pre>
+void f(std::function&lt;long const&amp;()&gt;); // Retains an observer to a long.
+
+void g() {
+  int v;
+  f([&amp;]()-&gt;int&amp; { return v; } ); // int lvalue binds to long const&amp; through a temporary.
+}
+</pre></blockquote>
+<p>
+A fix has been implemented. Conversions that may be conversion operators are allowed, though, because those can 
+produce legitimate glvalues. Before adopting this, it need to be considered considered whether there should be 
+SFINAE or a hard error.
+</p>
+
+<p><i>[Issues Telecon 16-Dec-2016]</i></p>
+
+<p>Priority 2</p>
+
+<p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
+
+<p>Billy to work with Brian to rework PR. Status to Open</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4618">N4618</a>.
+</p>
+<ol>
+<li><p>Add a second paragraph to the remarks section of 23.14.13.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a>:</p>
+<blockquote>
+<pre>
+template&lt;class F&gt; function(F f);
+</pre>
+<blockquote>
+<p>
+-7- <i>Requires:</i> <tt>F</tt> shall be <tt>CopyConstructible</tt>.
+<p/>
+-8- <i>Remarks:</i> This constructor template shall not participate in overload resolution unless 
+</p>
+<ul>
+<li><p><tt>F</tt> is Lvalue-Callable (23.14.13.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func">[func.wrap.func]</a>) for argument types <tt>ArgTypes...</tt> and 
+return type <tt>R</tt><ins>, and</ins></p></li>
+<li><p><ins>If <tt>R</tt> is type "reference to <tt>T</tt>" and <tt><i>INVOKE</i>(ArgTypes...)</tt> has value category 
+<tt><i>V</i></tt> and type <tt>U</tt>:</ins></p>
+<ul>
+<li><p><ins><tt><i>V</i></tt> is a prvalue, <tt>U</tt> is a class type, and <tt>T</tt> is not reference-related 
+(11.6.3 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.ref">[dcl.init.ref]</a>) to <tt>U</tt>, and</ins></p></li>
+<li><p><ins><tt><i>V</i></tt> is an lvalue or xvalue, and either <tt>U</tt> is a class type or <tt>T</tt> is 
+reference-related to <tt>U</tt></ins>.</p></li>
+</ul>
+</li>
+</ul>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

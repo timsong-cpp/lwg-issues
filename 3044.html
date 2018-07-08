@@ -1,0 +1,76 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3044: Strange specification of max_size() for an allocator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3044" href="lwg-active.html#3044">3044.</a> Strange specification of <tt>max_size()</tt> for an allocator</h3>
+<p><b>Section:</b> 20.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jon Cohen <b>Opened:</b> 2017-12-06 <b>Last modified:</b> 2018-01-29 17:21:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.requirements">issues</a> in [allocator.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Table 31 in the C++17 standard specifies <tt>X::max_size()</tt> (where <tt>X</tt> is an allocator type) as "The largest value 
+that can meaningfully be passed to <tt>X::allocate()</tt>". Noticeably missing is the statement "<i>Throws:</i> Nothing".
+<p/>
+As an example of why this is an issue, note that <tt>vector::max_size()</tt> and <tt>allocator_traits::max_size()</tt> are 
+both marked <tt>noexcept</tt>. We must then interpret <tt>max_size()</tt> as being allowed to sometimes call 
+<tt>std::terminate</tt>, or else <tt>{vector, allocator_traits, ...}::max_size()</tt> must be allowed to directly calculate 
+<tt>numeric_limits&lt;size_type&gt;::max() / sizeof(value_type)</tt> instead of querying the allocator, even if 
+<tt>Alloc::max_size()</tt> exists. This seems like a bug in the wording for the requirements of <tt>max_size()</tt> in an 
+allocator type. I think an issue should be opened on this subject to add <i>Throws:</i> Nothing or similar to the requirements 
+of <tt>max_size()</tt> for an allocator.
+<p/>
+As an example consider writing up a framework to test the exception-safety of types in a given framework, since they were all 
+written in an exception-free environment. One of the types in the framework is an allocator which, in a controlled way, 
+can throw an exception at any point where it is allowed by the standard. It's important that the test framework be as pedantic 
+as possible, so the allocator type throws on <tt>max_size()</tt>, since it is currently allowed to by the standard. When a 
+reasonable <tt>vector</tt> implementation (at least those in libstdc++ and msvc) is, for example, asked to construct a 
+<tt>vector</tt> from an <tt>initializer_list</tt>, it will call <tt>allocator_traits&lt;Alloc&gt;::max_size()</tt>, which will 
+terminate the program because the exception thrown in <tt>Alloc::max_size()</tt> propagated through the <tt>noexcept</tt> 
+traits function. Although this is conformant behavior, I think it's a bug in the standard that a function as benign as 
+<tt>max_size()</tt> can terminate the program in this manner, and I think the fix is that a conformant allocator should be 
+required to supply a non-throwing <tt>max_size()</tt> member function.
+<p/>
+Daniel:
+<p/>
+This problem was shortly discussed during review of LWG <a href="2162">2162</a> (see comment 2012-08-05). At that time
+the more drastic but also more consistent requirement that an allocator's <tt>max_size</tt> function shall not throw
+exceptions has not been added. IMO this position should be reconsidered to follow the spirit of the new issue LWG 
+<a href="3044">3044</a>.
+</p>
+
+<p><i>[2018-01; Priority set to 3 after mailing list discussion]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2850: std::function move constructor does unnecessary work</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2850" href="lwg-defects.html#2850">2850.</a> <tt>std::function</tt> move constructor does unnecessary work</h3>
+<p><b>Section:</b> 23.14.13.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2016-12-15 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider [func.wrap.func.con]/p5:
+</p>
+<blockquote><pre>
+function(function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+<i>Effects:</i> If <tt>!f</tt>, <tt>*this</tt> has no target; otherwise, move constructs the target of <tt>f</tt> into the target 
+of <tt>*this</tt>, leaving <tt>f</tt> in a valid state with an unspecified value.
+</p>
+</blockquote>
+</blockquote>
+<p>
+By my reading, this wording requires the move constructor of <tt>std::function</tt> to construct an entirely new target object. 
+This is silly: in cases where the target is held in separately allocated memory (i.e. where the target doesn't fit in 
+<tt>std::function</tt>'s internal buffer, if any), <tt>std::function</tt>'s move constructor can be implemented by simply 
+transferring ownership of the existing target object (which is a simple pointer assignment), so this requirement forces an 
+unnecessary constructor invocation and probably an unnecessary allocation (the latter can be avoided with something like 
+double-buffering, but ew). Fixing this would technically be a visible change, but I have a hard time imagining reasonable 
+code that would be broken by it, especially since both libstdc++ and libc++ already do the sensible thing, constructing a 
+new target only if the target is held in an internal buffer, and otherwise assigning pointers.
+</p>
+
+<p><i>[2017-01-27 Telecon]</i></p>
+
+<p>Priority 0</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4618">N4618</a>.</p>
+
+<ol>
+<li><p>Edit 23.14.13.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a>/5 as indicated:</p>
+
+<blockquote class="note">
+<p>
+<i>Drafting note:</i> The "equivalent to ... before the construction" wording is based on the wording for <tt>MoveConstructible</tt>.
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+function(function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-5- <i><del>Effects</del><ins>Postconditions</ins>:</i> If <tt>!f</tt>, <tt>*this</tt> has no target; otherwise, <del>move 
+constructs the target of <tt>f</tt> into the target of <tt>*this</tt>, leaving <tt>f</tt></del><ins>the target of <tt>*this</tt> 
+is equivalent to the target of <tt>f</tt> before the construction, and <tt>f</tt> is</ins> in a valid state with an 
+unspecified value.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

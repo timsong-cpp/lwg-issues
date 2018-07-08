@@ -1,0 +1,118 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2140: Meaning of notify_all_at_thread_exit synchronization requirement?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2140" href="lwg-defects.html#2140">2140.</a> Meaning of <tt>notify_all_at_thread_exit</tt> synchronization requirement?</h3>
+<p><b>Section:</b> 33.5 <a href="https://timsong-cpp.github.io/cppwp/thread.condition">[thread.condition]</a> <b>Status:</b> <a href="lwg-active.html#C++14">C++14</a>
+ <b>Submitter:</b> Pete Becker <b>Opened:</b> 2012-03-06 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.condition">issues</a> in [thread.condition].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++14">C++14</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+<tt>notify_all_at_thread_exit</tt> has the following synchronization requirement:
+</p>
+<blockquote><p>
+<i>Synchronization</i>: The call to <tt>notify_all_at_thread_exit</tt> and the completion of the destructors 
+for all the current thread's variables of thread storage duration <em>synchronize with</em> (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+calls to functions waiting on <tt>cond</tt>.
+</p></blockquote>
+<p>
+The functions waiting on <tt>cond</tt> have already been called, otherwise they wouldn't be waiting. So how can a subsequent 
+call to <tt>notify_all_at_thread_exit</tt> synchronize with them?
+<p/>
+Also, "synchronizes with" is a relationship between library calls (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>&#47;8), so it's not 
+meaningful for completion of destructors for non-library objects. Presumably the intention wasn't so make library 
+destructors special here.
+</p>
+
+<p><i>[2012-03-09 Jeffrey Yasskin comments:]</i></p>
+
+
+<p>
+I think the text should say that "<tt>notify_all_at_thread_exit</tt> and destructor calls are sequenced before
+the <tt>lk.unlock()</tt>", and leave it at that, unless there's a funny implementation I haven't thought of.
+</p>
+
+<p><i>[2012-03-19 Hans Boehm comments:]</i></p>
+
+
+<p>
+I think the synchronization clause should just be replaced with (modulo wording tweaks):
+<p/>
+"The implied <tt>lk.unlock()</tt> call is sequenced after the destruction of all objects with thread storage duration 
+associated with the current thread."
+<p/>
+as Jeffrey suggested.
+<p/>
+To use this correctly, the notifying thread has to essentially acquire the lock, set a variable indicating it's done, 
+call <tt>notify_all_at_thread_exit()</tt>, while the waiting thread acquires the lock, and repeatedly waits on the 
+cv until the variable is set, and then releases the lock.  That ensures that we have the proper synchronizes with 
+relationship as a result of the lock.
+</p>
+
+<p><i>[2012, Portland: move to Review]</i></p>
+
+<p>
+The <tt>lk.unlock()</tt> refers back to the wording the previous paragraph.
+</p>
+<p>
+Moved to review
+</p>
+
+<p><i>[2013-04-20, Bristol]</i></p>
+
+<p>Accepted for the working paper</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3376.</p>
+
+<ol><li><p>Modify 33.5 <a href="https://timsong-cpp.github.io/cppwp/thread.condition">[thread.condition]</a> p8 as indicated:</p>
+
+<blockquote>
+<pre>
+void notify_all_at_thread_exit(condition_variable&amp; cond, unique_lock&lt;mutex&gt; lk);
+</pre><blockquote>
+<p>
+[&hellip;]
+<p/>
+-8- <i>Synchronization</i>: <del>The call to <tt>notify_all_at_thread_exit</tt> and the completion of the destructors for
+all the current thread's variables of thread storage duration synchronize with (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+calls to functions waiting on <tt>cond</tt></del> <ins>The implied <tt>lk.unlock()</tt> call is sequenced after the 
+destruction of all objects with thread storage duration associated with the current thread</ins>.
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2388: Handling self-assignment in the proposed library function std::exchange</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2388" href="lwg-closed.html#2388">2388.</a> Handling self-assignment in the proposed library function <tt>std::exchange</tt></h3>
+<p><b>Section:</b> 23.2.3 <a href="https://timsong-cpp.github.io/cppwp/utility.exchange">[utility.exchange]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Nick Calus <b>Opened:</b> 2014-05-09 <b>Last modified:</b> 2015-05-05 20:05:27 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#utility.exchange">issues</a> in [utility.exchange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In paper <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2013/n3668.html">N3668</a>, the addition of a template function 
+<tt>std::exchange</tt> had been proposed. In the rationale provided by the paper, we find the following:
+</p>
+<blockquote>
+<p>
+I chose the name for symmetry with <tt>atomic_exchange</tt>, since they behave the same except for this function not being atomic.
+</p>
+</blockquote>
+<p>
+and:
+</p>
+<blockquote>
+<p>
+Atomic objects provide an <tt>atomic_exchange</tt> function ([atomics.types.operations.req]p18) that <em>assigns a new value to the object 
+and returns the old value</em>. This operation is also useful on non-atomic objects, and this paper proposes adding it to the library.
+<p/>
+But the specified semantics of <tt>std::exchange</tt> is defined as follows:
+</p>
+</blockquote>
+<blockquote><pre>
+template &lt;class T, class U=T&gt; T exchange(T&amp; obj, U&amp;&amp; new_val);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+T old_val = std::move(obj);
+obj = std::forward&lt;U&gt;(new_val);
+return old_val;
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+<p>
+When looking at the post-condition of the <tt>std::exchange</tt> function, one would expect the return value to be the old value 
+of <tt>obj</tt> and also that <tt>obj</tt> now contains the value of <tt>new_value</tt>.
+This post-condition is violated when <tt>obj</tt> is a reference to the same object as <tt>new_value</tt> and type <tt>T</tt> 
+has move semantics.
+<p/>
+Given it's specification, it is clear that <tt>std::exchange</tt> is meant to be used with types that have move semantics.
+Therefore, the post-condition is violated for self-assignments.
+<p/>
+Suppose the following situation:
+<p/>
+You have a vector of objects. The objects implement move semantics and are emptied when moved from.
+You provide a function that allows you to replace an object at a specific index by a new object (provided by reference as 
+an argument to your function). When replacing an object, your function calls a member-function <tt>do_something_fancy</tt> 
+on the old object.
+</p>
+<blockquote><pre>
+void your_function(int i, X&amp; new_val) {
+  std::exchange(vec[i], new_val).do_something_fancy();
+}
+</pre></blockquote>
+<p>
+Your function gets called with a given index and the corresponding element of said vector. (by coincidence or by purpose, it 
+doesn't really matter)
+</p>
+<blockquote><pre>
+your_function(5, vec[5]);
+</pre></blockquote>
+<p>
+This will cause the object at <tt>vec[5]</tt> to be in an empty state.
+If this object would not implement move semantics, assignment performance is potentially worse, but at least it 
+is not in an empty (to my business logic, invalid) state.
+<p/>
+So to me, the current reference implementation of <tt>std::exchange</tt> does not have the behavior it is expected to have.
+</p>
+
+<p><i>[2014-12-18 Telecon]</i></p>
+
+<p>
+MC: does this resolution solve the problem?
+<p/>
+JW: and is the cost of the extra construction and move acceptable?
+<p/>
+AM: not all moves are cheap
+<p/>
+VV: seems like a design change
+<p/>
+JW: maybe this should be rolled into my unwritten paper on self-swap, so we deal with them consistently
+<p/>
+VV: we should update the issue saying something like that and maybe NAD Future
+<p/>
+MC: instead, add Requires clause saying the arguments are not the same.
+<p/>
+JW: interesting, that can even be checked in a debug mode assertion
+<p/>
+MC: ACTION: send alternative P/R that we can consider
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 23.2.3 <a href="https://timsong-cpp.github.io/cppwp/utility.exchange">[utility.exchange]</a> as indicated:</p>
+<blockquote><pre>
+template &lt;class T, class U=T&gt; T exchange(T&amp; obj, U&amp;&amp; new_val);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+<ins>T tmp = std::forward&lt;U&gt;(new_val);</ins>
+T old_val = std::move(obj);
+obj = <del>std::forward&lt;U&gt;(new_val)</del><ins>std::move(tmp)</ins>;
+return old_val;
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p>
+<strong>Previous resolution from Marshall [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N4296.</p>
+
+<ol>
+<li><p>Change 23.2.3 <a href="https://timsong-cpp.github.io/cppwp/utility.exchange">[utility.exchange]</a> as indicated:</p>
+<blockquote><pre>
+template &lt;class T, class U=T&gt; T exchange(T&amp; obj, U&amp;&amp; new_val);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires</i>: <tt>obj</tt> and <tt>new_val</tt> shall not refer to the same object.</ins>
+<p/>
+-1- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+T old_val = std::move(obj);
+obj = std::forward&lt;U&gt;(new_val);
+return old_val;
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-03-30, Marshall provides alternative wording]</i></p>
+
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+MC: self <tt>exchange</tt> does not work<br/>
+MC: PR is just to add requires<br/>
+STL: what if the new thing is a subobject, isn't that just as bad, any aliasing<br/>
+STL: don't know that we need to do anything here if we aren't changing the implementation<br/>
+NM: should remove the requires<br/>
+MC: so NAD<br/>
+STL: could add note<br/>
+NM: remove requires<br/>
+DK: requires isn't already there<br/>
+RL: no note?<br/>
+STL: no note, NAD, burden for next person that asks about aliasing<br/>
+DK: what do we do for <tt>swap</tt>?<br/>
+STL: self <tt>swap</tt> has always been noop, <tt>exchange</tt> could do something bad because it clears out<br/>
+MC: alright, NAD it is<br/>
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+The current specification is clear about the implications described by the issue example and is as intended.
+
+
+
+
+
+</body>
+</html>

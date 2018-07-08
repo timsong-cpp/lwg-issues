@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 387: std::complex over-encapsulated</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="387" href="lwg-defects.html#387">387.</a> <tt>std::complex</tt> over-encapsulated</h3>
+<p><b>Section:</b> 29.5 <a href="https://timsong-cpp.github.io/cppwp/complex.numbers">[complex.numbers]</a> <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Gabriel Dos Reis <b>Opened:</b> 2002-11-08 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#complex.numbers">active issues</a> in [complex.numbers].</p>
+<p><b>View all other</b> <a href="lwg-index.html#complex.numbers">issues</a> in [complex.numbers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The absence of explicit description of <tt>std::complex&lt;T&gt;</tt> layout
+makes it imposible to reuse existing software developed in traditional
+languages like Fortran or C with unambigous and commonly accepted
+layout assumptions.  There ought to be a way for practitioners to
+predict with confidence the layout of <tt>std::complex&lt;T&gt;</tt> whenever <tt>T</tt>
+is a numerical datatype.  The absence of ways to access individual
+parts of a <tt>std::complex&lt;T&gt;</tt> object as lvalues unduly promotes
+severe pessimizations. For example, the only way to change,
+independently, the real and imaginary parts is to write something like
+</p>
+
+<pre>
+complex&lt;T&gt; z;
+// ...
+// set the real part to r
+z = complex&lt;T&gt;(r, z.imag());
+// ...
+// set the imaginary part to i
+z = complex&lt;T&gt;(z.real(), i);
+</pre>
+
+<p>
+At this point, it seems appropriate to recall that a complex number
+is, in effect, just a pair of numbers with no particular invariant to
+maintain.  Existing practice in numerical computations has it that a
+complex number datatype is usually represented by Cartesian
+coordinates. Therefore the over-encapsulation put in the specification
+of <tt>std::complex&lt;&gt;</tt> is not justified.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>Add the following requirements to 29.5 <a href="https://timsong-cpp.github.io/cppwp/complex.numbers">[complex.numbers]</a> as 26.3/4:</p>
+<blockquote>
+<p>If <tt>z</tt> is an lvalue expression of type <i>cv</i> <tt>std::complex&lt;T&gt;</tt> then</p>
+
+<ul>
+<li>the expression <tt>reinterpret_cast&lt;cv T(&amp;)[2]&gt;(z)</tt>
+is well-formed; and</li>
+<li><tt>reinterpret_cast&lt;cv T(&amp;)[2]&gt;(z)[0]</tt> designates the
+real part of <tt>z</tt>; and</li>
+<li><tt>reinterpret_cast&lt;cv T(&amp;)[2]&gt;(z)[1]</tt> designates the
+imaginary part of <tt>z</tt>.</li>
+</ul>
+
+<p>
+Moreover, if <tt>a</tt> is an expression of pointer type <i>cv</i> <tt>complex&lt;T&gt;*</tt>
+and the expression <tt>a[i]</tt> is well-defined for an integer expression
+<tt>i</tt> then:
+</p>
+
+<ul>
+<li><tt>reinterpret_cast&lt;cv T*&gt;(a)[2*i]</tt> designates the real
+part of <tt>a[i]</tt>; and</li>
+<li><tt>reinterpret_cast&lt;cv T*&gt;(a)[2*i+1]</tt> designates the
+imaginary part of <tt>a[i]</tt>.</li>
+</ul>
+</blockquote>
+
+<p>
+In 29.5.2 <a href="https://timsong-cpp.github.io/cppwp/complex">[complex]</a> and 29.5.3 <a href="https://timsong-cpp.github.io/cppwp/complex.special">[complex.special]</a> add the following member functions
+(changing <tt>T</tt> to concrete types as appropriate for the specializations).
+</p>
+
+<blockquote><pre>
+void real(T);
+void imag(T);
+</pre></blockquote>
+
+<p>
+Add to 29.5.4 <a href="https://timsong-cpp.github.io/cppwp/complex.members">[complex.members]</a>
+</p>
+
+<blockquote>
+<pre>
+T real() const;
+</pre>
+<blockquote><p>
+<i>Returns:</i> the value of the real component
+</p></blockquote>
+<pre>
+void real(T val);
+</pre>
+<blockquote><p>
+Assigns <tt>val</tt> to the real component.
+</p></blockquote>
+<pre>
+T imag() const;
+</pre>
+<blockquote><p>
+<i>Returns:</i> the value of the imaginary component
+</p></blockquote>
+<pre>
+void imag(T val);
+</pre>
+<blockquote><p>
+Assigns <tt>val</tt> to the imaginary component.
+</p></blockquote>
+</blockquote>
+
+<p><i>[Kona: The layout guarantee is absolutely necessary for C
+  compatibility.  However, there was disagreement about the other part
+  of this proposal: retrieving elements of the complex number as
+  lvalues.  An alternative: continue to have <tt>real()</tt> and <tt>imag()</tt> return
+  rvalues, but add <tt>set_real()</tt> and <tt>set_imag()</tt>.  Straw poll: return
+  lvalues - 2, add setter functions - 5.  Related issue: do we want
+  reinterpret_cast as the interface for converting a complex to an
+  array of two reals, or do we want to provide a more explicit way of
+  doing it?  Howard will try to resolve this issue for the next
+  meeting.]</i></p>
+
+
+<p><i>[pre-Sydney: Howard summarized the options in n1589.]</i></p>
+
+
+<p><i>[
+Bellevue:
+]</i></p>
+
+
+<blockquote><p>
+Second half of proposed wording replaced and moved to Ready.
+</p></blockquote>
+
+<p><i>[
+Pre-Sophia Antipolis, Howard adds:
+]</i></p>
+
+
+<blockquote><p>
+Added the members to 29.5.3 <a href="https://timsong-cpp.github.io/cppwp/complex.special">[complex.special]</a> and changed from Ready to Review.
+</p></blockquote>
+
+<p><i>[
+Post-Sophia Antipolis:
+]</i></p>
+
+
+<blockquote><p>
+Moved from WP back to Ready so that the "and 29.5.3 <a href="https://timsong-cpp.github.io/cppwp/complex.special">[complex.special]</a>" in the proposed
+resolution can be officially applied.
+</p></blockquote>
+
+
+
+<p><b>Rationale:</b></p>
+<p>The LWG believes that C99 compatibility would be enough
+justification for this change even without other considerations.  All
+existing implementations already have the layout proposed here.</p>
+
+
+
+
+
+</body>
+</html>

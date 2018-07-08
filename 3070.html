@@ -1,0 +1,104 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3070: path::lexically_relative causes surprising results if a filename can also be a 
+root-name</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3070" href="lwg-active.html#3070">3070.</a> <tt>path::lexically_relative</tt> causes surprising results if a filename can also be a 
+<i>root-name</i></h3>
+<p><b>Section:</b> 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2018-02-23 <b>Last modified:</b> 2018-03-04 11:36:38 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.path.gen">active issues</a> in [fs.path.gen].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.path.gen">issues</a> in [fs.path.gen].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>path::lexically_relative</tt> constructs the resulting path with <tt>operator/=</tt>. If any of 
+the filename elements from <tt>*this</tt> are themselves acceptable <i>root-name</i>s, <tt>operator/=</tt> 
+will destroy any previous value, and take that <tt>root_name()</tt>. For example:
+</p>
+<blockquote><pre>
+path("/a:/b:").lexically_relative("/a:/c:")
+</pre></blockquote>
+<p>
+On a POSIX implementation, this would return <tt>path("../b:")</tt>, but on a Windows implementation, the 
+<tt>"b:"</tt> element is interpreted as a <i>root-name</i>, and clobbers the entire result <tt>path</tt>, 
+giving <tt>path("b:")</tt>. We should detect this problematic condition and fail (by returning <tt>path()</tt>).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<ol>
+<li><p>Change 30.11.7.4.11 <a href="https://timsong-cpp.github.io/cppwp/fs.path.gen">[fs.path.gen]</a> as indicated:</p>
+<blockquote>
+<pre>
+path lexically_relative(const path&amp; base) const;
+</pre>
+<blockquote>
+<p>
+-3- [&hellip;]
+<p/>
+-4- <i>Effects:</i> If <tt>root_name() != base.root_name()</tt> is <tt>true</tt> or 
+<tt>is_absolute() != base.is_absolute()</tt> is <tt>true</tt> or <tt>!has_root_directory() 
+&amp;&amp; base.has_root_directory()</tt> is <tt>true</tt> <ins>or if any <i>filename</i> 
+in <tt>relative_path()</tt> or <tt>base.relative_path()</tt> can be interpreted as a 
+<i>root-name</i></ins>, returns <tt>path()</tt>. <ins>[<i>Note:</i> On a POSIX implementation, 
+no <i>filename</i> in a <i>relative-path</i> is acceptable as a <i>root-name</i> 
+&mdash; <i>end note</i>]</ins> Determines
+the first mismatched element of <tt>*this</tt> and <tt>base</tt> as if by:
+</p>
+<blockquote><pre>
+auto [a, b] = mismatch(begin(), end(), base.begin(), base.end());
+</pre></blockquote>
+<p>
+Then,
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; if <tt>a == end()</tt> and <tt>b == base.end()</tt>, returns <tt>path(".")</tt>; 
+otherwise</p></li>
+<li><p>(4.2) &mdash; let <tt>n</tt> be the number of <i>filename</i> elements in <tt>[b, base.end())</tt> that 
+are not dot or dot-dot minus
+the number that are dot-dot. If <tt>n &lt; 0</tt>, returns <tt>path()</tt>; otherwise</p></li>
+<li><p>(4.3) &mdash; returns an object of class <tt>path</tt> that is default-constructed, followed by</p>
+<ol style="list-style-type: none">
+<li><p>(4.3.1) &mdash; application of <tt>operator/=(path(".."))</tt> <tt>n</tt> times, and then</p></li>
+<li><p>(4.3.2) &mdash; application of <tt>operator/=</tt> for each element in <tt>[a, end())</tt>.</p></li>
+</ol>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

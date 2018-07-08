@@ -1,0 +1,134 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2245: packaged_task::reset() memory allocation</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2245" href="lwg-defects.html#2245">2245.</a> <tt>packaged_task::reset()</tt> memory allocation</h3>
+<p><b>Section:</b> 33.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2013-03-05 <b>Last modified:</b> 2017-03-20 14:48:03 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.task.members">issues</a> in [futures.task.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+The effects of <tt>packaged_task::reset()</tt> result in memory allocation, but
+don't allow a user to provide an allocator.
+<p/>
+<tt>packaged_task::reset()</tt> needs to be overloaded like so:
+</p>
+
+<blockquote><pre>
+template&lt;class Alloc&gt;  
+void reset(const Alloc&amp;);
+</pre></blockquote>
+
+<p>
+Alternatively, the effects of <tt>reset()</tt> need to require the same allocator is used 
+as at construction, which would require the constructor to store the allocator for later use.
+<p/>
+I like to remark that GCC at the moment uses the second option, i.e. the allocator passed to the constructor 
+(if any) is used to create the new shared state, because this didn't require any change to the
+interface.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Handed over to SG1.
+</p>
+
+<p><i>[2015-05 Lenexa, SG1 response]</i></p>
+
+<p>
+No strong opinions in SG1, and this is really an LWG issue.  Back to you.
+</p>
+
+<p><i>[2016-08-02 Chicago, Billy O'Neal comments and suggests concrete wording]</i></p>
+
+<p>
+Talked this over with Alasdair, who says there's little desire to allow the <tt>packaged_task</tt> to 
+be change allocators after initial construction, making what libstdc++ does already the "right thing." 
+A clarification note is still necessary to indicate that the allocator supplied to the 
+<tt>allocator_arg_t</tt> constructor is to be used.
+</p>
+<p>Wed PM: Move to Tentatively Ready</p>
+
+<p><i>[2016-09-08]</i></p>
+
+<p>Alisdair requests change to Review.</p>
+
+<p><i>[2017-03-03, Kona]</i></p>
+
+<p>This was resolved by adopting <a href="2921">2921</a>, which removed the constructors that take allocators.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606
+</p>
+
+<ol>
+<li><p>Change 33.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void reset();
+</pre>
+<blockquote>
+<p>
+-22- <i>Effects:</i> 
+</p>
+<ul>
+<li><p><ins>if the shared state associated with <tt>*this</tt> was created via the <tt>packaged_task(F&amp;&amp; f)</tt> 
+constructor, a</ins><del>A</del>s if <tt>*this = packaged_task(std::move(f))</tt>, where <tt>f</tt> is the task stored in 
+<tt>*this</tt>.</p></li>
+<li><p><ins>if the shared state associated with <tt>*this</tt> was created via the 
+<tt>packaged_task(allocator_arg_t, Allocator&amp; a, F&amp;&amp;)</tt> constructor, as if 
+<tt>*this = packaged_task(allocator_arg, a, std::move(f))</tt>, where <tt>a</tt> is the allocator used to allocate 
+the shared state associated with <tt>*this</tt>, and <tt>f</tt> is the task stored in <tt>*this</tt>.</ins></p></li>
+</ul>
+<p>
+[<i>Note:</i> This constructs a new shared state for <tt>*this</tt>. The old state is abandoned 
+(30.6.4). &mdash; <i>end note</i>]
+<p/>
+-23- <i>Throws:</i>
+</p>
+<ul>
+<li><p><ins>if no allocator was used,</ins> <tt>bad_alloc</tt> if memory for the new shared state could not be allocated.</p></li>
+<li><p><ins>if an allocator was used, any exception thrown by <tt>std::allocator_traits&lt;Allocator&gt;::template 
+rebind_traits&lt;<i>unspecified</i>&gt;::allocate</tt>.</ins></p></li>
+<li><p>any exception thrown by the move constructor of the task stored in the shared state.</p></li>
+<li><p><tt>future_error</tt> with an error condition of <tt>no_state</tt> if <tt>*this</tt> has no shared state.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
