@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3153: Common and common_type have too little in common</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3153" href="lwg-active.html#3153">3153.</a> <tt>Common</tt> and <tt>common_type</tt> have too little in common</h3>
+<p><b>Section:</b> 17.4.6 <a href="https://timsong-cpp.github.io/cppwp/concept.common">[concept.common]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2018-08-10 <b>Last modified:</b> 2018-08-11 03:30:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#concept.common">active issues</a> in [concept.common].</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.common">issues</a> in [concept.common].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>Common</tt> concept when applied to types <tt>T</tt> and <tt>U</tt>
+requires that <tt>T</tt> and <tt>U</tt> are each <tt>ConvertibleTo</tt>
+(17.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertibleto">[concept.convertibleto]</a>) their common type
+<tt>common_type_t&lt;T, U&gt;</tt>. <tt>ConvertibleTo</tt> requires both
+implicit and explicit conversions with equivalent results. The requirement for
+implicit conversion is notably not a requirement for specializing
+<tt>common_type</tt> as detailed in 19.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a>:
+</p>
+<blockquote>
+-5- Such a specialization need not have a member named <tt>type</tt>, but if it
+does, that member shall be a <i>typedef-name</i> for an accessible and
+unambiguous cv-unqualified non-reference type <tt>C</tt> to which each of the
+types <tt>T1</tt> and <tt>T2</tt> is explicitly convertible.
+</blockquote>
+<p>
+which only requires <em>explicit</em> conversion to be valid. While it's not
+inconsistent that the <tt>Common</tt> concept's requirements are a refinement of
+the requirements for <tt>common_type</tt>, there's no good reason for this
+additional requirement. The stated design intent is to enable writing monomorphic
+predicates that can compare <tt>T</tt>s with <tt>U</tt>s (and vice versa) by
+accepting two arguments of type <tt>common_type_t&lt;T, U&gt;</tt>, but this
+role has been superseded by the addition of <tt>CommonReference</tt> and
+<tt>common_reference_t</tt> to the ranges design. The existence of pairs of
+types that are only explicitly convertible to their common type suggests that
+using <tt>Common</tt> in this way would never be a fully generic solution in any
+case.
+</p>
+<p>
+The only existing use of the <tt>Common</tt> concept in
+either the working draft or the Ranges proposal is as a soundness check on the
+<a href="https://timsong-cpp.github.io/cppwp/ranges-ts/counted.iter.op.comp">comparison</a>
+and
+<a href="https://timsong-cpp.github.io/cppwp/ranges-ts/counted.iter.nonmember">difference</a>
+operators of <tt>counted_iterator</tt>, none of which actually convert any
+argument to the common type in their normal operation. It would seem that we
+could strike the additional requirement without impacting the Ranges design,
+which would allow for future uses of the <tt>Common</tt> concept with types
+like <tt>chrono::duration</tt> (25.5 <a href="https://timsong-cpp.github.io/cppwp/time.duration">[time.duration]</a>) which sometimes
+provide only explicit conversion to a common type.
+</p>
+<p>
+Notably, removing the requirement for implicit conversion will also make the
+<tt>Common</tt> concept consistent with the description in
+17.4.6 <a href="https://timsong-cpp.github.io/cppwp/concept.common">[concept.common]</a> p1: "If <tt>T</tt> and <tt>U</tt> can both be
+explicitly converted to some third type, <tt>C</tt>, then <tt>T</tt> and
+<tt>U</tt> share a common type, <tt>C</tt>."
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ul>
+<li><p>Modify the definition of <tt>Common</tt> in 17.4.6 <a href="https://timsong-cpp.github.io/cppwp/concept.common">[concept.common]</a>
+as follows:</p>
+<blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  concept Common =
+    Same&lt;common_type_t&lt;T, U&gt;, common_type_t&lt;U, T&gt;&gt; &amp;&amp;
+    <del>ConvertibleTo&lt;T, common_type_t&lt;T, U&gt;&gt; &amp;&amp;</del>
+    <del>ConvertibleTo&lt;U, common_type_t&lt;T, U&gt;&gt; &amp;&amp;</del>
+    <ins>requires {</ins>
+      <ins>static_cast&lt;common_type_t&lt;T, U&gt;&gt;(declval&lt;T&gt;())</ins>
+      <ins>static_cast&lt;common_type_t&lt;T, U&gt;&gt;(declval&lt;U&gt;())</ins>
+    <ins>} &amp;&amp;</ins>
+    CommonReference&lt;
+      add_lvalue_reference_t&lt;const T&gt;,
+      add_lvalue_reference_t&lt;const U&gt;&gt; &amp;&amp;
+    CommonReference&lt;
+      add_lvalue_reference_t&lt;common_type_t&lt;T, U&gt;&gt;,
+      common_reference_t&lt;
+        add_lvalue_reference_t&lt;const T&gt;,
+        add_lvalue_reference_t&lt;const U&gt;&gt;&gt;;
+</pre>
+</blockquote>
+</li>
+</ul>
+
+
+
+
+
+</body>
+</html>
