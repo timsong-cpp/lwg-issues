@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2419: Clang's libc++ extension to std::tuple</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2419" href="lwg-defects.html#2419">2419.</a> Clang's libc++ extension to <tt>std::tuple</tt></h3>
+<p><b>Section:</b> 19.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Akim Demaille <b>Opened:</b> 2014-07-11 <b>Last modified:</b> 2018-06-23 21:17:35 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The issue has been submitted after exchanges with the clang++ team
+as a consequence of two PR I sent:
+<p/>
+<a href="http://llvm.org/bugs/show_bug.cgi?id=20174">Issue 20174</a>
+<p/>
+<a href="http://llvm.org/bugs/show_bug.cgi?id=20175">Issue 20175</a>
+<p/>
+The short version is shown in the program below:
+</p>
+<blockquote>
+<pre>
+#include &lt;iostream&gt;
+#include &lt;tuple&gt;
+
+struct base
+{
+  void out(const std::tuple&lt;char, char&gt;&amp; w) const
+  {
+    std::cerr &lt;&lt; "Tuple: " &lt;&lt; std::get&lt;0&gt;(w) &lt;&lt; std::get&lt;1&gt;(w) &lt;&lt; '\n';
+  }
+};
+
+struct decorator
+{
+  base b_;
+
+  template &lt;typename... Args&gt;
+  auto
+  out(Args&amp;&amp;... args)
+    -> decltype(b_.out(args...))
+  {
+    return b_.out(args...);
+  }
+
+  void out(const char&amp; w)
+  {
+    std::cerr &lt;&lt; "char: " &lt;&lt; w &lt;&lt; '\n';
+  }
+};
+
+int main()
+{
+  decorator d{base{}};
+  char l = 'a';
+  d.out(l);
+}
+</pre>
+</blockquote>
+<p>
+This is a stripped down version of a real world case where I
+wrap objects in decorators.  These decorators contributes some
+functions, and forward all the rest of the API to the wrapped
+object using perfect forwarding.  There can be overloaded names.
+<p/>
+Here the inner object provides an
+</p>
+<blockquote><pre>
+out(const std::tuple&lt;char, char&gt;&amp;) -&gt; void
+</pre></blockquote>
+<p>
+function, and the wrappers, in addition to perfect forwarding,
+provides
+</p>
+<blockquote><pre>
+out(const char&amp;) -&gt; void
+</pre></blockquote>
+<p>
+The main function then call <tt>out(l)</tt> where <tt>l</tt> is a <tt>char</tt> lvalue.
+<p/>
+With (GCC's) libstdc++ I get the expected result: the <tt>char</tt>
+overload is run.  With (clang++'s) libc++ it is the tuple
+version which is run.
+</p>
+<blockquote><pre>
+$ g++-mp-4.9 -std=c++11 bar.cc &amp;&amp; ./a.out
+char: a
+$ clang++-mp-3.5 -std=c++11 bar.cc -Wall &amp;&amp; ./a.out
+Tuple: a
+</pre></blockquote>
+<p>
+It turns out that this is the result of an extension of <tt>std::tuple</tt>
+in libc++ where they accept constructors with fewer values that
+tuple elements.
+<p/>
+The purpose of this issue is to ask the standard to forbid
+that this extension be allowed to participate in overload resolution.
+</p>
+
+<p><i>[2014-10-05, Daniel comments]</i></p>
+
+<p>
+This issue is closely related to LWG <a href="2312">2312</a>.
+</p>
+
+<p><i>[2014-11 Urbana]</i></p>
+
+<p>
+Moved to LEWG.
+</p>
+<p>
+Extensions to <tt>tuple</tt>'s design are initially a question for LEWG.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This was resolved by the adoption of <a href="2312">2312</a> and <a href="2549">2549</a>.
+</p>
+
+
+
+
+
+</body>
+</html>

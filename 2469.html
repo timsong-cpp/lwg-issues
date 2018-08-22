@@ -1,0 +1,360 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2469: Wrong specification of Requires clause of operator[] for map and unordered_map</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2469" href="lwg-defects.html#2469">2469.</a> Wrong specification of Requires clause of <tt>operator[]</tt> for <tt>map</tt> and <tt>unordered_map</tt></h3>
+<p><b>Section:</b> 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a>, 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2015-01-21 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#map.access">issues</a> in [map.access].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The "Requires:" clause for the <tt>operator[]</tt> for the <tt>unordered_map</tt> and <tt>map</tt>, are defining 
+separate requirements for insertability into container of <tt>mapped_type</tt> and <tt>key_type</tt>.
+<p/>
+21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> p2: // <tt>T&amp; operator[](const key_type&amp; x);</tt>
+<p/>
+<i>Requires</i>: <tt>key_type</tt> shall be <tt>CopyInsertable</tt> and <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> 
+into <tt>*this</tt>.
+<p/>
+21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> p6: // <tt>T&amp; operator[](key_type&amp;&amp; x)</tt>
+<p/>
+<i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>.
+<p/>
+21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> p1: // <tt>mapped_type&amp; operator[](const key_type&amp; k); 
+mapped_type&amp; operator[](key_type&amp;&amp; k);</tt>
+<p/>
+<i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>. For the first operator, 
+<tt>key_type</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>. For the second operator, <tt>key_type</tt> shall 
+be <tt>MoveConstructible</tt>.
+<p/>
+Definition of the appropriate requirements: 21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p15.
+<p/>
+<tt>T</tt> is <tt>DefaultInsertable</tt> into <tt>X</tt> means that the following expression is well-formed: //p15.1
+<p/>
+<tt>allocator_traits&lt;A&gt;::construct(m, p)</tt>
+<p/>
+<tt>T</tt> is <tt>MoveInsertable</tt> into <tt>X</tt> means that the following expression is well-formed:   //p15.3
+<p/>
+<tt>allocator_traits&lt;A&gt;::construct(m, p, rv)</tt>
+<p/>
+<tt>T</tt> is <tt>CopyInsertable</tt> into <tt>X</tt> means that, in addition to <tt>T</tt> being <tt>MoveInsertable</tt> 
+into <tt>X</tt>, the following expression is well-formed: //p15.4
+<p/>
+<tt>allocator_traits&lt;A&gt;::construct(m, p, v)</tt>
+<p/>
+In the context of above definition the requirement "<tt>key_type</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>" 
+would mean that the key element of the <tt>pair&lt;const key_type, mapped_type&gt;</tt> (<tt>value_type</tt> of the map) 
+should be constructed using separate call to the <tt>construct</tt> method, the same applies for the <tt>mapped_type</tt>. 
+Such behavior is explicitly prohibited by 21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> p3.
+</p>
+<blockquote><p>
+For the components affected by this sub-clause that declare an allocator_type, objects stored in these 
+components shall be constructed using the <tt>allocator_traits&lt;allocator_type&gt;::construct</tt> function and
+destroyed using the <tt>allocator_traits&lt;allocator_type&gt;::destroy</tt> function (20.7.8.2). These functions
+are called only for the container's element type, not for internal types used by the container.
+</p></blockquote>
+<p>
+It clearly states that <tt>element_type</tt> of the map, must be constructed using allocator for value type, which 
+disallows using of separate construction of first and second element, regardless of the fact if it can be actually 
+performed without causing undefined behavior.
+<p/>
+That means that the <tt>MoveInsertable</tt> and similar requirements may only be expressed in terms of <tt>value_type</tt>, 
+not its members types.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+This issue is related to <a href="2464">2464</a>.
+<p/>
+GR: Effects should say "returns ...". DK: Or just have a Returns clause? MC: A Returns clause is a directive to implementers.
+<p/>
+TK/DK: This PR fails to address the requirements about which it complained in the first place. DK: I can reword this. TK can help. 
+</p> 
+
+<p><i>[2015-03-29, Daniel provides improved wording]</i></p>
+
+<p>
+The revised wording fixes the proper usage of the magic "Equivalent to" wording, which automatically induces <i>Requires:</i>, 
+<i>Returns:</i>, and <i>Complexity:</i> elements (and possibly more). This allows us to strike all the remaining
+elements, because they fall out from the semantics of the wording defined by <a href="2464">2464</a>. In particular it is important
+to realize that the wording form
+</p>
+<blockquote>
+<p>
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from <tt>piecewise_construct</tt>, 
+<tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple(forward&lt;Args&gt;(args)...)</tt>
+</p>
+</blockquote>
+<p>
+degenerates for the empty pack expansion <tt>args</tt> to:
+</p>
+<blockquote>
+<p>
+<tt>value_type</tt> shall be <tt>EmplaceConstructible</tt> into <tt>map</tt> from <tt>piecewise_construct</tt>, 
+<tt>forward_as_tuple(k)</tt>, <tt>forward_as_tuple()</tt>
+</p>
+</blockquote>
+<p>
+which again means that such a <tt>pair</tt> construction (assuming <tt>std::allocator</tt>) would copy <tt>k</tt>
+into member <tt>first</tt> and would value-initialize member <tt>second</tt>.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N4296.</p>
+
+<p>Accept resolution of the issue issue <a href="2464">2464</a> and define <tt>operator[]</tt> as follows 
+(This would also address issue <a href="2274">2274</a>):</p>
+
+<ol>
+<li><p>Change 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+T&amp; operator[](const key_type&amp; x);
+</pre>
+<blockquote><p>
+-1- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(x, T())</tt> 
+into the map</del><ins>Equivalent to: <tt>try_emplace(x).first-&gt;second</tt></ins>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+T&amp; operator[](key_type&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(std::move(x), T())</tt> 
+into the map</del><ins>Equivalent to: <tt>try_emplace(move(x)).first-&gt;second</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+mapped_type&amp; operator[](const key_type&amp; k);
+mapped_type&amp; operator[](key_type&amp;&amp; k);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Effects</i>: <del>If the <tt>unordered_map</tt> does not already contain an element whose key is equivalent to <tt>k</tt>, 
+the first operator inserts the value <tt>value_type(k, mapped_type())</tt> and the second operator inserts the
+value <tt>value_type(std::move(k), mapped_type())</tt></del><ins>For the first operator, equivalent to: 
+<tt>try_emplace(k).first-&gt;second</tt>; for the second operator, equivalent to: 
+<tt>try_emplace(move(k)).first-&gt;second</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N4296.</p>
+
+<p>Accept resolution of the issue issue <a href="2464">2464</a> and define <tt>operator[]</tt> as follows 
+(This would also address issue <a href="2274">2274</a>):</p>
+
+<ol>
+<li><p>Change 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+T&amp; operator[](const key_type&amp; x);
+</pre>
+<blockquote><p>
+-1- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(x, T())</tt> 
+into the map.</del><ins>Equivalent to: <tt>return try_emplace(x).first-&gt;second;</tt></ins>
+<p/>
+<del>-2- <i>Requires</i>: <tt>key_type</tt> shall be <tt>CopyInsertable</tt> and <tt>mapped_type</tt> shall be 
+<tt>DefaultInsertable</tt> into <tt>*this</tt>.</del>
+<p/>
+<del>-3- <i>Returns</i>: A reference to the <tt>mapped_type</tt> corresponding to <tt>x</tt> in <tt>*this</tt>.</del>
+<p/>
+<del>-4- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+T&amp; operator[](key_type&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(std::move(x), T())</tt> 
+into the map.</del><ins>Equivalent to: <tt>return try_emplace(move(x)).first-&gt;second;</tt></ins>
+<p/>
+<del>-6- <i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>.</del>
+<p/>
+<del>-7- <i>Returns</i>: A reference to the <tt>mapped_type</tt> corresponding to <tt>x</tt> in <tt>*this</tt>.</del>
+<p/>
+<del>-8- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+mapped_type&amp; operator[](const key_type&amp; k);
+mapped_type&amp; operator[](key_type&amp;&amp; k);
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>. For the first operator, 
+<tt>key_type</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>. For the second operator, <tt>key_type</tt> shall 
+be <tt>MoveConstructible</tt>.</del>
+<p/>
+-2- <i>Effects</i>: <del>If the <tt>unordered_map</tt> does not already contain an element whose key is equivalent to <tt>k</tt>, 
+the first operator inserts the value <tt>value_type(k, mapped_type())</tt> and the second operator inserts the
+value <tt>value_type(std::move(k), mapped_type())</tt></del><ins>For the first operator, equivalent to:</ins>
+</p>
+<blockquote>
+<pre> 
+<ins>return try_emplace(k).first-&gt;second;</ins>
+</pre>
+</blockquote>
+<p>
+<ins>for the second operator, equivalent to:</ins>
+</p>
+<blockquote>
+<pre>
+<ins>return try_emplace(move(k)).first-&gt;second;</ins>
+</pre>
+</blockquote>
+<p>
+<del>-3- <i>Returns</i>: A reference to <tt>x.second</tt>, where <tt>x</tt> is the (unique) element whose key is equivalent to 
+<tt>k</tt>.</del>
+<p/>
+<del>-4- <i>Complexity</i>: Average case &#x1d4aa;(<tt>1</tt>), worst case &#x1d4aa;(<tt>size()</tt>).</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4431.</p>
+
+<p>Accept resolution of the issue issue <a href="2464">2464</a> and define <tt>operator[]</tt> as follows 
+(This would also address issue <a href="2274">2274</a>):</p>
+
+<ol>
+<li><p>Change 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+T&amp; operator[](const key_type&amp; x);
+</pre>
+<blockquote><p>
+-1- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(x, T())</tt> 
+into the map.</del><ins>Equivalent to: <tt>return try_emplace(x).first-&gt;second;</tt></ins>
+<p/>
+<del>-2- <i>Requires</i>: <tt>key_type</tt> shall be <tt>CopyInsertable</tt> and <tt>mapped_type</tt> shall be 
+<tt>DefaultInsertable</tt> into <tt>*this</tt>.</del>
+<p/>
+<del>-3- <i>Returns</i>: A reference to the <tt>mapped_type</tt> corresponding to <tt>x</tt> in <tt>*this</tt>.</del>
+<p/>
+<del>-4- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+T&amp; operator[](key_type&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: <del>If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(std::move(x), T())</tt> 
+into the map.</del><ins>Equivalent to: <tt>return try_emplace(move(x)).first-&gt;second;</tt></ins>
+<p/>
+<del>-6- <i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>.</del>
+<p/>
+<del>-7- <i>Returns</i>: A reference to the <tt>mapped_type</tt> corresponding to <tt>x</tt> in <tt>*this</tt>.</del>
+<p/>
+<del>-8- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+mapped_type&amp; operator[](const key_type&amp; k);
+<del>mapped_type&amp; operator[](key_type&amp;&amp; k);</del>
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Requires</i>: <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>. For the first operator, 
+<tt>key_type</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>. For the second operator, <tt>key_type</tt> shall 
+be <tt>MoveConstructible</tt>.</del>
+<p/>
+-2- <i>Effects</i>: <ins>Equivalent to <tt>return try_emplace(k).first-&gt;second;</tt></ins><del>If the <tt>unordered_map</tt> 
+does not already contain an element whose key is equivalent to <tt>k</tt>, 
+the first operator inserts the value <tt>value_type(k, mapped_type())</tt> and the second operator inserts the
+value <tt>value_type(std::move(k), mapped_type())</tt></del>
+</p>
+<p>
+<del>-3- <i>Returns</i>: A reference to <tt>x.second</tt>, where <tt>x</tt> is the (unique) element whose key is equivalent to 
+<tt>k</tt>.</del>
+<p/>
+<del>-4- <i>Complexity</i>: Average case &#x1d4aa;(<tt>1</tt>), worst case &#x1d4aa;(<tt>size()</tt>).</del>
+</p>
+</blockquote>
+
+<pre>
+<ins>mapped_type&amp; operator[](key_type&amp;&amp; k);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to <tt>return try_emplace(move(k)).first-&gt;second;</tt></ins>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

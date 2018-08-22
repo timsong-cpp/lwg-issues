@@ -1,0 +1,80 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2316: weak_ptr::lock() should be atomic</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2316" href="lwg-defects.html#2316">2316.</a> <tt>weak_ptr::lock()</tt> should be atomic</h3>
+<p><b>Section:</b> 19.11.4.5 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak.obs">[util.smartptr.weak.obs]</a> <b>Status:</b> <a href="lwg-active.html#C++14">C++14</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2013-09-21 <b>Last modified:</b> 2017-07-05 22:14:34 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.weak.obs">issues</a> in [util.smartptr.weak.obs].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++14">C++14</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+19.11.3 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared">[util.smartptr.shared]</a>/4 says: "For purposes of determining the presence of a data race, member functions shall 
+access and modify only the <tt>shared_ptr</tt> and <tt>weak_ptr</tt> objects themselves and not objects they refer to. Changes 
+in <tt>use_count()</tt> do not reflect modifications that can introduce data races."  This requires <tt>shared_ptr/weak_ptr</tt> 
+implementations to protect their strong and weak refcounts with atomic operations, without the Standardese having to say this 
+elsewhere. However, 19.11.4.5 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak.obs">[util.smartptr.weak.obs]</a>/5 describes <tt>weak_ptr::lock()</tt> with 
+"<i>Returns:</i> <tt>expired() ? shared_ptr&lt;T&gt;() : shared_ptr&lt;T&gt;(*this)</tt>."  
+Even after considering the blanket wording about 
+data races, this specification is insufficient. If this conditional expression were literally implemented, the <tt>use_count()</tt> 
+could change from nonzero to zero after testing <tt>expired()</tt>, causing <tt>shared_ptr&lt;T&gt;(*this)</tt> to throw 
+<tt>bad_weak_ptr</tt> when the intention is for <tt>weak_ptr::lock()</tt> to return empty or nonempty without throwing &mdash; indeed, 
+<tt>weak_ptr::lock()</tt> is marked as <tt>noexcept</tt>.</p>
+<p>
+We all know what <tt>weak_ptr::lock()</tt> should do, the Standardese just doesn't say it. 
+<tt>shared_ptr(const weak_ptr&lt;Y&gt;&amp;)</tt>'s specification is not really affected because 
+19.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a>/23-27 describes the behavior with English instead of code.
+</p>
+
+<p><i>[Issaquah 2014-02-11: Move to Immediate]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3691.</p>
+
+<ol>
+<li><p>Edit 19.11.4.5 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.weak.obs">[util.smartptr.weak.obs]</a>/5 as indicated:</p>
+
+<blockquote><pre>
+shared_ptr&lt;T&gt; lock() const noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Returns:</i> <tt>expired() ? shared_ptr&lt;T&gt;() : shared_ptr&lt;T&gt;(*this)</tt><ins>, executed atomically</ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

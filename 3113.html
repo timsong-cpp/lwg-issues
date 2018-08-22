@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3113: polymorphic_allocator::construct() should more closely match scoped_allocator_adaptor::construct()</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3113" href="lwg-active.html#3113">3113.</a> <tt>polymorphic_allocator::construct()</tt> should more closely match <tt>scoped_allocator_adaptor::construct()</tt></h3>
+<p><b>Section:</b> 19.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2018-05-14 <b>Last modified:</b> 2018-06-19 05:49:11 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mem.poly.allocator.mem">active issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Based on my new understanding of how <tt>uses_allocator</tt> and <tt>is_constructible</tt> are supposed to play together, 
+I think there was a minor defect in the resolution of LWG <a href="2969">2969</a> "<tt>polymorphic_allocator::construct()</tt> 
+shouldn't pass <tt>resource()</tt>".
+<p/>
+The calls to <tt>is_constructible</tt> in 19.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> (10.2), which were added to resolve LWG 
+<a href="2969">2969</a>, are missing an lvalue-qualification to match the lvalue-qualification of the parallel calls in 
+ [llocator.adaptor.member] (9.2).
+<p/>
+The latter talks about constructibility from <tt>inner_allocator_type&amp;</tt>; the former (after LWG 2969) talks about 
+constructibility from <tt>polymorphic_allocator</tt> with no ref-qualification. But since we are perfect-forwarding 
+<tt>*this</tt> through a tuple of references, we definitely <em>are</em> going to try to construct the target object from 
+a <tt>polymorphic_allocator&amp;</tt> and not from a <tt>polymorphic_allocator</tt>. I believe that the wording in
+19.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> (10.2) needs to be updated to make the program ill-formed in cases where
+that construction is going to fail.
+<p/>
+Orthogonally, I believe we need additional <tt>std::move</tt>'s in the sentence following 19.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> (10.8)
+for two reasons:
+</p>
+<ul>
+<li><p>We don't want to copy-construct the user's arguments that came in
+  by-value as part of <tt>x</tt> and/or <tt>y</tt>.</p></li>
+<li><p>The value category of the argument to <tt>pair</tt>'s constructor is currently
+  unspecified; it could reasonably be either an xvalue or a prvalue. Adding the <tt>std::move</tt> makes it clearer 
+  that we really want it to be an xvalue.</p></li>
+</ul>
+
+<p><i>[2018-06-18 after reflector discussion]</i></p>
+
+<p>Priority set to 3</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Edit 19.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T1, class T2, class... Args1, class... Args2&gt;
+  void construct(pair&lt;T1, T2&gt;* p, piecewise_construct_t, tuple&lt;Args1...&gt; x, tuple&lt;Args2...&gt; y);
+</pre>
+<blockquote>
+<p>
+-9- [&hellip;]
+<p/>
+-10- <i>Effects::</i> [&hellip;]
+</p>
+<ol style="list-style-type: none">
+<li><p>(10.1) &mdash; [&hellip;]</p></li>
+<li><p>(10.2) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T1,polymorphic_allocator&gt;</tt> is <tt>true</tt>
+and <tt>is_constructible_v&lt;T1, allocator_arg_t, polymorphic_allocator<ins>&amp;</ins>, Args1...&gt;</tt> is <tt>true</tt>,
+then <tt>xprime</tt> is <tt>tuple_cat(<del>make_tuple</del><ins>tuple&lt;allocator_arg_t, 
+polymorphic_allocator&amp;&gt;</ins>(allocator_arg, *this), std::move(x))</tt>.</p></li>
+<li><p>(10.3) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T1, polymorphic_allocator&gt;</tt> is <tt>true</tt>
+and <tt>is_constructible_v&lt;T1, Args1..., polymorphic_allocator<ins>&amp;</ins>&gt;</tt> is <tt>true</tt>, then 
+<tt>xprime</tt> is <tt>tuple_cat(std::move(x), <del>make_tuple</del><ins>tuple&lt;polymorphic_allocator&amp;&gt;</ins>(*this))</tt>.</p></li>
+<li><p>(10.4) &mdash; Otherwise the program is ill formed.</p></li>
+</ol>
+<p>
+Let <tt>yprime</tt> be a tuple constructed from <tt>y</tt> according to the appropriate rule from the following list:
+</p>
+<ol style="list-style-type: none">
+<li><p>(10.5) &mdash; [&hellip;]</p></li>
+<li><p>(10.6) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T2, polymorphic_allocator&gt;</tt> is <tt>true</tt>
+and <tt>is_constructible_v&lt;T2, allocator_arg_t, polymorphic_allocator<ins>&amp;</ins>, Args2...&gt;</tt> is <tt>true</tt>,
+then <tt>yprime</tt> is <tt>tuple_cat(<del>make_tuple</del><ins>tuple&lt;allocator_arg_t, 
+polymorphic_allocator&amp;&gt;</ins>(allocator_arg, *this), std::move(y))</tt>.</p></li>
+<li><p>(10.7) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T2, polymorphic_allocator&gt;</tt> is <tt>true</tt>
+and <tt>is_constructible_v&lt;T2, Args2..., polymorphic_allocator<ins>&amp;</ins>&gt;</tt> is <tt>true</tt>, then <tt>yprime</tt> 
+is <tt>tuple_cat(std::move(y), <del>make_tuple</del><ins>tuple&lt;polymorphic_allocator&amp;&gt;</ins>(*this))</tt>.</p></li>
+<li><p>(10.8) &mdash; Otherwise the program is ill formed.</p></li>
+</ol>
+<p>
+Then, using <tt>piecewise_construct</tt>, <tt><ins>std::move(</ins>xprime<ins>)</ins></tt>, and 
+<tt><ins>std::move(</ins>yprime<ins>)</ins></tt> as the constructor arguments, this function
+constructs a <tt>pair&lt;T1, T2&gt;</tt> object in the storage whose address is represented by <tt>p</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

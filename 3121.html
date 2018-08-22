@@ -1,0 +1,114 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3121: tuple constructor constraints for UTypes&amp;&amp;... overloads</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3121" href="lwg-active.html#3121">3121.</a> <tt>tuple</tt> constructor constraints for <tt>UTypes&amp;&amp;...</tt> overloads</h3>
+<p><b>Section:</b> 19.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matt Calabrese <b>Opened:</b> 2018-06-12 <b>Last modified:</b> 2018-08-20 15:00:12 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently the <tt>tuple</tt> constructors of the form:
+</p>
+<blockquote>
+<pre>
+template&lt;class... UTypes&gt;
+<i>EXPLICIT</i> constexpr tuple(UTypes&amp;&amp;...);
+</pre>
+</blockquote>
+<p>
+are not properly constrained in that in the 1-element <tt>tuple</tt> case, the constraints do no short-circuit when 
+the constructor would be (incorrectly) considered as a possible copy/move constructor candidate. libc++ has a 
+workaround for this, but the additional short-circuiting does not actually appear in the working draft.
+<p/>
+As an example of why this lack of short circuiting is a problem in practice, consider the following line:
+</p>
+<blockquote>
+<pre>
+bool a = std::is_copy_constructible_v&lt;std::tuple&lt;any&gt;&gt;;
+</pre>
+</blockquote>
+<p>
+The above code will cause a compile error because of a recursive trait definition. The copy constructibility 
+check implies doing substitution into the <tt>UTypes&amp;&amp;...</tt> constructor overloads, which in turn 
+will check if <tt>tuple&lt;any&gt;</tt> is convertible to any, which in turn will check if <tt>tuple&lt;any&gt;</tt> 
+is copy constructible (and so the trait is dependent on itself).
+<p/>
+I do not provide wording for the proposed fix in anticipation of requires clauses potentially changing how we 
+do the specification, however, the basic solution should be similar to what we've done for other standard library 
+types, which is to say that the very first constraint should be to check that if <tt>sizeof...(UTypes) == 1</tt> 
+and the type, after applying <tt>remove_cvref_t</tt>, is the <tt>tuple</tt> type itself, then we should force 
+substitution failure rather than checking any further constraints.
+</p>
+
+<p><i>[2018-06-23 after reflector discussion]</i></p>
+
+<p>Priority set to 3</p>
+
+<p><i>[2018-08-20, Jonathan provides wording]</i></p>
+
+
+<p><i>[2018-08-20, Daniel comments]</i></p>
+
+<p>
+The wording changes by this issue are very near to those suggested for LWG <a href="3155">3155</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ul>
+<li><p>Modify 19.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class... UTypes&gt; explicit(<i>see below</i>) constexpr tuple(UTypes&amp;&amp;... u);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Initializes the elements in the tuple with the corresponding value in 
+<tt>std::forward&lt;UTypes&gt;(u)</tt>.
+<p/>
+-10- <i>Remarks:</i> This constructor shall not participate in overload resolution unless 
+<tt>sizeof...(Types) == sizeof...(UTypes)</tt> and <tt>sizeof...(Types) &gt;= 1</tt> <ins>and <tt>(sizeof...(Types) 
+&gt; 1 || !is_same_v&lt;remove_cvref_t&lt;U<sub>0</sub>&gt;, tuple&gt;)</tt></ins> and 
+<tt>is_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&amp;&amp;&gt;</tt> is <tt>true</tt> 
+for all <tt><i>i</i></tt>. The expression inside <tt>explicit</tt> is equivalent to:
+<p/>
+<tt>!conjunction_v&lt;is_convertible&lt;UTypes, Types&gt;...&gt;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ul>
+
+
+
+
+
+</body>
+</html>

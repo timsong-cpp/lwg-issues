@@ -1,0 +1,178 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2381: Inconsistency in parsing floating point numbers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2381" href="lwg-active.html#2381">2381.</a> Inconsistency in parsing floating point numbers</h3>
+<p><b>Section:</b> 26.4.2.1.2 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2016-09-08 20:57:59 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#facet.num.get.virtuals">issues</a> in [facet.num.get.virtuals].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 26.4.2.1.2 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> we have:
+</p>
+<blockquote><p>
+Stage 3: The sequence of chars accumulated in stage 2 (the field) is converted to a numeric value by the
+rules of one of the functions declared in the header <tt>&lt;cstdlib&gt;</tt>:
+</p>
+<ul>
+<li><p>For a signed integer value, the function <tt>strtoll</tt>.</p></li>
+<li><p>For an unsigned integer value, the function <tt>strtoull</tt>.</p></li>
+<li><p>For a floating-point value, the function <tt>strtold</tt>.</p></li>
+</ul>
+</blockquote>
+<p>
+This implies that for many cases, this routine should return true:
+</p>
+<blockquote><pre>
+bool is_same(const char* p) 
+{
+  std::string str{p};
+  double val1 = std::strtod(str.c_str(), nullptr);
+  std::stringstream ss(str);
+  double val2;
+  ss &gt;&gt; val2;
+  return std::isinf(val1) == std::isinf(val2) &amp;&amp;                 // either they're both infinity
+         std::isnan(val1) == std::isnan(val2) &amp;&amp;                 // or they're both NaN
+         (std::isinf(val1) || std::isnan(val1) || val1 == val2); // or they're equal
+}
+</pre></blockquote>
+<p>
+and this is indeed true, for many strings:
+</p>
+<blockquote><pre>
+assert(is_same("0"));
+assert(is_same("1.0"));
+assert(is_same("-1.0"));
+assert(is_same("100.123"));
+assert(is_same("1234.456e89"));
+</pre></blockquote>
+<p>
+but not for others
+</p>
+<blockquote><pre>
+assert(is_same("0xABp-4")); // hex float
+assert(is_same("inf"));
+assert(is_same("+inf"));
+assert(is_same("-inf"));
+assert(is_same("nan"));
+assert(is_same("+nan"));
+assert(is_same("-nan"));
+
+assert(is_same("infinity"));
+assert(is_same("+infinity"));
+assert(is_same("-infinity"));
+</pre></blockquote>
+<p>
+These are all strings that are correctly parsed by <tt>std::strtod</tt>, but not by the stream extraction operators.
+They contain characters that are deemed invalid in stage 2 of parsing.
+<p/>
+If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that 
+<tt>strtold</tt> accepts.
+</p>
+
+<p><i>[2016-04, Issues Telecon]</i></p>
+
+<p>
+People are much more interested in round-tripping hex floats than handling <tt>inf</tt> and <tt>nan</tt>. Priority changed to P2.
+</p>
+<p>
+Marshall says he'll try to write some wording, noting that this is a very closely specified part of the standard, and has remained unchanged for a long time. Also, there will need to be a sample implementation.
+</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Zhihao provides wording</p>
+<p>The <tt>src</tt> array in Stage 2 does narrowing only.  The actual
+input validation is delegated to <tt>strtold</tt> (independent from
+the parsing in Stage 3 which is again being delegated
+to <tt>strtold</tt>) by saying:</p>
+
+<p>  [...] If it is not discarded, then a check is made to determine
+  if c is allowed as the next character of an input field of the
+  conversion specifier returned by Stage 1.</p>
+
+<p>So a conforming C++11 <tt>num_get</tt> is supposed to magically
+accept an hexfloat without an exponent</p>
+
+<p>  0x3.AB</p>
+
+<p>because we refers to C99, and the fix to this issue should be
+just expanding the <tt>src</tt> array.</p>
+
+<p>Support for Infs and NaNs are not proposed because of the
+complexity of nan(n-chars).</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Tues PM: Move to Open</p>
+
+<p><i>[2016-09-08, Zhihao Yuan comments and updates proposed wording]</i></p>
+
+<p>
+Examples added.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol> 
+<li><p>Change 26.4.2.1.2 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+
+<blockquote>
+<p><tt>static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";</tt></p>
+</blockquote>
+</li>
+
+<li><p>Append the following examples to 26.4.2.1.2 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+<blockquote>
+<p>
+<ins>[<i>Example:</i></ins>
+</p>
+<blockquote>
+<p>
+<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
+</p>
+<ul>
+<li><p><ins>if Stage 1 returns <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
+<li><p><ins>if Stage 1 returns <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
+<li><p><ins>if Stage 1 returns <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
+</ul>
+<p>
+<ins>In all cases, leaving the rest in the input.</ins>
+</p>
+</blockquote>
+<p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

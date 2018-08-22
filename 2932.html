@@ -1,0 +1,213 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2932: Constraints on parallel algorithm implementations are underspecified</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2932" href="lwg-defects.html#2932">2932.</a> Constraints on parallel algorithm implementations are underspecified</h3>
+<p><b>Section:</b> 23.3.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.exec">[algorithms.parallel.exec]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Dietmar K&uuml;hl <b>Opened:</b> 2017-02-05 <b>Last modified:</b> 2017-07-30 20:18:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#algorithms.parallel.exec">issues</a> in [algorithms.parallel.exec].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Section 23.3.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.exec">[algorithms.parallel.exec]</a> specifies constraints a user of the parallel algorithms has to obey. Notably, 
+it specifies in paragraph 3 that executions of element access functions are indeterminately sequenced with respect to each other. Correspondingly, it is the user's obligation to ensure that these calls do not introduce data races (this is also clarified in 
+a note on this section).
+<p/>
+Unfortunately, there is no constraint that, at least, mutating element access functions like <tt>operator++()</tt> on an 
+iterator are called on different objects. An odd implementation of a parallel algorithm could increment a shared iterator 
+from two threads without synchronisation of its own and the user would be obliged to make sure there is no data race!
+<p/>
+For example:
+</p>
+<blockquote><pre>
+template &lt;typename FwdIt&gt;
+FwdIt adjacent_find(std::execution::parallel_policy, FwdIt it, FwdIt end) 
+{
+  if (2 &lt;= std::distance(it, end)) {
+    FwdIt tmp(it);
+    auto f1 = std::async([&amp;tmp](){ ++tmp; });
+    auto f2 = std::async([&amp;tmp](){ ++tmp; });
+    f1.get();
+    f2.get();
+  }
+  return std::adjancent_find(it, end);
+}
+</pre></blockquote>
+<p>
+This code is, obviously, a contrived example but with the current specification a legal implementation of <tt>adjacent_find()</tt>. 
+The problem is that, e.g., for pointers there is a data race when incrementing <tt>tmp</tt>, i.e., the function can't be used 
+on pointers. I don't think any of the containers makes a guarantee that their iterators can be incremented without synchronisation, 
+i.e., the standard library doesn't have any iterators which could be used with this algorithm!
+<p/>
+Of course, no sane implementation would do anything like that. However, they are allowed to be implemented as above, making it unnecessarily hard and probably inefficient to use the algorithms: in portable code any user of the parallel algorithms needs 
+to deal with the possibility that mutating operations on the same object are called from different threads. There is a constraint 
+missing for the parallel algorithm implementations which limits calls to, at least, some element access functions to be applied 
+only to different objects if there is synchronisation done by the algorithm. At least, obviously mutating operations like the 
+iterator increment/decrement operators need to be correspondingly constrained.
+<p/>
+On the other hand, it seems reasonable that a shared data structure stores, e.g., a predicate used concurrently by all threads. 
+This use is quite reasonable and there is nothing wrong. That is, demanding that all element access functions are called on different objects between different threads would possibly adversely over-constraining the algorithms. Only the element access functions deliberately changing the object need to be constrained.
+<p/>
+Based on checking all algorithms in the standard library taking an <tt>ExecutionPolicy</tt> template parameter there are broadly 
+four groups of template parameters:
+</p>
+<ol>
+<li><p>Parameters with a known set of possible arguments: <tt>ExecutionPolicy</tt> (execution policies listed in 
+19.18 <a href="https://timsong-cpp.github.io/cppwp/execpol">[execpol]</a>).</p></li>
+<li><p>Parameters specifying types of objects which are expected not to change: <tt>BinaryOperation</tt>, <tt>BinaryPredicate</tt>,
+<tt>Compare</tt>, <tt>Function</tt>, <tt>Predicate</tt>, <tt>UnaryFunction</tt>, <tt>UnaryOperation</tt>, and <tt>T</tt> (all but 
+the last one are function objects although I couldn't locate concepts for some of them &mdash; that may be a separate issue).</p></li>
+<li><p>Parameters of mutable types which are also meant to be mutated: <tt>InputIterator</tt>, <tt>OutputIterator</tt>, 
+<tt>ForwardIterator</tt>, <tt>BidirectionalIterator</tt>, <tt>RandomAccessIterator</tt>, and <tt>Size</tt> (the concept for 
+<tt>Size</tt> also seems to be unspecified).</p></li>
+<li><p>Some algorithms use <tt>Generator</tt> which seems to be a mutable function object. However, I couldn't locate a concept 
+for this parameter.</p></li>
+</ol>
+<p>
+The problematic group is 3 and possibly 4: mutations on the objects are expected. It seem the general approach of disallowing 
+calling non-const functions without synchronisation applies. Note, however, that prohibiting calling of any non-const function 
+from the algorithms would put undue burden on the implementation of algorithms: any of the accessor functions may be non-const 
+although the concept assume that the function would be const. The constraint should, thus, only apply to functions which may 
+mutate the object according to their respective concept.
+</p>
+<p>
+Suggested Resolution:
+</p>
+<p>
+Add a statement prohibiting unsequenced calls to element access functions on the same object which are not applicable to 
+const objects according to the corresponding concept. I'm not sure how to best specify the constraint in general, though.
+<p/>
+Since the current algorithms use relatively few concepts there are fairly few operations actually affected. It may be 
+reasonable at least for the initial version (and until we could refer to constructs in concepts in the language) to 
+explicitly list the affected operations. I haven't done a full audit but iterator <tt>++</tt>, <tt>--</tt>, <tt>@=</tt> (for 
+<tt>@</tt> being any of the operators which can be combined with an assignment), and assignments on all objects may be 
+the set of affected element access functions whose use needs to be constrained.
+<p/>
+Here is a concrete proposal for the change: In 23.3.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.user">[algorithms.parallel.user]</a> add a paragraph:
+<p/>
+Parallel algorithms are constrained when calling mutating element access functions without synchronisation: if any mutating 
+element access function is called on an object there shall be no other unsynchronised accesses to this object. The mutating 
+element access functions are those which are specified as mutating object in the concept, notably assignment on any object, 
+operators <tt>++</tt>, <tt>--</tt>, <tt>+=</tt>, and <tt>-=</tt> on any of the iterator or <tt>Size</tt> parameters, and 
+any <tt>@=</tt> operators on the <tt>Size</tt> parameters.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
+
+<ol>
+<li><p>Modify 23.3.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.user">[algorithms.parallel.user]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- Function objects passed into parallel algorithms as objects of type <tt>Predicate</tt>, <tt>BinaryPredicate</tt>, 
+<tt>Compare</tt>, and <tt>BinaryOperation</tt> shall not directly or indirectly modify objects via their arguments.
+<p/>
+<ins>-?- Parallel algorithms are constrained when calling mutating element access functions without synchronisation: If 
+any mutating element access function is called on an object there shall be no other unsynchronised accesses to this object. 
+The mutating element access functions are those which are specified as mutating object in the concept, notably assignment 
+on any object, operators <tt>++</tt>, <tt>--</tt>, <tt>+=</tt>, and <tt>-=</tt> on any of the iterator or <tt>Size</tt> 
+parameters, and any <tt>@=</tt> operators on the <tt>Size</tt> parameters.</ins>
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-03-03, Kona]</i></p>
+
+<p>
+Dietmar provides improved wording. Issues with the PR before the change:
+</p>
+<ul>
+<li><p>The part before the colon is redundant: we don't need to state that.</p></li>
+<li><p>Replace "notably" with "specifically"</p></li>
+<li><p><tt>swap()</tt> needs to be in the list.</p></li>
+<li><p>Not sure what "called on an object means"</p></li>
+<li><p>The assignment side is overconstrained: the right hand side is allowed.</p></li>
+</ul>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
+
+<ol>
+<li><p>Modify 23.3.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.user">[algorithms.parallel.user]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- Function objects passed into parallel algorithms as objects of type <tt>Predicate</tt>, <tt>BinaryPredicate</tt>, 
+<tt>Compare</tt>, and <tt>BinaryOperation</tt> shall not directly or indirectly modify objects via their arguments.
+<p/>
+<ins>-?- If an object is mutated by an element access function the algorithm will perform no other unsynchronized 
+accesses to that object. The mutating element access functions are those which are specified as mutating the object 
+in the relevant concept, such as <tt>swap()</tt>, <tt>++</tt>, <tt>--</tt>, <tt>@=</tt>, and assignments. For the assignment 
+and <tt>@=</tt> operators only the left argument is mutated.</ins>
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-03-03, Kona]</i></p>
+
+<p>Dietmar finetunes wording after review by SG1.</p>
+
+<p><i>[2017-03-03, Kona]</i></p>
+
+<p>Move to Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4640">N4640</a>.</p>
+
+<ol>
+<li><p>Add a new paragraph following 23.3.3 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.exec">[algorithms.parallel.exec]</a> p1 as indicated:</p>
+<blockquote>
+<p>
+-1- Parallel algorithms have template parameters named <tt>ExecutionPolicy</tt> (20.19) which describe the manner in
+which the execution of these algorithms may be parallelized and the manner in which they apply the element
+access functions.
+<p/>
+<ins>-?- If an object is modified by an element access function the algorithm will perform no other unsynchronized accesses 
+to that object. The modifying element access functions are those which are specified as modifying the object in the relevant 
+concept [<i>Note:</i> For example, <tt>swap()</tt>, <tt>++</tt>, <tt>--</tt>, <tt>@=</tt>, and assignments modify the object. 
+For the assignment and <tt>@=</tt> operators only the left argument is modified. &mdash; <i>end note</i>].</ins>
+<p/>
+-2- [&hellip;]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3029: pop_heap over-constrains input</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3029" href="lwg-active.html#3029">3029.</a> <tt>pop_heap</tt> over-constrains input</h3>
+<p><b>Section:</b> 23.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/pop.heap">[pop.heap]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Mathias Stearn <b>Opened:</b> 2017-11-04 <b>Last modified:</b> 2017-11-13 19:00:40 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The spec for <tt>&lt;algorithms&gt;</tt> <tt>pop_heap</tt> includes
+</p>
+<blockquote><p>
+-1- <i>Requires:</i> The range <tt>[first, last)</tt> shall be a valid non-empty heap.
+</p></blockquote>
+<p>
+This has the unfortunate consequence that to pop a value and push a new value is substantially less efficient than necessary. 
+The popped value must be extracted by <tt>pop_heap</tt> (using up to 2 log <tt><i>N</i></tt> compares and swaps), and then, in 
+<tt>push_heap</tt>, the new value must be inserted (for up to <tt><i>N</i></tt> compares and swaps, but more usually something 
+like log <tt><i>N</i></tt>).
+<p/>
+Simply relaxing the requirement to
+</p>
+<blockquote><p>
+-1- <i>Requires:</i> The range <tt>[first, last - 1)</tt> shall be a valid heap.
+</p></blockquote>
+<p>
+enables use of <tt>pop_heap</tt> in an integrated push-and-pop operation, with less than half the number of expected compare 
+and swap operations. Furthermore, if, as is often the case, the newly pushed value would have ended up at position <tt>first</tt>, 
+the push/pop operation could complete in time <tt>&#x1d4aa;(1)</tt>, instead of (3 log <tt><i>N</i></tt>).
+<p/>
+The effect of the proposed relaxation on existing library implementations would be minimal in the extreme, and on existing user 
+code nil. The base algorithm code remains exactly identical. The only changes needed would be to any instrumentation in a 
+debugging version of the library, which would just need to relax its check, and to test suites that should exercise the newly 
+tolerated input.
+<p/>
+Users today are tempted to get the improved performance by relying on existing implementations' tacit tolerance of input that 
+only satisfies the proposed, relaxed requirements. In fact, the 
+<a href="http://en.cppreference.com/w/cpp/algorithm/pop_heap">cppreference.com page on <tt>pop_heap</tt></a> offers no hint 
+that this usage is not already allowed. This change would bless such reliance as formally permitted.
+<p/>
+After this change, minor extensions to <tt>std::priority_queue</tt> would enable it to take advantage of the newly efficient operation, 
+perhaps:
+</p>
+<blockquote><pre>
+void pop_push(const Type&amp;);
+void pop_push(Type&amp;&amp;);
+template &lt;class... Args&gt; void pop_emplace(Args&amp;&amp;... args);
+</pre></blockquote>
+<p>
+These will appear in a formal proposal if the resolution is accepted.
+</p>
+
+<p><i>[2017-11 Albuquerque Wednesday night issues processing]</i></p>
+
+<p>Priority set to 3</p>
+
+<p><i>[2017-11 Albuquerque Saturday issues processing]</i></p>
+
+<p>status to Open; Marshall to review</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Change 23.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/pop.heap">[pop.heap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class RandomAccessIterator&gt;
+  void pop_heap(RandomAccessIterator first, RandomAccessIterator last);
+template&lt;class RandomAccessIterator, class Compare&gt;
+  void pop_heap(RandomAccessIterator first, RandomAccessIterator last,
+                Compare comp);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> The range <tt>[first, last <ins>- 1</ins>)</tt> shall be a valid <del>non-empty</del> heap. 
+<tt>RandomAccessIterator</tt> shall satisfy the requirements of <tt>ValueSwappable</tt> (15.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>). 
+The type of <tt>*first</tt> shall satisfy the requirements of <tt>MoveConstructible</tt> (Table 23) and of <tt>MoveAssignable</tt> 
+(Table 25).
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

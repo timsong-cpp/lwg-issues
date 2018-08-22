@@ -1,0 +1,235 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2274: Does map::operator[] value-initialize or default-insert a missing element?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2274" href="lwg-defects.html#2274">2274.</a> Does <tt>map::operator[]</tt> value-initialize or default-insert a missing element?</h3>
+<p><b>Section:</b> 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a>, 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Andrzej Krzemie&#324;ski <b>Opened:</b> 2013-07-16 <b>Last modified:</b> 2015-10-22 17:38:35 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#map.access">issues</a> in [map.access].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Suppose that I provide a custom allocator for type <tt>int</tt>, that renders value 1 rather than 0 in default-insertion:
+</p>
+<blockquote>
+<pre>
+struct Allocator1 : std::allocator&lt;int&gt;
+{
+  using super = std::allocator&lt;int&gt;;
+
+  template&lt;typename Up, typename... Args&gt;
+  void construct(Up* p, Args&amp;&amp;... args)
+  { super::construct(p, std::forward&lt;Args&gt;(args)...); }
+
+  template&lt;typename Up&gt;
+  void construct(Up* p)
+  { ::new((void*)p) Up(1); }
+};
+</pre>
+</blockquote>
+
+<p>
+Now, if I use this allocator with <tt>std::map</tt>, and I use <tt>operator[]</tt> to access a not-yet-existent value, 
+what value of the <tt>mapped_type</tt> should be created? 0 (value-initialization) or 1 (default-insertion):
+</p>
+
+<blockquote>
+<pre>
+map&lt;string, int, less&lt;string&gt;, Allocator1&gt; map;
+cout &lt;&lt; map["cat"];
+</pre>
+</blockquote>
+
+<p>
+N3960 is not very clear. 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> in para 1 says:
+</p>
+<blockquote>
+<p>
+"If there is no key equivalent to <tt>x</tt> in the map, inserts <tt>value_type(x, T())</tt> into the map."
+</p>
+</blockquote>
+<p>
+So, it requires value-initialization.
+<p/>
+But para 2 says:
+</p>
+<blockquote>
+<p>
+"<tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>."
+</p>
+</blockquote>
+<p>
+This implies default-insertion, because if not, why the requirement. Also similar functions like 
+<tt>vector::resize</tt> already require default-insertion wherever they put <tt>DefaultInsertable</tt> requirements.
+<p/>
+Not to mention that default-insertion is more useful, because it allows custom allocators to "override" the 
+default value of <tt>mapped_type</tt>.
+</p>
+
+<p><i>[2013-09 Chicago]</i></p>
+
+<p>
+Alisdair: Matters only for POD or trivial types 
+<p/>
+Marshall: issue might show up elsewhere other than <tt>map&lt;&gt;</tt> 
+<p/>
+Alisdair: initialize elements in any containers &mdash; by calling construct on allocator traits 
+<p/>
+Marshall: existing wording is clear 
+<p/>
+Alisdair: main concern is difference in wording, discusses default initialization 
+<p/>
+Nico: different requirement needed 
+<p/>
+Alisdair: gut is issue is NAD, brings up <tt>DefaultInsertable</tt> definition &mdash; discusses definition 
+<p/>
+Nico: why do we have the requirement? 
+<p/>
+Alisdair: other containers have this requirement 
+<p/>
+Marshall: this applies to many other containers 
+<p/>
+Nico: <tt>deque&lt;&gt;</tt> in particular 
+<p/>
+Alisdair: discusses allocator construct 
+<p/>
+Alisdair: wording raises concerns that aren't said in existing standard 
+<p/>
+Nico: sees no benefit to change 
+<p/>
+Marshall: leery of change 
+<p/>
+Alisdair: can be made clearer; might need to add note to <tt>DefaultInsertable</tt>; borderline editorial, 
+comfortable without note, willing to wait until other issues arise. close issue as NAD
+</p>
+
+<p><i>[2015-01-20: Tomasz Kami&nacute;ski comments]</i></p>
+
+<p>
+With the addition of the <tt>try_emplace</tt> method the behavior of the <tt>operator[]</tt> for the maps, 
+may be defined as follows:
+</p>
+<blockquote>
+<pre>
+T&amp; operator[](const key_type&amp; x);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Equivalent to: <tt>try_emplace(x).first-&gt;second</tt>;
+</p>
+</blockquote>
+<pre>
+T&amp; operator[](key_type&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Equivalent to <tt>try_emplace(std::move(x)).first-&gt;second</tt>;
+</p>
+</blockquote>
+</blockquote>
+<p>
+This would simplify the wording and also after resolution of the issue <a href="2464">2464</a>, this wording would 
+also address this issue.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Wait until <a href="2464">2464</a> and <a href="2469">2469</a> are in, which solve this.
+</p>
+
+<p><i>[2015-05-06 Lenexa: This is resolved by <a href="2469">2469</a>.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3691.</p>
+
+<ol>
+<li><p>Change 21.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/map.access">[map.access]</a> p1+p5 as indicated:</p>
+
+<blockquote>
+<pre>
+T&amp; operator[](const key_type&amp; x);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> If there is no key equivalent to <tt>x</tt> in the map, inserts <del><tt>value_type(x, T())</tt> 
+into the map</del><ins>into the map a value with <tt>key_type</tt> initialized using expression <tt>x</tt> and <tt>mapped_type</tt> 
+initialized by default-insertion</ins>.
+<p/>
+-2- <i>Requires:</i> <tt>key_type</tt> shall be <tt>CopyInsertable</tt> and <tt>mapped_type</tt> shall be 
+<tt>DefaultInsertable</tt> into <tt>*this</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+T&amp; operator[](key_type&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> If there is no key equivalent to <tt>x</tt> in the map, inserts 
+<del><tt>value_type(std::move(x), T())</tt> into the map</del><ins>into the map a value with <tt>key_type</tt> 
+initialized using expression <tt>std::move(x)</tt> and <tt>mapped_type</tt> initialized by default-insertion</ins>.
+<p/>
+-6- <i>Requires:</i> <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/unord.map.elem">[unord.map.elem]</a> p2 as indicated:</p>
+
+<blockquote>
+<pre>
+mapped_type&amp; operator[](const key_type&amp; k);
+mapped_type&amp; operator[](key_type&amp;&amp; k);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> <tt>mapped_type</tt> shall be <tt>DefaultInsertable</tt> into <tt>*this</tt>. 
+For the first operator, <tt>key_type</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>. For the second 
+operator, <tt>key_type</tt> shall be <tt>MoveConstructible</tt>.
+<p/>
+-2- <i>Effects:</i> If the <tt>unordered_map</tt> does not already contain an element whose key is equivalent to 
+<tt>k</tt>, the first operator inserts <del>the value <tt>value_type(k, mapped_type())</tt></del><ins>a value with 
+<tt>key_type</tt> initialized using expression <tt>x</tt> and <tt>mapped_type</tt> initialized by default-insertion</ins> 
+and the second operator inserts <del>the value <tt>value_type(std::move(k), mapped_type())</tt></del><ins>a value 
+with <tt>key_type</tt> initialized using expression <tt>std::move(x)</tt> and <tt>mapped_type</tt> initialized by 
+default-insertion</ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2386: function::operator= handles allocators incorrectly</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2386" href="lwg-closed.html#2386">2386.</a> <tt>function::operator=</tt> handles allocators incorrectly</h3>
+<p><b>Section:</b> 19.14.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2014-05-23 <b>Last modified:</b> 2015-05-05 19:15:38 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <i>Effects</i> clauses for the assignment operator for class template <tt>function</tt> are
+written as code that constructs a temporary <tt>function</tt> and then swaps it with <tt>*this</tt>.
+The intention appears to be that assignment should have the strong exception 
+guarantee, i.e., <tt>*this</tt> is not modified if an exception is thrown. However, the current 
+description is incorrect when <tt>*this</tt> was constructed using an allocator.
+<p/>
+Part of the problem is the under-specification of <tt>swap</tt>, which does not state the 
+allocator requirements or allocator postconditions. If <tt>swap</tt> behaves like the rest of the 
+standard library, swapping function objects constructed with different allocators 
+would be undefined behavior. Alternatively <tt>swap</tt> could exchange the allocators, 
+though I would argue against this specification.
+<p/>
+For either specification of <tt>swap</tt>, the current <i>Effects</i> clauses for <tt>operator=</tt> are
+incorrect. If <tt>swap</tt> does not exchange the allocators, then <tt>operator=</tt> would have 
+undefined behavior, which is clearly not desired. If <tt>swap</tt> does exchange the allocators, 
+then <tt>operator=</tt> would always leave the left-hand side (lhs) of the assignment with a 
+default allocator. The latter would be surprising behavior, as the allocator instance is 
+normally unchanged for the lifetime of an object (for good reason), and is certainly not 
+reset to default arbitrarily.
+<p/>
+The desired behavior is that assignment would leave the allocator of the lhs
+unchanged. The way to achieve this behavior is to construct the temporary <tt>function</tt> 
+using the original allocator. Unfortunately, we cannot describe the desired behavior in 
+pure code, because there is no way to name the type-erased value of the allocator. 
+(N3916 would improve this situation for the Library Fundamentals TS, but even with 
+those changes, there is no way to recover the original type of the allocator.) The PR 
+below, therefore, uses pseudo-code, inventing a fictitious <tt><i>ALLOCATOR_OF</i>(f)</tt> 
+expression that evaluates to the actual allocator type, even if that allocator was type 
+erased. I have implemented this PR successfully.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 19.14.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins>In the following descriptions, <tt><i>ALLOCATOR_OF</i>(f)</tt> is a copy of the allocator specified in the 
+construction of <tt>function</tt> <tt>f</tt>, or <tt>allocator&lt;char&gt;()</tt> if no allocator was specified.</ins>
+</p>
+<pre>
+function&amp; operator=(const function&amp; f);
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects</i>: <tt>function(<ins>allocator_arg, <i>ALLOCATOR_OF</i>(*this),</ins> f).swap(*this);</tt>
+<p/>
+-13- <i>Returns</i>: <tt>*this</tt>
+</p>
+</blockquote>
+<pre>
+function&amp; operator=(function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects</i>: <del>Replaces the target of <tt>*this</tt> with the target of <tt>f</tt>.</del><ins><tt>function(allocator_arg,
+<i>ALLOCATOR_OF</i>(*this), std::move(f)).swap(*this);</tt></ins>
+<p/>
+-15- <i>Returns</i>: <tt>*this</tt>
+</p>
+</blockquote>
+<pre>
+function&amp; operator=(nullptr_t);
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects</i>: If <tt>*this != nullptr</tt>, destroys the target of <tt>this</tt>.
+<p/>
+-17- <i>Postconditions</i>: <tt>!(*this)</tt>. <ins>The allocator is unchanged.</ins>
+<p/>
+-18- <i>Returns</i>: <tt>*this</tt>
+<p/>
+<ins>-?- <i>Throws</i>: Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; function&amp; operator=(F&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects</i>: <tt>function(<ins>allocator_arg, <i>ALLOCATOR_OF</i>(*this),</ins> std::forward&lt;F&gt;(f)).swap(*this);</tt>
+<p/>
+-20- <i>Returns</i>: <tt>*this</tt>
+<p/>
+-21- <i>Remarks</i>: This assignment operator shall not participate in overload resolution unless 
+<tt>declval&lt;typename decay&lt;F&gt;::type&amp;&gt;()</tt> is <tt>Callable</tt> (20.9.11.2) for argument types 
+<tt>ArgTypes...</tt> and return type <tt>R</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; function&amp; operator=(reference_wrapper&lt;F&gt; f);
+</pre>
+<blockquote>
+<p>
+-22- <i>Effects</i>: <tt>function(<ins>allocator_arg, <i>ALLOCATOR_OF</i>(*this),</ins> f).swap(*this);</tt>
+<p/>
+-23- <i>Returns</i>: <tt>*this</tt>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+
+</ol>
+
+</blockquote>
+
+<p><i>[2015-05, Lenexa]</i></p>
+
+<p>
+STL: think this is NAD, don't think this is implementable or even should be.<br/>
+STL: think this issue should be dealt with the same as 2370, don't think this should be done ever.<br/>
+STL: NAD because there is nothing broken here.<br/>
+STL: already fixed <tt>operator= noexcept</tt> so <i>Throws</i> nothing is not needed<br/>
+STL: nothing to salvage here<br/>
+MC: consensus for NAD 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+There was consensus by the committee that the issue does not constitute as defect.
+</p>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,751 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3114: [networking.ts] Permit efficient composition when using DynamicBuffer</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3114" href="lwg-active.html#3114">3114.</a> [networking.ts] Permit efficient composition when using <tt>DynamicBuffer</tt></h3>
+<p><b>Section:</b> 16 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer">[networking.ts::buffer]</a>, 17 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.stream">[networking.ts::buffer.stream]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2018-05-18 <b>Last modified:</b> 2018-06-19 05:49:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<b>Addresses: networking.ts</b>
+<p>
+Asynchronous algorithms are started by a call to an <em>initiating function</em>.
+When these algorithms are constructed from calls to other initiating functions,
+the result is called a <em>composed operation</em>. For example, <tt>async_read</tt> may be 
+implemented in terms of zero or more calls to a stream's <tt>async_read_some</tt> algorithm. 
+For operations where the caller cannot easily determine ahead of time the storage requirements 
+needed for an algorithm to meet its post-conditions, [networking.ts] introduces the
+<b>DynamicBuffer</b> concept:
+</p>
+<blockquote>
+<p>
+A dynamic buffer encapsulates memory storage that may be automatically
+resized as required, where the memory is divided into two regions: readable
+bytes followed by writable bytes. [buffer.reqmts.dynamicbuffer]
+</p>
+</blockquote>
+<p>
+Signatures for algorithms in the technical specification which accept dynamic
+buffers use forwarding references:
+</p>
+<blockquote><pre>
+<i>// 17.10 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.read.until">[networking.ts::buffer.async.read.until]</a>, asynchronous delimited read operations:</i>
+
+template&lt;
+  class AsyncReadStream,
+  class DynamicBuffer,
+  class CompletionToken&gt;
+<i>DEDUCED</i> async_read_until(
+  AsyncReadStream&amp; s,
+  DynamicBuffer&amp;&amp; b,
+  char delim,
+  CompletionToken&amp;&amp; token);
+</pre></blockquote>
+<p>
+Because the initiating function returns immediately, and the associated composed operation executes later, 
+it is necessary for the algorithm to manage the lifetime of the dynamic buffer. Guidance for doing so is 
+given in the TS:
+</p>
+<blockquote>
+<b>13.2.7.5 Lifetime of initiating function arguments [async.reqmts.async.lifetime]</b>
+<p>
+1. Unless otherwise specified, the lifetime of arguments to initiating functions shall be treated as 
+follows: [&hellip;] the implementation does not assume the validity of the argument after the initiating 
+function completes [&hellip;] The implementation may make copies of the argument, and all copies shall be
+destroyed no later than immediately after invocation of the completion handler.
+</p>
+</blockquote>
+<p>
+Given the guidance above, the most sensible approach is for the implementation
+to move or make a decay-copy of the argument. An implementation of the TS,
+authored by the principal architect of the TS itself, does precisely that:
+</p>
+<blockquote><pre>
+template &lt;
+    typename AsyncReadStream,
+    typename DynamicBuffer,
+    typename ReadHandler&gt;
+class read_until_delim_op
+{
+public:
+    template &lt;typename DeducedBuffers&gt;
+    read_until_delim_op(
+        AsyncReadStream&amp; stream,
+        DeducedBuffers&amp;&amp; buffers,
+        char delim, ReadHandler&amp; handler)
+    : [&hellip;]
+      buffers_(std::forward&lt;DeducedBuffers&gt;(buffers))
+      [&hellip;]
+    {
+    }
+    [&hellip;]
+    DynamicBuffer buffers_;
+    [&hellip;]
+};
+
+template &lt;
+    typename AsyncReadStream,
+    typename DynamicBuffer,
+    typename ReadHandler&gt;
+NET_TS_INITFN_RESULT_TYPE(ReadHandler,
+    void (std::error_code, std::size_t))
+async_read_until(
+    AsyncReadStream&amp; s,
+    DynamicBuffer&amp;&amp; buffers,
+    char delim,
+    ReadHandler&amp;&amp; handler)
+{
+  // If you get an error on the following line it means that your handler does
+  // not meet the documented type requirements for a ReadHandler.
+  NET_TS_READ_HANDLER_CHECK(ReadHandler, handler) type_check;
+
+  async_completion&lt;ReadHandler,
+    void (std::error_code, std::size_t)&gt; init(handler);
+
+  detail::read_until_delim_op&lt;
+    AsyncReadStream,
+    typename decay&lt;DynamicBuffer&gt;::type,
+    NET_TS_HANDLER_TYPE(ReadHandler, void (std::error_code, std::size_t))&gt;(
+        s,
+        DynamicBuffer&amp;&amp;buffers,
+        delim,
+        init.completion_handler)(std::error_code(), 0, 1);
+
+  return init.result.get();
+}
+</pre></blockquote>
+<p>
+Given the semantics of dynamic buffers implied by the wording, instances of
+dynamic buffers behave more like references to storage types rather than
+storage types, as copies refer to the same underlying storage. This can be
+seen in the declaration of <tt>dynamic_string_buffer</tt> which meets
+the requirements of <b>DynamicBuffer</b>:
+</p>
+<blockquote><pre>
+template &lt;typename Elem, typename Traits, typename Allocator&gt;
+class dynamic_string_buffer
+{
+  [&hellip;]
+private:
+  std::basic_string&lt;Elem, Traits, Allocator&gt;&amp; string_;
+  std::size_t size_;
+  const std::size_t max_size_;
+};
+</pre></blockquote>
+<p>
+A dynamic string buffer contains a reference to the underlying string. Copies
+of a dynamic string buffer refer to the same string. Note that the dynamic
+string buffer also contains some state: the <tt>size_</tt> and <tt>max_size_</tt>
+data members. This additional metadata informs the dynamic string buffer of
+the boundaries between the readable and writable bytes, as well as the maximum
+allowed size of the total of the readable and writable bytes.
+<p/>
+When only one composed operation handles the dynamic buffer, things seem to
+work. However, if a composed operation wishes to invoke another composed
+operation and pass that dynamic buffer, a problem arises. Consider two composed
+operations <tt>f</tt> and <tt>g</tt>, which both operate on an instance of
+dynamic buffer. When <tt>f</tt> is invoked, it makes a copy of the dynamic
+buffer and then calls <tt>g</tt> with the copy. At this point, <tt>g</tt> must
+also make a copy. Copies share the underlying storage, but in the case of
+dynamic string buffers each copy maintains its own distinct metadata. When
+<tt>g</tt> has finished mutating the dynamic buffer and returns control back
+to <tt>f</tt> by invoking the completion handler, the metadata in the copy of
+the dynamic buffer held by <tt>f</tt> will not have the changes made by <tt>g</tt>.
+<p/>
+Another design problem caused by adding metadata to the dynamic buffer concept
+is illustrated in the following example code:
+</p>
+<blockquote><pre>
+template&lt;class MutableBufferSequence&gt;
+std::size_t read(const MutableBufferSequence&amp;)
+{
+  throw std::exception{};
+}
+
+int main()
+{
+  std::string s;
+  assert(s.empty());
+  try
+  {
+    auto b = boost::asio::dynamic_buffer(s);
+    b.commit(read(b.prepare(32)));
+  }
+  catch(const std::exception&amp;)
+  {
+    assert(s.empty()); // fails
+  }
+}
+</pre></blockquote>
+<p>
+While not technically incorrect, it may be surprising to the user that
+the string contains additional value-initialized data which was not part
+of the original readable bytes (which in this case was empty). The wording of
+the dynamic buffer concept does not address this case.
+<p/>
+The solution we propose is to change the semantics of <b>DynamicBuffer</b>
+to represent a true storage type rather than a hybrid reference with metadata.
+Instances of dynamic buffers will be passed by reference, and callers will
+be required to manage the lifetime of dynamic buffer objects for the duration
+of any asynchronous operations. An additional benefit of this change is that
+it also solves the problem of exceptions described above.
+</p>
+
+<p><i>[2018-06-18 after reflector discussion]</i></p>
+
+<p>Status to LEWG; there will be a paper <a href="https://wg21.link/P1100R0">P1100R0</a> in the post-Rapperswil mailing addressing this.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4734">N4734</a>.</p>
+
+<blockquote class="note">
+<p>[<i>Drafting note:</i> The project editor is kindly asked to replace all occurrences of 
+<tt>DynamicBuffer&amp;&amp;</tt> with <tt>DynamicBuffer&amp;</tt> as indicated by the provided
+wording changes below. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 16.1 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.synop">[networking.ts::buffer.synop]</a>, header <tt>&lt;experimental/buffer&gt;</tt> synopsis, 
+as indicated:</p>
+<blockquote><pre>
+[&hellip;]
+<i>// 16.11 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.creation">[networking.ts::buffer.creation]</a>, buffer creation:</i>
+[&hellip;]
+
+template&lt;class T, class Allocator&gt;
+class dynamic_vector_buffer;
+
+template&lt;class CharT, class Traits, class Allocator&gt;
+class <ins>basic_</ins>dynamic_string_buffer;
+
+<del><i>// 16.14 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.dynamic.creation">[networking.ts::buffer.dynamic.creation]</a>, dynamic buffer creation:</i></del>
+
+<del>template&lt;class T, class Allocator&gt;
+  dynamic_vector_buffer&lt;T, Allocator&gt;
+  dynamic_buffer(vector&lt;T, Allocator&gt;&amp; vec) noexcept;
+template&lt;class T, class Allocator&gt;
+  dynamic_vector_buffer&lt;T, Allocator&gt;
+  dynamic_buffer(vector&lt;T, Allocator&gt;&amp; vec, size_t n) noexcept;
+</del>
+
+<del>template&lt;class CharT, class Traits, class Allocator&gt;
+  dynamic_string_buffer&lt;CharT, Traits, Allocator&gt;
+  dynamic_buffer(basic_string&lt;CharT, Traits, Allocator&gt;&amp; str) noexcept;
+template&lt;class CharT, class Traits, class Allocator&gt;
+  dynamic_string_buffer&lt;CharT, Traits, Allocator&gt;
+  dynamic_buffer(basic_string&lt;CharT, Traits, Allocator&gt;&amp; str, size_t n) noexcept;</del>
+
+[&hellip;]
+<i>// 17.5 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read">[networking.ts::buffer.read]</a>, synchronous read operations:</i>
+[&hellip;]
+
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b, error_code&amp; ec);
+template&lt;class SyncReadStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+              CompletionCondition completion_condition);
+template&lt;class SyncReadStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+              CompletionCondition completion_condition, error_code&amp; ec);
+
+<i>// 17.6 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.read">[networking.ts::buffer.async.read]</a>, asynchronous read operations:</i>              
+[&hellip;]
+
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read(AsyncReadStream&amp; stream,
+                     DynamicBuffer&amp;<del>&amp;</del> b, CompletionToken&amp;&amp; token);
+template&lt;class AsyncReadStream, class DynamicBuffer,
+  class CompletionCondition, class CompletionToken&gt;
+    <i>DEDUCED</i> async_read(AsyncReadStream&amp; stream,
+                       DynamicBuffer&amp;<del>&amp;</del> b,
+                       CompletionCondition completion_condition,
+                       CompletionToken&amp;&amp; token);
+
+<i>// 17.7 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.write">[networking.ts::buffer.write]</a>, synchronous write operations:</i>                       
+[&hellip;]
+
+template&lt;class SyncWriteStream, class DynamicBuffer&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del>; b);
+template&lt;class SyncWriteStream, class DynamicBuffer&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b, error_code&amp; ec);
+template&lt;class SyncWriteStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+               CompletionCondition completion_condition);
+template&lt;class SyncWriteStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+               CompletionCondition completion_condition, error_code&amp; ec);
+
+<i>// 17.8 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.write">[networking.ts::buffer.async.write]</a>, asynchronous write operations:</i>               
+[&hellip;]
+
+template&lt;class AsyncWriteStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_write(AsyncWriteStream&amp; stream,
+                      DynamicBuffer&amp;<del>&amp;</del> b, CompletionToken&amp;&amp; token);
+template&lt;class AsyncWriteStream, class DynamicBuffer,
+  class CompletionCondition, class CompletionToken&gt;
+    <i>DEDUCED</i> async_write(AsyncWriteStream&amp; stream,
+                        DynamicBuffer&amp;<del>&amp;</del> b,
+                        CompletionCondition completion_condition,
+                        CompletionToken&amp;&amp; token);
+
+<i>// 17.9 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read.until">[networking.ts::buffer.read.until]</a>, synchronous delimited read operations:</i>                        
+
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b, char delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b,
+                    char delim, error_code&amp; ec);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b, string_view delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b,
+                    string_view delim, error_code&amp; ec);
+
+<i>// 17.10 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.read.until">[networking.ts::buffer.async.read.until]</a>, asynchronous delimited read operations:</i>
+
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read_until(AsyncReadStream&amp; s,
+                           DynamicBuffer&amp;<del>&amp;</del> b, char delim,
+                           CompletionToken&amp;&amp; token);
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read_until(AsyncReadStream&amp; s,
+                           DynamicBuffer&amp;<del>&amp;</del> b, string_view delim,
+                           CompletionToken&amp;&amp; token);
+
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li>
+<p>Modify 16.2.4 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.reqmts.dynamicbuffer">[networking.ts::buffer.reqmts.dynamicbuffer]</a>, as indicated:</p>
+
+<blockquote>
+<p>
+-1- [&hellip;]
+<p/>
+-2- A type <tt>X</tt> meets the <tt>DynamicBuffer</tt> requirements if it satisfies
+the requirements of <tt>Destructible</tt> (C++ 2014 [destructible])
+<del>and <tt>MoveConstructible</tt> (C++ 2014 [moveconstructible]),</del>
+as well as the additional requirements listed in Table 14.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 16.12 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.dynamic.vector">[networking.ts::buffer.dynamic.vector]</a>, as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+[&hellip;]
+
+template&lt;class T, class Allocator<ins> = allocator&lt;T&gt;</ins>&gt;
+class dynamic_vector_buffer
+{
+public:
+  <em>// types:</em>
+  <ins>using value_type = vector&lt;T, Allocator&gt;;</ins>
+  using const_buffers_type = const_buffer;
+  using mutable_buffers_type = mutable_buffer;
+  
+  <em>// constructors:</em>
+  <ins>dynamic_vector_buffer() = default;</ins>
+  <ins>explicit dynamic_vector_buffer(size_t maximum_size);</ins>
+  explicit dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec) <del>noexcept;</del>
+  dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec, size_t maximum_size) <del>noexcept;</del>
+  dynamic_vector_buffer(dynamic_vector_buffer&amp;&amp;) = default;
+  
+  <em>// members:</em>
+  size_t size() const noexcept;
+  size_t max_size() const noexcept;
+  <ins>void max_size(size_t maximum_size);</ins>
+  size_t capacity() const noexcept;
+  const_buffers_type data() const noexcept;
+  mutable_buffers_type prepare(size_t n);
+  void commit(size_t n);
+  void consume(size_t n);
+  <ins>span&lt;const T&gt; get() const noexcept</ins>
+  <ins>value_type release();</ins>
+
+private:
+  vector&lt;T, Allocator&gt;<del>&amp;</del> vec_; <em>// exposition only</em>
+  size_t size_; <em>// exposition only</em>
+  <del>const</del> size_t max_size_; <em>// exposition only</em>
+};
+
+[&hellip;]
+</pre></blockquote>
+<p>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+</p>
+<pre>
+<ins>explicit dynamic_vector_buffer(size_t maximum_size)</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Effects:</em> Default-constructs <tt>vec_</tt>. Initializes <tt>size_</tt> with <tt>0</tt>, and 
+<tt>max_size_</tt> with <tt>maximum_size</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+explicit dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec) <del>noexcept</del>
+</pre>
+<blockquote>
+<p>
+-4- <em>Effects:</em> Initializes <tt>vec_</tt> with <tt><ins>move(</ins>vec<ins>)</ins></tt>,
+  <tt>size_</tt> with <tt>vec<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>vec<ins>_</ins>.max_size()</tt>
+</p>
+</blockquote>
+<pre>
+dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec,
+                      size_t maximum_size) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-5- <em>Requires:</em> <tt>vec.size() &lt;= maximum_size</tt>
+<p/>
+-6- <em>Effects:</em> Initializes <tt>vec_</tt> with <tt><ins>move(</ins>vec<ins>)</ins></tt>,
+  <tt>size_</tt> with <tt>vec<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>maximum_size</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+size_t max_size() const noexcept;
+</pre>
+<blockquote>
+<p>
+-8- <i>Returns:</i> <tt>max_size_</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>void max_size(size_t maximum_size)</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Effects:</em> Performs <tt>max_size_ = maximum_size</tt>.</ins>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+void consume(size_t n);
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects:</i> [&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>span&lt;const T&gt; get() const noexcept</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Returns:</em> <tt>span&lt;const T&gt;(vec_.data(), size_)</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>value_type release()</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Returns:</em> <tt>move(vec_)</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 16.13 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.dynamic.string">[networking.ts::buffer.dynamic.string]</a>, as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+template&lt;class CharT, class Traits, class Allocator&gt;
+class <ins>basic_</ins>dynamic_string_buffer
+{
+public:
+  <em>// types:</em>
+  <ins>using value_type = basic_string&lt;CharT, Traits, Allocator&gt;;</ins>
+  using const_buffers_type = const_buffer;
+  using mutable_buffers_type = mutable_buffer;
+
+  <em>// constructors:</em>
+  <ins>basic_dynamic_string_buffer() = default;</ins>
+  <ins>explicit basic_dynamic_string_buffer(size_t maximum_size);</ins>
+  explicit <ins>basic_</ins>dynamic_string_buffer(basic_string&lt;CharT, Traits, Allocator&gt;<del>&amp;</del> str) <del>noexcept;</del>
+  <ins>basic_</ins>dynamic_string_buffer(basic_string&lt;CharT, Traits, Allocator&gt;<del>&amp;</del> str, size_t maximum_size) <del>noexcept;</del>
+  <ins>basic_</ins>dynamic_string_buffer(<ins>basic_</ins>dynamic_string_buffer&amp;&amp;) = default;
+
+  <em>// members:</em>
+  size_t size() const noexcept;
+  size_t max_size() const noexcept;
+  <ins>void max_size(size_t maximum_size)</ins>
+  size_t capacity() const noexcept;
+  const_buffers_type data() const noexcept;
+  mutable_buffers_type prepare(size_t n);
+  void commit(size_t n) noexcept;
+  void consume(size_t n);
+  <ins>basic_string_view&lt;CharT, Traits&gt; get() const noexcept</ins>
+  <ins>value_type release();</ins>
+
+private:
+  basic_string&lt;CharT, Traits, Allocator&gt;<del>&amp;</del> str_; <em>// exposition only</em>
+  size_t size_; <em>// exposition only</em>
+  <del>const </del>size_t max_size_; <em>// exposition only</em>
+};
+
+<ins>using dynamic_string_buffer =
+  basic_dynamic_string_buffer&lt;char, char_traits&lt;char&gt;, allocator&lt;char&gt;&gt;</ins>
+</pre>
+</blockquote>
+<p>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+</p>
+<pre>
+<ins>explicit basic_dynamic_string_buffer(size_t maximum_size)</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Effects:</em> Default-constructs <tt>str_</tt>. Initializes <tt>size_</tt> with <tt>0</tt>, and 
+<tt>max_size_</tt> with <tt>maximum_size</tt>.</ins>
+</p>
+<p>[&hellip;]</p>
+</blockquote>
+<pre>
+explicit <ins>basic_</ins>dynamic_string_buffer(basic_string&lt;CharT, Traits, Allocator&gt;<del>&amp;</del> str) <del>noexcept</del>
+</pre>
+<blockquote>
+<p>
+-4- <em>Effects:</em> Initializes <tt>str_</tt> with <tt><ins>move(</ins>str<ins>)</ins></tt>,
+  <tt>size_</tt> with <tt>str<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>str<ins>_</ins>.max_size()</tt>
+</p>
+</blockquote>
+<pre>
+<ins>basic_</ins>dynamic_string_buffer(string&lt;CharT, Traits, Allocator&gt;<del>&amp;</del> str,
+                            size_t maximum_size) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-5- <em>Requires:</em> <tt>str.size() &lt;= maximum_size</tt>.
+</p>
+<p>
+-6- <em>Effects:</em> Initializes <tt>str_</tt> with <tt><ins>move(</ins>str<ins>)</ins></tt>,
+  <tt>size_</tt> with <tt>str<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>maximum_size</tt>.
+</p>
+<p>[&hellip;]</p>
+</blockquote>
+<pre>
+size_t max_size() const noexcept;
+</pre>
+<blockquote>
+<p>
+-8- <em>Returns:</em> <tt>max_size_</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>void max_size(size_t maximum_size)</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Effects:</em> Performs <tt>max_size_ = maximum_size</tt>.</ins>
+</p>
+</blockquote>
+<p>[&hellip;]</p>
+<pre>
+void consume(size_t n);
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects:</i> [&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>basic_string_view&lt;CharT, Traits&gt; get() const noexcept</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Returns:</em> <tt>basic_string_view&lt;CharT, Traits&gt;(str_)</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>value_type release()</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <em>Returns:</em> <tt>move(str_)</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Remove 16.14 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.dynamic.creation">[networking.ts::buffer.dynamic.creation]</a> entirely</p></li>
+
+<li><p>Modify 17.5 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read">[networking.ts::buffer.read]</a>, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b, error_code&amp; ec);
+template&lt;class SyncReadStream, class DynamicBuffer,
+  class CompletionCondition&gt;
+    size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+                CompletionCondition completion_condition);
+template&lt;class SyncReadStream, class DynamicBuffer,
+  class CompletionCondition&gt;
+    size_t read(SyncReadStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+                CompletionCondition completion_condition,
+                error_code&amp; ec);
+
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 17.6 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.read">[networking.ts::buffer.async.read]</a>, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read(AsyncReadStream&amp; stream,
+                     DynamicBuffer&amp;<del>&amp;</del> b, CompletionToken&amp;&amp; token);
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionCondition,
+  class CompletionToken&gt;
+    <i>DEDUCED</i> async_read(AsyncReadStream&amp; stream,
+                       DynamicBuffer&amp;<del>&amp;</del> b,
+                       CompletionCondition completion_condition,
+                       CompletionToken&amp;&amp; token);
+
+[&hellip;]
+</pre>
+<p>
+-14- The program shall ensure <ins>both</ins> the <tt>AsyncReadStream</tt>
+object <tt>stream</tt> <ins>and the <tt>DynamicBuffer</tt> object <tt>b</tt>
+are</ins><del> is</del> valid until the completion handler for the asynchronous
+operation is invoked.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 17.7 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.write">[networking.ts::buffer.write]</a>, as indicated:</p>
+<blockquote><pre>
+[&hellip;]
+
+template&lt;class SyncWriteStream, class DynamicBuffer&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b);
+template&lt;class SyncWriteStream, class DynamicBuffer&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b, error_code&amp; ec);
+template&lt;class SyncWriteStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+               CompletionCondition completion_condition);
+template&lt;class SyncWriteStream, class DynamicBuffer, class CompletionCondition&gt;
+  size_t write(SyncWriteStream&amp; stream, DynamicBuffer&amp;<del>&amp;</del> b,
+               CompletionCondition completion_condition,
+               error_code&amp; ec);
+
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Modify 17.8 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.write">[networking.ts::buffer.async.write]</a>, as indicated:</p>
+<blockquote><pre>
+[&hellip;]
+
+template&lt;class AsyncWriteStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_write(AsyncWriteStream&amp; stream,
+                      DynamicBuffer&amp;<del>&amp;</del> b, CompletionToken&amp;&amp; token);
+template&lt;class AsyncWriteStream, class DynamicBuffer, class CompletionCondition,
+  class CompletionToken&gt;
+    <i>DEDUCED</i> async_write(AsyncWriteStream&amp; stream,
+                        DynamicBuffer&amp;<del>&amp;</del> b,
+                        CompletionCondition completion_condition,
+                        CompletionToken&amp;&amp; token);
+
+[&hellip;]
+</pre>
+<p>
+-14- The program shall ensure both the <tt>AsyncWriteStream</tt> object
+<tt>stream</tt> and the <ins><tt>DynamicBuffer</tt> object <tt>b</tt></ins>
+<del>memory associated with the dynamic buffer <tt>b</tt></del>
+are valid until the completion handler for the asynchronous operation
+is invoked.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 17.9 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read.until">[networking.ts::buffer.read.until]</a>, as indicated:</p>
+<blockquote><pre>
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b, char delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b,
+                    char delim, error_code&amp; ec);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b, string_view delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;<del>&amp;</del> b,
+                    string_view delim, error_code&amp; ec);
+
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Modify 17.10 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.async.read.until">[networking.ts::buffer.async.read.until]</a>, as indicated:</p>
+<blockquote><pre>
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read_until(AsyncReadStream&amp; s,
+                           DynamicBuffer&amp;<del>&amp;</del> b, char delim,
+                           CompletionToken&amp;&amp; token);
+template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt;
+  <i>DEDUCED</i> async_read_until(AsyncReadStream&amp; s,
+                           DynamicBuffer&amp;<del>&amp;</del> b, string_view delim,
+                           CompletionToken&amp;&amp; token);
+
+[&hellip;]
+</pre>
+<p>
+-6- The program shall ensure <ins>both</ins> the <tt>AsyncReadStream</tt> object
+<tt>stream</tt> <ins>and the <tt>DynamicBuffer</tt> object <tt>b</tt>
+are</ins><del> is</del> valid until the completion handler for the
+asynchronous operation is invoked.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3071: [networking.ts] read_until still refers to "input sequence"</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3071" href="lwg-defects.html#3071">3071.</a> [networking.ts] <tt>read_until</tt> still refers to "input sequence"</h3>
+<p><b>Section:</b> 17.9 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read.until">[networking.ts::buffer.read.until]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Christopher Kohlhoff <b>Opened:</b> 2018-02-26 <b>Last modified:</b> 2018-06-12 01:05:16 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<b>Addresses: networking.ts</b>
+<p>
+When specifying <tt>DynamicBuffers</tt> and their related operations, early drafts of the Networking TS described the buffers in terms of their "input sequence" and "output sequence". This was changed to "readable bytes" and "writable bytes" respectively. Unfortunately, some instances of "input sequence" were missed in section 
+17.9 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read.until">[networking.ts::buffer.read.until]</a>.
+</p>
+
+<p><i>[
+2018-03-06 Moved to Tentatively Ready after 5 positive votes on c++std-lib.
+]</i></p>
+
+
+<p><i>[2018-06 Rapperswil: Adopted]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4711">N4711</a>.
+</p>
+
+<ol>
+<li><p>Change 17.9 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.read.until">[networking.ts::buffer.read.until]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;&amp; b, char delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;&amp; b,
+                    char delim, error_code&amp; ec);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;&amp; b, string_view delim);
+template&lt;class SyncReadStream, class DynamicBuffer&gt;
+  size_t read_until(SyncReadStream&amp; s, DynamicBuffer&amp;&amp; b,
+                    string_view delim, error_code&amp; ec);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Reads data from the buffer-oriented synchronous read stream 
+(17.1.1 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.stream.reqmts.syncreadstream">[networking.ts::buffer.stream.reqmts.syncreadstream]</a>) object stream by performing zero or more 
+calls to the stream's <tt>read_some</tt> member function, until the 
+<del>input sequence</del><ins>readable bytes</ins> of the dynamic buffer 
+(16.2.4 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.reqmts.dynamicbuffer">[networking.ts::buffer.reqmts.dynamicbuffer]</a>) object <tt>b</tt> contain<del>s</del> the specified 
+delimiter <tt>delim</tt>.
+<p/>
+-2- Data is placed into the dynamic buffer object b. A mutable buffer sequence (16.2.1) is obtained 
+prior to each <tt>read_some</tt> call using <tt>b.prepare(N)</tt>, where <tt>N</tt> is an unspecified 
+value such that <tt>N &lt;= max_size() - size()</tt>. [<i>Note:</i> Implementations are encouraged to use
+<tt>b.capacity()</tt> when determining <tt>N</tt>, to minimize the number of <tt>read_some</tt>
+calls performed on the stream. &mdash; <i>end note</i>] After each <tt>read_some</tt> call, 
+the implementation performs <tt>b.commit(n)</tt>, where <tt>n</tt> is the return value from
+<tt>read_some</tt>.
+<p/>
+-3- The synchronous <tt>read_until</tt> operation continues until:
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; the <del>input sequence</del><ins>readable bytes</ins> of <tt>b</tt> contain<del>s</del> 
+the delimiter <tt>delim</tt>; or</p></li>
+<li><p>(3.2) &mdash; <tt>b.size() == b.max_size()</tt>; or</p></li>
+<li><p>(3.3) &mdash; an asynchronous <tt>read_some</tt> operation fails.</p></li>
+</ol>
+<p/>
+-4- On exit, if the <del>input sequence</del><ins>readable bytes</ins> of <tt>b</tt> contain<del>s</del> 
+the delimiter, <tt>ec</tt> is set such that <tt>!ec</tt> is <tt>true</tt>. Otherwise, if 
+<tt>b.size() == b.max_size()</tt>, <tt>ec</tt> is set such that <tt>ec == stream_errc::not_found</tt>. 
+If <tt>b.size() &lt; b.max_size()</tt>, <tt>ec</tt> contains the <tt>error_code</tt> from the most 
+recent <tt>read_some</tt> call.
+<p/>
+-5- <i>Returns:</i> The number of <del>bytes in the input sequence of</del><ins>readable bytes in</ins> 
+<tt>b</tt> up to and including the delimiter, if present. [<i>Note:</i> On completion, the buffer may 
+contain additional bytes following the delimiter. &mdash; <i>end note</i>] Otherwise returns <tt>0</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2852: Specifications of operator== for std::basic_strings and std::basic_string_views are 
+difficult to conform to</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2852" href="lwg-closed.html#2852">2852.</a> Specifications of <tt>operator==</tt> for <tt>std::basic_string</tt>s and <tt>std::basic_string_view</tt>s are 
+difficult to conform to</h3>
+<p><b>Section:</b> 20.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.operator==">[string.operator==]</a>, 20.3.2.7.9 <a href="https://timsong-cpp.github.io/cppwp/string.compare">[string.compare]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Ahti Lepp&auml;nen <b>Opened:</b> 2017-01-09 <b>Last modified:</b> 2017-07-16 20:43:29 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently (<a href="http://wg21.link/n4618">N4618</a>, 2016-11-28) the specification of <tt>operator==</tt> 
+for <tt>std::basic_string</tt> and <tt>std::basic_string_view</tt> objects is clearly defined, but when 
+interpreted as written, it may lead to comparison of strings of different sizes being a &#x1d4aa;(n) operation 
+instead of a simple size check. Actual implementations in standard libraries vary so that in practice the 
+programmers can't rely neither on having the literal version of the standard specification nor reasonable 
+performance characteristics.
+<p/>
+The definition for <tt>basic_string operator==</tt> in N4618 is as follows:
+</p>
+<blockquote>
+<p>
+20.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.operator==">[string.operator==]</a>
+</p>
+<pre>
+bool operator==(const basic_string&lt;charT, traits, Allocator&gt;&amp; lhs,
+                const basic_string&lt;charT, traits, Allocator&gt;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns:</i> <tt>lhs.compare(rhs) == 0</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+<blockquote>
+<p>
+20.3.2.7.9 <a href="https://timsong-cpp.github.io/cppwp/string.compare">[string.compare]</a>
+</p>
+<pre>
+int compare(const basic_string&amp; str) const noexcept;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return compare(basic_string_view&lt;charT, traits&gt;(str));</tt>
+</p>
+</blockquote>
+</blockquote>
+
+<blockquote>
+<p>
+20.3.2.7.9 <a href="https://timsong-cpp.github.io/cppwp/string.compare">[string.compare]</a>
+</p>
+<pre>
+int compare(basic_string_view&lt;charT, traits&gt; sv) const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Determines the effective length <tt>rlen</tt> of the strings to compare as the smaller of 
+<tt>size()</tt> and <tt>sv.size()</tt>. The function then compares the two strings by calling <tt>traits::compare(data(),
+sv.data(), rlen)</tt>.
+<p/>
+-2- <i>Returns:</i> The nonzero result if the result of the comparison is nonzero. Otherwise, returns a value as
+indicated in Table 63.
+</p>
+</blockquote>
+<blockquote>
+<table border="1">
+<caption>Table 63 &mdash; <tt>compare()</tt> results</caption>
+<tr>
+<th>Condition</th>
+<th>Return Value</th>
+</tr>
+
+<tr>
+<td><tt>size() &lt; sv.size()</tt></td>
+<td><tt>&lt; 0</tt></td>
+</tr>
+
+<tr>
+<td><tt>size() == sv.size()</tt></td>
+<td><tt>0</tt></td>
+</tr>
+
+<tr>
+<td><tt>size() &gt; sv.size()</tt></td>
+<td><tt>&gt; 0</tt></td>
+</tr>
+</table>
+
+</blockquote>
+</blockquote>
+<p>
+From these it seems that <tt>compare()</tt> of strings of different sizes can't return zero and <tt>operator==</tt> 
+will return <tt>false</tt>. However some implementations do not seem to call <tt>traits::compare()</tt> for 
+<tt>basic_string</tt>s of different sizes even when the traits and it's <tt>compare()</tt> are user-defined. And those 
+that call, make the <tt>operator==</tt> a worst case &#x1d4aa;(n) operation even for strings of different sizes.
+<p/>
+This defect report does not propose a wording, but on a general level the wording should allow standard library 
+implementers to write a standard conforming <tt>operator==</tt> for <tt>basic_string</tt> and <tt>basic_string_view</tt> 
+(others?) in such a way that it's performance characteristics are reasonable and the programmers can rely on having 
+a consistent behaviour across implementations. Perhaps the key issue here is that <tt>operator==</tt> is defined 
+through <tt>compare() == 0</tt>: while it returns the intended result, for some inputs it does computations that 
+are not needed by <tt>operator==</tt>. There are also related specifications that may need to be revised, for example 
+<tt>operator!=</tt> for <tt>basic_string_view</tt>s is defined in 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/string.view.comparison">[string.view.comparison]</a> as
+</p>
+<blockquote>
+<p>
+<i>Returns:</i> <tt>lhs.compare(rhs) != 0</tt>
+</p>
+</blockquote>
+
+<p><i>[2017-01-26, Jonathan Wakely comments and provides proposed resolution]</i></p>
+
+<p>
+As mentioned above, some implementations do not make a call to <tt>Traits::compare</tt> if the string lengths are not equal, 
+even though in general this is an observable side effect. Some implementations only perform that optimisation for 
+<tt>std::string</tt> and <tt>std::wstring</tt>, where we know that calls to <tt>std::char_traits&lt;char&gt;::compare</tt> 
+and <tt>std::char_traits&lt;wchar_t&gt;::compare</tt> are not observable.
+<p/>
+My reading is that the <i>Returns:</i> element describes the value that must be returned, not the precise steps that must be 
+taken to calculate that value. If we intended to specify the precise steps that must be taken then we could say that using 
+"<i>Effects:</i> Equivalent to [&hellip;]", but we don't do that.
+<p/>
+I would prefer this issue to be closed NAD with the rationale that my reading is correct and comparing the lengths to avoid 
+calling <tt>Traits::compare</tt> is already permitted. But if my reading is wrong we need to permit this obvious optimisation.
+</p>
+
+<p><i>[2017-01-27 Telecon]</i></p>
+
+<p>Priority 2</p>
+
+<p><i>[2017-02-04, Ahti Lepp&auml;nen comments and recommends NAD]</i></p>
+
+<p>
+While there seems to be varying interpretations of the standards wording, given the comments in this defect report and 
+definitions in  [structure.specification] (N4618):
+</p>
+<blockquote><p>
+<i>Effects:</i> the actions performed by the function
+<p/>
+<i>Returns:</i> a description of the value(s) returned by the function
+</p>
+</blockquote>
+<p>
+I fail to see that the specification of <tt>operator==</tt> "<i>Returns:</i> <tt>lhs.compare(rhs) == 0</tt>" would require call 
+to <tt>compare()</tt> and no longer consider the report valid.
+</p>
+
+<p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
+
+<p>Status to NAD; we accept Jonathan's reasoning. Note that several implementations do this today.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4618">N4618</a>.</p>
+
+<ol style="list-style-type:upper-alpha">
+<li><p>Preferred: NAD</p></li>
+<li><p>Alternative:</p>
+
+<ol>
+<li><p>Modify 20.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.operator==">[string.operator==]</a> p1 as shown:</p>
+<blockquote>
+<pre>
+template&lt;class charT, class traits, class Allocator&gt;
+  bool operator==(const basic_string&lt;charT, traits, Allocator&gt;&amp; lhs,
+                  const basic_string&lt;charT, traits, Allocator&gt;&amp; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns:</i> <tt><ins>lhs.size() == rhs.size() &amp;&amp;</ins> lhs.compare(rhs) == 0</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/string.view.comparison">[string.view.comparison]</a> as shown:</p>
+<blockquote>
+<p>
+[<i>Example:</i> A sample conforming implementation for <tt>operator==</tt> would be:
+</p>
+<pre>
+template&lt;class T&gt; using __identity = decay_t&lt;T&gt;;
+template&lt;class charT, class traits&gt;
+  constexpr bool operator==(basic_string_view&lt;charT, traits&gt; lhs,
+                            basic_string_view&lt;charT, traits&gt; rhs) noexcept {
+    return <ins>lhs.size() == rhs.size() &amp;&amp;</ins> lhs.compare(rhs) == 0;
+  }
+template&lt;class charT, class traits&gt;
+  constexpr bool operator==(basic_string_view&lt;charT, traits&gt; lhs,
+                            __identity&lt;basic_string_view&lt;charT, traits&gt;&gt; rhs) noexcept {
+    return <ins>lhs.size() == rhs.size() &amp;&amp;</ins> lhs.compare(rhs) == 0;
+  }
+template&lt;class charT, class traits&gt;
+  constexpr bool operator==(__identity&lt;basic_string_view&lt;charT, traits&gt;&gt; lhs,
+                            basic_string_view&lt;charT, traits&gt; rhs) noexcept {
+    return <ins>lhs.size() == rhs.size() &amp;&amp;</ins> lhs.compare(rhs) == 0;
+  }
+</pre>
+<p>
+&mdash; <i>end example</i>]
+</p>
+<pre>
+template&lt;class charT, class traits&gt;
+  constexpr bool operator==(basic_string_view&lt;charT, traits&gt; lhs,
+                            basic_string_view&lt;charT, traits&gt; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns:</i> <tt><ins>lhs.size() == rhs.size() &amp;&amp;</ins> lhs.compare(rhs) == 0</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits&gt;
+  constexpr bool operator!=(basic_string_view&lt;charT, traits&gt; lhs,
+                            basic_string_view&lt;charT, traits&gt; rhs) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> <tt><ins>lhs.size() != rhs.size() ||</ins> lhs.compare(rhs) != 0</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

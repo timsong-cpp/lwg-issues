@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2442: call_once() shouldn't DECAY_COPY()</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2442" href="lwg-defects.html#2442">2442.</a> <tt>call_once()</tt> shouldn't <tt>DECAY_COPY()</tt></h3>
+<p><b>Section:</b> 30.4.6.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2014-10-01 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.once.callonce">issues</a> in [thread.once.callonce].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When LWG <a href="891">891</a> overhauled <tt>call_once()</tt>'s specification, it used <tt>decay_copy()</tt>, following 
+LWG <a href="929">929</a>'s overhaul of <tt>thread</tt>'s constructor.
+<p/>
+In <tt>thread</tt>'s constructor, this is necessary and critically important. 30.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a>/5 
+"The new thread of execution executes <tt><i>INVOKE</i>(<i>DECAY_COPY</i>(std::forward&lt;F&gt;(f)), 
+<i>DECAY_COPY</i>(std::forward&lt;Args&gt;(args))...)</tt> 
+with the calls to <tt><i>DECAY_COPY</i></tt> being evaluated in the constructing thread." requires the parent thread 
+to copy arguments for the child thread to access.
+<p/>
+In <tt>call_once()</tt>, this is unnecessary and harmful. It's unnecessary because <tt>call_once()</tt> doesn't transfer 
+arguments between threads. It's harmful because:
+</p>
+<ul>
+<li><p><tt>decay_copy()</tt> returns a prvalue. Given <tt>meow(int&amp;)</tt>, <tt>meow(i)</tt> can be called directly, 
+but <tt>call_once(flag, meow, i)</tt> won't compile.</p></li>
+<li><p><tt>decay_copy()</tt> moves from modifiable rvalues. Given <tt>purr(const unique_ptr&lt;int&gt;&amp;)</tt>, 
+<tt>purr(move(up))</tt> won't modify <tt>up</tt>. (This is observable, because moved-from <tt>unique_ptr</tt>s are 
+guaranteed empty.) However, <tt>call_once(flag, purr, move(up))</tt> will leave <tt>up</tt> empty after the first active 
+execution. Observe the behavioral difference &mdash; if <tt>purr()</tt> is directly called like this repeatedly until it 
+doesn't throw an exception, each call will observe <tt>up</tt> unchanged. With <tt>call_once()</tt>, the second active 
+execution will observe <tt>up</tt> to be empty.</p></li>
+</ul>
+<p>
+<tt>call_once()</tt> should use perfect forwarding without <tt>decay_copy()</tt>, in order to avoid interfering with the call like this.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Handed over to SG1.
+</p>
+
+<p><i>[2015-05 Lenexa, SG1 response]</i></p>
+
+<p>
+Looks good to us, but this is really an LWG issue.
+</p>
+
+<p><i>[2015-05-07 Lenexa: Move Immediate]</i></p>
+
+<p>LWG 2442 call_once shouldn't decay_copy</p>
+<p>STL summarizes the SG1 minutes.</p>
+<p>Marshall: Jonathan updated all the issues with SG1 status last night. Except this one.</p>
+<p>STL summarizes the issue.</p>
+<p>Dietmar: Of course, call_once has become useless.</p>
+<p>STL: With magic statics.</p>
+<p>Jonathan: Magic statics can't be per object, which I use in future.</p>
+<p>Marshall: I see why you are removing the MoveConstructible on the arguments, but what about Callable?</p>
+<p>STL: That's a type named Callable, which we will no longer decay_copy. We're still requiring the INVOKE expression to be valid.</p>
+<p>Marshall: Okay. Basically, ripping the decay_copy out of here.</p>
+<p>STL: I recall searching the Standard for other occurrences and I believe this is the only inappropriate use of decay_copy.</p>
+<p>Marshall: We do the decay_copy.</p>
+<p>Jonathan: Us too.</p>
+<p>Marshall: What do people think?</p>
+<p>Jonathan: I think STL's right. In the use I was mentioning inside futures, I actually pass them by reference_wrapper and pointers, to avoid the decay causing problems. Inside the call_once, I then extract the args. So I've had to work around this and didn't realize it was a defect.</p>
+<p>Marshall: What do people think is the right resolution?</p>
+<p>STL: I would like to see Immediate.</p>
+<p>Hwrd: No objections to Immediate.</p>
+<p>Marshall: Bill is nodding.</p>
+<p>PJP: He said it. Everything STL says applies to our other customers.</p>
+<p>Marshall: Any objections to Immediate?</p>
+<p>Jonathan: I can't see any funky implementations where a decay_copy would be necessary?</p>
+<p>Marshall: 6 votes for Immediate, 0 opposed, 0 abstaining.</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N3936.
+</p>
+
+<ol>
+<li><p>Change 30.4.6.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> p1+p2 as depicted:</p>
+
+<blockquote>
+<pre>
+template&lt;class Callable, class ...Args&gt;
+  void call_once(once_flag&amp; flag, Callable&amp;&amp; func, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires</i>: <del><tt>Callable</tt> and each <tt>Ti</tt> in <tt>Args</tt> shall satisfy the <tt>MoveConstructible</tt> 
+requirements.</del> <tt><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
+<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</tt>
+(20.9.2) shall be a valid expression.
+<p/>
+-2- <i>Effects</i>; [&hellip;] An active execution shall call 
+<tt><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
+<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</tt>. [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2677: directory_entry::status is not allowed to be cached as a quality-of-implementation issue</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2677" href="lwg-defects.html#2677">2677.</a> <code>directory_entry::status</code> is not allowed to be cached as a quality-of-implementation issue</h3>
+<p><b>Section:</b> 27.11.11.3 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.entry.obs">[fs.dir.entry.obs]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Billy O'Neal <b>Opened:</b> 2016-03-03 <b>Last modified:</b> 2017-03-19 19:35:20 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.dir.entry.obs">issues</a> in [fs.dir.entry.obs].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>To fix multi-threading problems in <code>directory_entry</code>, caching behavior
+was removed from the type. This is bad for performance reasons,
+because the values can no longer be cached from the result of <code>readdir</code>
+on POSIX platforms, or from <code>FindFirstFile/FindNextFile</code> on Windows.</p>
+
+<p>It appears that the intent was to allow implementers to fill in the
+values for <code>directory_entry::status</code> inside <code>directory_iterator</code>, but as
+currently specified:</p>
+
+    <blockquote><i>Returns:</i> <code>status(path()[, ec])</code>.</blockquote>
+
+<p>This is not allowed to be cached, because the target of the path can
+change. For example, consider the following program:</p>
+
+<pre>#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;filesystem&gt;
+#include &lt;fstream&gt;
+
+using namespace std;
+namespace fs = ::std::filesystem;
+
+void verify(const bool b, const char * const msg) {
+    if (!b) {
+        printf("fail: %s\n", msg);
+        exit(1);
+    }
+}
+
+void touch_file(const char * const filename) {
+    ofstream f(filename);
+    f &lt;&lt; '\n' &lt;&lt; endl;
+    verify(f.good(), "File write failed");
+}
+
+int main() {
+    fs::remove_all("subDir");
+    fs::create_directory("subDir");
+    fs::create_directory("subDir/child");
+    touch_file("subDir/child/child");
+    fs::current_path("./subDir");
+    fs::directory_iterator dir(".");
+    ++dir;
+    fs::directory_entry entry = *dir;
+
+    verify(entry == "./child",
+      "unexpected subdirectory"); //enumerating "subDir" returned the directory "child"
+
+    fs::file_status status = entry.status();
+    verify(status.type() == fs::file_type::directory,
+        "subDir/child was not a directory");
+    fs::current_path("./child");
+    status = entry.status(); // REQUIRED to re-stat() on POSIX,
+                             // GetFileAttributes() on Windows
+    verify(status.type() == fs::file_type::regular,
+        "subDir/child/child was not a regular file");
+    return 0;
+}</pre>
+
+  <p>
+    <code>directory_entry</code> should be re-specified to allow implementers to cache
+    the value of <code>status(path)</code> at the time <code>irectory_iterator</code> was
+    incremented to avoid repeated <code>stat()</code> / <code>GetFileAttributes</code> calls. (This
+    may mean additional constructors are necessary for <code>directory_entry</code> as well)
+  </p>
+
+<p><i>[2016-04, Issues Telecon]</i></p>
+
+<p>
+Beman is working on a paper to address this.
+</p>
+
+<p><i>[2016-08, Beman comments]</i></p>
+
+<p>This will be resolved by <a href="http://wg21.link/p0317r1">P0317R1</a>, Directory Entry Caching for Filesystem.</p>
+<p>Fri AM: Moved to Tentatively Resolved</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+</p>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,268 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2412: promise::set_value() and promise::get_future() should not race</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2412" href="lwg-active.html#2412">2412.</a> <tt>promise::set_value()</tt> and <tt>promise::get_future()</tt> should not race</h3>
+<p><b>Section:</b> 30.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a>, 30.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2014-06-23 <b>Last modified:</b> 2018-06-12 02:06:47 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#futures.promise">active issues</a> in [futures.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.promise">issues</a> in [futures.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code has a data race according to the standard:
+</p>
+<blockquote>
+<pre>
+std::promise&lt;void&gt; p;
+std::thread t{ []{
+  p.get_future().wait();
+}};
+p.set_value();
+t.join();
+</pre>
+</blockquote>
+<p>
+The problem is that both <tt>promise::set_value()</tt> and
+<tt>promise::get_future()</tt> are non-const member functions which modify the
+same object, and we only have wording saying that the <tt>set_value()</tt> and
+<tt>wait()</tt> calls (i.e. calls setting and reading the shared state) are
+synchronized.
+<p/>
+The calls don't actually access the same memory locations, so the
+standard should allow it. My suggestion is to state that calling
+<tt>get_future()</tt> does not conflict with calling the various functions that
+make the shared state ready, but clarify with a note that this does
+not imply any synchronization or "happens before", only being free
+from data races.
+</p>
+
+<p><i>[2015-02 Cologne]</i></p>
+
+<p>
+Handed over to SG1.
+</p>
+
+<p><i>[2016-10-21, Nico comments]</i></p>
+
+<p>
+After creating a promise or packaged task one thread can call <tt>get_future()</tt>
+while another thread can set values/exceptions (either directly or via function call).
+This happens very easily.
+<p/>
+Consider:
+</p>
+<blockquote><pre>
+promise&lt;string&gt; p;
+thread t(doSomething, ref(p));
+cout &lt;&lt; "result: " &lt;&lt; p.get_future().get() &lt;&lt; endl;
+</pre></blockquote>
+<p>
+AFAIK, this is currently UB due to a data race (calling <tt>get_future()</tt> for the 
+promise might happen while setting the value in the promise).
+<p/>
+Yes, a fix is pretty easy:
+</p>
+<blockquote><pre>
+promise&lt;string&gt; p;
+future&lt;string&gt; f(p.get_future());
+thread t(doSomething, ref(p));
+cout &lt;&lt; "result: " &lt;&lt; f.get() &lt;&lt; endl;
+</pre></blockquote>
+<p>
+but I would like to have <tt>get_future()</tt> and setters be synchronized to avoid this UB.
+<p/>
+This would especially make the use of packaged tasks a lot easier. Consider:
+</p>
+<blockquote><pre>
+vector&lt;packaged_task&lt;int(char)&gt;&gt; tasks;
+packaged_task&lt;int(char)&gt; t1(func);
+
+// start separate thread to run all tasks:
+auto futCallTasks = async(launch::async, callTasks, ref(tasks));
+
+for (auto&amp; fut : tasksResults) {
+  cout &lt;&lt; "result: " &lt;&lt; fut.get_future().get() &lt;&lt; endl; // OOPS: UB
+}
+</pre></blockquote>
+<p>
+Again, AFAIK, this program currently is UB due to a data race.
+Instead, currently I'd have to program, which is a lot less convenient:
+</p>
+<blockquote><pre>
+vector&lt;packaged_task&lt;int(char)&gt;&gt; tasks;
+vector&lt;future&lt;int&gt;&gt; tasksResults;
+packaged_task&lt;int(char)&gt; t1(func);
+tasksResults.push_back(t1.getFuture()));
+tasks.push_back(move(t1));
+
+// start separate thread to run all tasks:
+auto futCallTasks = async(launch::async, callTasks, ref(tasks));
+
+for (auto&amp; fut : tasksResults) {
+  cout &lt;&lt; "result: " &lt;&lt; fut.get() &lt;&lt; endl;
+}
+</pre></blockquote>
+<p>
+With my naive thinking I see not reason not to guarantee
+that these calls synchronize (as <tt>get_future</tt> returns an "address/reference"
+while all setters set the values there).
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 30.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> around p12 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-12- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object with the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not conflict (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+with calls to <tt>set_value</tt>, <tt>set_exception</tt>, <tt>set_value_at_thread_exit</tt>, or
+<tt>set_exception_at_thread_exit</tt>. [<i>Note</i>: Such calls need not be synchronized, but implementations 
+must ensure they do not introduce data races. &mdash; <i>end note</i>]</ins>
+<p/>
+-13- <i>Throws</i>: <tt>future_error</tt> if <tt>*this</tt> has no shared state or if <tt>get_future</tt> has already been called on a
+<tt>promise</tt> with the same shared state as <tt>*this</tt>.
+<p/>
+-14- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 30.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> around p13 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-13- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object that shares the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not conflict (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) 
+with calls to <tt>operator()</tt> or <tt>make_ready_at_thread_exit</tt>. [<i>Note</i>: Such calls need not be 
+synchronized, but implementations must ensure they do not introduce data races. &mdash; <i>end note</i>]</ins>
+<p/>
+-14- <i>Throws</i>: a <tt>future_error</tt> object if an error occurs.
+<p/>
+-15- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-02-28, Kona]</i></p>
+
+<p>
+SG1 has updated wording for LWG 2412. SG1 voted to move this to Ready status by unanimous consent.
+</p>
+
+<p><i>[2017-03-01, Kona, SG1]</i></p>
+
+<p>
+GeoffR to forward revised wording.
+</p>
+
+<p><i>[2018-06, Rapperswil, Wednesday evening session]</i></p>
+
+<p>
+JW: lets move on and I'll file another issue to make the wording better<br/>
+BO: the current wording is better than what there before<br/>
+JM: ACTION I should file an editorial issue to clean up on how to refer to [res.on.data.races]: raised editorial issue 2097<br/>
+ACTION: move to Ready
+<p/>
+Daniel rebases wording to N4750.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4750">N4750</a>.</p>
+
+<ol>
+<li><p>Change 30.6.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> around p12 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-12- <i>Returns</i>: A <tt>future&lt;R&gt;</tt> object with the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not introduce data races (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) with 
+calls to <tt>set_value</tt>, <tt>set_exception</tt>, <tt>set_value_at_thread_exit</tt>, or <tt>set_exception_at_thread_exit</tt>. 
+[<i>Note</i>: Such calls need not synchronize with each other. &mdash; <i>end note</i>]</ins>
+<p/>
+-13- <i>Throws</i>: <tt>future_error</tt> if <tt>*this</tt> has no shared state or if <tt>get_future</tt> has already been called on a
+<tt>promise</tt> with the same shared state as <tt>*this</tt>.
+<p/>
+-14- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 30.6.10.1 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> around p13 as indicated:</p>
+
+<blockquote>
+<pre>
+future&lt;R&gt; get_future();
+</pre>
+<blockquote>
+<p>
+-13- <i>Returns</i>: A <tt>future</tt> object that shares the same shared state as <tt>*this</tt>.
+<p/>
+<ins>-?- <i>Synchronization</i>: Calls to this function do not introduce data races (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>) with calls 
+to <tt>operator()</tt> or <tt>make_ready_at_thread_exit</tt>. [<i>Note</i>: Such calls need not synchronize with each other. 
+&mdash; <i>end note</i>]</ins>
+<p/>
+-14- <i>Throws</i>: a <tt>future_error</tt> object if an error occurs.
+<p/>
+-15- <i>Error conditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

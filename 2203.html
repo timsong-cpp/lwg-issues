@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2203: scoped_allocator_adaptor uses wrong argument types for piecewise construction</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2203" href="lwg-defects.html#2203">2203.</a> <tt>scoped_allocator_adaptor</tt> uses wrong argument types for piecewise construction</h3>
+<p><b>Section:</b> 19.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> <b>Status:</b> <a href="lwg-active.html#C++14">C++14</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2012-10-19 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.adaptor.members">issues</a> in [allocator.adaptor.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++14">C++14</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+In 19.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> paragraph 11 the effects
+clause says a tuple should be constructed with <tt>inner_allocator_type()</tt>,
+but that creates an rvalue which cannot bind to <tt>inner_allocator_type&amp;</tt>,
+and would also be wrong if <tt>this->inner_allocator() != inner_allocator_type()</tt>.  
+This could be considered editorial, since the current wording doesn't even compile.
+</p>
+<p>
+Secondly, in the same paragraph, the tuple objects <tt>xprime</tt> and <tt>yprime</tt>
+seem to be lvalues and might be constructed by copying <tt>x</tt> and <tt>y</tt>. This
+prevents using <tt>scoped_allocator</tt> to construct pairs from arguments of
+move-only types.  I believe the <tt>tuple_cast()</tt> expressions should use
+<tt>std::move(x)</tt> and <tt>std::move(y)</tt> to move from the incoming arguments
+(which are passed by value to candidates for moving) and the final sentence of the paragraph 
+should be:
+</p>
+<p>
+then calls <tt>OUTERMOST_ALLOC_TRAITS(*this)::construct(OUTERMOST (*this), p, piecewise_construct, 
+std::move(xprime), std::move(yprime))</tt>.
+</p>
+<p>
+so that the objects are passed to <tt>std::pair</tt>'s piecewise constructor as rvalues and 
+are eligible for moving into the constructor arguments. This could also be considered editorial, 
+as the current wording prevents certain uses which were intended to be supported.
+<p/>
+I've implemented these changes and can confirm they allow code to work that can't be compiled 
+according to the current wording.
+</p>
+
+<p><i>[2013-03-15 Issues Teleconference]</i></p>
+
+<p>
+Moved to Review.
+</p>
+<p>
+The resolution looks good, with wording provided by a recent implementer.  However, it will take more
+time than the telecon allows to review with confidence, and we would like Pablo to at least take a
+look over the resolution and confirm that it matches the design intent.
+</p>
+
+<p><i>[2013-04-18, Bristol]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3376.</p>
+
+<ol>
+<li><p>Change 19.13.4 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.members">[allocator.adaptor.members]</a> paragraph 11 as indicated:</p>
+
+<blockquote>
+<p>
+-11- <i>Effects</i>: Constructs a <tt>tuple</tt> object <tt>xprime</tt> from <tt>x</tt> by the following rules:
+</p>
+<ul>
+<li><p>
+If <tt>uses_allocator&lt;T1, inner_allocator_type&gt;::value</tt> is <tt>false</tt> and 
+<tt>is_constructible&lt;T1, Args1...&gt;::value</tt> is <tt>true</tt>, then <tt>xprime</tt> is <tt>x</tt>.
+</p></li>
+
+<li><p>
+Otherwise, if <tt>uses_allocator&lt;T1, inner_allocator_type&gt;::value</tt> is <tt>true</tt> and 
+<tt>is_constructible&lt;T1, allocator_arg_t, inner_allocator_type, Args1...&gt;::value</tt> is <tt>true</tt>, 
+then <tt>xprime</tt> is <tt>tuple_cat(tuple&lt;allocator_arg_t, inner_allocator_type&amp;&gt;( allocator_arg, 
+inner_allocator<del>_type</del>()), <ins>std::move(</ins>x<ins>)</ins>)</tt>.
+</p></li>
+
+<li><p>
+Otherwise, if <tt>uses_allocator&lt;T1, inner_allocator_type&gt;::value</tt> is <tt>true</tt> and 
+<tt>is_constructible&lt;T1, Args1..., inner_allocator_type&gt;::value</tt> is <tt>true</tt>, then <tt>xprime</tt> 
+is <tt>tuple_cat(<ins>std::move(</ins>x<ins>)</ins>, 
+tuple&lt;inner_allocator_type&amp;&gt;(inner_allocator<del>_type</del>()))</tt>.
+</p></li>
+
+<li><p>
+Otherwise, the program is ill-formed.
+</p></li>
+</ul>
+<p>
+and constructs a <tt>tuple</tt> object <tt>yprime</tt> from <tt>y</tt> by the following rules:
+</p>
+<ul>
+<li><p>
+If <tt>uses_allocator&lt;T2, inner_allocator_type&gt;::value</tt> is <tt>false</tt> and 
+<tt>is_constructible&lt;T2, Args2...&gt;::value</tt> is <tt>true</tt>, then <tt>yprime</tt> is <tt>y</tt>.
+</p></li>
+
+<li><p>
+Otherwise, if <tt>uses_allocator&lt;T2, inner_allocator_type&gt;::value</tt> is <tt>true</tt> and 
+<tt>is_constructible&lt;T2, allocator_arg_t, inner_allocator_type, Args2...&gt;::value</tt> is <tt>true</tt>, 
+then <tt>yprime</tt> is <tt>tuple_cat(tuple&lt;allocator_arg_t, inner_allocator_type&amp;&gt;( allocator_arg, 
+inner_allocator<del>_type</del>()), <ins>std::move(</ins>y<ins>)</ins>)</tt>.
+</p></li>
+
+<li><p>
+Otherwise, if <tt>uses_allocator&lt;T2, inner_allocator_type&gt;::value</tt> is <tt>true</tt> and 
+<tt>is_constructible&lt;T2, Args2..., inner_allocator_type&gt;::value</tt> is <tt>true</tt>, then <tt>yprime</tt> 
+is <tt>tuple_cat(<ins>std::move(</ins>y<ins>)</ins>, 
+tuple&lt;inner_allocator_type&amp;&gt;(inner_allocator<del>_type</del>()))</tt>.
+</p></li>
+
+<li><p>
+Otherwise, the program is ill-formed.
+</p></li>
+</ul>
+<p>
+then calls <tt><i>OUTERMOST_ALLOC_TRAITS</i>(*this)::construct(<i>OUTERMOST</i>(*this), p,
+piecewise_construct, <ins>std::move(</ins>xprime<ins>)</ins>, <ins>std::move(</ins>yprime<ins>)</ins>)</tt>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

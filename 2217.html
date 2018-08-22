@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2217: operator==(sub_match, string) slices on embedded '\0's</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2217" href="lwg-defects.html#2217">2217.</a> <tt>operator==(sub_match, string)</tt> slices on embedded <tt>'\0'</tt>s</h3>
+<p><b>Section:</b> 28.9.2 <a href="https://timsong-cpp.github.io/cppwp/re.submatch.op">[re.submatch.op]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Jeffrey Yasskin <b>Opened:</b> 2012-11-26 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.submatch.op">issues</a> in [re.submatch.op].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<blockquote><pre>
+template &lt;class BiIter, class ST, class SA&gt;
+  bool operator==(
+    const basic_string&lt;
+      typename iterator_traits&lt;BiIter&gt;::value_type, ST, SA&gt;&amp; lhs,
+    const sub_match&lt;BiIter&gt;&amp; rhs);
+</pre></blockquote>
+<p>
+is specified as:
+</p>
+<blockquote><p>
+<i>Returns</i>: <tt>rhs.compare(lhs.c_str()) == 0</tt>.
+</p></blockquote>
+<p>
+This is odd because <tt>sub_match::compare(basic_string)</tt> is defined to
+honor embedded <tt>'\0'</tt> characters. This could allow a <tt>sub_match</tt> to <tt>==</tt> or
+<tt>!=</tt> a <tt>std::string</tt> unexpectedly.
+</p>
+
+<p><i>[Daniel:]</i></p>
+
+<p>
+This wording change was done intentionally as of LWG <a href="1181">1181</a>, but the here mentioned slicing
+effect was not considered at that time. It seems best to use another overload of compare to fix this problem:
+</p>
+<blockquote><p>
+<i>Returns</i>: <tt>rhs.str().compare(0, rhs.length(), lhs.data(), lhs.size()) == 0</tt>.
+</p></blockquote>
+<p>
+or
+</p>
+<blockquote><p>
+<i>Returns</i>: <tt>rhs.compare(sub_match&lt;BiIter&gt;::string_type(lhs.data(), lhs.size())) == 0</tt>.
+</p></blockquote>
+
+<p><i>[2013-10-17: Daniel provides concrete wording]</i></p>
+
+
+<p>
+The original wording was suggested to reduce the need to allocate memory during comparisons. The specification would be
+very much easier, if <tt>sub_match</tt> would provide an additional <tt>compare</tt> overload of the form:
+</p>
+<blockquote><pre>
+int compare(const value_type* s, size_t n) const;
+</pre></blockquote>
+<p>
+But given the fact that currently <em>all</em> of <tt>basic_string</tt>'s <tt>compare</tt> overloads are defined in terms
+of temporary string constructions, the following proposed wording does follow the same string-construction route as 
+<tt>basic_string</tt> does (where needed to fix the embedded zeros issue) and to hope that existing implementations
+ignore to interpret this semantics in the literal sense.
+<p/>
+I decided to use the second replacement form
+</p>
+<blockquote><pre>
+<i>Returns</i>: <tt>rhs.compare(sub_match&lt;BiIter&gt;::string_type(lhs.data(), lhs.size())) == 0</tt>.
+</pre></blockquote>
+<p>
+because it already reflects the existing style used in 28.9.2 <a href="https://timsong-cpp.github.io/cppwp/re.submatch.op">[re.submatch.op]</a> p31.
+</p>
+
+
+<p><i>[2014-02-15 post-Issaquah session : move to Tentatively Ready]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N3691.</p>
+
+<ol>
+<li><p>Change 28.9.2 <a href="https://timsong-cpp.github.io/cppwp/re.submatch.op">[re.submatch.op]</a> as indicated:</p>
+
+<blockquote><pre>
+template &lt;class BiIter, class ST, class SA&gt;
+  bool operator==(
+    const basic_string&lt;
+      typename iterator_traits&lt;BiIter&gt;::value_type, ST, SA&gt;&amp; lhs,
+    const sub_match&lt;BiIter&gt;&amp; rhs);
+</pre><blockquote>
+<p>
+-7- <i>Returns:</i> <tt>rhs.compare(<del>lhs.c_str()</del><ins>typename sub_match&lt;BiIter&gt;::string_type(lhs.data(), lhs.size())</ins>) == 0</tt>.
+</p>
+</blockquote></blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote><pre>
+template &lt;class BiIter, class ST, class SA&gt;
+  bool operator&lt;(
+    const basic_string&lt;
+      typename iterator_traits&lt;BiIter&gt;::value_type, ST, SA&gt;&amp; lhs,
+    const sub_match&lt;BiIter&gt;&amp; rhs);
+</pre><blockquote>
+<p>
+-9- <i>Returns:</i> <tt>rhs.compare(<del>lhs.c_str()</del><ins>typename sub_match&lt;BiIter&gt;::string_type(lhs.data(), lhs.size())</ins>) &gt; 0</tt>.
+</p>
+</blockquote></blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote><pre>
+template &lt;class BiIter, class ST, class SA&gt;
+  bool operator==(const sub_match&lt;BiIter&gt;&amp; lhs,
+                  const basic_string&lt;
+                    typename iterator_traits&lt;BiIter&gt;::value_type, ST, SA>&amp; rhs);
+</pre><blockquote>
+<p>
+-13- <i>Returns:</i> <tt>lhs.compare(<del>rhs.c_str()</del><ins>typename sub_match&lt;BiIter&gt;::string_type(rhs.data(), rhs.size())</ins>) == 0</tt>.
+</p>
+</blockquote></blockquote>
+<p>
+[&hellip;]
+</p>
+<blockquote><pre>
+template &lt;class BiIter, class ST, class SA&gt;
+  bool operator&lt;(const sub_match&lt;BiIter&gt;&amp; lhs,
+                 const basic_string&lt;
+                   typename iterator_traits&lt;BiIter&gt;::value_type, ST, SA>&amp; rhs);
+</pre><blockquote>
+<p>
+-15- <i>Returns:</i> <tt>lhs.compare(<del>rhs.c_str()</del><ins>typename sub_match&lt;BiIter&gt;::string_type(rhs.data(), rhs.size())</ins>) &lt; 0</tt>.
+</p>
+</blockquote></blockquote>
+
+<blockquote><pre>
+</pre><blockquote>
+<p>
+</p>
+</blockquote></blockquote>
+
+<blockquote><pre>
+</pre><blockquote>
+<p>
+</p>
+</blockquote></blockquote>
+
+<blockquote><pre>
+</pre><blockquote>
+<p>
+</p>
+</blockquote></blockquote>
+
+<blockquote><pre>
+</pre><blockquote>
+<p>
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3075: basic_string needs deduction guides from basic_string_view</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3075" href="lwg-defects.html#3075">3075.</a> <tt>basic_string</tt> needs deduction guides from <tt>basic_string_view</tt></h3>
+<p><b>Section:</b> 20.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a>, 20.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2018-03-03 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#basic.string">active issues</a> in [basic.string].</p>
+<p><b>View all other</b> <a href="lwg-index.html#basic.string">issues</a> in [basic.string].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The Proposed Resolution for LWG <a href="2946">2946</a> appears to be correct and we've implemented it in MSVC, 
+but it worsens a pre-existing problem with basic_string class template argument deduction.
+<p/>
+The following <tt>s1</tt> and <tt>s2</tt> compiled in C++17 before LWG 2946's PR, fail 
+to compile after LWG 2946's PR, and are fixed by my PR:</p>
+<blockquote><pre>
+basic_string s1("cat"sv);
+basic_string s2("cat"sv, alloc);
+</pre></blockquote>
+<p>
+The following s4 failed to compile in C++17, and is fixed by my PR:
+</p>
+<blockquote><pre>
+// basic_string s3("cat"sv, 1, 1);
+basic_string s4("cat"sv, 1, 1, alloc);
+</pre></blockquote>
+<p>
+(s3 failed to compile in C++17, and would be fixed by my PR, but it is affected by a pre-existing and 
+unrelated ambiguity which I am not attempting to fix here.)
+<p/>
+As C++17 and LWG 2946's PR introduced templated constructors for <tt>basic_string</tt> from 
+<tt>basic_string_view</tt>, we need to add corresponding deduction guides.
+<p/>
+The constructors take <tt>const T&amp;</tt> that's convertible to <tt>basic_string_view</tt> (the 
+additional constraint about not converting to <tt>const charT*</tt> is irrelevant here). However, CTAD 
+can't deduce <tt>charT</tt> and <tt>traits</tt> from arbitrary user-defined types, so the deduction guides 
+need <tt>T</tt> to be exactly <tt>basic_string_view</tt>.
+<p/>
+Additionally, we need to handle the <tt>size_type</tt> parameters in the same way that the unordered 
+containers do. This PR has been implemented in MSVC.
+</p>
+
+<p><i>[2018-14: Wednesday night issues processing: both this and <a href="2946">2946</a> to status "Immediate".]</i></p>
+
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 20.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a>, class template <tt>basic_string</tt> synopsis, as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+
+template&lt;class InputIterator,
+         class Allocator = allocator&lt;typename iterator_traits&lt;InputIterator&gt;::value_type&gt;&gt;
+  basic_string(InputIterator, InputIterator, Allocator = Allocator())
+    -&gt; basic_string&lt;typename iterator_traits&lt;InputIterator&gt;::value_type,
+                    char_traits&lt;typename iterator_traits&lt;InputIterator&gt;::value_type&gt;,
+                     Allocator&gt;;
+
+<ins>template&lt;class charT,
+         class traits,
+         class Allocator = allocator&lt;charT&gt;&gt;
+  explicit basic_string(basic_string_view&lt;charT, traits&gt;, const Allocator&amp; = Allocator())
+    -&gt; basic_string&lt;charT, traits, Allocator&gt;;
+
+template&lt;class charT,
+         class traits,
+         class Allocator = allocator&lt;charT&gt;&gt;
+  basic_string(basic_string_view&lt;charT, traits&gt;, typename <i>see below</i>::size_type, typename <i>see below</i>::size_type, 
+               const Allocator&amp; = Allocator())
+    -&gt; basic_string&lt;charT, traits, Allocator&gt;;</ins>
+
+}                     
+</pre></blockquote>
+<p>
+<ins>-?- A <tt>size_type</tt> parameter type in a <tt>basic_string</tt> deduction guide refers to the 
+<tt>size_type</tt> member type of the type deduced by the deduction guide.</ins>
+</p>
+</blockquote>
+</li>
+
+<li>
+<p>Edit 20.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator,
+         class Allocator = allocator&lt;typename iterator_traits&lt;InputIterator>::value_type&gt;&gt;
+  basic_string(InputIterator, InputIterator, Allocator = Allocator())
+    -&gt; basic_string&lt;typename iterator_traits&lt;InputIterator&gt;::value_type,
+                    char_traits&lt;typename iterator_traits&lt;InputIterator&gt;::value_type&gt;,
+                     Allocator&gt;;
+</pre>
+<blockquote>
+<p>
+-25- <i>Remarks:</i> Shall not participate in overload resolution if <tt>InputIterator</tt> is a type 
+that does not qualify as an input iterator, or if <tt>Allocator</tt> is a type that does not qualify as an allocator (21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>).
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class charT,
+         class traits,
+         class Allocator = allocator&lt;charT&gt;&gt;
+  explicit basic_string(basic_string_view&lt;charT, traits&gt;, const Allocator&amp; = Allocator())
+    -&gt; basic_string&lt;charT, traits, Allocator&gt;;
+
+template&lt;class charT,
+         class traits,
+         class Allocator = allocator&lt;charT&gt;&gt;
+  basic_string(basic_string_view&lt;charT, traits&gt;, typename <i>see below</i>::size_type, typename <i>see below</i>::size_type, 
+               const Allocator&amp; = Allocator())
+    -&gt; basic_string&lt;charT, traits, Allocator&gt;;</ins>                                          
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Remarks:</i> Shall not participate in overload resolution if <tt>Allocator</tt> is a type 
+that does not qualify as an allocator (21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>).</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2770: tuple_size&lt;const T&gt; specialization is not SFINAE compatible and breaks decomposition declarations</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2770" href="lwg-defects.html#2770">2770.</a> <tt>tuple_size&lt;const T&gt;</tt> specialization is not SFINAE compatible and breaks decomposition declarations</h3>
+<p><b>Section:</b> 19.5.3.6 <a href="https://timsong-cpp.github.io/cppwp/tuple.helper">[tuple.helper]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2016-08-15 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.helper">issues</a> in [tuple.helper].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider:
+</p>
+<blockquote><pre>
+#include &lt;utility&gt;
+
+struct X { int a, b; };
+const auto [x, y] = X();
+</pre></blockquote>
+<p>
+This is ill-formed: it triggers the instantiation of <tt>std::tuple_size&lt;const X&gt;</tt>, which hits a hard error 
+because it tries to use <tt>tuple_size&lt;X&gt;::value</tt>, which does not exist. The code compiles if 
+<tt>&lt;utility&gt;</tt> (or another header providing <tt>tuple_size</tt>) is not included.
+<p/>
+It seems that we either need a different strategy for decomposition declarations, or we need to change the library to 
+make the <tt>tuple_size</tt> partial specializations for <i>cv</i>-qualifiers SFINAE-compatible.
+<p/>
+The latter seems like the better option to me, and like a good idea regardless of decomposition declarations.
+</p>
+
+<p><i>[2016-09-05, Daniel comments]</i></p>
+
+<p>
+This is partially related to LWG <a href="2446">2446</a>.
+</p>
+
+<p><i>[2016-09-09 Issues Resolution Telecon]</i></p>
+
+<p>Geoffrey to provide wording</p>
+
+<p><i>[2016-09-14 Geoffrey provides wording]</i></p>
+
+
+<p><i>[2016-10 Telecon]</i></p>
+
+<p>Alisdair to add his concerns here before Issaquah. Revisit then. Status to 'Open'</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Edit 19.5.3.6 <a href="https://timsong-cpp.github.io/cppwp/tuple.helper">[tuple.helper]</a> as follows:</p>
+<blockquote>
+<pre>
+template &lt;class T&gt; class tuple_size&lt;const T&gt;;
+template &lt;class T&gt; class tuple_size&lt;volatile T&gt;;
+template &lt;class T&gt; class tuple_size&lt;const volatile T&gt;;
+</pre>
+<blockquote>
+<p>
+-4- Let <tt><i>TS</i></tt> denote <tt>tuple_size&lt;T&gt;</tt> of the <i>cv</i>-unqualified type <tt>T</tt>. 
+<ins>If the expression <tt><i>TS</i>::value</tt> is well-formed when treated as an unevaluated operand, 
+t</ins><del>T</del>hen each of the three templates shall meet the <tt>UnaryTypeTrait</tt> requirements (20.15.1) 
+with a <tt>BaseCharacteristic</tt> of
+</p>
+<blockquote>
+<pre>
+integral_constant&lt;size_t, <i>TS</i>::value&gt;
+</pre>
+</blockquote>
+<p>
+<ins>Otherwise, they shall have no member <tt>value</tt>.</ins>
+</p>
+<p>
+<ins>Access checking is performed as if in a context unrelated to <tt><i>TS</i></tt> and <tt>T</tt>. Only the 
+validity of the immediate context of the expression is considered. [<i>Note:</i> The compilation of the expression 
+can result in side effects such as the instantiation of class template specializations and function template 
+specializations, the generation of implicitly-defined functions, and so on. Such side effects are not in the 
+"immediate context" and can result in the program being ill-formed. &mdash; <i>end note</i>]</ins>
+<p/>
+-5- In addition to being available via inclusion of the <tt>&lt;tuple&gt;</tt> header, the three templates are available
+when either of the headers <tt>&lt;array&gt;</tt> or <tt>&lt;utility&gt;</tt> are included.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

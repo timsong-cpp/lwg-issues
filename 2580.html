@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2580: Who is definitive: operator= or assign?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2580" href="lwg-closed.html#2580">2580.</a> Who is definitive: <tt>operator=</tt> or <tt>assign</tt>?</h3>
+<p><b>Section:</b> 20.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a>, 20.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a>, 28.8.2 <a href="https://timsong-cpp.github.io/cppwp/re.regex.assign">[re.regex.assign]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2016-01-05 <b>Last modified:</b> 2016-11-12 20:15:11 UTC</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.cons">issues</a> in [string.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There are two "containers" in the standard who have member functions named <tt>assign</tt> that take parameters of the 
+type of the container (as opposed to iterators, pointers, what have you).
+<p/>
+In <tt>string</tt>'s case, we define <tt>assign</tt> in terms of <tt>operator=</tt>.
+In <tt>regex</tt>'s case, we define <tt>operator=</tt> in terms of <tt>assign</tt>.
+<p/>
+We should pick a style and use use it.
+<p/>
+In 20.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a>, we have:
+</p>
+<blockquote>
+<pre>
+basic_string&amp; operator=(const basic_string&amp; str);
+</pre>
+<blockquote>
+<p>
+-17- <i>Effects</i>: If <tt>*this</tt> and <tt>str</tt> are not the same object, modifies <tt>*this</tt> as shown in Table 70. 
+<p/>
+-18- If <tt>*this</tt> and <tt>str</tt> are the same object, the member has no effect.
+<p/>
+-19- <i>Returns</i>: <tt>*this</tt>
+</p>
+</blockquote>
+<pre>
+basic_string&amp; operator=(basic_string&amp;&amp; str)
+  noexcept(allocator_traits&lt;Allocator&gt;::propagate_on_container_move_assignment::value || 
+           allocator_traits&lt;Allocator&gt;::is_always_equal::value);
+</pre>
+<blockquote>
+<p>
+-20- <i>Effects</i>: Move assigns as a sequence container (23.2), except that iterators, pointers and references may be invalidated.
+<p/>
+-21- <i>Returns</i>: <tt>*this</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+In 20.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a>, we have:
+</p>
+<blockquote>
+<pre>
+basic_string&amp; assign(const basic_string&amp; str);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Equivalent to <tt>assign(str, 0, npos)</tt>. 
+<p/>
+-2- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+basic_string&amp; assign(basic_string&amp;&amp; str) 
+  noexcept(allocator_traits&lt;Allocator&gt;::propagate_on_container_move_assignment::value ||
+           allocator_traits&lt;Allocator&gt;::is_always_equal::value);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: Equivalent to <tt>*this = std::move(str)</tt>.
+<p/>
+-3- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+Marshall says: There is another issue <a href="2579">2579</a> here, to change /1 to be similar to /2.
+<p/>
+In 28.8.2 <a href="https://timsong-cpp.github.io/cppwp/re.regex.assign">[re.regex.assign]</a>, we have:
+</p>
+<blockquote>
+<pre>
+basic_regex&amp; operator=(const basic_regex&amp; e);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: returns <tt>assign(e)</tt>.
+</p>
+</blockquote>
+<pre>
+basic_regex&amp; operator=(basic_regex&amp;&amp; e) noexcept;
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: returns <tt>assign(std::move(e))</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+<em>and</em>
+</p> 
+<blockquote>
+<pre>
+basic_regex&amp; assign(const basic_regex&amp; that);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: copies <tt>that</tt> into <tt>*this</tt> and returns <tt>*this</tt>.
+<p/>
+-8- <i>Postconditions</i>: <tt>flags()</tt> and <tt>mark_count()</tt> return <tt>that.flags()</tt> and 
+<tt>that.mark_count()</tt>, respectively.
+</p>
+</blockquote>
+<pre>
+basic_regex&amp; assign(basic_regex&amp;&amp; that) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: move assigns from <tt>that</tt> into <tt>*this</tt> and returns <tt>*this</tt>.
+<p/>
+-10- <i>Postconditions</i>: <tt>flags()</tt> and <tt>mark_count()</tt> return the values that <tt>that.flags()</tt> and 
+<tt>that.mark_count()</tt>, respectively, had before assignment. <tt>that</tt> is in a valid state with unspecified value.
+</p>
+</blockquote>
+</blockquote>
+
+<p><i>[2016-02, Issues Telecon]</i></p>
+
+<p>
+Marshall to see if this can be dealt with editorially. Change Regex so that assign is in terms of op=
+</p>
+
+<p><i>[2016-02]</i></p>
+
+<p>
+Changed <tt>basic_regex</tt> to match <tt>string</tt> as an editorial change. Closing as NAD
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

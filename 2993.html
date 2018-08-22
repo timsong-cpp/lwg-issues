@@ -1,0 +1,157 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2993: reference_wrapper&lt;T&gt; conversion from T&amp;&amp;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2993" href="lwg-defects.html#2993">2993.</a> <tt>reference_wrapper&lt;T&gt;</tt> conversion from <tt>T&amp;&amp;</tt></h3>
+<p><b>Section:</b> 19.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2017-11-13 19:01:36 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#refwrap">issues</a> in [refwrap].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>reference_wrapper&lt;T&gt;</tt> has a deleted constructor taking <tt>T&amp;&amp;</tt> in order to
+prevent accidentally wrapping an rvalue (which can otherwise happen with the 
+<tt>reference_wrapper(T&amp;)</tt> constructor if <tt>T</tt> is a non-<tt>volatile</tt>
+<tt>const</tt>-qualified type). Unfortunately, a deleted constructor can still
+be used to form implicit conversion sequences, so the deleted <tt>T&amp;&amp;</tt>
+constructor has the (presumably unintended) effect of creating an implicit conversion sequence from 
+a <tt>T</tt> rvalue to a <tt>reference_wrapper&lt;T&gt;</tt>, even though such a conversion would be
+ill-formed if actually used. This is visible in overload resolution:
+</p>
+<blockquote><pre>
+void meow(std::reference_wrapper&lt;int&gt;); //#1
+void meow(convertible_from_int); //#2
+meow(0); // <span style="color:#C80000;font-weight:bold">error, ambiguous</span>; would unambiguously call #2 if #1 instead took int&amp;
+</pre></blockquote>
+<p>
+and in conditional expressions (and hence <tt>std::common_type</tt>) after <a href="https://wg21.link/cwg1895">core issue 1895</a>:
+</p>
+<blockquote><pre>
+std::reference_wrapper&lt;int&gt; purr();
+
+auto x = true? purr() : 0; // <span style="color:#C80000;font-weight:bold">error, ambiguous:</span> ICS exists from int prvalue to 
+                           // reference_wrapper&lt;int&gt; and from reference_wrapper&lt;int&gt; to int
+
+using t = std::common_type_t&lt;std::reference_wrapper&lt;int&gt;, int&gt;; // <span style="color:#C80000;font-weight:bold">error:</span> no member 'type' because the conditional 
+                                                                // expression is ill-formed
+</pre></blockquote>
+<p>
+The latter in turn interferes with the use of <tt>reference_wrapper</tt> as a
+proxy reference type with proxy iterators.
+<p/>
+We should ensure that there is no implicit conversion sequence from <tt>T</tt>
+rvalues to <tt>reference_wrapper&lt;T&gt;</tt>, not just that the conversion will be
+ill-formed when used. This can be done by using a suitably constrained
+constructor template taking a forwarding reference instead of the
+current pair of constructors taking <tt>T&amp;</tt> and <tt>T&amp;&amp;</tt>.
+</p>
+<p><i>[2017-06-29, Tim adds P/R and comments]</i></p>
+
+<p>
+The draft P/R below uses a conditional <tt>noexcept</tt> specification to ensure that converting a <tt>T&amp;</tt> to
+a <tt>reference_wrapper&lt;T&gt;</tt> remains <tt>noexcept</tt> and make it not usable when the source type is a 
+<tt>reference_wrapper</tt> of the same type so as to avoid affecting <tt>is_trivially_constructible</tt>. It adds a deduction
+guide as the new constructor template will not support class template argument deduction.
+<p/>
+The constructor template has the additional effect of making <tt>reference_wrapper&lt;T&gt;</tt> convertible from everything
+that is convertible to <tt>T&amp;</tt>. This implies, for instance, that <tt>reference_wrapper&lt;int&gt;</tt> is now
+convertible to <tt>reference_wrapper&lt;const int&gt;</tt> when it wasn't before (the conversion would have required 
+two user-defined conversions previously). This more closely emulates the behavior of an actual reference, but does represent
+a change to the existing behavior.
+<p/>
+If perfectly emulating the existing behavior is desired, a conditionally-explicit constructor that is only implicit if 
+<tt>T</tt> is reference-compatible with <tt>remove_reference_t&lt;U&gt;</tt> (see 9.3.3 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.ref">[dcl.init.ref]</a>) can be used.
+</p>
+
+<p><i>[2017-07 Toronto Tuesday PM issue prioritization]</i></p>
+
+<p>Priority 3; what else in the library does this affect? <tt>ref</tt> or <tt>cref</tt>?</p>
+
+<p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
+
+<p>Status to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+<ol>
+<li><p>Edit 19.14.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>, class template <tt>reference_wrapper</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template &lt;class T&gt; class reference_wrapper {
+    [&hellip;]
+    // construct/copy/destroy
+<del>    reference_wrapper(T&amp;) noexcept;
+    reference_wrapper(T&amp;&amp;) = delete;    // do not bind to temporary objects</del>
+<ins>    template &lt;class U&gt;
+      reference_wrapper(U&amp;&amp;) noexcept(<i>see below</i>);</ins>
+    [&hellip;]
+  };
+<ins>  template &lt;class T&gt;
+  reference_wrapper(T&amp;) -&gt; reference_wrapper&lt;T&gt;;</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Edit 19.14.5.1 <a href="https://timsong-cpp.github.io/cppwp/refwrap.const">[refwrap.const]</a>/1 as indicated:</p>
+<blockquote>
+<pre>
+<del>reference_wrapper(T&amp; t) noexcept;</del>
+</pre>
+<blockquote>
+<p><del>-1- <i>Effects:</i> Constructs a <tt>reference_wrapper</tt> object that stores a reference to <tt>t</tt>.</del></p>
+</blockquote>
+<pre>
+<ins>template&lt;class U&gt;
+  reference_wrapper(U&amp;&amp; u) noexcept(<i>see below</i>);</ins>
+</pre>
+<blockquote>
+<p><ins>
+-?- <i>Remarks:</i> Let <tt><i>FUN</i></tt> denote the exposition-only functions</ins>
+<blockquote><pre>
+<ins>void <i>FUN</i>(T&amp;) noexcept;
+void <i>FUN</i>(T&amp;&amp;) = delete;</ins>
+</pre></blockquote>
+<ins>This constructor shall not participate in overload resolution unless the expression <tt><i>FUN</i>(declval&lt;U&gt;())</tt> is well-formed
+and <tt>is_same_v&lt;decay_t&lt;U&gt;, reference_wrapper&gt;</tt> is <tt>false</tt>.
+The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(<i>FUN</i>(declval&lt;U&gt;()))</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects:</i> Creates a variable <tt>r</tt> as if by <tt>T&amp; r = std::forward&lt;U&gt;(u)</tt>, then constructs a
+<tt>reference_wrapper</tt> object that stores a reference to <tt>r</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

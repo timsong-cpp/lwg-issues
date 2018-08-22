@@ -1,0 +1,119 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2767: not_fn call_wrapper can form invalid types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2767" href="lwg-defects.html#2767">2767.</a> <tt>not_fn <i>call_wrapper</i></tt> can form invalid types</h3>
+<p><b>Section:</b> 19.14.11 <a href="https://timsong-cpp.github.io/cppwp/func.not_fn">[func.not_fn]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-08-19 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The definition of the <tt><i>call_wrapper</i></tt> type in the C++17 CD means this
+fails to compile:
+</p>
+<blockquote><pre>
+#include &lt;functional&gt;
+
+struct abc { virtual void f() const = 0; };
+struct derived : abc { void f() const { } };
+struct F { bool operator()(abc&amp;) { return false; } };
+derived d;
+bool b = std::not_fn(F{})(static_cast&lt;abc&amp;&amp;&gt;(d));
+</pre></blockquote>
+<p>
+The problem is that the return types use <tt>result_of_t&lt;F(abc)&gt;</tt> and
+<tt>F(abc)</tt> is not a valid function type, because it takes an abstract
+class by value.
+<p/>
+The return types should use <tt>result_of_t&lt;F(Args<ins>&amp;&amp;</ins>...)&gt;</tt> instead.
+</p>
+
+<p><i>[2016-09-09 Issues Resolution Telecon]</i></p>
+
+<p>P0; move to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Modify 19.14.11 <a href="https://timsong-cpp.github.io/cppwp/func.not_fn">[func.not_fn]</a>, class <tt><i>call_wrapper</i></tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+class <i>call_wrapper</i>
+{
+  [&hellip;]
+  template&lt;class... Args&gt;
+    auto operator()(Args&amp;&amp;...) &amp;
+      -&gt; decltype(!declval&lt;result_of_t&lt;FD&amp;(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+  template&lt;class... Args&gt;
+    auto operator()(Args&amp;&amp;...) const&amp;
+      -&gt; decltype(!declval&lt;result_of_t&lt;FD const&amp;(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+  template&lt;class... Args&gt;
+    auto operator()(Args&amp;&amp;...) &amp;&amp;
+      -&gt; decltype(!declval&lt;result_of_t&lt;FD(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+  template&lt;class... Args&gt;
+    auto operator()(Args&amp;&amp;...) const&amp;&amp;
+      -&gt; decltype(!declval&lt;result_of_t&lt;FD const(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());  
+  [&hellip;]
+};
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify the prototype declarations of 19.14.11 <a href="https://timsong-cpp.github.io/cppwp/func.not_fn">[func.not_fn]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class... Args&gt;
+  auto operator()(Args&amp;&amp;... args) &amp;
+    -&gt; decltype(!declval&lt;result_of_t&lt;FD&amp;(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+template&lt;class... Args&gt;
+  auto operator()(Args&amp;&amp;... args) const&amp;
+    -&gt; decltype(!declval&lt;result_of_t&lt;FD const&amp;(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class... Args&gt;
+  auto operator()(Args&amp;&amp;... args) &amp;&amp;
+    -&gt; decltype(!declval&lt;result_of_t&lt;FD(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+template&lt;class... Args&gt;
+  auto operator()(Args&amp;&amp;... args) const&amp;&amp;
+    -&gt; decltype(!declval&lt;result_of_t&lt;FD const(Args<ins>&amp;&amp;</ins>...)&gt;&gt;());
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

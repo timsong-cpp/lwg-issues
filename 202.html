@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 202: unique() effects unclear when predicate not an equivalence relation</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="202" href="lwg-defects.html#202">202.</a> unique() effects unclear when predicate not an equivalence relation</h3>
+<p><b>Section:</b> 23.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a> <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Andrew Koenig <b>Opened:</b> 2000-01-13 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.unique">issues</a> in [alg.unique].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+What should unique() do if you give it a predicate that is not an
+equivalence relation?  There are at least two plausible answers:
+</p>
+
+<blockquote>
+
+<p>
+   1. You can't, because 25.2.8 says that it it "eliminates all but
+   the first element from every consecutive group of equal
+   elements..." and it wouldn't make sense to interpret "equal" as
+   meaning anything but an equivalence relation.  [It also doesn't
+   make sense to interpret "equal" as meaning ==, because then there
+   would never be any sense in giving a predicate as an argument at
+   all.]
+</p>
+
+<p>
+   2. The word "equal" should be interpreted to mean whatever the
+   predicate says, even if it is not an equivalence relation
+   (and in particular, even if it is not transitive).
+</p>
+
+</blockquote>
+
+<p>
+The example that raised this question is from Usenet:
+</p>
+
+<blockquote>
+
+<pre>int f[] = { 1, 3, 7, 1, 2 };
+int* z = unique(f, f+5, greater&lt;int&gt;());</pre>
+
+</blockquote>
+
+<p>
+If one blindly applies the definition using the predicate
+greater&lt;int&gt;, and ignore the word "equal", you get:
+</p>
+
+<blockquote>
+
+<p>
+    Eliminates all but the first element from every consecutive group    
+    of elements referred to by the iterator i in the range [first, last)    
+    for which *i &gt; *(i - 1).
+</p>
+
+</blockquote>
+
+<p>
+The first surprise is the order of the comparison.  If we wanted to
+allow for the predicate not being an equivalence relation, then we
+should surely compare elements the other way: pred(*(i - 1), *i).  If
+we do that, then the description would seem to say: "Break the
+sequence into subsequences whose elements are in strictly increasing
+order, and keep only the first element of each subsequence".  So the
+result would be 1, 1, 2.  If we take the description at its word, it
+would seem to call for strictly DEcreasing order, in which case the
+result should be 1, 3, 7, 2.<br/>
+<br/>
+In fact, the SGI implementation of unique() does neither: It yields 1,
+3, 7.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>Change 23.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a> paragraph 1 to:</p>
+<blockquote><p>
+For a nonempty range, eliminates all but the first element from every
+consecutive group of equivalent elements referred to by the iterator
+<tt>i</tt> in the range [first+1, last) for which the following
+conditions hold: <tt>*(i-1) == *i</tt> or <tt>pred(*(i-1), *i) !=
+false</tt>.
+</p></blockquote>
+
+<p>
+Also insert a new paragraph, paragraph 2a, that reads: "Requires: The
+comparison function must be an equivalence relation."
+</p>
+
+<p><i>[Redmond: discussed arguments for and against requiring the
+comparison function to be an equivalence relation.  Straw poll:
+14-2-5.  First number is to require that it be an equivalence
+relation, second number is to explicitly not require that it be an
+equivalence relation, third number is people who believe they need
+more time to consider the issue.  A separate issue: Andy Sawyer
+pointed out that "i-1" is incorrect, since "i" can refer to the first
+iterator in the range.  Matt provided wording to address this
+problem.]</i></p>
+
+
+<p><i>[Cura&ccedil;ao: The LWG changed &quot;... the range (first,
+last)...&quot; to &quot;...  the range [first+1, last)...&quot; for
+clarity. They considered this change close enough to editorial to not
+require another round of review.]</i></p>
+
+
+
+
+<p><b>Rationale:</b></p>
+<p>The LWG also considered an alternative resolution: change 
+23.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a> paragraph 1 to:</p>
+
+<blockquote><p>
+For a nonempty range, eliminates all but the first element from every
+consecutive group of elements referred to by the iterator
+<tt>i</tt> in the range (first, last) for which the following
+conditions hold: <tt>*(i-1) == *i</tt> or <tt>pred(*(i-1), *i) !=
+false</tt>.
+</p></blockquote>
+
+<p>
+Also insert a new paragraph, paragraph 1a, that reads: "Notes: The
+comparison function need not be an equivalence relation."
+</p>
+
+
+<p>Informally: the proposed resolution imposes an explicit requirement
+that the comparison function be an equivalence relation.  The
+alternative resolution does not, and it gives enough information so
+that the behavior of unique() for a non-equivalence relation is
+specified.  Both resolutions are consistent with the behavior of
+existing implementations.</p>
+
+
+
+
+
+</body>
+</html>

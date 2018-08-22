@@ -1,0 +1,265 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2962: Iterators of Containers of move-only types do not model InputIterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2962" href="lwg-active.html#2962">2962.</a> Iterators of Containers of move-only types do not model <tt>InputIterator</tt></h3>
+<p><b>Section:</b> 22.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Ga&scaron;per A&zcaron;man <b>Opened:</b> 2017-05-10 <b>Last modified:</b> 2018-04-23 18:09:53 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#input.iterators">active issues</a> in [input.iterators].</p>
+<p><b>View all other</b> <a href="lwg-index.html#input.iterators">issues</a> in [input.iterators].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In Table 95 in 22.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a>, it is specified that the expression <tt>*a</tt> returns <tt>reference</tt>, 
+which must be convertible to <tt>value_type</tt>. This is not true for move-only types, which incidentally means that
+<tt>std::vector&lt;std::unique_ptr&lt;int&gt;&gt;</tt> does not possess even a lowly <tt>InputIterator</tt>, which is, of 
+course, absurd.
+<p/>
+With the advent of concepts as first-class citizens in the language, getting this right as soon as possible is a priority.
+<p/>
+This issue seems to be similar to both LWG <a href="448">448</a> and LWG <a href="484">484</a>, but not the same.
+<p/>
+The proposed resolution stems from two considerations outlined below:
+</p>
+<blockquote>
+<p>
+<b>Convertibility is too strong for all algorithms</b>
+<p/>
+No algorithm in the standard library requires convertibility to <tt>value_type</tt>. If algorithms require things that smell 
+of that, they specify the assignment or constructibility flavor they need directly. I checked this by going through the 
+specification of each and every one of them in <tt>&lt;algorithm&gt;</tt> and <tt>&lt;numeric&gt;</tt>, which highlighted 
+several issues unrelated to this one. These issues are presented in <em>Algorithms with underspecified iterator requirements</em>
+(LWG <a href="2963">2963</a>).
+<p/>
+<b><tt>reference</tt> needs to be related to <tt>value_type</tt></b>
+<p/>
+Algorithms need this for the following reasons:
+</p>
+<ul>
+<li><p>lifetime-extension: served as adequately by <tt>T const&amp;</tt> as by <tt>T</tt>. Also works for iterators that 
+return by value. <tt>T&amp;&amp;</tt> also correctly binds to <tt>T const&amp;</tt>.</p></li>
+<li><p>passing to predicates: again, served adequately by <tt>T const&amp;</tt></p></li>
+<li><p>writing to <tt>*result</tt>: not provided by the requirement anyway.</p></li>
+<li><p>capture-by-copy: currently implicitly guaranteed, but unused in the standard library (always specified separately). 
+A separate specification can always be made for algorithms that need to capture-by-copy.</p></li>
+</ul>
+<p>
+We must give due consideration to code that so far required its inputs to be <tt>CopyConstructible</tt> implicitly by 
+requiring convertibility to <tt>T</tt>. This is done in the issue LWG <a href="2963">2963</a>, 
+which presents the results of a comb-through of <tt>&lt;algorithm&gt;</tt> and <tt>&lt;numeric&gt;</tt> to find algorithms 
+that have this requirement, but where it is not specified. While related issues have been identified, no algorithms seems 
+to require more than <tt>T const&amp;</tt> convertibility without separately requiring convertibility to <tt>T</tt>.
+<p/>
+Since such code is already compiling today, relaxing this requirement does not break code.
+<p/>
+The only code this could possibly break is if, in a concept checking library, the <tt>InputIterator</tt> concept requirement 
+on <tt>reference</tt> being convertible to <tt>value_type</tt> gets relaxed. Such a library, if it offered overloading based 
+on most-specific modeled concept, could now, once fixed, resolve the call to a different algorithm, which could break user 
+code that uses a hypothetical algorithm with a move-only container and was relying to select some other overload for move-only 
+types based on the implicit <tt>CopyConstructible</tt> assertion provided by the iterator.
+<p/>
+In our internal concepts-checking library, we have had this issue "fixed" since the very beginning &mdash; move-only types 
+were too important for our internal algorithms library, and also no algorithm in it seems to require something like 
+<tt>Iterator::value_type x = *first</tt> without also requiring copy-constructibility anyway.
+</p>
+</blockquote>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Priority 2; also could affect the ranges TS</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4659">N4659</a>.</p>
+
+<ol>
+<li>
+<p>Change Table 95 &mdash; "Input iterator requirements", 22.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 107 &mdash; Input iterator requirements (in addition to Iterator)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Operational<br/>semantics</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>*a</tt>
+</td>
+<td>
+<tt>reference</tt>,<br/>
+<del>convertible to <tt>T</tt></del><br/>
+<ins>that binds to <tt>const T&amp;</tt></ins>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>*r++</tt>
+</td>
+<td>
+<del>convertible to <tt>T</tt></del><br/>
+<ins>that binds to <tt>const T&amp;</tt></ins>
+</td>
+<td>
+<tt>
+{ <del>T</del><ins>auto&amp;&amp;</ins> tmp = *r;<br/>
+++r;<br/>
+return tmp; }
+</tt>
+</td>
+<td>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2018-04-20; Eric Niebler provides improved wording]</i></p>
+
+<p>
+The revised wording makes it clear that you can only rely on those operational semantics when 
+the value type is constructible from the reference type and is movable. When those conditions 
+aren't met, we can make no guarantees about the operational semantics of <tt>*r++</tt> (which 
+is why <tt>*r++</tt> is no longer a required expression of the <tt>InputIterator</tt> concept 
+in the Ranges TS).
+<p/>
+Really, <em>no</em> generic code should be doing <tt>*r++</tt> on input iterators. Another 
+option would be to simply deprecate this requirement for input iterators, but that might need 
+a paper. (For forward iterators, <tt>*r++</tt> is already required to return <tt>reference</tt> 
+exactly, and the multi-pass guarantee gives it the proper semantics.)
+<p/>
+I also now have a question about the proposed return type of <tt>*a</tt> and <tt>*r++</tt>, 
+which says they must be something that "binds to <tt>const T&amp;</tt>". Does this mean that an 
+iterator with a reference type reference-to-[<tt>const</tt>?]-<tt>volatile</tt>-<tt>T</tt> is no longer 
+considered an iterator? I don't think that's what we want to say. Perhaps these should read 
+"binds to <tt>const volatile T&amp;</tt> instead, except that has the problem for InputIterators 
+that return prvalues that a prvalue is not bindable to a volatile reference.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4741">N4741</a>.</p>
+
+<ol>
+<li>
+<p>Change Table 89 &mdash; "Input iterator requirements", 22.2.3 <a href="https://timsong-cpp.github.io/cppwp/input.iterators">[input.iterators]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 89 &mdash; Input iterator requirements (in addition to Iterator)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Operational<br/>semantics</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>*a</tt>
+</td>
+<td>
+<tt>reference</tt>,<br/>
+<del>convertible to <tt>T</tt></del><br/>
+<ins>that binds to <tt>const T&amp;</tt></ins>
+</td>
+<td>
+<tt></tt>
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>*r++</tt>
+</td>
+<td>
+<del>convertible to <tt>T</tt></del><br/>
+<ins>that binds to <tt>const T&amp;</tt></ins>
+</td>
+<td>
+<ins>When <tt>T tmp = *r</tt> is well-formed and<br/> 
+<tt>T</tt> is <tt>MoveConstructible</tt>, then<br/></ins>
+<tt>
+{ T tmp = *r;<br/>
+++r;<br/>
+return tmp; }
+</tt>
+</td>
+<td>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

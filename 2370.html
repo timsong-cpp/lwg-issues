@@ -1,0 +1,268 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2370: Operations involving type-erased allocators should not be noexcept in std::function</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2370" href="lwg-defects.html#2370">2370.</a> Operations involving type-erased allocators should not be <tt>noexcept</tt> in <tt>std::function</tt></h3>
+<p><b>Section:</b> 19.14.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func">[func.wrap.func]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2014-02-27 <b>Last modified:</b> 2017-03-12 22:42:08 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func">issues</a> in [func.wrap.func].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following constructors in 19.14.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func">[func.wrap.func]</a> are declared <tt>noexcept</tt>, even
+though it is not possible for an implementation to guarantee that they will not throw:
+</p>
+
+<blockquote><pre>
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;) noexcept;
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;, nullptr_t) noexcept;
+</pre></blockquote>
+
+<p>
+In addition, the following functions are guaranteed not to throw if the target
+is a function pointer or a <tt>reference_wrapper</tt>:
+</p>
+
+<blockquote><pre>
+template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, const function&amp; f);
+template &lt;class F, class A&gt; function(allocator_arg_t, const A&amp; a, F f);
+</pre></blockquote>
+
+<p>
+In all of the above cases, the function object might need to allocate memory
+(an operation that can throw) in order to hold a copy of the type-erased
+allocator itself. The first two constructors produce an empty function
+object, but the allocator is still needed in case the object is later assigned
+to. In this case, we note that the propagation of allocators on assignment is
+underspecified for <tt>std::function</tt>. There are three possibilities:
+</p>
+
+<ol>
+<li><p>The allocator is never copied on copy-assignment, moved on move-assignment, or swapped on swap.</p>
+</li>
+
+<li><p>The allocator is always copied on copy-assignment, moved on move-assignment, and swapped on swap.</p>
+</li>
+
+<li><p>Whether or not the allocator is copied, moved, or swapped is determined at
+   run-time based on the <tt>propagate_on_container_copy_assignment</tt> and
+   <tt>propagate_on_container_move_assignment</tt> traits of the allocators at
+   construction of the source function, the target function, or both.</p>
+</li>
+</ol>
+
+<p>
+Although the third option seems to be the most consistent with existing
+wording in the containers section of the standard, it is problematic in a
+number of respects. To begin with, the propagation behavior is determined at
+run time based on a pair of type-erased allocators, instead of at compile
+time. Such run-time logic is <em>not</em> consistent with the rest of the standard
+and is hard to reason about. Additionally, there are two allocator types
+involved, rather than one. Any set of rules that attempts to rationally
+interpret the propagation traits of both allocators is likely to be arcane
+at best, and subtly wrong for some set of codes at worst.
+</p>
+
+<p>
+The second option is a non-starter. Historically, and in the vast majority of
+existing code, an allocator does not change after an object is constructed.
+The second option, if adopted, would undermine the programmer's ability to
+construct, e.g., an array of function objects, all using the same allocator.
+</p>
+
+<p>
+The first option is (in Pablo's opinion) the simplest and best. It is
+consistent with historical use of allocators, is easy to understand, and
+requires minimal wording. It is also consistent with the wording in N3916,
+which formalizes type-erased allocators.
+</p>
+
+<p>
+For cross-referencing purposes: The resolution of this issue should be
+harmonized with any resolution to LWG <a href="2062">2062</a>, which questions the <tt>noexcept</tt>
+specification on the following member functions of std::function:
+</p>
+
+<blockquote><pre>
+template &lt;class F&gt; function&amp; operator=(reference_wrapper&lt;F&gt;) noexcept;
+void swap(function&amp;) noexcept;
+</pre></blockquote>
+
+<p><i>[2015-05 Lenexa]</i></p>
+
+<p>
+MC: change to P3 and status to open.
+<p/>
+STL: note that <tt>noexcept</tt> is an issue and large chunks of allocator should be destroyed.
+</p>
+
+<p><i>[2015-12-16, Daniel comments]</i></p>
+
+<p>
+See <a href="2564">2564</a> for a corresponding issue addressing library fundamentals v2.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Change 19.14.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func">[func.wrap.func]</a>, class template <tt>function</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;) <del>noexcept</del>;
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;, nullptr_t) <del>noexcept</del>;
+</pre></blockquote>
+</li>
+
+<li><p>Change 19.14.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- When any function constructor that takes a first argument of type <tt>allocator_arg_t</tt> is invoked, the second
+argument shall have a type that conforms to the requirements for <tt>Allocator</tt> (Table 17.6.3.5). A copy of the
+allocator argument is used to allocate memory, if necessary, for the internal data structures of the constructed
+function object. <ins> For the remaining constructors, an instance of <tt>allocator&lt;T&gt;</tt>, for some suitable type
+<tt>T</tt>, is used to allocate memory, if necessary, for the internal data structures of the constructed function object.</ins>
+</p>
+
+<pre>
+function() noexcept;
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;) <del>noexcept</del>;
+</pre>
+
+<blockquote>
+<p>
+-2- <i>Postconditions</i>: <tt>!*this</tt>.
+</p>
+</blockquote>
+
+<pre>
+function(nullptr_t) noexcept;
+template &lt;class A&gt; function(allocator_arg_t, const A&amp;, nullptr_t) <del>noexcept</del>;
+</pre>
+
+<blockquote><p>
+-3- <i>Postconditions</i>: <tt>!*this</tt>.
+</p></blockquote>
+
+<pre>
+function(const function&amp; f);
+<del>template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, const function&amp; f);</del>
+</pre>
+
+<blockquote><p>
+-4- <i>Postconditions</i>: <tt>!*this</tt> if <tt>!f</tt>; otherwise, <tt>*this</tt> targets a copy of <tt>f.target()</tt>.
+</p>
+
+<p>
+-5- <i>Throws</i>: shall not throw exceptions if <tt>f</tt>'s target is a callable object passed
+via <tt>reference_wrapper</tt> or a function pointer. Otherwise, may throw <tt>bad_alloc</tt>
+or any exception thrown by the copy constructor of the stored callable
+object. [<i>Note</i>: Implementations are encouraged to avoid the use of
+dynamically allocated memory for small callable objects, for example, where
+<tt>f</tt>'s target is an object holding only a pointer or reference to an object and
+a member function pointer. &mdash; <i>end note</i>]
+</p></blockquote>
+
+<pre>
+<ins>template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, const function&amp; f);</ins>
+</pre>
+
+<blockquote><p>
+<ins>-?- <i>Postconditions</i>: <tt>!*this</tt> if <tt>!f</tt>; otherwise, <tt>*this</tt> targets a copy of <tt>f.target()</tt>.</ins>
+</p></blockquote>
+
+<pre>
+function(function&amp;&amp; f);
+template &lt;class A&gt; function(allocator_arg_t, const A&amp; a, function&amp;&amp; f);
+</pre>
+
+<blockquote><p>
+-6- <i>Effects</i>: If <tt>!f</tt>, <tt>*this</tt> has no target; otherwise, move-constructs the target
+of <tt>f</tt> into the target of <tt>*this</tt>, leaving <tt>f</tt> in a valid state with an
+unspecified value. <ins>If an allocator is not specified, the constructed function will use the same allocator as <tt>f</tt>.</ins>
+</p></blockquote>
+
+<pre>
+template&lt;class F&gt; function(F f);
+template &lt;class F, class A> function(allocator_arg_t, const A&amp; a, F f);
+</pre>
+
+<blockquote>
+<p>
+-7- <i>Requires</i>: <tt>F</tt> shall be <tt>CopyConstructible</tt>. 
+<p/>
+-8- <i>Remarks</i>: These constructors shall not participate in overload resolution unless <tt>f</tt> is Callable (20.9.11.2)
+for argument types <tt>ArgTypes...</tt> and return type <tt>R</tt>.
+</p>
+
+<p>
+-9- <i>Postconditions</i>: <tt>!*this</tt> if any of the following hold:
+</p>
+<ul>
+<li><p><tt>f</tt> is a null function pointer value.</p></li>
+<li><p><tt>f</tt> is a null member pointer value.</p></li>
+<li><p><tt>F</tt> is an instance of the function class template, and <tt>!f</tt></p></li>
+</ul>
+
+<p>
+-10- Otherwise, <tt>*this</tt> targets a copy of <tt>f</tt> initialized with <tt>std::move(f)</tt>.
+[<i>Note</i>: Implementations are encouraged to avoid the use of dynamically
+allocated memory for small callable objects, for example, where <tt>f</tt>'s target
+is an object holding only a pointer or reference to an object and a member
+function pointer. &mdash; <i>end note</i>]
+</p>
+
+<p>
+-11- <i>Throws</i>: shall not throw exceptions when <ins>an allocator is not specified
+and</ins> <tt>f</tt> is a function pointer or a <tt>reference_wrapper&lt;T&gt;</tt> for some
+<tt>T</tt>. Otherwise, may throw <tt>bad_alloc</tt> or any exception thrown by <tt>F</tt>'s copy or
+move constructor<ins> or by <tt>A</tt>'s allocate function</ins>.
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2016-08 Chicago]</i></p>
+
+<p>Tues PM: Resolved by <a href="http://wg21.link/p0302r1">P0302R1</a></p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Resolved by acceptance of <a href="http://wg21.link/p0302r1">P0302R1</a>.
+</p>
+
+
+
+
+
+</body>
+</html>
