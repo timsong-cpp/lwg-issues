@@ -1,0 +1,268 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3157: Allocator destroy and fancy pointer operations must be non-throwing</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3157" href="lwg-active.html#3157">3157.</a> Allocator <tt>destroy</tt> and fancy pointer operations must be non-throwing</h3>
+<p><b>Section:</b> 15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2018-09-07 <b>Last modified:</b> 2018-09-08 12:00:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.requirements">issues</a> in [allocator.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In annotating things required to be called by <tt>~vector</tt>, Casey pointed out that several operations I guarded 
+with <tt>noexcept</tt> aren't actually mandated by the standard to be <tt>noexcept</tt>. However, the STL, and more 
+specifically here, containers, consider inability to destroy an element an unrecoverable condition. This is evidenced 
+for the whole STL by 15.5.5.12 <a href="https://timsong-cpp.github.io/cppwp/res.on.exception.handling">[res.on.exception.handling]</a>/3 "Every destructor in the C ++ standard library shall 
+behave as if it had a non-throwing exception specification.".
+<p/>
+As a result, <tt>allocator::destroy</tt> and fancy pointer operations must be non-throwing for valid input, or the 
+containers don't make any sense. This is obvious for things like <tt>vector::~vector</tt>, but less obviously the 
+containers rely on these guarantees whenever inserting more than one element, etc.
+<p/>
+Moreover, we too narrowly specify the domain of the <tt>pointer_traits::pointer_to</tt> requirement in the 
+<tt><i>Cpp17Allocator</i></tt> requirements, because any node-based container that uses container-internal sentinel 
+nodes needs to be able to form pointers to said sentinel nodes; that operation must also be non-throwing.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ul>
+<li><p>Modify 15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>, Table 32 "Descriptive variable definitions" as indicated:</p>
+<blockquote>
+<table border="1">
+<caption>Table 32 &mdash; Descriptive variable definitions</caption>
+<tr>
+<th>Variable</th>
+<th>Definition</th>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>YY</tt>
+</td>
+<td>
+the type <tt>allocator_traits&lt;Y&gt;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>Z</tt></ins>
+</td>
+<td>
+<ins>an allocator-aware container type (21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>)</ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>y</tt>
+</td>
+<td>
+a value of type <tt>XX::const_void_pointer</tt> obtained by<br/>
+conversion from a result value of <tt>YY::allocate</tt>, or else a<br/>
+value of type (possibly <tt>const</tt>) <tt>std::nullptr_t</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><ins>z</ins></tt>
+</td>
+<td>
+<ins>an lvalue of type <tt>Z</tt> such that <tt>z.get_allocator() == a</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><ins>r1</ins></tt>
+</td>
+<td>
+<ins>a reference to any member subobject of <tt>z</tt></ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>n</tt>
+</td>
+<td>
+a value of type <tt>XX::size_type</tt>.
+</td>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Modify 15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>, Table 33 "<tt><i>Cpp17Allocator</i></tt> requirements" as indicated:</p>
+<blockquote>
+<table border="1">
+<caption>Table 33 &mdash; <tt><i>Cpp17Allocator</i></tt> requirements</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+<th>Default</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>pointer_traits&lt;<br/>
+X::pointer<br/>
+&gt;::pointer_to(r)</tt>
+</td>
+<td>
+<tt>X::pointer</tt>
+</td>
+<td>
+<ins>S</ins><del>s</del>ame as <tt>p</tt><ins>.<br/>
+<i>Throws:</i> Nothing.</ins>
+</td>
+<td>
+</td>
+</tr>
+
+<tr>
+<td>
+<ins><tt>pointer_traits&lt;<br/>
+X::pointer<br/>
+&gt;::pointer_to(r1)</tt></ins>
+</td>
+<td>
+</td>
+<td>
+<ins>A value of type <tt>YY::pointer</tt> or<br/>
+<tt>YY::const_pointer</tt> <tt>k</tt> such that<br/> 
+<tt>*k</tt> is <tt>r1</tt>.<br/>
+<i>Throws:</i> Nothing.</ins>
+</td>
+<td>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a.destroy(c)</tt>
+</td>
+<td>
+(not used)
+</td>
+<td>
+<i>Effects:</i> Destroys the object at <tt>c</tt><ins>.</ins><br/>
+<ins><i>Throws:</i> Nothing.</ins>
+</td>
+<td>
+<tt>c-&gt;~C()</tt>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify 15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>, p5, as indicated:</p>
+
+<blockquote>
+<p>
+-5- An allocator type <tt>X</tt> shall satisfy the <tt><i>Cpp17CopyConstructible</i></tt> requirements (Table 26). 
+The <tt>X::pointer</tt>, <tt>X::const_pointer</tt>, <tt>X::void_pointer</tt>, and <tt>X::const_void_pointer</tt> 
+types shall satisfy the <tt><i>Cpp17NullablePointer</i></tt> requirements (Table 30). No constructor, comparison 
+function, copy operation, move operation, or swap operation on these pointer types shall exit via an exception. 
+<tt>X::pointer</tt> and <tt>X::const_pointer</tt> shall also satisfy the requirements for a random access iterator 
+(22.2.7 <a href="https://timsong-cpp.github.io/cppwp/random.access.iterators">[random.access.iterators]</a>) and of a contiguous iterator (22.2.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.requirements.general">[iterator.requirements.general]</a>)
+<ins>and operations in those requirements shall not exit via an exception so long as resulting iterators are 
+dereferencable or past-the-end</ins>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 19.10.9.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.traits.members">[allocator.traits.members]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  static void destroy(Alloc&amp; a, T* p);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Calls <tt>a.destroy(p)</tt> if that call is well-formed; otherwise, invokes <tt>p-&gt;~T()</tt>.
+<p/>
+<ins>-?- <i>Throws:</i> Nothing.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ul>
+
+
+
+
+
+</body>
+</html>
