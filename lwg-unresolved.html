@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2018-10-01 at 03:18:34 UTC</p>
+<p><p>Revised 2018-10-08 at 05:13:59 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -1616,192 +1616,6 @@ the elements, where <tt><i>N</i></tt> is equal to number of elements in the rang
 </li>
 
 </ol>
-
-
-
-
-
-<hr>
-<h3><a name="1201" href="1201">1201.</a> Do we always want to unwrap <tt>ref</tt>-wrappers in <tt>make_tuple</tt></h3>
-<p><b>Section:</b> 19.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/tuple.creation">[tuple.creation]</a>, 19.4 <a href="https://timsong-cpp.github.io/cppwp/pairs">[pairs]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2009-09-05 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#tuple.creation">active issues</a> in [tuple.creation].</p>
-<p><b>View all other</b> <a href="lwg-index.html#tuple.creation">issues</a> in [tuple.creation].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Spotting a recent thread on the boost lists regarding collapsing
-optional representations in <tt>optional&lt;optional&lt;T&gt;&gt;</tt> instances, I wonder if
-we have some of the same issues with <tt>make_tuple</tt>, and now <tt>make_pair</tt>?
-</p>
-
-<p>
-Essentially, if my generic code in my own library is handed a
-<tt>reference_wrapper</tt> by a user, and my library in turn delegates some logic
-to <tt>make_pair</tt> or <tt>make_tuple</tt>, then I am going to end up with a <tt>pair</tt>/<tt>tuple</tt>
-holding a real reference rather than the intended reference wrapper.
-</p>
-
-<p>
-There are two things as a library author I can do at this point:
-</p>
-
-<ol style="list-style-type:lower-roman">
-<li>
-document my library also has the same reference-wrapper behaviour as
-<tt>std::make_tuple</tt>
-</li>
-<li>
-roll my own <tt>make_tuple</tt> that does not unwrap rereferences, a lost
-opportunity to re-use the standard library.
-</li>
-</ol>
-
-<p>
-(There may be some metaprogramming approaches my library can use to wrap
-the <tt>make_tuple</tt> call, but all will be significantly more complex than
-simply implementing a simplified <tt>make_tuple</tt>.)
-</p>
-
-<p>
-Now I don't propose we lose this library facility, I think unwrapping
-references will be the common behaviour.  However, we might want to
-consider adding another overload that does nothing special with
-<tt>ref</tt>-wrappers.  Note that we already have a second overload of 
-<tt>make_tuple</tt> in the library, called <tt>tie</tt>.
-</p>
-
-<p><i>[
-2009-09-30 Daniel adds:
-]</i></p>
-
-
-<blockquote>
-<p>
-I suggest to change the currently proposed paragraph for
-<tt>make_simple_pair</tt>
-</p>
-
-<blockquote><pre>
-template&lt;typename... Types&gt;
-  pair&lt;typename decay&lt;Types&gt;::type...&gt; make_simple_pair(Types&amp;&amp;... t);
-</pre>
-<blockquote>
-<p>
-<del><i>Type requirements:</i> <tt>sizeof...(Types) == 2</tt>.</del>
-<ins><i>Remarks:</i> The program shall be ill-formed, if
-<tt>sizeof...(Types) != 2</tt>.</ins>
-</p>
-<p>
-...
-</p>
-</blockquote>
-</blockquote>
-
-<p>
-or alternatively (but with a slightly different semantic):
-</p>
-
-<blockquote>
-<blockquote><p>
-<i>Remarks:</i> If <tt>sizeof...(Types) != 2</tt>, this function shall not
-participate in overload resolution.
-</p></blockquote>
-</blockquote>
-
-<p>
-to follow a currently introduced style and because the library does
-not have yet a specific "<i>Type requirements</i>" element. If such thing
-would be considered as useful this should be done as a separate
-issue. Given the increasing complexity of either of these wordings
-it might be preferable to use the normal two-argument-declaration
-style again in either of the following ways:
-</p>
-
-<ol style="list-style-type:upper-alpha">
-<li>
-<pre>template&lt;class T1, class T2&gt;
-pair&lt;typename decay&lt;T1&gt;::type, typename decay&lt;T2&gt;::type&gt;
-make_simple_pair(T1&amp;&amp; t1, T2&amp;&amp; t2);
-</pre>
-</li>
-<li>
-<pre>template&lt;class T1, class T2&gt;
-pair&lt;V1, V2&gt; make_simple_pair(T1&amp;&amp; t1, T2&amp;&amp; t2);
-</pre>
-<blockquote><p>
-Let <tt>V1</tt> be <tt>typename decay&lt;T1&gt;::type</tt> and <tt>V2</tt> be
-<tt>typename decay&lt;T2&gt;::type</tt>.
-</p></blockquote>
-</li>
-</ol>
-
-</blockquote>
-
-<p><i>[
-2009-10 post-Santa Cruz:
-]</i></p>
-
-
-<blockquote><p>
-Mark as Tentatively NAD Future.
-</p></blockquote>
-
-
-
-<p><b>Rationale:</b></p>
-<p>
-Does not have sufficient support at this time. May wish to reconsider for a
-future standard.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-Add the following function to 19.4 <a href="https://timsong-cpp.github.io/cppwp/pairs">[pairs]</a> and signature in
-appropriate synopses:
-</p>
-
-<blockquote><pre>
-template&lt;typename... Types&gt;
-  pair&lt;typename decay&lt;Types&gt;::type...&gt; make_simple_pair(Types&amp;&amp;... t);
-</pre>
-<blockquote>
-<p>
-<i>Type requirements:</i> <tt>sizeof...(Types) == 2</tt>.
-</p>
-<p>
-<i>Returns:</i> <tt>pair&lt;typename decay&lt;Types&gt;::type...&gt;(std::forward&lt;Types&gt;(t)...)</tt>.
-</p>
-</blockquote>
-</blockquote>
-
-<p><i>[
-Draughting note: I chose a variadic representation similar to <tt>make_tuple</tt>
-rather than naming both types as it is easier to read through the
-clutter of metaprogramming this way.  Given there are exactly two
-elements, the committee may prefer to draught with two explicit template
-type parameters instead
-]</i></p>
-
-
-<p>
-Add the following function to 19.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/tuple.creation">[tuple.creation]</a> and
-signature in appropriate synopses:
-</p>
-
-<blockquote><pre>
-template&lt;typename... Types&gt;
-  tuple&lt;typename decay&lt;Types&gt;::type...&gt; make_simple_tuple(Types&amp;&amp;... t);
-</pre>
-<blockquote>
-<p>
-<i>Returns:</i> <tt>tuple&lt;typename decay&lt;Types&gt;::type...&gt;(std::forward&lt;Types&gt;(t)...)</tt>.
-</p>
-</blockquote>
-</blockquote>
 
 
 
@@ -11737,7 +11551,7 @@ is false."
 </p></blockquote>
 <p>
 This is incorrect: there is no such thing as a non-static data member that is a bit-field of length 0, since bit-fields of 
-length 0 must be unnamed, and unnamed bit-fields are not members (see 10.3.10 <a href="https://timsong-cpp.github.io/cppwp/class.bit">[class.bit]</a> p2).
+length 0 must be unnamed, and unnamed bit-fields are not members (see 10.3.9 <a href="https://timsong-cpp.github.io/cppwp/class.bit">[class.bit]</a> p2).
 <p/>
 It also means that classes such as:
 </p>
@@ -20210,7 +20024,7 @@ LWG <a href="2468">2468</a>.
 explicitly specified or implicitly generated. Unless otherwise specified, such moved-from objects shall be
 placed in a valid but unspecified state.
 <p/>
-<ins>-?- An object of a type defined in the C++ standard library may be move-assigned (10.3.6 <a href="https://timsong-cpp.github.io/cppwp/class.copy.assign">[class.copy.assign]</a>) 
+<ins>-?- An object of a type defined in the C++ standard library may be move-assigned (10.3.5 <a href="https://timsong-cpp.github.io/cppwp/class.copy.assign">[class.copy.assign]</a>) 
 to itself. Such an assignment places the object in a valid but unspecified state unless otherwise specified.</ins>
 </p>
 </blockquote>
@@ -21670,7 +21484,6 @@ An equivalent optimization could be allowed by adding a single-argument overload
  <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2017-02-06 <b>Last modified:</b> 2017-06-02 05:40:10 UTC</p>
 <p><b>Priority: </b>3
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#tuple.creation">active issues</a> in [tuple.creation].</p>
 <p><b>View all other</b> <a href="lwg-index.html#tuple.creation">issues</a> in [tuple.creation].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -28420,6 +28233,7 @@ to meet their postconditions</h3>
  <b>Submitter:</b> Tim Song <b>Opened:</b> 2018-05-10 <b>Last modified:</b> 2018-05-14 10:57:08 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#syserr.syserr.members">active issues</a> in [syserr.syserr.members].</p>
 <p><b>View all other</b> <a href="lwg-index.html#syserr.syserr.members">issues</a> in [syserr.syserr.members].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -31986,8 +31800,8 @@ template&lt;class Alloc, class U1, class U2&gt;
 <hr>
 <h3><a name="3159" href="3159">3159.</a> &sect;[unique.ptr.single] requirements on deleter may be too strict</h3>
 <p><b>Section:</b> 19.11.1.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single">[unique.ptr.single]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-09-17 <b>Last modified:</b> 2018-09-18 16:33:26 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-09-17 <b>Last modified:</b> 2018-10-06 10:50:02 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#unique.ptr.single">active issues</a> in [unique.ptr.single].</p>
 <p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single">issues</a> in [unique.ptr.single].</p>
@@ -32039,8 +31853,148 @@ class template, or say that the expression only needs to be valid when the destr
 instantiated. We could also rephrase it in terms of <tt>is_invocable_v&lt;D, unique_ptr&lt;T, D&gt;::pointer&gt;</tt>.
 </p>
 
+<p><i>[2018-10 Reflector prioritization]</i></p>
+
+<p>Set Priority to 3</p>
+
 
 <p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3161" href="3161">3161.</a> Container adapters mandate use of <tt>emplace_back</tt> but don't require it</h3>
+<p><b>Section:</b> 21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a>, 21.6.4 <a href="https://timsong-cpp.github.io/cppwp/queue">[queue]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2018-10-02 <b>Last modified:</b> 2018-10-06 11:24:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#stack">issues</a> in [stack].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a> p1 says:
+</p>
+<blockquote>
+Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt> and <tt>pop_back()</tt> can be used to 
+instantiate <tt>stack</tt>. 
+</blockquote>
+
+<p>but then in 21.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a> we have the following code:</p>
+<pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace_back(std::forward&lt;Args&gt;(args)...); }
+</pre>
+
+<p>The same pattern appears in 21.6.4 <a href="https://timsong-cpp.github.io/cppwp/queue">[queue]</a>.</p>
+
+<p>I see two ways to resolve this:</p>
+<p>The first is to add <tt>emplace_back()</tt> to the list of requirements for underlying containers for <tt>stack</tt> and <tt>queue</tt></p>
+
+<p>The second is to replace the calls to <tt>c.emplace_back(std::forward&lt;Args&gt;(args)...)</tt> with <tt>c.emplace(c.end(), std::forward&lt;Args&gt;(args)...)</tt>. We can do this w/o messing with the list above because <tt>emplace</tt> is part of the sequence container requirements, while <tt>emplace_back</tt> is not. I checked the libc++ implementation of <tt>vector</tt>, <tt>deque</tt>, and <tt>list</tt>, and they all do the same thing for <tt>emplace(end(), ...)</tt> and <tt>emplace_back(...)</tt>.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<blockquote class="note">
+I have prepared two mutually exclusive options.
+<br/>Option A a requirement for <tt>emplace_back</tt> to the underlying container.
+<br/>Option B one replaces the calls to <tt>emplace_back</tt> with calls to <tt>emplace</tt>.
+</blockquote>
+
+<p><b>Option A</b></p>
+<ul>
+<li><p>Edit 21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a>, as indicated:</p>
+<p>Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt>,  <ins><tt>emplace_back()</tt></ins> and <tt>pop_back()</tt> can be used to instantiate <tt>stack</tt>. </p>
+</li>
+
+<li><p>Edit 21.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/queue.defn">[queue.defn]</a>, as indicated:</p>
+<p>Any sequence container supporting operations <tt>front()</tt>, <tt>back()</tt>, <tt>push_back()</tt>,  <ins><tt>emplace_back()</tt></ins> and <tt>pop_front()</tt> can be used to instantiate <tt>queue</tt>. </p>
+</li>
+</ul>
+
+<p><b>Option B</b></p>
+<ul>
+<li><p>Edit 21.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a>, class template <tt>stack</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace<del>_back</del>(<ins>c.end(), </ins>std::forward&lt;Args&gt;(args)...); }
+</pre></blockquote>
+</li>
+
+<li><p>Edit 21.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/queue.defn">[queue.defn]</a>, class template <tt>queue</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace<del>_back</del>(<ins>c.end(), </ins>std::forward&lt;Args&gt;(args)...); }
+</pre></blockquote>
+</li>
+</ul>
+
+
+
+
+
+
+<hr>
+<h3><a name="3162" href="3162">3162.</a> <tt>system_error::system_error(error_code ec)</tt> not explicit</h3>
+<p><b>Section:</b> 18.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr.members">[syserr.syserr.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2018-10-02 <b>Last modified:</b> 2018-10-06 11:25:03 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#syserr.syserr.members">active issues</a> in [syserr.syserr.members].</p>
+<p><b>View all other</b> <a href="lwg-index.html#syserr.syserr.members">issues</a> in [syserr.syserr.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The constructor for <tt>std::system_error</tt> taking a single argument of type <tt>std::error_code</tt> is 
+not marked explicit, which allows implicit conversions from <tt>error_code</tt> to <tt>system_error</tt>. I 
+think that this is an oversight and not intentional, and that we should make this constructor explicit.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ol>
+<li><p>Change 18.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr.overview">[syserr.syserr.overview]</a> p2, class <tt>system_error</tt> synopsis, as indicated</p>
+<blockquote><pre>
+namespace std {
+  class system_error : public runtime_error {
+  public:
+    system_error(error_code ec, const string&amp; what_arg);
+    system_error(error_code ec, const char* what_arg);
+    <ins>explicit</ins> system_error(error_code ec);
+    system_error(int ev, const error_category&amp; ecat, const string&amp; what_arg);
+    system_error(int ev, const error_category&amp; ecat, const char* what_arg);
+    system_error(int ev, const error_category&amp; ecat);
+    const error_code&amp; code() const noexcept;
+    const char* what() const noexcept override;
+  };
+}
+</pre></blockquote>
+</li>
+
+<li><p>Change 18.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.syserr.members">[syserr.syserr.members]</a> as indicated</p>
+<blockquote>
+<pre>
+<ins>explicit</ins> system_error(error_code ec);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> [&hellip;]
+<p/>
+-6- <i>Ensures:</i> [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 

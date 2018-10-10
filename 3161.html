@@ -1,0 +1,101 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3161: Container adapters mandate use of emplace_back but don't require it</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3161" href="lwg-active.html#3161">3161.</a> Container adapters mandate use of <tt>emplace_back</tt> but don't require it</h3>
+<p><b>Section:</b> 21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a>, 21.6.4 <a href="https://timsong-cpp.github.io/cppwp/queue">[queue]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2018-10-02 <b>Last modified:</b> 2018-10-06 11:24:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#stack">issues</a> in [stack].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a> p1 says:
+</p>
+<blockquote>
+Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt> and <tt>pop_back()</tt> can be used to 
+instantiate <tt>stack</tt>. 
+</blockquote>
+
+<p>but then in 21.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a> we have the following code:</p>
+<pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace_back(std::forward&lt;Args&gt;(args)...); }
+</pre>
+
+<p>The same pattern appears in 21.6.4 <a href="https://timsong-cpp.github.io/cppwp/queue">[queue]</a>.</p>
+
+<p>I see two ways to resolve this:</p>
+<p>The first is to add <tt>emplace_back()</tt> to the list of requirements for underlying containers for <tt>stack</tt> and <tt>queue</tt></p>
+
+<p>The second is to replace the calls to <tt>c.emplace_back(std::forward&lt;Args&gt;(args)...)</tt> with <tt>c.emplace(c.end(), std::forward&lt;Args&gt;(args)...)</tt>. We can do this w/o messing with the list above because <tt>emplace</tt> is part of the sequence container requirements, while <tt>emplace_back</tt> is not. I checked the libc++ implementation of <tt>vector</tt>, <tt>deque</tt>, and <tt>list</tt>, and they all do the same thing for <tt>emplace(end(), ...)</tt> and <tt>emplace_back(...)</tt>.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<blockquote class="note">
+I have prepared two mutually exclusive options.
+<br/>Option A a requirement for <tt>emplace_back</tt> to the underlying container.
+<br/>Option B one replaces the calls to <tt>emplace_back</tt> with calls to <tt>emplace</tt>.
+</blockquote>
+
+<p><b>Option A</b></p>
+<ul>
+<li><p>Edit 21.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a>, as indicated:</p>
+<p>Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt>,  <ins><tt>emplace_back()</tt></ins> and <tt>pop_back()</tt> can be used to instantiate <tt>stack</tt>. </p>
+</li>
+
+<li><p>Edit 21.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/queue.defn">[queue.defn]</a>, as indicated:</p>
+<p>Any sequence container supporting operations <tt>front()</tt>, <tt>back()</tt>, <tt>push_back()</tt>,  <ins><tt>emplace_back()</tt></ins> and <tt>pop_front()</tt> can be used to instantiate <tt>queue</tt>. </p>
+</li>
+</ul>
+
+<p><b>Option B</b></p>
+<ul>
+<li><p>Edit 21.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a>, class template <tt>stack</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace<del>_back</del>(<ins>c.end(), </ins>std::forward&lt;Args&gt;(args)...); }
+</pre></blockquote>
+</li>
+
+<li><p>Edit 21.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/queue.defn">[queue.defn]</a>, class template <tt>queue</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args)
+    { return c.emplace<del>_back</del>(<ins>c.end(), </ins>std::forward&lt;Args&gt;(args)...); }
+</pre></blockquote>
+</li>
+</ul>
+
+
+
+
+
+
+</body>
+</html>
