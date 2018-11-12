@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2018-11-08 at 23:01:28 UTC</p>
+<td align="left"><p>Revised 2018-11-12 at 05:21:03 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,6 +42,133 @@
 </tr>
 </table>
 <h2>Ready Issues</h2>
+<hr>
+<h3><a name="3012" href="3012">3012.</a> <tt>atomic&lt;T&gt;</tt> is unimplementable for non-<tt>is_trivially_copy_constructible T</tt></h3>
+<p><b>Section:</b> 29.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-08-16 <b>Last modified:</b> 2018-11-12 05:21:03 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.types.generic">issues</a> in [atomics.types.generic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> requires that <tt>T</tt> for <tt>std::atomic</tt> is trivially copyable. 
+Unfortunately, that's not sufficient to implement <tt>atomic</tt>. Consider <tt>atomic&lt;T&gt;::load</tt>, which 
+wants to look something like this:
+</p>
+<blockquote><pre>
+template&lt;class T&gt;
+struct atomic {
+  __compiler_magic_storage_for_t storage;
+
+  T load(memory_order = memory_order_seq_cst) const {
+    return __magic_intrinsic(storage);
+  }
+
+};
+</pre></blockquote>
+<p>
+Forming this return statement, though, requires that <tt>T</tt> is copy constructible &mdash; trivially copyable things 
+aren't necessarily copyable! For example, the following is trivially copyable but breaks libc++, libstdc++, and msvc++:
+</p>
+<blockquote><pre>
+struct NonAssignable {
+  int i;
+  NonAssignable() = delete;
+  NonAssignable(int) : i(0) {}
+  NonAssignable(const NonAssignable&amp;) = delete;
+  NonAssignable(NonAssignable&amp;&amp;) = default;
+  NonAssignable&amp; operator=(const NonAssignable&amp;) = delete;
+  NonAssignable&amp; operator=(NonAssignable&amp;&amp;) = delete;
+  ~NonAssignable() = default;
+};
+</pre></blockquote>
+<p>
+All three standard libraries are happy as long as <tt>T</tt> is trivially copy constructible, assignability is not required. 
+Casey Carter says that we might want to still require trivially copy assignable though, since what happens when you do an 
+<tt>atomic&lt;T&gt;::store</tt> is morally an "assignment" even if it doesn't use the user's assignment operator.
+</p>
+
+<p><i>[2017-11 Albuquerque Wednesday issue processing]</i></p>
+
+<p>Status to Open; Casey and STL to work with Billy for better wording.</p>
+<p>Should this include trivially copyable as well as trivially copy assignable?</p>
+
+<p>2017-11-09, Billy O'Neal provides updated wording.</p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This resolution is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 29.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <ins>If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>false</tt>, the program is ill-formed</ins><del>The
+template argument for <tt>T</tt> shall be trivially copyable (6.7 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>)</del>. [<i>Note:</i> Type
+arguments that are not also statically initializable may be difficult to use. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This resolution is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 29.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <ins>If <tt>is_copy_constructible_v&lt;T&gt;</tt> is <tt>false</tt> or if
+<tt>is_trivially_copyable_v&lt;T&gt;</tt> is <tt>false</tt>, the program is ill-formed</ins><del>The
+template argument for <tt>T</tt> shall be trivially copyable (6.7 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>)</del>. [<i>Note:</i> Type
+arguments that are not also statically initializable may be difficult to use. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2017-11-12, Tomasz comments and suggests alternative wording]</i></p>
+
+<p>
+According to my understanding during Albuquerque Saturday issue processing we agreed that we want the type used 
+with the atomics to have non-deleted and trivial copy/move construction and assignment.
+<p/>
+Wording note: <tt>CopyConstructible</tt> and <tt>CopyAssignable</tt> include semantic requirements that are not 
+checkable at compile time, so these are requirements imposed on the user and cannot be validated by an
+implementation without heroic efforts.
+</p>
+
+<p><i>[2018-11 San Diego Thursday night issue processing]</i></p>
+
+<p>Status to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Edit 29.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic">[atomics.types.generic]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The template argument for <tt>T</tt> shall <ins>meet the <tt>CopyConstructible</tt> and <tt>CopyAssignable</tt>
+requirements. If <tt>is_trivially_copyable_v&lt;T&gt; &amp;&amp; is_copy_constructible_v&lt;T&gt; &amp;&amp; 
+is_move_constructible_v&lt;T&gt; &amp;&amp; is_copy_assignable_v&lt;T&gt; &amp;&amp; is_move_assignable_v&lt;T&gt;</tt> 
+is <tt>false</tt>, the program is ill-formed</ins><del>be trivially copyable (6.7 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>)</del>. 
+[<i>Note:</i> Type arguments that are not also statically initializable may be difficult to use. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
 <hr>
 <h3><a name="3040" href="3040">3040.</a> <tt>basic_string_view::starts_with</tt> <i>Effects</i> are incorrect</h3>
 <p><b>Section:</b> 20.4.2.6 <a href="https://timsong-cpp.github.io/cppwp/string.view.ops">[string.view.ops]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
@@ -233,6 +360,182 @@ void splice(const_iterator position, list&amp;&amp; x, const_iterator first,
 </blockquote>
 </li>
 </ol>
+
+
+
+
+
+<hr>
+<h3><a name="3101" href="3101">3101.</a> <tt>span</tt>'s <tt>Container</tt> constructors need another constraint</h3>
+<p><b>Section:</b> 21.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2018-04-12 <b>Last modified:</b> 2018-11-12 05:21:03 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#span.cons">issues</a> in [span.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When I overhauled <tt>span</tt>'s constructor constraints, I was careful about the built-in array, <tt>std::array</tt>, 
+and converting <tt>span</tt> constructors. These types contain bounds information, so we can achieve safety at 
+compile-time by permitting implicit conversions if and only if the destination extent is dynamic (this accepts 
+anything by recording the size at runtime) or the source and destination extents are identical. However, I missed 
+the fact that the <tt>Container</tt> constructors are the opposite case. A <tt>Container</tt> (e.g. a <tt>vector</tt>) 
+has a size that's known only at runtime. It's safe to convert this to a <tt>span</tt> with <tt>dynamic_extent</tt>, 
+but for consistency and safety, this shouldn't implicitly convert to a <tt>span</tt> with fixed extent. (The more 
+verbose <tt>(ptr, count)</tt> and <tt>(first, last)</tt> constructors are available to construct fixed extent spans 
+from runtime-length ranges. Note that debug precondition checks are equally possible with the <tt>Container</tt> and 
+<tt>(ptr, count)</tt>/<tt>(first, last)</tt> constructors. The issue is that implicit conversions are notoriously 
+problematic, so they should be permitted only when they are absolutely known to be safe.)
+</p>
+
+<p><i>[2018-04-24 Priority set to 1 after discussion on the reflector.]</i></p>
+
+
+<p><i>[2018-06 Rapperswil Thursday issues processing]</i></p>
+
+<p>Status to LEWG. Should this be ill-formed, or fail at runtime if the container is too small?
+Discussion on the reflector <a href="http://lists.isocpp.org/lib/2018/04/6719.php">here</a>.</p>
+
+<p><i>[2018-11 San Diego Saturday]</i></p>
+
+<p>LEWG said that they're fine with the proposed resolution. Status to Tentatively Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4741">N4741</a>.</p>
+
+<blockquote>
+<ol>
+<li>
+<p>Edit 21.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class Container&gt; constexpr span(Container&amp; cont);
+template&lt;class Container&gt; constexpr span(const Container&amp; cont);
+</pre>
+<blockquote>
+<p>
+-14- <i>Requires:</i> <tt>[data(cont), data(cont) + size(cont))</tt> shall be a valid range. <del>If <tt>extent</tt> is 
+not equal to <tt>dynamic_extent</tt>, then <tt>size(cont)</tt> shall be equal to <tt>extent</tt>.</del>
+<p/>
+-15- <i>Effects:</i> Constructs a <tt>span</tt> that is a view over the range <tt>[data(cont), data(cont) + size(cont))</tt>.
+<p/>
+-16- <i>Postconditions:</i> <tt>size() == size(cont) &amp;&amp; data() == data(cont)</tt>.
+<p/>
+-17- <i>Throws:</i> What and when <tt>data(cont)</tt> and <tt>size(cont)</tt> throw.
+<p/>
+-18- <i>Remarks:</i> These constructors shall not participate in overload resolution unless:
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(18.?) &mdash; <tt>extent == dynamic_extent</tt>,</ins></p></li>
+<li><p>(18.1) &mdash; <tt>Container</tt> is not a specialization of <tt>span</tt>,</p></li>
+<li><p>(18.2) &mdash; <tt>Container</tt> is not a specialization of <tt>array</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+
+
+
+<hr>
+<h3><a name="3119" href="3119">3119.</a> Program-definedness of closure types</h3>
+<p><b>Section:</b> 99 [defns.program.defined.spec] <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Hubert Tong <b>Opened:</b> 2018-06-09 <b>Last modified:</b> 2018-11-12 05:21:03 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The description of closure types in 7.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/expr.prim.lambda.closure">[expr.prim.lambda.closure]</a> says:
+</p>
+<blockquote>
+<p>
+An implementation may define the closure type differently [&hellip;]
+</p>
+</blockquote>
+<p>
+The proposed resolution to LWG <a href="2139">2139</a> defines a "program-defined type" to be a
+</p>
+<blockquote>
+<p>
+class type or enumeration type that is not part of the C++ standard library and not defined by the implementation,
+or an instantiation of a program-defined specialization
+</p>
+</blockquote>
+<p>
+I am not sure that the intent of whether closure types are or are not program-defined types is clearly
+conveyed by the wording.
+</p>
+
+<p><i>[2018-06-23 after reflector discussion]</i></p>
+
+<p>Priority set to 2</p>
+
+<p><i>[2018-08-14 Casey provides additional discussion and a Proposed Resolution]</i></p>
+
+<p>
+We use the term "program-defined" in the library specification to ensure that
+two users cannot create conflicts in a component in namespace <tt>std</tt> by
+specifying different behaviors for the same type. For example, we allow users to
+specialize <tt>common_type</tt> when at least one of the parameters is a
+program-defined type. Since two users cannot define the same program-defined
+type, this rule prevents two users (or libraries) defining the same
+specialization of <tt>std::common_type</tt>.
+</p><p>
+Since it's guaranteed that even distinct utterances of identical lambda
+expressions produce closures with distinct types
+(7.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/expr.prim.lambda.closure">[expr.prim.lambda.closure]</a>), adding closure types to our term
+"program-defined type" is consistent with the intended use despite that such
+types are technically defined by the implementation.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ul>
+<li><p>Modify 15.3.20 <a href="https://timsong-cpp.github.io/cppwp/defns.prog.def.type">[defns.prog.def.type]</a> as follows:</p>
+<blockquote>
+<b>program-defined type</b><br/>
+class type or enumeration type that is not part of the C++ standard library and
+not defined by the implementation <ins>(except for closure types
+(7.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/expr.prim.lambda.closure">[expr.prim.lambda.closure]</a>) for program-defined lambda
+expressions)</ins>, or an instantiation of a program-defined specialization
+</blockquote>
+</li>
+</ul>
+</blockquote>
+
+<p><i>[2018-08-23 Batavia Issues processing]</i></p>
+
+<p>Updated wording</p>
+
+<p><i>[2018-11 San Diego Thursday night issue processing]</i></p>
+
+<p>Status to Ready.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
+
+<ul>
+<li><p>Modify 15.3.20 <a href="https://timsong-cpp.github.io/cppwp/defns.prog.def.type">[defns.prog.def.type]</a> as follows:</p>
+<blockquote>
+<b>program-defined type</b><br/>
+<ins>non-closure </ins>class type or enumeration type that is not part of the 
+C++ standard library and not defined by the implementation, 
+<ins>or a closure type of a non-implementation-provided lambda expression, </ins>
+or an instantiation of a program-defined specialization
+</blockquote>
+</li>
+</ul>
+
 
 
 
