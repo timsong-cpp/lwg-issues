@@ -1,0 +1,258 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3013: (recursive_)directory_iterator construction and traversal should not be noexcept</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3013" href="lwg-defects.html#3013">3013.</a> <tt>(recursive_)directory_iterator</tt> construction and traversal should not be <tt>noexcept</tt></h3>
+<p><b>Section:</b> 28.11.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a>, 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a>, 28.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a>, 28.11.14.19 <a href="https://timsong-cpp.github.io/cppwp/fs.op.is_empty">[fs.op.is_empty]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-08-23 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.dir.itr.members">issues</a> in [fs.dir.itr.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Constructing a <tt>(recursive_)directory_iterator</tt> from a <tt>path</tt> requires, at a minimum, initializing its 
+underlying <tt>directory_entry</tt> object with the <tt>path</tt> formed from the supplied <tt>path</tt> and the name of the 
+first entry, which requires a potentially throwing memory allocation; every implementation I've looked at also allocates 
+memory to store additional data as well.
+<p/>
+Similarly, <tt>increment()</tt> needs to update the <tt>path</tt> stored in <tt>directory_entry</tt> object to refer 
+to the name of the next entry, which may require a memory allocation. While it might conceivably be possible to 
+postpone the update in this case until the iterator is dereferenced (the dereference operation is not <tt>noexcept</tt> 
+due to its narrow contract), it seems highly unlikely that such an implementation is intended (not to mention that it 
+would require additional synchronization as the dereference operations are const).
+<p/>
+This further calls into question whether the <tt>error_code</tt> overloads of <tt>copy</tt> and <tt>is_empty</tt>, 
+whose specification uses <tt>directory_iterator</tt>, should be <tt>noexcept</tt>. There might be a case for keeping 
+the <tt>noexcept</tt> for <tt>is_empty</tt>, although that would require changes in all implementations I checked 
+(libstdc++, libc++, and Boost). <tt>copy</tt> appears to be relentlessly hostile to <tt>noexcept</tt>, since its 
+specification forms a <tt>path</tt> via <tt>operator/</tt> in two places (bullets 4.7.4 and 4.8.2) in addition to the 
+<tt>directory_iterator</tt> usage. The proposed resolution below removes both.
+</p>
+
+<p><i>[
+2017-11-03 Moved to Tentatively Ready after 7 positive votes for P0 on c++std-lib.
+]</i></p>
+
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Edit 28.11.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory_iterator">[fs.class.directory_iterator]</a>, class <tt>directory_iterator</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+explicit directory_iterator(const path&amp; p);
+directory_iterator(const path&amp; p, directory_options options);
+directory_iterator(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+directory_iterator(const path&amp; p, directory_options options,
+                   error_code&amp; ec) <del>noexcept</del>;
+[&hellip;]
+
+directory_iterator&amp; operator++();
+directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> before p2 as indicated:</p>
+<blockquote>
+<pre>
+explicit directory_iterator(const path&amp; p);
+directory_iterator(const path&amp; p, directory_options options);
+directory_iterator(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+directory_iterator(const path&amp; p, directory_options options, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects:</i> [&hellip;]
+<p/>
+-3- <i>Throws:</i> As specified in 28.11.6 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+<p/>
+-4- [<i>Note:</i> [&hellip;] &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> before p10 as indicated:</p>
+<blockquote>
+<pre>
+directory_iterator&amp; operator++();
+directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects:</i> As specified for the prefix increment operation of Input iterators (24.2.3).
+<p/>
+-11- <i>Returns:</i> <tt>*this</tt>.
+<p/>
+-12- <i>Throws:</i> As specified in 28.11.6 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.13 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a>, class <tt>recursive_directory_iterator</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+explicit recursive_directory_iterator(const path&amp; p);
+recursive_directory_iterator(const path&amp; p, directory_options options);
+recursive_directory_iterator(const path&amp; p, directory_options options,
+                             error_code&amp; ec) <del>noexcept</del>;
+recursive_directory_iterator(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+[&hellip;]
+
+recursive_directory_iterator&amp; operator++();
+recursive_directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> before p2 as indicated:</p>
+<blockquote>
+<pre>
+explicit recursive_directory_iterator(const path&amp; p);
+recursive_directory_iterator(const path&amp; p, directory_options options);
+recursive_directory_iterator(const path&amp; p, directory_options options, error_code&amp; ec) <del>noexcept</del>;
+recursive_directory_iterator(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects:</i> [&hellip;]
+<p/>
+-3- <i>Postconditions:</i> [&hellip;]
+<p/>
+-4- <i>Throws:</i> As specified in 28.11.6 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+<p/>
+-5- [<i>Note:</i> [&hellip;] &mdash; <i>end note</i>]
+<p/>
+-6- [<i>Note:</i> [&hellip;] &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> before p23 as indicated:</p>
+<blockquote>
+<pre>
+recursive_directory_iterator&amp; operator++();
+recursive_directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-23- <i>Effects:</i> As specified for the prefix increment operation of Input iterators (24.2.3), except that: [&hellip;]
+<p/>
+-24- <i>Returns:</i> <tt>*this</tt>.
+<p/>
+-25- <i>Throws:</i> As specified 28.11.6 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.5 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std::filesystem {
+
+  [&hellip;]
+
+  void copy(const path&amp; from, const path&amp; to);
+  void copy(const path&amp; from, const path&amp; to, error_code&amp; ec) <del>noexcept</del>;
+  void copy(const path&amp; from, const path&amp; to, copy_options options);
+  void copy(const path&amp; from, const path&amp; to, copy_options options,
+            error_code&amp; ec) <del>noexcept</del>;
+
+  [&hellip;]
+
+  bool is_empty(const path&amp; p);
+  bool is_empty(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+  
+  [&hellip;]
+
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 28.11.14.3 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a> as indicated:</p>
+<blockquote>
+<pre>
+void copy(const path&amp; from, const path&amp; to, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects:</i> Equivalent to <tt>copy(from, to, copy_options::none, ec)</tt>.
+</p>
+</blockquote>
+<pre>
+void copy(const path&amp; from, const path&amp; to, copy_options options);
+void copy(const path&amp; from, const path&amp; to, copy_options options,
+          error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Requires:</i> [&hellip;]
+<p/>
+-4- <i>Effects:</i> [&hellip;]
+<p/>
+-5- <i>Throws:</i> [&hellip;]
+<p/>
+-6- <i>Remarks:</i> [&hellip;]
+<p/>
+-7- [<i>Example:</i> [&hellip;] &mdash; <i>end example</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+
+<li><p>Edit 28.11.14.19 <a href="https://timsong-cpp.github.io/cppwp/fs.op.is_empty">[fs.op.is_empty]</a> as indicated:</p>
+<blockquote>
+<pre>
+bool is_empty(const path&amp; p);
+bool is_empty(const path&amp; p, error_code&amp; ec) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> [&hellip;]
+<p/>
+-2- <i>Throws:</i> [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2788: basic_string range mutators unintentionally require a default constructible allocator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2788" href="lwg-defects.html#2788">2788.</a> <tt>basic_string</tt> range mutators unintentionally require a default constructible allocator</h3>
+<p><b>Section:</b> 20.3.2.6.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 20.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a>, 20.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a>, 20.3.2.6.6 <a href="https://timsong-cpp.github.io/cppwp/string.replace">[string.replace]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2016-10-25 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Email discussion occurred on the <a href="http://lists.isocpp.org/lib/2016/10/1154.php">lib reflector</a>.
+<p/>
+<tt>basic_string</tt>'s mutation functions show construction of temporary <tt>basic_string</tt> instances, 
+without passing an allocator parameter. This says that <tt>basic_string</tt> needs to use a default-initialized 
+allocator, which is clearly unintentional. The temporary needs to use the same allocator the current 
+<tt>basic_string</tt> instance uses, if an implmentation needs to create a temporary at all.
+<p/>
+libc++ already does this; I believe libstdc++ does as well (due to the bug report we got from a user that brought 
+this to our attention), but have not verified there. I implemented this in MSVC++'s STL and this change is scheduled 
+to ship in VS "15" RTW.
+</p>
+<p><i>[2016-11-12, Issaquah]</i></p>
+
+<p>Sat AM: Priority 2</p>
+<p>Alisdair to investigate and (possibly) provide an alternate P/R</p>
+
+<p><i>[2017-02-13 Alisdair responds:]</i></p>
+
+<p>Looks good to me - no suggested alternative</p>
+
+<p><i>[Kona 2017-02-28]</i></p>
+
+<p>Accepted as Immediate.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>In 20.3.2.6.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, add the allocator parameter to the range overload temporary:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  basic_string&amp; append(InputIterator first, InputIterator last);
+</pre>
+<blockquote>
+<p>
+-19- <i>Requires:</i> <tt>[first, last)</tt> is a valid range.
+<p/>
+-20- <i>Effects:</i> Equivalent to <tt>append(basic_string(first, last<ins>, get_allocator()</ins>))</tt>.
+<p/>
+-21- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 20.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a>, add the allocator parameter to the range overload temporary:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  basic_string&amp; assign(InputIterator first, InputIterator last);
+</pre>
+<blockquote>
+<p>
+-23- <i>Effects:</i> Equivalent to <tt>assign(basic_string(first, last<ins>, get_allocator()</ins>))</tt>.
+<p/>
+-24- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 20.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a>, add the allocator parameter to the range overload temporary:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  iterator insert(const_iterator p, InputIterator first, InputIterator last);
+</pre>
+<blockquote>
+<p>
+-23- <i>Requires:</i> <tt>p</tt> is a valid iterator on <tt>*this</tt>. <tt>[first, last)</tt> is a valid range.
+<p/>
+-24- <i>Effects:</i> Equivalent to <tt>insert(p - begin(), basic_string(first, last<ins>, get_allocator()</ins>))</tt>.
+<p/>
+-25- <i>Returns:</i> An iterator which refers to the copy of the first inserted character, or <tt>p</tt> if <tt>first == last</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 20.3.2.6.6 <a href="https://timsong-cpp.github.io/cppwp/string.replace">[string.replace]</a>, add the allocator parameter to the range overload temporary:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  basic_string&amp; replace(const_iterator i1, const_iterator i2,
+                        InputIterator j1, InputIterator j2);
+</pre>
+<blockquote>
+<p>
+-32- <i>Requires:</i> <tt>[begin(), i1)</tt>, <tt>[i1, i2)</tt> and <tt>[j1, j2)</tt> are valid ranges.
+<p/>
+-33- <i>Effects:</i> Calls <tt>replace(i1 - begin(), i2 - i1, basic_string(j1, j2<ins>, get_allocator()</ins>))</tt>.
+<p/>
+-34- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

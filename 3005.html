@@ -1,0 +1,186 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3005: Destruction order of arrays by make_shared/allocate_shared only recommended?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3005" href="lwg-defects.html#3005">3005.</a> Destruction order of arrays by <tt>make_shared/allocate_shared</tt> only recommended?</h3>
+<p><b>Section:</b> 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2017-08-01 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.create">issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In [util.smartptr.shared.create]/7.9 we find this:
+</p>
+<blockquote><p>
+"When the lifetime of the object managed by the return value ends, or when the initialization of an 
+array element throws an exception, the initialized elements should be destroyed in the reverse order 
+of their construction."
+</p></blockquote>
+<p>
+Why is this only a "should be" and not a "shall be" (or, following usual conventions for how we write 
+requirements on the implementation, "are")? Is there some problem that means we can't require an 
+implementation to destroy in reverse construction order in all cases?
+</p>
+
+<strong>Previous resolution: [SUPERSEDED]</strong>
+
+<blockquote class="note">
+<p>This resolution is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, ...&gt;
+shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(7.9) &mdash; When the lifetime of the object managed by the return value ends, or when the initialization of
+an array element throws an exception, the initialized elements <ins>are</ins><del>should be</del> destroyed in 
+<ins>decreasing index order</ins><del>the reverse order of their construction</del>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-11-01, Alisdair comments and suggests wording improvement]</i></p>
+
+<p>
+I dislike the change of how we specify the order of destruction, which is clear (but
+non-normative) from the preceding paragraph making the order of construction
+explicit.  We are replacing that with a different specification, so now I need to match
+up ""decreasing index order" to "ascending order of address" to infer the behavior that
+is worded more directly today.
+<p/>
+P0 to change "should be" to "are" though.
+</p>
+
+<strong>Previous resolution: [SUPERSEDED]</strong>
+
+<blockquote class="note">
+<p>This resolution is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Edit 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, ...&gt;
+shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(7.9) &mdash; When the lifetime of the object managed by the return value ends, or when the initialization of
+an array element throws an exception, the initialized elements <ins>are</ins><del>should be</del> destroyed in 
+the reverse order of their construction.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2017-11-01]</i></p>
+
+<p>
+The rationale for the "decreasing index order" change in the original P/R suggested by Richard Smith had been presented 
+as that user code may destroy one or more array elements and construct new ones in their place. In those cases 
+<tt>shared_ptr</tt> has no way of knowing the construction order, so it cannot ensure that the destruction order reverses 
+it.<br/>
+Richard: Perhaps something like:
+</p>
+<blockquote><p>
+the initialized elements <ins>are</ins> <del>should be</del> destroyed in the reverse order of their <ins>original</ins> construction.
+</p></blockquote>
+<p>
+would work?
+</p>
+
+<p><i>[
+2017-11-02 Moved to Tentatively Ready after 10 positive votes for P0 on c++std-lib.
+]</i></p>
+
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This resolution is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
+
+<ol>
+<li><p>Edit 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, ...&gt;
+shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(7.9) &mdash; When the lifetime of the object managed by the return value ends, or when the initialization of
+an array element throws an exception, the initialized elements <ins>are</ins><del>should be</del> destroyed in 
+the reverse order of their <ins>original</ins> construction.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>

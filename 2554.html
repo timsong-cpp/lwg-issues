@@ -1,0 +1,98 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2554: Swapping multidimensional arrays is never noexcept</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2554" href="lwg-defects.html#2554">2554.</a> Swapping multidimensional arrays is never <tt>noexcept</tt></h3>
+<p><b>Section:</b> 19.2.2 <a href="https://timsong-cpp.github.io/cppwp/utility.swap">[utility.swap]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Orson Peters <b>Opened:</b> 2015-11-01 <b>Last modified:</b> 2016-03-08 22:51:25 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#utility.swap">issues</a> in [utility.swap].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>noexcept</tt> specification for the <tt>std::swap</tt> overload for arrays has the effect that 
+all multidimensional arrays &mdash; even those of build-in types &mdash; would be considered as non-<tt>noexcept</tt> 
+swapping, as described in the following 
+<a href="http://stackoverflow.com/questions/26793979/why-is-swapping-multidimensional-arrays-not-noexcept">Stackoverflow article</a>.
+<p/>
+Consider the following example code:
+</p>
+<blockquote><pre>
+#include &lt;utility&gt;
+#include &lt;iostream&gt;
+
+int main() 
+{
+  int x[2][3];
+  int y[2][3];
+
+  using std::swap;
+  std::cout &lt;&lt; noexcept(swap(x, y)) &lt;&lt; "\n";
+}
+</pre></blockquote>
+<p>
+Both clang 3.8.0 and gcc 5.2.0 return <tt>0</tt>.
+<p/>
+The reason for this unexpected result seems to be a consequence of both core wording rules (6.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.scope.pdecl">[basic.scope.pdecl]</a> says
+that "The point of declaration for a name is immediately after its complete declarator (Clause 8) and before its initializer (if any)"
+and the exception specification is part of the declarator) and the fact that the exception-specification of the <tt>std::swap</tt> 
+overload for arrays uses an expression and not a type trait. At the point where the expression is evaluated, only the non-array
+<tt>std::swap</tt> overload is in scope whose <tt>noexcept</tt> specification evaluates to <tt>false</tt> since arrays are neither
+move-constructible nor move-assignable.
+<p/>
+<b>Daniel:</b>
+<p/>
+The here described problem is another example for the currently broken <tt>swap</tt> exception specifications in the Standard
+library as pointed out by LWG <a href="2456">2456</a>. The paper 
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4511.html">N4511</a> describes a resolution that would address
+this problem. If the array <tt>swap</tt> overload would be declared instead as follows,
+</p>
+<blockquote><pre>
+template &lt;class T, size_t N&gt; 
+void swap(T (&amp;a)[N], T (&amp;b)[N]) noexcept(is_nothrow_swappable&lt;T&gt;::value);
+</pre></blockquote>
+<p>
+the expected outcome is obtained.
+<p/>
+Revision 2 (<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2016/p0185r0.html">P0185R0</a>) of above mentioned paper will 
+available for the mid February 2016 mailing.
+</p>
+
+<p><i>[2016-03-06, Daniel comments]</i></p>
+
+<p>
+With the acceptance of revision 3 <a href="http://wg21.link/P0185R1">P0185R1</a> during the Jacksonville meeting, this
+issue should be closed as "resolved": The expected program output is now <tt>1</tt>. The current gcc 6.0 trunk has
+already <a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=68877">implemented</a> the relevant parts of P0185R1.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

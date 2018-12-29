@@ -1,0 +1,458 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2181: Exceptions from seed sequence operations</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2181" href="lwg-defects.html#2181">2181.</a> Exceptions from <em>seed sequence</em> operations</h3>
+<p><b>Section:</b> 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/rand.req.seedseq">[rand.req.seedseq]</a>, 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a>, 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2012-08-18 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.req.seedseq">issues</a> in [rand.req.seedseq].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+
+<p>
+LWG issue <a href="2180">2180</a> points out some deficiences in regard to the specification of the library-provided
+type <tt>std::seed_seq</tt> regarding exceptions, but there is another specification problem 
+in regard to general types satisfying the <em>seed sequence</em> constraints (named <tt>SSeq</tt>) as described in 
+25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/rand.req.seedseq">[rand.req.seedseq]</a>.
+<p/>
+25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> p3 and 25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.general">[rand.adapt.general]</a> p3 say upfront:
+</p>
+<blockquote><p>
+Except where specified otherwise, no function described in this section 
+25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a>/25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> throws an exception.
+</p></blockquote>
+<p>
+This constraint causes problems, because the described templates in these sub-clauses depend on operations of 
+<tt>SSeq::generate()</tt> which is a function template, that depends both on operations provided by the 
+implementor of <tt>SSeq</tt> (e.g. of <tt>std::seed_seq</tt>), and those of the random access iterator type 
+provided by the caller. With class template <tt>linear_congruential_engine</tt> we have just one example for a user 
+of <tt>SSeq::generate()</tt> via:
+</p>
+<blockquote><pre>
+template&lt;class Sseq&gt; 
+linear_congruential_engine&lt;&gt;::linear_congruential_engine(Sseq&amp; q);
+
+template&lt;class Sseq&gt; 
+void linear_congruential_engine&lt;&gt;::seed(Sseq&amp; q);
+</pre></blockquote>
+<p>
+None of these operations has an exclusion rule for exceptions.
+<p/>
+As described in <a href="2180">2180</a> the wording for <tt>std::seed_seq</tt> should and can be fixed to ensure that 
+operations of <tt>seed_seq::generate()</tt> won't throw except from operations of the provided iterator range, 
+but there is no corresponding "safety belt" for user-provided <tt>SSeq</tt> types, since 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/rand.req.seedseq">[rand.req.seedseq]</a>
+does not impose no-throw requirements onto operations of <em>seed sequences</em>.
+</p>
+
+<ol style="list-style-type:upper-roman">
+
+<li><p>
+A quite radical step to fix this problem would be to impose general no-throw requirements on the expression
+<tt>q.generate(rb,re)</tt> from Table 115, but this is not as simple as it looks initially, because this
+function again depends on general types that are mutable random access iterators. Typically, we do not
+impose no-throw requirements on iterator operations and this would restrict general seed sequences where
+exceptions are not a problem. Furthermore, we do not impose comparable constraints for other expressions,
+like that of the expression <tt>g()</tt> in Table 116 for good reasons, e.g. <tt>random_device::operator()</tt>
+explicitly states when it throws exceptions.
+</p></li>
+
+<li><p>
+A less radical variant of the previous suggestion would be to add a normative requirement on the expression
+<tt>q.generate(rb,re)</tt> from Table 115 that says: "Throws nothing if operations of <tt>rb</tt> and <tt>re</tt> 
+do not throw exceptions". Nevertheless we typically do not describe <em>conditional</em> Throws elements in proper
+requirement sets elsewhere (Container requirements excluded, they just describe the containers from Clause 23)
+and this may exclude resonable implementations of seed sequences that could throw exceptions under rare
+situations. 
+</p></li>
+
+<li><p>
+The iterator arguments provided to <tt>SSeq::generate()</tt> for operations in templates of 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 
+25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> are under control of implementations, so we could impose stricter exceptions requirements
+on <tt>SSeq::generate()</tt> for <tt>SSeq</tt> types that are used to instantiate member templates in 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> 
+and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> solely.
+</p></li>
+
+<li><p>
+We simply add extra wording to the introductive parts of 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>
+that specify that operations of the engine (adaptor) templates that depend on a template parameter <tt>SSeq</tt>
+throw no exception unless <tt>SSeq::generate()</tt> throws an exception.
+</p></li>
+</ol>
+
+<p>
+Given these options I would suggest to apply the variant described in the fourth bullet.
+<p/>
+The proposed resolution attempts to reduce a lot of the redundancies of requirements in the introductory paragraphs of 
+25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> by introducing a new intermediate sub-clause 
+"Engine and engine adaptor class templates" following sub-clause 25.6.1 <a href="https://timsong-cpp.github.io/cppwp/rand.synopsis">[rand.synopsis]</a>. This approach also
+solves the problem that currently 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> also describes requirements that apply for
+25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> (Constrained templates involving the <tt>Sseq</tt> parameters).
+</p>
+
+<p><i>[2013-04-20, Bristol]</i></p>
+
+
+<p>
+Remove the first bullet point:
+</p>
+<blockquote><p>
+?- Throughout this sub-clause general requirements and conventions are described that apply to every class 
+template specified in sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>. Phrases of the form "in those 
+sub-clauses" shall be interpreted as equivalent to "in sub-clauses 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>". 
+</p></blockquote>
+<p>
+Replace "in those sub-clauses" with "in sub-clauses 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>".
+<p/>
+Find another place for the wording. 
+<p/>
+Daniel: These are requirements on the implementation not on the types. I'm not comfortable in moving it to another place 
+without double checking. 
+<p/>
+Improve the text (there are 4 "for"s): <em>for</em> copy constructors, <em>for</em> copy assignment operators, 
+<em>for</em> streaming operators, and <em>for</em> equality and inequality operators are not shown in the synopses. 
+<p/>
+Move the information of this paragraph to the paragraphs it refers to: 
+</p>
+<blockquote><p>
+"-?- Descriptions are provided in those sub-clauses only for engine operations that are not described in 
+25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a>, for adaptor operations that are not described in 25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a>, or for 
+operations where there is additional semantic information. In particular, declarations for copy constructors, for 
+copy assignment operators, for streaming operators, and for equality and inequality operators are not shown in the synopses." 
+</p></blockquote>
+<p>
+Alisdair: I prefer duplication here than consolidation/reference to these paragraphs. 
+<p/>
+The room showed weakly favjust or for duplication. 
+</p>
+
+<p>
+<strong>Previous resolution from Daniel [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<ol>
+<li><p>Add a new sub-clause titled "Engine and engine adaptor class templates" following sub-clause 
+25.6.1 <a href="https://timsong-cpp.github.io/cppwp/rand.synopsis">[rand.synopsis]</a> (but at the same level) and add one further sub-clause "General" as
+child of the new sub-clause as follows:
+<p/>
+<ins>Engine and engine adaptor class templates [rand.engadapt]</ins>
+<p/>
+<ins>General [rand.engadapt.general]</ins>
+</p>
+<blockquote><p>
+<ins>-?- Throughout this sub-clause general requirements and conventions are described that apply to every class 
+template specified in sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>. Phrases of the 
+form "in those sub-clauses" shall be interpreted as equivalent to "in sub-clauses 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 
+25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>".
+</ins>
+<p/>
+<ins>-?- Except where specified otherwise, the complexity of each function specified in those sub-clauses is constant.</ins>
+<p/>
+<ins>-?- Except where specified otherwise, no function described in those sub-clauses throws an exception.</ins>
+<p/>
+<ins>-?- Every function described in those sub-clauses that has a function parameter <tt>q</tt> of type
+<tt>SSeq&amp;</tt> for a template type parameter named <tt>SSeq</tt> that is different from type <tt>std::seed_seq</tt> 
+throws what and when the invocation of <tt>q.generate</tt> throws.</ins>
+<p/>
+<ins>-?- Descriptions are provided in those sub-clauses only for engine operations that are not described in 
+25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a>, for adaptor operations that are not described in 25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a>,
+or for operations where there is additional semantic information. In particular, declarations for copy constructors,
+for copy assignment operators, for streaming operators, and for equality and inequality operators
+are not shown in the synopses.</ins>
+<p/>
+<ins>-?- Each template specified in those sub-clauses requires one or more relationships, involving the value(s) of
+its non-type template parameter(s), to hold. A program instantiating any of these templates is ill-formed if
+any such required relationship fails to hold.</ins>
+<p/>
+<ins>-?- For every random number engine and for every random number engine adaptor <tt>X</tt> defined in those 
+sub-clauses:</ins>
+</p>
+<ul>
+<li><p>
+<ins>if the constructor</ins>
+</p>
+<blockquote><pre>
+<ins>template &lt;class Sseq&gt; explicit X(Sseq&amp; q);</ins>
+</pre></blockquote>
+<p>
+<ins>is called with a type <tt>Sseq</tt> that does not qualify as a seed sequence, then this constructor shall not
+participate in overload resolution;</ins>
+</p>
+</li>
+
+<li><p>
+<ins>if the member function</ins>
+</p>
+<blockquote><pre>
+<ins>template &lt;class Sseq&gt; void seed(Sseq&amp; q);</ins>
+</pre></blockquote>
+<p>
+<ins>is called with a type <tt>Sseq</tt> that does not qualify as a seed sequence, then this function shall not
+participate in overload resolution;</ins>
+</p>
+</li>
+</ul>
+<p>
+<ins>The extent to which an implementation determines that a type cannot be a seed sequence is unspecified,
+except that as a minimum a type shall not qualify as a seed sequence if it is implicitly convertible to
+<tt>X::result_type</tt>.</ins>
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Edit the contents of sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> as indicated:</p>
+
+<blockquote><p>
+-1- Each type instantiated from a class template specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> satisfies the 
+requirements of a random number engine (25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a>) type <ins>and the general implementation 
+requirements specified in sub-clause [rand.engadapt.general]</ins>.
+<p/>
+<del>-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> 
+is constant.</del>
+<p/>
+<del>-3- Except where specified otherwise, no function described in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> throws an exception.</del>
+<p/>
+<del>-4- Descriptions are provided in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> only for engine operations that are not 
+described in 25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a> [&hellip;]</del>
+<p/>
+<del>-5- Each template specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> requires one or more relationships, 
+involving the value(s) of its non-type template parameter(s), to hold. [&hellip;]</del>
+<p/>
+<del>-6- For every random number engine and for every random number engine adaptor <tt>X</tt> defined in this subclause
+(25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a>) and in sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a>: [&hellip;]</del>
+</p></blockquote>
+
+</li>
+
+<li><p>Edit the contents of sub-clause 25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.general">[rand.adapt.general]</a> as indicated:</p>
+
+<blockquote><p>
+-1- Each type instantiated from a class template specified in this section <del>25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a></del><ins>25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a></ins> satisfies the 
+requirements of a random number engine adaptor (25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a>) type <ins>and the general 
+implementation requirements specified in sub-clause [rand.engadapt.general]</ins>.
+<p/>
+<del>-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> 
+is constant.</del>
+<p/>
+<del>-3- Except where specified otherwise, no function described in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> throws an exception.</del>
+<p/>
+<del>-4- Descriptions are provided in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> only for engine operations that are not 
+described in 25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a> [&hellip;]</del>
+<p/>
+<del>-5- Each template specified in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> requires one or more relationships, involving 
+the value(s) of its non-type template parameter(s), to hold. [&hellip;]</del>
+</p></blockquote>
+
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2014-02-09, Daniel provides alternative resolution]</i></p>
+
+
+<p><i>[Lenexa 2015-05-07: Move to Ready]</i></p>
+
+<p>LWG 2181 exceptions from seed sequence operations</p>
+<p>STL: Daniel explained that I was confused. I said, oh, seed_seq says it can throw if the RanIt throws. Daniel says the RanIts are provided by the engine. Therefore if you give a seed_seq to an engine, it cannot throw, as implied by the current normative text. So what Daniel has in the PR is correct, if slightly unnecessary. It's okay to have explicitly non-overlapping Standardese even if overlapping would be okay.</p>
+<p>Marshall: And this is a case where the std:: on seed_seq is a good thing.</p>
+<p>STL: Meh.</p>
+<p>STL: And that was my only concern with this PR. I like the latest PR much better than the previous.</p>
+<p>Marshall: Yes. There's a drive-by fix for referencing the wrong section. Other than that, the two are the same.</p>
+<p>STL: Alisdair wanted the repetition instead of centralization, and I agree.</p>
+<p>Marshall: Any other opinions?</p>
+<p>Jonathan: I'll buy it.</p>
+<p>STL: For a dollar?</p>
+<p>Hwrd: I'll buy that for a nickel.</p>
+<p>Marshall: Any objections to Ready? I don't see a point in Immediate.</p>
+<p>Jonathan: Absolutely agree.</p>
+<p>Marshall: 7 for ready, 0 opposed, 0 abstain.</p>
+
+<p><i>[2014-05-22, Daniel syncs with recent WP]</i></p>
+
+
+<p><i>[2015-10-31, Daniel comments and simplifies suggested wording changes]</i></p>
+
+<p>
+Upon Walter Brown's suggestion the revised wording does not contain any wording changes that could be
+considered as editorial. 
+</p>
+
+<p>
+<strong>Previous resolution from Daniel [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N3936.</p>
+
+<ol>
+<li><p>Edit the contents of sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> as indicated:</p>
+
+<blockquote><p>
+-1- Each type instantiated from a class template specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> satisfies the 
+requirements of a random number engine (25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a>) type.
+<p/>
+-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> 
+is constant.
+<p/>
+-3- Except where specified otherwise, no function described in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> throws an exception.
+<p/>
+<ins>-?- Every function described in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> that has a function parameter <tt>q</tt> of 
+type <tt>Sseq&amp;</tt> for a template type parameter named <tt>Sseq</tt> that is different from type <tt>std::seed_seq</tt> 
+throws what and when the invocation of <tt>q.generate</tt> throws.</ins>
+<p/>
+-4- Descriptions are provided in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> only for engine operations that are not 
+described in 25.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/rand.req.eng">[rand.req.eng]</a> or for operations where there is additional semantic information. In particular, 
+declarations for copy constructors, <del>for</del> copy assignment operators, <del>for</del> streaming operators, <del>and 
+for</del> equality <ins>operators,</ins> and inequality operators are not shown in the synopses.
+<p/>
+-5- Each template specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> requires one or more relationships, 
+involving the value(s) of its non-type template parameter(s), to hold. A program instantiating any of these templates is 
+ill-formed if any such required relationship fails to hold.
+<p/>
+-6- For every random number engine and for every random number engine adaptor <tt>X</tt> defined in this subclause
+(25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a>) and in sub-clause 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a>: 
+</p>
+<ul>
+<li><p>
+if the constructor
+</p>
+<blockquote><pre>
+template &lt;class Sseq&gt; explicit X(Sseq&amp; q);
+</pre></blockquote>
+<p>
+is called with a type <tt>Sseq</tt> that does not qualify as a seed sequence, then this constructor shall not
+participate in overload resolution;
+</p>
+</li>
+<li><p>
+if the member function
+</p>
+<blockquote><pre>
+template &lt;class Sseq&gt; void seed(Sseq&amp; q);
+</pre></blockquote>
+<p>
+is called with a type <tt>Sseq</tt> that does not qualify as a seed sequence, then this function shall not
+participate in overload resolution;
+</p>
+</li>
+</ul>
+<p>
+The extent to which an implementation determines that a type cannot be a seed sequence is unspecified,
+except that as a minimum a type shall not qualify as a seed sequence if it is implicitly convertible to
+<tt>X::result_type</tt>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Edit the contents of sub-clause 25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.general">[rand.adapt.general]</a> as indicated:</p>
+
+<blockquote><p>
+-1- Each type instantiated from a class template specified in this section 
+<del>25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a></del><ins>25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a></ins> satisfies the requirements of a 
+random number engine adaptor (25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a>) type.
+<p/>
+-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> 
+is constant.
+<p/>
+-3- Except where specified otherwise, no function described in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> throws an exception.
+<p/>
+<ins>-?- Every function described in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> that has a function parameter <tt>q</tt> of 
+type <tt>Sseq&amp;</tt> for a template type parameter named <tt>Sseq</tt> that is different from type <tt>std::seed_seq</tt> 
+throws what and when the invocation of <tt>q.generate</tt> throws.</ins>
+<p/>
+-4- Descriptions are provided in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> only for adaptor operations that are not 
+described in section 25.6.2.5 <a href="https://timsong-cpp.github.io/cppwp/rand.req.adapt">[rand.req.adapt]</a> or for operations where there is additional semantic information. In particular, 
+declarations for copy constructors, <del>for</del> copy assignment operators, <del>for</del> streaming operators, <del>and for</del> 
+equality <ins>operators,</ins> and inequality operators are not shown in the synopses.
+<p/>
+-5- Each template specified in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> requires one or more relationships, involving 
+the value(s) of its non-type template parameter(s), to hold. A program instantiating any of these templates is ill-formed if
+any such required relationship fails to hold.
+</p></blockquote>
+</li>
+
+<li><p>Edit the contents of sub-clause 25.6.8.1 <a href="https://timsong-cpp.github.io/cppwp/rand.dist.general">[rand.dist.general]</a> p2 as indicated: [<i>Drafting note</i>: These
+editorial changes are just for consistency with those applied to 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> and 
+25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.general">[rand.adapt.general]</a> &mdash; <i>end drafting note</i>]</p>
+
+<blockquote><p>
+-2- Descriptions are provided in this section 25.6.8 <a href="https://timsong-cpp.github.io/cppwp/rand.dist">[rand.dist]</a> only for distribution operations that are not 
+described in 25.6.2.6 <a href="https://timsong-cpp.github.io/cppwp/rand.req.dist">[rand.req.dist]</a> or for operations where there is additional semantic information. In particular, 
+declarations for copy constructors, <del>for</del> copy assignment operators, <del>for</del> streaming operators, <del>and for</del> 
+equality <ins>operators,</ins> and inequality operators are not shown in the synopses.
+</p></blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4527.</p>
+
+<ol>
+<li><p>Edit the contents of sub-clause 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> as indicated:</p>
+
+<blockquote><p>
+-1- [&hellip;]
+<p/>
+-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> 
+is constant.
+<p/>
+-3- Except where specified otherwise, no function described in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> throws an exception.
+<p/>
+<ins>-?- Every function described in this section 25.6.3 <a href="https://timsong-cpp.github.io/cppwp/rand.eng">[rand.eng]</a> that has a function parameter <tt>q</tt> of 
+type <tt>Sseq&amp;</tt> for a template type parameter named <tt>Sseq</tt> that is different from type <tt>std::seed_seq</tt> 
+throws what and when the invocation of <tt>q.generate</tt> throws.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+
+<li><p>Edit the contents of sub-clause 25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.general">[rand.adapt.general]</a> as indicated:</p>
+
+<blockquote><p>
+-1- [&hellip;]
+<p/>
+-2- Except where specified otherwise, the complexity of each function specified in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> 
+is constant.
+<p/>
+-3- Except where specified otherwise, no function described in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> throws an exception.
+<p/>
+<ins>-?- Every function described in this section 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt">[rand.adapt]</a> that has a function parameter <tt>q</tt> of 
+type <tt>Sseq&amp;</tt> for a template type parameter named <tt>Sseq</tt> that is different from type <tt>std::seed_seq</tt> 
+throws what and when the invocation of <tt>q.generate</tt> throws.</ins>
+</p></blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

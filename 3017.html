@@ -1,0 +1,118 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3017: list splice functions should use addressof</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3017" href="lwg-defects.html#3017">3017.</a> <tt>list splice</tt> functions should use <tt>addressof</tt></h3>
+<p><b>Section:</b> 21.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a>, 21.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-09-05 <b>Last modified:</b> 2018-03-18 16:03:30 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#forwardlist.ops">issues</a> in [forwardlist.ops].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+21.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> p1 and 21.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> p3 say <tt>&amp;x != this</tt>, but should use
+<tt>addressof</tt>. We really need front matter saying that when the library says <tt>&amp;x</tt> it means 
+<tt>std::addressof(x)</tt>.
+</p>
+
+<p><i>[
+2017-11-03 Moved to Tentatively Ready after 9 positive votes for P0 on c++std-lib.
+]</i></p>
+
+<p><i>[2018-3-17 Adopted in Jacksonville]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Edit 21.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/forwardlist.ops">[forwardlist.ops]</a> p1 as indicated:</p>
+<blockquote>
+<pre>
+void splice_after(const_iterator position, forward_list&amp; x);
+void splice_after(const_iterator position, forward_list&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> <tt>position</tt> is <tt>before_begin()</tt> or is a dereferenceable iterator in the range <tt>[begin(), 
+end())</tt>. <tt>get_allocator() == x.get_allocator()</tt>. <tt><del>&amp;</del><ins>addressof(</ins>x<ins>)</ins> != this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> p3 as indicated:</p>
+<blockquote>
+<pre>
+void splice(const_iterator position, list&amp; x);
+void splice(const_iterator position, list&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-3- <i>Requires:</i> <tt><del>&amp;</del><ins>addressof(</ins>x<ins>)</ins> != this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 21.3.10.5 <a href="https://timsong-cpp.github.io/cppwp/list.ops">[list.ops]</a> p3 as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class Compare&gt; void merge(list&amp; x, Compare comp);
+template &lt;class Compare&gt; void merge(list&amp;&amp; x, Compare comp);
+</pre>
+<blockquote>
+<p>
+-22- <i>Requires:</i> <tt>comp</tt> shall define a strict weak ordering (24.7 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>), and both the list 
+and the argument list shall be sorted according to this ordering.
+<p/>
+-23- <i>Effects:</i> If <tt>(<del>&amp;</del><ins>addressof(</ins>x<ins>)</ins> == this)</tt> does nothing; 
+otherwise, merges the two sorted ranges <tt>[begin(), end())</tt> and <tt>[x.begin(), x.end())</tt>. The result 
+is a range in which the elements will be sorted in non-decreasing order according to the ordering defined by 
+<tt>comp</tt>; that is, for every iterator <tt>i</tt>, in the range other than the first, the condition 
+<tt>comp(*i, *(i - 1))</tt> will be <tt>false</tt>. Pointers and references to the moved elements of <tt>x</tt> 
+now refer to those same elements but as members of <tt>*this</tt>. Iterators referring to the moved elements 
+will continue to refer to their elements, but they now behave as iterators into <tt>*this</tt>, not into <tt>x</tt>.
+<p/>
+-24- <i>Remarks:</i> Stable (15.5.5.7 <a href="https://timsong-cpp.github.io/cppwp/algorithm.stable">[algorithm.stable]</a>). If 
+<tt>(<del>&amp;</del><ins>addressof(</ins>x<ins>)</ins> != this)</tt> the range <tt>[x.begin(), x.end())</tt> is 
+empty after the merge. No elements are copied by this operation. The behavior is undefined if <tt>get_allocator() !=
+x.get_allocator()</tt>.
+<p/>
+-25- <i>Complexity:</i> At most <tt>size() + x.size() - 1</tt> applications of <tt>comp</tt> if 
+<tt>(<del>&amp;</del><ins>addressof(</ins>x<ins>)</ins> != this)</tt>; otherwise, no applications of <tt>comp</tt> are 
+performed. If an exception is thrown other than by a comparison there are no effects.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

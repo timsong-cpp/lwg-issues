@@ -1,0 +1,234 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 726: Missing regex_replace() overloads</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="726" href="lwg-closed.html#726">726.</a> Missing <tt>regex_replace()</tt> overloads</h3>
+<p><b>Section:</b> 29.11.4 <a href="https://timsong-cpp.github.io/cppwp/re.alg.replace">[re.alg.replace]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2007-09-22 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.alg.replace">issues</a> in [re.alg.replace].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Two overloads of <tt>regex_replace()</tt> are currently provided:
+</p>
+
+<blockquote><pre>
+template &lt;class OutputIterator, class BidirectionalIterator, 
+    class traits, class charT&gt; 
+  OutputIterator 
+  regex_replace(OutputIterator out, 
+                BidirectionalIterator first, BidirectionalIterator last, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const basic_string&lt;charT&gt;&amp; fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);
+ 
+template &lt;class traits, class charT&gt; 
+  basic_string&lt;charT&gt; 
+  regex_replace(const basic_string&lt;charT&gt;&amp; s, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const basic_string&lt;charT&gt;&amp; fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);
+</pre></blockquote>
+
+<ol>
+<li>Overloads taking <tt>const charT *</tt> are provided for <tt>regex_match()</tt> and
+<tt>regex_search()</tt>, but not <tt>regex_replace()</tt>.  This is inconsistent.</li>
+<li>
+<p>The absence of <tt>const charT *</tt> overloads prevents ordinary-looking code from compiling, such as:</p>
+
+<blockquote><pre>
+const string s("kitten");
+const regex r("en");
+cout &lt;&lt; regex_replace(s, r, "y") &lt;&lt; endl;
+</pre></blockquote>
+
+<p>
+The compiler error message will be something like "could not deduce
+template argument for 'const std::basic_string&lt;_Elem&gt; &amp;' from 'const
+char[1]'".
+</p>
+
+<p>
+Users expect that anything taking a <tt>basic_string&lt;charT&gt;</tt> can also take a
+<tt>const charT *</tt>.  In their own code, when they write a function taking
+<tt>std::string</tt> (or <tt>std::wstring</tt>), they can pass a <tt>const char *</tt> (or <tt>const
+wchar_t *</tt>), thanks to <tt>basic_string</tt>'s implicit constructor.  Because the
+regex algorithms are templated on <tt>charT</tt>, they can't rely on
+<tt>basic_string</tt>'s implicit constructor (as the compiler error message
+indicates, template argument deduction fails first).
+</p>
+
+<p>
+If a user figures out what the compiler error message means, workarounds
+are available - but they are all verbose.  Explicit template arguments
+could be given to <tt>regex_replace()</tt>, allowing <tt>basic_string</tt>'s implicit
+constructor to be invoked - but <tt>charT</tt> is the last template argument, not
+the first, so this would be extremely verbose.  Therefore, constructing
+a <tt>basic_string</tt> from each C string is the simplest workaround.
+</p>
+</li>
+
+<li>
+There is an efficiency consideration: constructing <tt>basic_string</tt>s can
+impose performance costs that could be avoided by a library
+implementation taking C strings and dealing with them directly. 
+(Currently, for replacement sources, C strings can be converted into
+iterator pairs at the cost of verbosity, but for format strings, there
+is no way to avoid constructing a <tt>basic_string</tt>.)
+</li>
+</ol>
+
+<p><i>[
+Sophia Antipolis:
+]</i></p>
+
+
+<blockquote><p>
+We note that Boost already has these overloads. However, the proposed
+wording is provided only for 29.11.4 <a href="https://timsong-cpp.github.io/cppwp/re.alg.replace">[re.alg.replace]</a>; wording is needed for the synopsis
+as well. We also note that this has impact on <tt>match_results::format</tt>,
+which may require further overloads.
+</p></blockquote>
+
+<p><i>[
+2009-07 Frankfurt:
+]</i></p>
+
+
+<blockquote><p>
+Daniel to tweak for us.
+</p></blockquote>
+
+<p><i>[
+2009-07-25 Daniel tweaks both this issue and <a href="727">727</a>.
+]</i></p>
+
+
+<blockquote>
+<p>
+This is solved by the proposed resolution of <a href="727">727</a>.
+</p>
+</blockquote>
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Leave Open. Though we believe this is solved by the proposed resolution
+to <a href="727">727</a>.
+</p></blockquote>
+
+<p><i>[
+2010-01-27 Moved to Tentatively NAD after 5 positive votes on c++std-lib. 
+Rationale added below.
+]</i></p>
+
+
+
+<p><b>Rationale:</b></p>
+<p>
+Solved by <a href="727">727</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>
+Provide additional overloads for <tt>regex_replace()</tt>: one additional
+overload of the iterator-based form (taking <tt>const charT* fmt</tt>), and three
+additional overloads of the convenience form (one taking <tt>const charT*
+str</tt>, another taking <tt>const charT* fmt</tt>, and the third taking both <tt>const
+charT* str</tt> and <tt>const charT* fmt</tt>).  29.11.4 <a href="https://timsong-cpp.github.io/cppwp/re.alg.replace">[re.alg.replace]</a>:
+</p>
+
+<blockquote>
+<pre>
+template &lt;class OutputIterator, class BidirectionalIterator, 
+    class traits, class charT&gt; 
+  OutputIterator 
+  regex_replace(OutputIterator out, 
+                BidirectionalIterator first, BidirectionalIterator last, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const basic_string&lt;charT&gt;&amp; fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);
+
+<ins>template &lt;class OutputIterator, class BidirectionalIterator, 
+    class traits, class charT&gt; 
+  OutputIterator 
+  regex_replace(OutputIterator out, 
+                BidirectionalIterator first, BidirectionalIterator last, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const charT* fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);</ins>
+</pre>
+<p>...</p>
+<pre>
+template &lt;class traits, class charT&gt; 
+  basic_string&lt;charT&gt; 
+  regex_replace(const basic_string&lt;charT&gt;&amp; s, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const basic_string&lt;charT&gt;&amp; fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);
+
+<ins>template &lt;class traits, class charT&gt; 
+  basic_string&lt;charT&gt; 
+  regex_replace(const basic_string&lt;charT&gt;&amp; s, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const charT* fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);</ins>
+
+<ins>template &lt;class traits, class charT&gt; 
+  basic_string&lt;charT&gt; 
+  regex_replace(const charT* s, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const basic_string&lt;charT&gt;&amp; fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);</ins>
+
+<ins>template &lt;class traits, class charT&gt; 
+  basic_string&lt;charT&gt; 
+  regex_replace(const charT* s, 
+                const basic_regex&lt;charT, traits&gt;&amp; e, 
+                const charT* fmt, 
+                regex_constants::match_flag_type flags = 
+                  regex_constants::match_default);</ins>
+</pre>
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

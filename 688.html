@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 688: reference_wrapper, cref unsafe, allow binding to rvalues</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="688" href="lwg-defects.html#688">688.</a> reference_wrapper, cref unsafe, allow binding to rvalues</h3>
+<p><b>Section:</b> 19.14.5.1 <a href="https://timsong-cpp.github.io/cppwp/refwrap.const">[refwrap.const]</a> <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2007-05-10 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#refwrap.const">issues</a> in [refwrap.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A <tt>reference_wrapper</tt> can be constructed from an rvalue, either by using
+the constructor, or via <tt>cref</tt> (and <tt>ref</tt> in some corner cases). This leads
+to a dangling reference being stored into the <tt>reference_wrapper</tt> object.
+Now that we have a mechanism to detect an rvalue, we can fix them to
+disallow this source of undefined behavior.
+</p>
+
+<p>
+Also please see the thread starting at c++std-lib-17398 for some good discussion on this subject.
+</p>
+
+<p><i>[
+2009-05-09 Alisdair adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+Now that <tt>ref/cref</tt> are constained that <tt>T</tt> must be an <tt>ObjectType</tt>, I do not
+believe there is any risk of binding <tt>ref</tt> to a temporary (which would rely on
+deducing <tt>T</tt> to be an rvalue reference type)
+</p>
+<p>
+However, the problem for <tt>cref</tt> remains, so I recommend retaining that deleted
+overload.
+</p>
+</blockquote>
+
+<p><i>[
+2009-05-10 Howard adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+Without:
+</p>
+
+<blockquote><pre>
+template &lt;class T&gt; void ref(const T&amp;&amp; t) = delete;
+</pre></blockquote>
+<p>
+I believe this program will compile:
+</p>
+
+<blockquote><pre>
+#include &lt;functional&gt;
+
+struct A {};
+
+const A source() {return A();}
+
+int main()
+{
+   std::reference_wrapper&lt;const A&gt; r = std::ref(source());
+}
+</pre></blockquote>
+<p>
+I.e. in:
+</p>
+<blockquote><pre>
+template &lt;ObjectType T&gt; reference_wrapper&lt;T&gt; ref(T&amp; t);
+</pre></blockquote>
+
+<p>
+this:
+</p>
+
+<blockquote><pre>
+ref(source())
+</pre></blockquote>
+<p>
+deduces <tt>T</tt> as <tt>const A</tt>, and so:
+</p>
+
+<blockquote><pre>
+ref(const A&amp; t)
+</pre></blockquote>
+
+<p>
+will bind to a temporary (tested with a pre-concepts rvalue-ref enabled compiler).
+</p>
+<p>
+Therefore I think we still need the ref-protection.  I respectfully disagree with Alisdair's
+comment and am in favor of the proposed wording as it stands.  Also, CWG 606
+(noted below) has now been "favorably" resolved.
+</p>
+
+</blockquote>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote><p>
+We agree with the proposed resolution.
+Move to Tentatively Ready.
+</p></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+In 19.14 <a href="https://timsong-cpp.github.io/cppwp/function.objects">[function.objects]</a>, add the following two signatures to the synopsis:
+</p>
+
+<blockquote><pre>
+template &lt;class T&gt; void ref(const T&amp;&amp; t) = delete;
+template &lt;class T&gt; void cref(const T&amp;&amp; t) = delete;
+</pre></blockquote>
+
+
+
+<p><i>[
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2007/n2292.html">N2292</a>
+addresses the first part of the resolution but not the second.
+]</i></p>
+
+
+<p><i>[
+Bellevue:  Doug noticed problems with the current wording.
+]</i></p>
+
+
+<p><i>[
+post Bellevue:  Howard and Peter provided revised wording.
+]</i></p>
+
+
+<p><i>[
+This resolution depends on a "favorable" resolution of CWG 606:  that is,
+the "special deduction rule" is disabled with the const T&amp;&amp; pattern.
+]</i></p>
+
+
+
+
+
+</body>
+</html>

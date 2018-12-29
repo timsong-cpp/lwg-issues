@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2782: scoped_allocator_adaptor constructors must be constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2782" href="lwg-defects.html#2782">2782.</a> <tt>scoped_allocator_adaptor</tt> constructors must be constrained</h3>
+<p><b>Section:</b> 19.13.3 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.cnstr">[allocator.adaptor.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-10-14 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The templated constructors of <tt>scoped_allocator_adaptor</tt> need to be constrained, otherwise uses-allocator 
+construction gives the wrong answer and causes errors for code that should compile.
+<p/>
+Consider two incompatible allocator types:
+</p>
+<blockquote><pre>
+template&lt;class T&gt; struct Alloc1 { ... };
+template&lt;class T&gt; struct Alloc2 { ... };
+static_assert(!is_convertible_v&lt;Alloc1&lt;int&gt;, Alloc2&lt;int&gt;&gt;);
+</pre></blockquote>
+<p>
+The unconstrained constructors give this bogus answer:
+</p>
+<blockquote><pre>
+template&lt;class T&gt; using scoped = scoped_allocator_adaptor&lt;T&gt;;
+static_assert(is_convertible_v&lt;scoped&lt;Alloc1&lt;int&gt;&gt;, scoped&lt;Alloc2&lt;int&gt;&gt;&gt;);
+</pre></blockquote>
+<p>
+This causes <tt>uses_allocator</tt> to give the wrong answer for any specialization involving incompatible 
+<tt>scoped_allocator_adaptors</tt>, which makes <tt>scoped_allocator_adaptor::construct()</tt> take an ill-formed 
+branch e.g.
+</p>
+<blockquote><pre>
+struct X 
+{
+  using allocator_type = scoped&lt;Alloc2&lt;int&gt;&gt;;
+  X(const allocator_type&amp;);
+  X();
+};
+scoped&lt;Alloc1&lt;int&gt;&gt;{}.construct((X*)0);
+</pre></blockquote>
+<p>
+This fails to compile, because <tt>uses_allocator&lt;X, scoped_allocator_adaptor&lt;Alloc2&lt;int&gt;&gt;&gt;</tt> is 
+<tt>true</tt>, so the allocator is passed to the <tt>X</tt> constructor, but the conversion fails. The error is outside 
+the immediate context, and so is a hard error.
+</p>
+
+<p><i>[2016-11-12, Issaquah]</i></p>
+
+<p>Sat AM: Priority 0; move to Ready</p>
+<p>Billy to open another issue about the confusion with the ctor</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4606.
+</p>
+
+<ol>
+<li><p>Modify 19.13.3 <a href="https://timsong-cpp.github.io/cppwp/allocator.adaptor.cnstr">[allocator.adaptor.cnstr]</a> by converting "Requires" elements to "Remarks: shall not participate ..." constraints as shown:</p>
+
+<blockquote>
+<pre>
+template &lt;class OuterA2&gt;
+  scoped_allocator_adaptor(OuterA2&amp;&amp; outerAlloc,
+                           const InnerAllocs&amp;... innerAllocs) noexcept;
+</pre>
+<blockquote>
+<p>
+<del>-2- <i>Requires:</i> <tt>OuterAlloc</tt> shall be constructible from <tt>OuterA2</tt>.</del>
+<p/>
+-3- <i>Effects:</i> Initializes the <tt>OuterAlloc</tt> base class with <tt>std::forward&lt;OuterA2&gt;(outerAlloc)</tt> and 
+inner with <tt>innerAllocs...</tt> (hence recursively initializing each allocator within the adaptor with the
+corresponding allocator from the argument list).
+<p/>
+<ins>-?- <i>Remarks:</i> This constructor shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;OuterAlloc, OuterA2&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class OuterA2&gt;
+  scoped_allocator_adaptor(const scoped_allocator_adaptor&lt;OuterA2,
+                           InnerAllocs...&gt;&amp; other) noexcept;
+</pre>
+<blockquote>
+<p>
+<del>-6- <i>Requires:</i> <tt>OuterAlloc</tt> shall be constructible from <tt>OuterA2</tt>.</del>
+<p/>
+-7- <i>Effects:</i> Initializes each allocator within the adaptor with the corresponding allocator from <tt>other</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This constructor shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;OuterAlloc, const OuterA2&amp;&gt;</tt> is <tt>true</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template &lt;class OuterA2&gt;
+  scoped_allocator_adaptor(scoped_allocator_adaptor&lt;OuterA2,
+                           InnerAllocs...&gt;&amp;&amp; other) noexcept;
+</pre>
+<blockquote>
+<p>
+<del>-8- <i>Requires:</i> <tt>OuterAlloc</tt> shall be constructible from <tt>OuterA2</tt>.</del>
+<p/>
+-9- <i>Effects:</i> Initializes each allocator within the adaptor with the corresponding allocator rvalue from <tt>other</tt>.
+<p/>
+<ins>-?- <i>Remarks:</i> This constructor shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;OuterAlloc, OuterA2&gt;</tt> is <tt>true</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

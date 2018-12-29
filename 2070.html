@@ -1,0 +1,293 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2070: allocate_shared should use allocator_traits&lt;A&gt;::construct</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2070" href="lwg-defects.html#2070">2070.</a> <tt>allocate_shared</tt> should use <tt>allocator_traits&lt;A&gt;::construct</tt></h3>
+<p><b>Section:</b> 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2011-07-11 <b>Last modified:</b> 2017-07-16 21:18:25 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.create">issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> says:
+</p>
+<blockquote><p>
+-2- <i>Effects</i>: Allocates memory suitable for an object of type <tt>T</tt> and constructs an object in that memory
+via the placement new expression <tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt>. The template
+<tt>allocate_shared</tt> uses a copy of a to allocate memory. If an exception is thrown, the functions have
+no effect.
+</p></blockquote>
+<p>
+This explicitly requires placement new rather than using
+<tt>allocator_traits&lt;A&gt;::construct(a, (T*)pv, std::forward&lt;Args&gt;(args)...)</tt>
+In most cases that would result in the same placement new expression,
+but would allow more control over how the object is constructed e.g.
+using <tt>scoped_allocator_adaptor</tt> to do uses-allocator construction, or
+using an allocator declared as a friend to construct objects with no
+public constructors.
+</p>
+
+<p><i>[2011-08-16 Bloomington:]</i></p>
+
+<p>
+Agreed to fix in principle, but believe that <tt>make_shared</tt> and
+<tt>allocate_shared</tt> have now diverged enough that their descriptions
+should be separated.  Pablo and Stefanus to provide revised wording.
+</p>
+
+<p><strong>Daniel's (old) proposed resolution:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to the FDIS.</p>
+
+<ol>
+<li><p>Change the following paragraphs of 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated (The suggested
+removal of the last sentence of p1 is not strictly required to resolve this issue, but is still recommended,
+because it does not say anything new but may give the impression that it says something new):
+</p><blockquote><pre>
+template&lt;class T, class... Args&gt; shared_ptr&lt;T&gt; make_shared(Args&amp;&amp;... args);
+template&lt;class T, class A, class... Args&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, Args&amp;&amp;... args);
+</pre><blockquote>
+<p>
+-1- <i>Requires</i>: <ins>For the template <tt>make_shared</tt>, t</ins><del>T</del>he expression 
+<tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt>, where <tt>pv</tt> 
+has type <tt>void*</tt> and points to storage suitable to hold an object of type <tt>T</tt>, shall be well 
+formed. <ins>For the template <tt>allocate_shared</tt>, the expression 
+<tt>allocator_traits&lt;A&gt;::construct(a, pt, std::forward&lt;Args&gt;(args)...)</tt>,
+where <tt>pt</tt> has type <tt>T*</tt> and points to storage suitable to hold an object
+of type <tt>T</tt>, shall be well formed.</ins> <tt>A</tt> shall be an allocator ([allocator.requirements]). 
+<del>The copy constructor and destructor of  <tt>A</tt> shall not throw exceptions.</del>
+<p/>
+-2- <i>Effects</i>: Allocates memory suitable for an object of type <tt>T</tt> and constructs an object in 
+that memory<ins>. The template <tt>make_shared</tt> constructs the object</ins> via the placement new expression 
+<tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt>. The template <tt>allocate_shared</tt> uses a copy 
+of <tt>a</tt> to allocate memory<ins> and constructs the object by calling <tt>allocator_traits&lt;A&gt;::construct(a, pt,
+std::forward&lt;Args&gt;(args)...)</tt></ins>. If an exception is thrown, the functions have no effect.
+<p/>
+-3- <i>Returns</i>: A <tt>shared_ptr</tt> instance that stores and owns the address of the newly constructed 
+object of type <tt>T</tt>.
+<p/>
+-4- <i>Postconditions</i>: <tt>get() != 0 &amp;&amp; use_count() == 1</tt>
+<p/>
+-5- <i>Throws</i>: <tt>bad_alloc</tt>, or<ins>, for the template <tt>make_shared</tt>, an exception thrown from
+the constructor of <tt>T</tt>, or, for the template <tt>allocate_shared</tt>,</ins> an exception thrown from 
+<tt>A::allocate</tt> or <ins>from <tt>allocator_traits&lt;A&gt;::construct</tt></ins><del>from the constructor of 
+<tt>T</tt></del>.
+<p/>
+-6- <i>Remarks</i>: Implementations are encouraged, but not required, to perform no more than one memory
+allocation. [ <i>Note</i>: This provides efficiency equivalent to an intrusive smart pointer. &mdash; <i>end note</i> ]
+<p/>
+-7- [ <i>Note</i>: These functions will typically allocate more memory than <tt>sizeof(T)</tt> to allow for internal
+bookkeeping structures such as the reference counts. &mdash; <i>end note</i> ]
+</p>
+</blockquote></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2011-12-04: Jonathan and Daniel improve wording]</i></p>
+
+
+<p>See also c++std-lib-31796</p>
+
+
+
+
+<p><i>[2013-10-13, Ville]</i></p>
+
+<p>
+This issue is related to <a href="2089">2089</a>.
+</p>
+
+
+<p><i>[2014-02-15 post-Issaquah session : move to Tentatively NAD]</i></p>
+
+<p>STL: This takes an allocator, but then ignores its construct. That's squirrely.</p>
+<p>Alisdair: The convention is when you take an allocator, you use its construct.</p>
+<p>STL: 21.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>/3, argh! This fills me with despair, but I understand it now.</p>
+<p>STL: Ok, this is some cleanup.</p>
+<p>STL: You're requiring <tt>b</tt> to be of type <tt>A</tt> and not being rebound, is that an overspecification?</p>
+<p>Pablo: Good point. Hmm, that's only a requirement on what must be well-formed.</p>
+<p>STL: If it's just a well-formed requirement, then why not just use a directly?</p>
+<p>Pablo: Yeah, the well-formed requirement is overly complex. It's not a real call, we could just use a directly. It makes it harder to read.</p>
+<p>Alisdair: <tt>b</tt> should be an allocator in the same family as <tt>a</tt>.</p>
+<p>Pablo: This is a well-formed requirement, I wonder if it's the capital A that's the problem here. It doesn't matter here, this is way too much wording.</p>
+<p>Alisdair: It's trying to tie the constructor arguments into the allocator requirements.</p>
+<p>Pablo: <tt>b</tt> could be struck, that's a runtime quality. The construct will work with anything that's in the family of <tt>A</tt>.</p>
+<p>Alisdair: The important part is the <tt>forward</tt> of <tt>Args</tt>.</p>
+<p>Pablo: <tt>A</tt> must be an allocator, and <tt>forward</tt> <tt>Args</tt> must work with that.</p>
+<p>Alisdair: First let's nail down <tt>A</tt>.</p>
+<p>Pablo: Then replace <tt>b</tt> with <tt>a</tt>, and strike the rest.</p>
+<p>STL: You need <tt>pt</tt>'s type, at least.</p>
+<p>Pablo: There's nothing to be said about runtime constraints here, this function doesn't even take a <tt>pt</tt>.</p>
+<p>STL: Looking at the Effects, I believe <tt>b</tt> is similarly messed up, we can use <tt>a2</tt> to construct an object.</p>
+<p>Alisdair: Or any allocator in the family of <tt>a</tt>.</p>
+<p>STL: We say this stuff for the deallocate too, it should be lifted up.</p>
+<p>STL: "owns the address" is weird.</p>
+<p>Alisdair: shared_ptr owns pointers, although it does sound funky.</p>
+<p>Walter: "to destruct" is ungrammatical.</p>
+<p>STL: "When ownership is given up" is not what we usually say.</p>
+<p>Alisdair: I think the Returns clause is the right place to say this.</p>
+<p>STL: The right place to say this is <tt>shared_ptr</tt>'s dtor, we don't want to use Core's "come from" convention.</p>
+<p>Alisdair: I'm on the hook to draft cleaner wording.</p>
+
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>
+AM: I was going to clean up the wording, but haven't done it yet.<br/>
+Defer until we have new wording.<br/>
+</p>
+
+<p><i>[2016-03, Jacksonville]</i></p>
+
+<p>
+Alisdair: we need to figure out whether we should call construct or not; major implementation divergence<br/>
+STL: this does not grant friendship, does it?<br/>
+Jonathan: some people want it.<br/>
+Thomas: scoped allocator adapter should be supported, so placement new doesn't work<br/>
+Alisdair: this makes the make_ functions impossible<br/>
+Thomas: you don't want to use those though.<br/>
+Alisdair: but people use that today, at Bloomberg<br/>
+Alisdair: and what do we do about fancy pointers?<br/>
+Jonathan: we constrain it to only non-fancy pointers.<br/>
+STL: shared_ptr has never attempted to support fancy pointers; seems like a paper is needed.<br/>
+Poll: call construct:6 operator new: 0 don't care: 4<br/>
+Poll: should we support fancy pointers? Yes: 1 No: 4 don't care: 4<br/>
+STL: 20.8.2.2.6p2: 'and pv->~T()' is bogus for void<br/>
+STL: 20.8.2.2.6p4: is this true even if we're going to allocate a bit more?<br/>
+Alisdair: yes<br/>
+Alisdair: coming up with new wording<br/>
+</p>
+
+<p><i>[2016-08, Chicago Monday PM]</i></p>
+
+<p>Alisdair to provide new wording this week</p>
+
+<p><i>[2017-07 Toronto]</i></p>
+
+<p>Resolved by the adoption of <a href="https://wg21.link/P0674R1">P0674R1</a> in Toronto</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to the FDIS.</p>
+
+<ol>
+<li><p>Change the following paragraphs of 19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:
+</p>
+<blockquote><pre>
+template&lt;class T, class... Args&gt; shared_ptr&lt;T&gt; make_shared(Args&amp;&amp;... args);
+<del>template&lt;class T, class A, class... Args&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, Args&amp;&amp;... args);</del>
+</pre></blockquote>
+<p>
+<del>-1- <i>Requires</i>: The expression <tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt>, where <tt>pv</tt> 
+has type <tt>void*</tt> and points to storage suitable to hold an object of type <tt>T</tt>, shall be well 
+formed. <tt>A</tt> shall be an allocator (15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>). The copy constructor 
+and destructor of <tt>A</tt> shall not throw exceptions.</del>
+<p/>
+-2- <i>Effects</i>: <ins>Equivalent to</ins>
+</p>
+<blockquote><pre> 
+<ins>return allocate_shared&lt;T&gt;(allocator&lt;T&gt;(), std::forward&lt;Args&gt;(args)...);</ins>
+</pre></blockquote>
+<p>
+<del>Allocates memory suitable for an object of type <tt>T</tt> 
+and constructs an object in that memory via the placement new expression 
+<tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt>. The template <tt>allocate_shared</tt> uses a copy 
+of <tt>a</tt> to allocate memory. If an exception is thrown, the functions have no effect.</del>
+<p/>
+<ins>-?- <i>Remarks</i>: An implementation may meet the effects (and the implied guarantees) without 
+creating the allocator object [<i>Note</i>: That is, user-provided specializations of <tt>std::allocator</tt>
+may not be instantiated, the expressions <tt>::new (pv) T(std::forward&lt;Args&gt;(args)...)</tt> and 
+<tt>pv-&gt;~T()</tt> may be evaluated directly &mdash; <i>end note</i>].</ins>
+<p/>
+<del>-3- <i>Returns</i>: A <tt>shared_ptr</tt> instance that stores and owns the address of the newly constructed 
+object of type <tt>T</tt>.</del>
+<p/>
+<del>-4- <i>Postconditions</i>: <tt>get() != 0 &amp;&amp; use_count() == 1</tt></del>
+<p/>
+<del>-5- <i>Throws</i>: <tt>bad_alloc</tt>, or an exception thrown from <tt>A::allocate</tt> or from the 
+constructor of <tt>T</tt>.</del>
+<p/>
+<del>-6- <i>Remarks</i>: Implementations are encouraged, but not required, to perform no more than one memory
+allocation. [<i>Note</i>: This provides efficiency equivalent to an intrusive smart pointer. &mdash; <i>end note</i>]</del>
+<p/>
+<del>-7- [<i>Note</i>: These functions will typically allocate more memory than <tt>sizeof(T)</tt> to allow 
+for internal bookkeeping structures such as the reference counts. &mdash; <i>end note</i>]</del>
+</p>
+</li>
+<li><p>
+Add the following set of <ins>new paragraphs</ins> immediately following the previous paragraph 7 of
+19.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a>:
+</p>
+<blockquote><pre>
+template&lt;class T, class A, class... Args&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, Args&amp;&amp;... args);
+</pre></blockquote>
+<p>
+-?- <i>Requires</i>: The expressions 
+<tt>allocator_traits&lt;A&gt;::construct(b, pt, std::forward&lt;Args&gt;(args)...)</tt> and
+<tt>allocator_traits&lt;A&gt;::destroy(b, pt)</tt> shall be well-formed and well-defined, 
+where <tt>b</tt> has type <tt>A</tt> and is a copy of <tt>a</tt> and where <tt>pt</tt> 
+has type <tt>T*</tt> and points to storage suitable to hold an object of type <tt>T</tt>. 
+<tt>A</tt> shall meet the allocator requirements (15.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>). 
+<p/>
+-?- <i>Effects</i>: Uses an object <tt>a2</tt> 
+of type <tt>allocator_traits&lt;A&gt;::rebind_alloc&lt;<i>unspecified</i>&gt;</tt> that compares equal to 
+<tt>a</tt> to allocate memory suitable for an object of type <tt>T</tt>. 
+Uses a copy <tt>b</tt> of type <tt>A</tt> from <tt>a</tt> to construct an object of type <tt>T</tt> in 
+that memory by calling <tt>allocator_traits&lt;A&gt;::construct(b, pt, std::forward&lt;Args&gt;(args)...)</tt>. 
+If an exception is thrown, the function has no effect.
+<p/>
+-?- <i>Returns</i>: A <tt>shared_ptr</tt> instance that stores and owns the address of the newly constructed 
+object of type <tt>T</tt>. When ownership is given up, the effects are as follows: Uses a copy <tt>b2</tt> 
+of type <tt>A</tt> from <tt>a</tt> to destruct an object of type <tt>T</tt> by calling 
+<tt>allocator_traits&lt;A&gt;::destroy(b2, pt2)</tt> where <tt>pt2</tt> has type <tt>T*</tt> 
+and refers to the newly constructed object. Then uses an object of type
+<tt>allocator_traits&lt;A&gt;::rebind_alloc&lt;<i>unspecified</i>&gt;</tt> that compares equal to 
+<tt>a</tt> to deallocate the allocated memory.
+<p/>
+-?- <i>Postconditions</i>: <tt>get() != 0 &amp;&amp; use_count() == 1</tt>
+<p/>
+-?- <i>Throws</i>: Nothing unless memory allocation or <tt>allocator_traits&lt;A&gt;::construct</tt> 
+throws an exception.
+<p/>
+-?- <i>Remarks</i>: Implementations are encouraged, but not required, to perform no more than one memory 
+allocation. [<i>Note</i>: Such an implementation provides efficiency equivalent to an intrusive smart 
+pointer. &mdash; <i>end note</i>]
+<p/>
+-?- [<i>Note</i>: This function will typically allocate more memory than <tt>sizeof(T)</tt> to allow for internal
+bookkeeping structures such as the reference counts. &mdash; <i>end note</i>]
+</p>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

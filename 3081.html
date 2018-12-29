@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3081: Floating point from_chars API does not distinguish between overflow and underflow</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3081" href="lwg-active.html#3081">3081.</a> Floating point <tt>from_chars</tt> API does not distinguish between overflow and underflow</h3>
+<p><b>Section:</b> 19.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Greg Falcon <b>Opened:</b> 2018-03-12 <b>Last modified:</b> 2018-08-24 13:31:33 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#charconv.from.chars">active issues</a> in [charconv.from.chars].</p>
+<p><b>View all other</b> <a href="lwg-index.html#charconv.from.chars">issues</a> in [charconv.from.chars].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>strtod()</tt> distinguishes between overflow and underflow by returning a value that is either 
+very large or very small. Floating point <tt>from_chars</tt> does not currently offer any way for 
+callers to distinguish these two cases.
+<p/>
+It would be beneficial if users could migrate from <tt>strtod()</tt> to <tt>from_chars</tt> without 
+loss of functionality.
+<p/>
+I recommend that floating point <tt>from_chars</tt> use <tt>value</tt> as an overflow-vs-underflow 
+reporting channel, in the same manner as <tt>strtod()</tt>.
+<p/>
+My proposed wording gives <tt>from_chars</tt> the same wide latitude that <tt>strtod()</tt> enjoys 
+for handling underflow. A high-quality implementation would likely set <tt>ec == result_out_of_range</tt> 
+for underflow only when the nearest representable <tt>float</tt> to the parsed value is a zero and 
+the parsed mantissa was nonzero. In this case <tt>value</tt> would be set to (an appropriately-signed) zero. 
+It is worth considering giving <tt>from_chars</tt> this more predictable behavior, if library writers 
+feel they can provide this guarantee for all platforms. (I have a proof-of-concept integer-based 
+implementation for IEEE doubles with this property.)
+</p>
+
+<p><i>[2018-06 Rapperswil Wednesday issues processing]</i></p>
+
+<p>Marshall to provide updated wording and propose Tentatively Ready on the reflector.</p>
+<p>Priority set to 2</p>
+
+<p><i>[2018-08-23 Batavia Issues processing]</i></p>
+
+<p>Status to Open; Marshall to reword</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 19.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> as indicated:</p>
+<blockquote>
+<p>
+[&hellip;] Otherwise, the characters matching the pattern are interpreted as a representation
+of a value of the type of <tt>value</tt>. The member <tt>ptr</tt> of the return value points 
+to the first character not matching the pattern, or has the value <tt>last</tt> if all characters 
+match. If the parsed value is not in the range representable by the type of <tt>value</tt>, 
+<del><tt>value</tt> is unmodified and</del> the member <tt>ec</tt> of the return value is equal
+to <tt>errc::result_out_of_range</tt>. Otherwise, <tt>value</tt> is set to the parsed value, 
+after rounding according to <tt>round_to_nearest</tt> (16.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/round.style">[round.style]</a>), and the member 
+<tt>ec</tt> is value-initialized.
+</p>
+<pre>
+from_chars_result from_chars(const char* first, const char* last,
+                             <i>see below</i>&amp; value, int base = 10);
+</pre>
+<blockquote>
+<p>
+-2- <i>Requires:</i> <tt>base</tt> has a value between 2 and 36 (inclusive).
+<p/>
+-3- <i>Effects:</i> The pattern is the expected form of the subject sequence in the <tt>"C"</tt> 
+locale for the given nonzero base, as described for <tt>strtol</tt>, except that no <tt>"0x"</tt> 
+or <tt>"0X"</tt> prefix shall appear if the value of <tt>base</tt> is 16, and except that <tt>'-'</tt> is 
+the only sign that may appear, and only if <tt>value</tt> has a signed type. <ins>On overflow, 
+<tt>value</tt> is unmodified.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+from_chars_result from_chars(const char* first, const char* last, float&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, double&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, long double&amp; value,
+                             chars_format fmt = chars_format::general);
+</pre>
+<blockquote>
+<p>
+-6- <i>Requires:</i> <tt>fmt</tt> has the value of one of the enumerators of <tt>chars_format</tt>.
+<p/>
+-7- <i>Effects:</i> The pattern is the expected form of the subject sequence in the <tt>"C"</tt> 
+locale, as described for <tt>strtod</tt>, except that
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) [&hellip;]</p></li>
+<li><p>(7.2) [&hellip;]</p></li>
+<li><p>(7.3) [&hellip;]</p></li>
+<li><p>(7.4) [&hellip;]</p></li>
+</ol>
+<p>
+In any case, the resulting value is one of at most two floating-point values closest to the value of the
+string matching the pattern. <ins>On overflow, <tt>value</tt> is set to plus or minus 
+<tt>std::numeric_limits&lt;T&gt;::max()</tt> of the appropriate type. On underflow, <tt>value</tt> 
+is set to a value with magnitude no greater than <tt>std::numeric_limits&lt;T&gt;::min()</tt>.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2560: is_constructible underspecified when applied to a function type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2560" href="lwg-defects.html#2560">2560.</a> <tt>is_constructible</tt> underspecified when applied to a function type</h3>
+<p><b>Section:</b> 19.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2015-11-14 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+What is <tt>is_constructible&lt;void()&gt;::value</tt>? Per 19.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> p8:
+</p>
+<blockquote>
+<p>
+The predicate condition for a template specialization <tt>is_constructible&lt;T, Args...&gt;</tt> shall be satisfied if
+and only if the following variable definition would be well-formed for some invented variable <tt>t</tt>:
+</p>
+<blockquote><pre>
+T t(declval&lt;Args&gt;()...);
+</pre></blockquote>
+<p>
+[<i>Note</i>: These tokens are never interpreted as a function declaration. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<p>
+The problem here is that substituting in <tt>T</tt> as a function type doesn't give a variable definition that's not well-formed 
+(by 3.29 <a href="https://timsong-cpp.github.io/cppwp/defns.well.formed">[defns.well.formed]</a>, well-formed means that it doesn't violate any syntactic or diagnosable semantic rules, and 
+it does not). Instead, it gives a logical absurdity: this wording forces us to imagine a variable of function type, which contradicts 
+the definition of "variable" in 3/6, but does so without violating any diagnosable language rule. So presumably the result must 
+be undefined behavior.
+<p/>
+It seems that we need an explicit rule requiring <tt>T</tt> to be an object or reference type.
+<p/>
+<b>Daniel:</b>
+<p/>
+As one of the authors of <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2010/n3142.html">N3142</a> I would like
+to express that at least according to my mental model the intention for this trait was to be well-defined for <tt>T</tt> being
+a function type with the result of <tt>false</tt> regardless of what the other type arguments are. It would seem like a very 
+unfortunate and unnecessary complication to keep the result as being undefined. First, this result value is symmetric to
+the result of <tt>is_destructible&lt;T&gt;::value</tt> (where the word covers function types explicitly). Second, if such a
+resolution would be applied to the working paper, it wouldn't break existing implementations. I have tested clang 3.8.0,
+gcc 5.x until gcc 6.0, and Visual Studio 2015, all of these implementations evaluate <tt>is_constructible&lt;void()&gt;::value</tt>
+to <tt>false</tt>. 
+</p>
+
+<p><i>[2016-02, Issues Telecon]</i></p>
+
+<p>
+P0; move to Tentatively Ready.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Change 19.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a>, Table 49 &mdash; "Type property predicates", as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 49 &mdash; Type property predicates</caption>
+<tr>
+<th align="center">Template</th>
+<th align="center">Condition</th>
+<th align="center">Preconditions</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>template &lt;class T, class... Args&gt;<br/>
+struct is_constructible;</tt>
+</td>
+
+<td>
+<ins>For a function type <tt>T</tt>,<br/> 
+<tt>is_constructible&lt;T, Args...&gt;::value</tt><br/>
+is <tt>false</tt>, otherwise</ins> <i>see below</i>
+</td>
+
+<td align="center">
+<tt>T</tt> and all types in the<br/>
+parameter pack <tt>Args</tt> shall<br/>
+be complete types,<br/>
+(possibly <i>cv</i>-qualified)<br/>
+<tt>void</tt>, or arrays of<br/>
+unknown bound.
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

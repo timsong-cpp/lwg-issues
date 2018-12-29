@@ -1,0 +1,148 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 419: istream extractors not setting failbit if eofbit is already set</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="419" href="lwg-defects.html#419">419.</a> istream extractors not setting <tt>failbit</tt> if <tt>eofbit</tt> is already set</h3>
+<p><b>Section:</b> 28.7.4.1.3 <a href="https://timsong-cpp.github.io/cppwp/istream::sentry">[istream::sentry]</a> <b>Status:</b> <a href="lwg-active.html#C++11">C++11</a>
+ <b>Submitter:</b> Martin Sebor <b>Opened:</b> 2003-09-18 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream::sentry">issues</a> in [istream::sentry].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++11">C++11</a> status.</p>
+<p><b>Discussion:</b></p>
+        <p>
+
+28.7.4.1.3 <a href="https://timsong-cpp.github.io/cppwp/istream::sentry">[istream::sentry]</a>, p2 says that <tt>istream::sentry</tt> ctor prepares for input if <tt>is.good()</tt>
+is true. p4 then goes on to say that the ctor sets the <tt>sentry::ok_</tt> member to
+true if the stream state is good after any preparation. 28.7.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/istream.formatted.reqmts">[istream.formatted.reqmts]</a>, p1 then
+says that a formatted input function endeavors to obtain the requested input
+if the sentry's <tt>operator bool()</tt> returns true.
+
+Given these requirements, no formatted extractor should ever set <tt>failbit</tt> if
+the initial stream <tt>rdstate() == eofbit</tt>. That is contrary to the behavior of
+all implementations I tested. The program below prints out
+</p>
+<blockquote><pre>
+eof = 1, fail = 0
+eof = 1, fail = 1
+</pre></blockquote>
+<p>
+on all of them.
+        </p>
+<pre>
+
+#include &lt;sstream>
+#include &lt;cstdio>
+
+int main()
+{
+    std::istringstream strm ("1");
+
+    int i = 0;
+
+    strm >> i;
+
+    std::printf ("eof = %d, fail = %d\n",
+                 !!strm.eof (), !!strm.fail ());
+
+    strm >> i;
+
+    std::printf ("eof = %d, fail = %d\n",
+                 !!strm.eof (), !!strm.fail ());
+}
+
+</pre>
+        <p>
+<br/>
+
+Comments from Jerry Schwarz (c++std-lib-11373):
+<br/>
+
+Jerry Schwarz wrote:
+<br/>
+
+I don't know where (if anywhere) it says it in the standard, but the
+formatted extractors are supposed to set <tt>failbit</tt> if they don't extract
+any characters. If they didn't then simple loops like
+<br/>
+
+while (cin >> x);
+<br/>
+
+would loop forever.
+<br/>
+
+Further comments from Martin Sebor:
+<br/>
+
+The question is which part of the extraction should prevent this from happening
+by setting <tt>failbit</tt> when <tt>eofbit</tt> is already set. It could either be the sentry
+object or the extractor. It seems that most implementations have chosen to
+set <tt>failbit</tt> in the sentry [...] so that's the text that will need to be
+corrected. 
+
+        </p>
+<p>
+Pre Berlin:  This issue is related to <a href="342">342</a>.  If the sentry
+sets <tt>failbit</tt> when it finds <tt>eofbit</tt> already set, then
+you can never seek away from the end of stream.
+</p>
+<p>Kona: Possibly NAD.  If <tt>eofbit</tt> is set then <tt>good()</tt> will return false.  We
+  then set <i>ok</i> to false.  We believe that the sentry's
+  constructor should always set <tt>failbit</tt> when <i>ok</i> is false, and
+  we also think the standard already says that.  Possibly it could be
+  clearer.</p> 
+
+
+<p><i>[
+2009-07 Frankfurt
+]</i></p>
+
+
+<blockquote><p>
+Moved to Ready.
+</p></blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Change 28.7.4.1.3 <a href="https://timsong-cpp.github.io/cppwp/istream::sentry">[istream::sentry]</a>, p2 to:
+</p>
+
+<blockquote>
+<pre>explicit sentry(basic_istream&lt;charT,traits&gt;&amp; <i>is</i> , bool <i>noskipws</i> = false);</pre>
+<p>
+-2- <i>Effects:</i> If <tt>is.good()</tt> is <del><tt>true</tt></del>
+<ins><tt>false</tt></ins>, <ins>calls <tt>is.setstate(failbit)</tt>. 
+Otherwise</ins> prepares for formatted or unformatted input. ...
+</p>
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

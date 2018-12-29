@@ -1,0 +1,181 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2749: swappable traits for variants</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2749" href="lwg-defects.html#2749">2749.</a> <tt>swappable</tt> traits for <tt>variant</tt>s</h3>
+<p><b>Section:</b> 19.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/variant.swap">[variant.swap]</a>, 19.7.10 <a href="https://timsong-cpp.github.io/cppwp/variant.specalg">[variant.specalg]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2016-07-19 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>variant</tt> does not play nice with swappable traits, the non-member specialized <tt>swap</tt> overload is not 
+SFINAE friendly. On the other hand, the member <tt>swap</tt> is SFINAE friendly, albeit with an incomplete condition, 
+when arguably it shouldn't be. Given the <i>Effects</i>, <i>Throws</i>, and <i>Remarks</i> clauses, the SFINAE 
+condition should include <tt>is_move_constructible_v</tt> and <tt>is_move_assignable_v</tt> to account for the 
+involvement of <tt>variant</tt>'s move constructor and move assignment operator (the <tt>noexcept</tt> specification is 
+correct as is, since the move assignment operator would only be called for <tt>variant</tt>s with different alternatives). 
+This SFINAE condition should apply to the non-member <tt>swap</tt> overload, while the member <tt>swap</tt> should require 
+all alternatives are swappable (as defined by 15.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>).
+</p>
+<p><i>[2016-07 Chicago]</i></p>
+
+<p>Monday: P1 - review later in the week</p>
+<p>Fri PM: Move to Tentatively Ready</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Modify 19.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/variant.swap">[variant.swap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void swap(variant&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Requires:</i> Lvalues of type <tt>T<sub><i>i</i></sub></tt> shall be swappable and 
+<tt>is_move_constructible_v&lt;T<sub><i>i</i></sub>&gt; &amp;&amp; is_move_assignable_v&lt;T<sub><i>i</i></sub>&gt;</tt> 
+is <tt>true</tt> for all <tt><i>i</i></tt>.</ins>
+<p/>
+[&hellip;]
+<p/>
+-3- <i>Remarks:</i> <del>This function shall not participate in overload resolution unless <tt>is_swappable_v&lt;Ti&gt;</tt> 
+is <tt>true</tt> for all <tt><i>i</i></tt>.</del> If an exception is thrown during the call to function 
+<tt>swap(get&lt;<i>i</i>&gt;(*this), get&lt;<i>i</i>&gt;(rhs))</tt>, the states of the contained values of 
+<tt>*this</tt> and of <tt>rhs</tt> are determined by the exception safety guarantee of swap for lvalues of 
+<tt>T<sub><i>i</i></sub></tt> with <tt><i>i</i></tt> being <tt>index()</tt>. If an exception is thrown during the 
+exchange of the values of <tt>*this</tt> and <tt>rhs</tt>, the states of the values of <tt>*this</tt> and of <tt>rhs</tt> 
+are determined by the exception safety guarantee of <tt>variant</tt>'s move constructor and move assignment operator. 
+The expression inside <tt>noexcept</tt> is equivalent to the logical AND of 
+<tt>is_nothrow_move_constructible_v&lt;T<sub><i>i</i></sub>&gt; &amp;&amp; 
+is_nothrow_swappable_v&lt;T<sub><i>i</i></sub>&gt;</tt> for all <tt><i>i</i></tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.7.10 <a href="https://timsong-cpp.github.io/cppwp/variant.specalg">[variant.specalg]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Types&gt; void swap(variant&lt;Types...&gt;&amp; v, variant&lt;Types...&gt;&amp; w) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to <tt>v.swap(w)</tt>.
+<p/>
+-2- <i>Remarks:</i> <ins>This function shall not participate in overload resolution unless 
+<tt>is_move_constructible_v&lt;T<sub><i>i</i></sub>&gt; &amp;&amp; is_move_assignable_v&lt;T<sub><i>i</i></sub>&gt; 
+&amp;&amp; is_swappable_v&lt;T<sub><i>i</i></sub>&gt;</tt> is <tt>true</tt> for all <tt><i>i</i></tt>.</ins> The 
+expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(v.swap(w))</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-08-13, Reopened by Casey Carter]</i></p>
+
+<p>
+It is possible to exchange the value of two variants using only move construction on the alternative types, as if by
+<pre>
+auto tmp = move(x);
+x.emplace&lt;<i>i</i>&gt;(move(y));
+y.emplace&lt;<i>j</i>&gt;(move(tmp));
+</pre> 
+where <i>i</i> is <tt>y.index()</tt> and <i>j</i> is <tt>tmp.index()</tt>. Consequently, <tt>variant</tt>'s member swap
+need not require move assignable alternatives.
+</p>
+
+<p><i>[2016-09-09 Issues Resolution Telecon]</i></p>
+
+<p>Move to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Modify 19.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/variant.swap">[variant.swap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void swap(variant&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p/>
+<ins>-?- <i>Requires:</i> Lvalues of type <tt>T<sub><i>i</i></sub></tt> shall be swappable and 
+<tt>is_move_constructible_v&lt;T<sub><i>i</i></sub>&gt;</tt> shall be <tt>true</tt> for all <tt><i>i</i></tt>.</ins>
+<p/>
+[&hellip;]
+<p/>
+-2- <i>Throws:</i> <ins>If <tt>index() == rhs.index()</tt>, a</ins><del>A</del>ny exception thrown by
+<tt>swap(get&lt;<i>i</i>&gt;(*this), get&lt;<i>i</i>&gt;(rhs))</tt> with <i>i</i> being <tt>index()</tt><del> and
+<tt>variant</tt>'s move constructor and assignment operator</del>. <ins>Otherwise, any exception thrown by the move
+constructor of <tt>T<sub><i>i</i></sub></tt> or <tt>T<sub><i>j</i></sub></tt> with <tt><i>i</i></tt> being
+<tt>index()</tt> and <tt><i>j</i></tt> being <tt>rhs.index()</tt>.</ins>
+<p/>
+-3- <i>Remarks:</i> <del>This function shall not participate in overload resolution unless <tt>is_swappable_v&lt;Ti&gt;</tt> 
+is <tt>true</tt> for all <tt><i>i</i></tt>.</del> If an exception is thrown during the call to function
+<tt>swap(get&lt;<i>i</i>&gt;(*this), get&lt;<i>i</i>&gt;(rhs))</tt>, the states of the contained values of
+<tt>*this</tt> and of <tt>rhs</tt> are determined by the exception safety guarantee of swap for lvalues of
+<tt>T<sub><i>i</i></sub></tt> with <tt><i>i</i></tt> being <tt>index()</tt>. If an exception is thrown during the 
+exchange of the values of <tt>*this</tt> and <tt>rhs</tt>, the states of the values of <tt>*this</tt> and of <tt>rhs</tt> 
+are determined by the exception safety guarantee of <tt>variant</tt>'s move constructor <del>and move assignment operator</del>. 
+The expression inside <tt>noexcept</tt> is equivalent to the logical AND of 
+<tt>is_nothrow_move_constructible_v&lt;T<sub><i>i</i></sub>&gt; &amp;&amp; 
+is_nothrow_swappable_v&lt;T<sub><i>i</i></sub>&gt;</tt> for all <tt><i>i</i></tt>.
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.7.10 <a href="https://timsong-cpp.github.io/cppwp/variant.specalg">[variant.specalg]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class... Types&gt; void swap(variant&lt;Types...&gt;&amp; v, variant&lt;Types...&gt;&amp; w) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to <tt>v.swap(w)</tt>.
+<p/>
+-2- <i>Remarks:</i> <ins>This function shall not participate in overload resolution unless 
+<tt>is_move_constructible_v&lt;T<sub><i>i</i></sub>&gt; &amp;&amp; is_swappable_v&lt;T<sub><i>i</i></sub>&gt;</tt> is
+<tt>true</tt> for all <tt><i>i</i></tt>.</ins> The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(v.swap(w))</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2382: Unclear order of container update versus object destruction on removing an object</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2382" href="lwg-closed.html#2382">2382.</a> Unclear order of container update versus object destruction on removing an object</h3>
+<p><b>Section:</b> 15.5.5.8 <a href="https://timsong-cpp.github.io/cppwp/reentrancy">[reentrancy]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Pending NAD</a>
+ <b>Submitter:</b> Peter Kasting <b>Opened:</b> 2014-05-06 <b>Last modified:</b> 2014-11-04 10:26:50 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#reentrancy">issues</a> in [reentrancy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Pending NAD">Pending NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard does not seem to discuss reentrant access to a container during removal of an element, 
+leaving it unclear whether a removed object is destroyed before or after it is removed from the container.  
+For example, the behavior of the following code seems to be unspecified:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;map&gt;
+#include &lt;memory&gt;
+
+struct T;
+typedef std::map&lt;int, std::shared_ptr&lt;T&gt;&gt; TMap;
+
+struct T {
+  T(TMap* t_map, int index) : t_map(t_map), index(index) {}
+  ~T() {
+    std::cout &lt;&lt; "Object " &lt;&lt; index &lt;&lt; " is ";
+    if (t_map->count(index))
+      std::cout &lt;&lt; "destroyed before being removed from the map" &lt;&lt; std::endl;
+    else
+      std::cout &lt;&lt; "removed from the map before being destroyed" &lt;&lt; std::endl;
+  }
+
+  static void AddToMap(TMap* map, int index) {
+    (*map)[index] = std::make_shared&lt;T&gt;(map, index);
+  }
+
+  TMap* t_map;
+  int index;
+};
+
+int main()
+{
+  TMap t_map;
+  T::AddToMap(&amp;t_map, 0);
+  T::AddToMap(&amp;t_map, 1);
+  t_map.erase(1);
+  t_map.erase(0);
+}
+</pre></blockquote>
+<p>
+The output of this program in Visual Studio 2013 is:
+</p>
+<blockquote><pre>
+Object 1 is removed from the map before being destroyed
+Object 0 is destroyed before being removed from the map
+</pre></blockquote>
+<p>
+The core issue here is whether an object removed from a container should be destroyed before or after 
+it is removed from the container. The current standard seems to be silent on this issue. 
+The above output demonstrates that the behavior is actually inconsistent. (It's difficult to fully 
+describe Visual Studio's behavior; for example, changing <tt>main()</tt> in the above example to the following:)
+</p>
+<blockquote><pre>
+int main()
+{
+  TMap t_map;
+  T::AddToMap(&amp;t_map, 0);
+  T::AddToMap(&amp;t_map, 1);
+  T::AddToMap(&amp;t_map, 2);
+  T::AddToMap(&amp;t_map, 3);
+  t_map.erase(3);
+  t_map.clear();
+}
+</pre></blockquote>
+<p>
+(...gives this output:)
+</p>
+<blockquote><pre>
+Object 3 is removed from the map before being destroyed
+Object 2 is destroyed before being removed from the map
+Object 1 is destroyed before being removed from the map
+Object 0 is removed from the map before being destroyed
+</pre></blockquote>
+<p>
+In my opinion, the standard should explicitly describe when objects are destroyed as part of removal from a container. 
+To me, it makes the most sense to say that objects should be removed from the container before they are destroyed.
+</p>
+<p><i>[2014-05-07, Jeffrey Yasskin comments]</i></p>
+
+<p>
+I think there are two main points here beyond this writeup:
+</p>
+<ol>
+<li><p>We can't make recursive use of a standard library container valid
+in all cases.</p></li>
+<li><p>If recursion through especially <tt>erase()</tt> is undefined behavior,
+that's pretty scary for existing large applications with code in
+destructors. Of course, "scary" doesn't mean we have to define the
+behavior.</p></li>
+</ol>
+<p>
+I'll add a third: The language in 15.5.5.8 <a href="https://timsong-cpp.github.io/cppwp/reentrancy">[reentrancy]</a> nearly makes this
+undefined behavior already. I think any fix is probably going to live
+there, and extend the current "implementation-defined" on recursive
+reentrancy for individual functions to recursive reentrancy on class
+instances. I'm not sure exactly how to word that.
+</p>
+
+<p><i>[2014-06 Rapperswil]</i></p>
+
+<p>
+STL: We need more wording about how container methods can be reentrency.
+<p/>
+Jeffrey: The title for this issue is confusing, what we really want is "reentrancy for objects".
+<p/>
+Alisdair: Should we then close 2382 as NAD with a link to the new issue? 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

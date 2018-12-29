@@ -1,0 +1,377 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2542: Missing const requirements for associative containers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2542" href="lwg-defects.html#2542">2542.</a> Missing <tt>const</tt> requirements for associative containers</h3>
+<p><b>Section:</b> 21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2015-09-26 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts">active issues</a> in [associative.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#associative.reqmts">issues</a> in [associative.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Table 101 &mdash; "Associative container requirements" and its associated legend paragraph 
+21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> p8 omits to impose constraints related to <tt>const</tt>
+values, contrary to unordered containers as specified by Table 102 and its associated legend 
+paragraph p11.
+<p/>
+Reading these requirements strictly, a feasible associative container could declare several
+conceptual observer members &mdash; for example <tt>key_comp()</tt>, <tt>value_comp()</tt>, 
+or <tt>count()</tt> &mdash; as non-<tt>const</tt> functions. In Table 102, "possibly <tt>const</tt>" 
+values are exposed by different symbols, so the situation for unordered containers is clear
+that these functions may be invoked by <tt>const</tt> container objects.
+<p/>
+For the above mentioned member functions this problem is only minor, because the synopses of the 
+actual Standard associative containers do declare these members as <tt>const</tt> functions, but 
+nonetheless a wording fix is recommended to clean up the specification asymmetry between associative 
+containers and unordered containers.
+<p/>
+The consequences of the ignorance of <tt>const</tt> becomes much worse when we consider a code 
+example such as the following one from a recent 
+<a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=67617">libstdc++ bug report</a>:
+</p>
+<blockquote><pre>
+#include &lt;set&gt;
+
+struct compare 
+{
+  bool operator()(int a, int b) // Notice the <span style="color:#C80000;font-weight:bold"><em>non-<tt>const</tt></em></span> member declaration!
+  {
+    return a &lt; b;
+  }
+};
+
+int main() {
+  const std::set&lt;int, compare&gt; s;
+  s.find(0);
+}
+</pre></blockquote>
+<p>
+The current wording in 21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> can be read to require this code to be well-formed,
+because there is no requirement that an object <tt>comp</tt> of the ordering relation of type <tt>Compare</tt>
+might be a <tt>const</tt> value when the function call expression <tt>comp(k1, k2)</tt> is evaluated.
+<p/>
+Current implementations differ: While Clangs libc++ and GCCs libstdc++ reject the above example,
+the Dinkumware library associated with Visual Studio 2015 accepts it.
+<p/>
+I believe the current wording unintentionally misses the constraint that even <tt>const</tt> comparison
+function objects of associative containers need to support the predicate call expression. This becomes
+more obvious when considering the member <tt>value_compare</tt> of <tt>std::map</tt> which provides (only) a
+<tt>const operator()</tt> overload which invokes the call expression of data member <tt>comp</tt>.
+</p>
+
+<p><i>[2016-02-20, Daniel comments and extends suggested wording]</i></p>
+
+<p>
+It has been pointed out to me, that the suggested wording is a potentially breaking change and should therefore
+be mentioned in Annex C.
+<p/>
+First, let me emphasize that this potentially breaking change is <em>solely</em> caused by the wording change in
+21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> p8:
+</p>
+<blockquote>
+<p>
+[&hellip;] and <tt>c</tt> denotes a <ins>possibly <tt>const</tt></ins> value of type <tt>X::key_compare</tt>; [&hellip;]
+</p>
+</blockquote>
+<p>
+So, even if that proposal would be rejected, the rest of the suggested changes could (and should) be
+considered for further evaluation, because the remaining parts do just repair an obvious mismatch between
+the concrete associative containers (<tt>std::set</tt>, <tt>std::map</tt>, &hellip;) and the requirement
+tables.
+<p/>
+Second, I believe that the existing wording was never really clear in regard to <em>require</em> a Standard Library
+to accept comparison functors with non-<tt>const operator()</tt>. If the committee really intends to require
+a Library to support comparison functors with non-<tt>const operator()</tt>, this should be clarified by at least
+an additional note to e.g. 21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> p8.
+</p>
+
+<p><i>[2016-03, Jacksonville]</i></p>
+
+Move to Ready with Daniel's updated wording
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4567.</p>
+
+<ol>
+<li><p>Change 21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a> p8 as indicated:</p>
+<blockquote>
+<p>
+-8- In Table 101, <tt>X</tt> denotes an associative container class, <tt>a</tt> denotes a value of type 
+<tt>X</tt>, <ins><tt>b</tt> denotes a possibly <tt>const</tt> value of type <tt>X</tt>,</ins> <tt>u</tt> denotes 
+the name of a variable being declared, <tt>a_uniq</tt> denotes a value of 
+type <tt>X</tt> when <tt>X</tt> supports unique keys, <tt>a_eq</tt> denotes a value of type <tt>X</tt> when 
+<tt>X</tt> supports multiple keys, <tt>a_tran</tt> denotes a <ins>possibly <tt>const</tt></ins> value of type 
+<tt>X</tt> when the <i>qualified-id</i> <tt>X::key_compare::is_transparent</tt> is valid and denotes a type (14.8.2), 
+<tt>i</tt> and <tt>j</tt> satisfy input iterator requirements and refer to elements implicitly convertible to 
+<tt>value_type</tt>, 
+<tt>[i, j)</tt> denotes a valid range, <tt>p</tt> denotes a valid const iterator to <tt>a</tt>, <tt>q</tt> 
+denotes a valid dereferenceable const iterator to <tt>a</tt>, <tt>r</tt> denotes a valid
+dereferenceable iterator to <tt>a</tt>, <tt>[q1, q2)</tt> denotes a valid range of const iterators in <tt>a</tt>, 
+<tt>il</tt> designates an object of type <tt>initializer_list&lt;value_type&gt;</tt>, <tt>t</tt> denotes a 
+value of type <tt>X::value_type</tt>, <tt>k</tt> denotes a value of type <tt>X::key_type</tt> and <tt>c</tt> 
+denotes a <ins>possibly <tt>const</tt></ins> value of type <tt>X::key_compare</tt>; <tt>kl</tt> is a value such that <tt>a</tt> is
+partitioned (25.4) with respect to <tt>c(r, kl)</tt>, with <tt>r</tt> the key value of <tt>e</tt> and <tt>e</tt> 
+in <tt>a</tt>; <tt>ku</tt> is a value such that <tt>a</tt> is partitioned with respect to <tt>!c(ku, r)</tt>; 
+<tt>ke</tt> is a value such that <tt>a</tt> is partitioned with respect to <tt>c(r, ke)</tt> and <tt>!c(ke, r)</tt>, 
+with <tt>c(r, ke)</tt> implying <tt>!c(ke, r)</tt>. <tt>A</tt> denotes the storage allocator used by <tt>X</tt>, 
+if any, or <tt>std::allocator&lt;X::value_type&gt;</tt> otherwise, and <tt>m</tt> denotes an allocator of a 
+type convertible to <tt>A</tt>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Change 21.2.6 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts">[associative.reqmts]</a>, Table 101 &mdash; "Associative container requirements" as indicated: 
+<p/>
+[<i>Editorial note</i>: This issue doesn't touch the note column entries for the expressions related to <tt>key_comp()</tt>
+and <tt>value_comp()</tt> (except for the symbolic correction), since these are already handled by LWG issues 
+<a href="2227">2227</a> and <a href="2215">2215</a> &mdash; <i>end editorial note</i>]
+</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 101 &mdash; Associative container requirements (in addition to container) (continued)</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note pre-&#47;post-condition</th>
+<th>Complexity</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.key_comp()</tt>
+</td>
+<td>
+<tt>X::key_compare</tt>
+</td>
+<td>
+returns the comparison object<br/>
+out of which <tt><del>a</del><ins>b</ins></tt> was<br/>
+constructed.
+</td>
+<td>
+constant
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.value_comp()</tt>
+</td>
+<td>
+<tt>X::value_compare</tt>
+</td>
+<td>
+returns an object of<br/>
+<tt>value_compare</tt> constructed<br/>
+out of the comparison object
+</td>
+<td>
+constant
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.find(k)</tt>
+</td>
+<td>
+<tt>iterator</tt>;<br/>
+<tt>const_iterator</tt> for constant <tt><del>a</del><ins>b</ins></tt>.
+</td>
+<td>
+returns an iterator pointing to<br/>
+an element with the key<br/>
+equivalent to <tt>k</tt>, or <tt><del>a</del><ins>b</ins>.end()</tt> if<br/>
+such an element is not found
+</td>
+<td>
+logarithmic
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.count(k)</tt>
+</td>
+<td>
+<tt>size_type</tt>
+</td>
+<td>
+returns the number of elements<br/>
+with key equivalent to <tt>k</tt>
+</td>
+<td>
+<tt>log(<del>a</del><ins>b</ins>.size()) + <del>a</del><ins>b</ins>.count(k)</tt>
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.lower_bound(k)</tt>
+</td>
+<td>
+<tt>iterator</tt>;<br/>
+<tt>const_iterator</tt> for constant <tt><del>a</del><ins>b</ins></tt>.
+</td>
+<td>
+returns an iterator pointing to<br/>
+the first element with key not<br/>
+less than <tt>k</tt>, or <tt><del>a</del><ins>b</ins>.end()</tt> if such<br/>
+an element is not found.
+</td>
+<td>
+logarithmic
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.upper_bound(k)</tt>
+</td>
+<td>
+<tt>iterator</tt>;<br/>
+<tt>const_iterator</tt> for constant <tt><del>a</del><ins>b</ins></tt>.
+</td>
+<td>
+returns an iterator pointing to<br/>
+the first element with key<br/>
+greater than <tt>k</tt>, or <tt><del>a</del><ins>b</ins>.end()</tt> if<br/>
+such an element is not found.
+</td>
+<td>
+logarithmic
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt><del>a</del><ins>b</ins>.equal_range(k)</tt>
+</td>
+<td>
+<tt>pair&lt;iterator, iterator&gt;</tt>;<br/>
+<tt>pair&lt;const_iterator, const_iterator&gt;</tt> for<br/>
+constant <del>a</del><ins>b</ins>.
+</td>
+<td>
+equivalent to <tt>make_-<br/>
+pair(<del>a</del><ins>b</ins>.lower_bound(k),<br/>
+<del>a</del><ins>b</ins>.upper_bound(k))</tt>.
+</td>
+<td>
+logarithmic
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Add a new entry to Annex C, C.4 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp14">[diff.cpp14]</a>, as indicated:</p>
+
+<blockquote>
+<p>
+<ins>C.4.4 Clause 23: containers library [diff.cpp14.containers]</ins>
+<p/>
+<ins>23.2.4</ins>
+<p/>
+<ins><b>Change:</b> Requirements change: </ins>
+<p/>
+<ins><b>Rationale:</b> Increase portability, clarification of associative container requirements.</ins>
+<p/>
+<ins><b>Effect on original feature:</b> Valid 2014 code that attempts to use associative containers 
+having a comparison object with non-<tt>const</tt> function call operator may fail to compile:</ins>
+</p>
+<blockquote><pre>
+<ins>#include &lt;set&gt;
+
+struct compare 
+{
+  bool operator()(int a, int b)
+  {
+    return a &lt; b;
+  }
+};
+
+int main() {
+  const std::set&lt;int, compare&gt; s;
+  s.find(0);
+}</ins>
+</pre></blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,341 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2268: Setting a default argument in the declaration of a member function assign of std::basic_string</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2268" href="lwg-defects.html#2268">2268.</a> Setting a default argument in the declaration of a member function <tt>assign</tt> of <tt>std::basic_string</tt></h3>
+<p><b>Section:</b> 20.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a> <b>Status:</b> <a href="lwg-active.html#C++14">C++14</a>
+ <b>Submitter:</b> Vladimir Grigoriev <b>Opened:</b> 2013-06-26 <b>Last modified:</b> 2016-11-12 20:15:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#basic.string">issues</a> in [basic.string].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++14">C++14</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Constructors and member functions <tt>assign</tt> of class <tt>std::basic_string</tt> have one to one relation (except the 
+explicit constructor that creates an empty string). The following list shows this relation:
+</p>
+
+<blockquote><pre>
+explicit basic_string(const Allocator&amp; a = Allocator());
+
+basic_string(const basic_string&amp; str);
+basic_string&amp; assign(const basic_string&amp; str);
+
+basic_string(basic_string&amp;&amp; str) noexcept;
+basic_string&amp; assign(basic_string&amp;&amp; str) noexcept;
+
+basic_string(const basic_string&amp; str, size_type pos, size_type n = npos,
+  const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const basic_string&amp; str, size_type pos,
+  size_type n);
+
+basic_string(const charT* s,
+  size_type n, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const charT* s, size_type n);
+
+basic_string(const charT* s, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const charT* s);
+
+basic_string(size_type n, charT c, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(size_type n, charT c);
+
+template&lt;class InputIterator&gt;
+basic_string(InputIterator begin, InputIterator end,
+  const Allocator&amp; a = Allocator());
+template&lt;class InputIterator&gt;
+basic_string&amp; assign(InputIterator first, InputIterator last);
+
+basic_string(initializer_list&lt;charT&gt;, const Allocator&amp; = Allocator());
+basic_string&amp; assign(initializer_list&lt;charT&gt;);
+</pre></blockquote>
+
+<p>
+So in fact any creating of an object of type <tt>std::basic_string</tt> using any of the above constructors 
+except the explicit constructor can be substituted for creating a (possibly non-empty) string and 
+then applying to it the corresponding method assign.
+<p/>
+For example these two code snippets give the same result:
+</p>
+
+<blockquote><pre>
+std::string s("Hello World");
+</pre></blockquote>
+
+<p>
+and
+</p>
+
+<blockquote><pre>
+std::string s;
+s.assign("Hello World");
+</pre></blockquote>
+
+<p>
+However there is one exception that has no a logical support. It is the pair of the following constructor and member function 
+<tt>assign</tt>
+</p>
+
+<blockquote><pre>
+basic_string(const basic_string&amp; str, size_type pos, size_type n = npos,
+             const Allocator&amp; a = Allocator());
+
+basic_string&amp; assign(const basic_string&amp; str, size_type pos, size_type n);
+</pre></blockquote>
+
+<p>
+The third parameter of the constructor has a default argument while in the <tt>assign</tt> function it is absent. So it is impossible 
+one to one to substitute the following code snippet
+</p>
+
+<blockquote><pre>
+std::string s("Hello World");
+std::string t(s, 6);
+</pre></blockquote>
+
+<p>
+by
+</p>
+
+<blockquote><pre>
+std::string s("Hello World");
+std::string t;
+t.assign(s, 6); // error: no such function
+</pre></blockquote>
+
+<p>
+To get an equivalent result using the <tt>assign</tt> function the programmer has to complicate the code that is error-prone
+</p>
+
+<blockquote><pre>
+std::string s("Hello World");
+std::string t;
+t.assign(s, 6, s.size() - 6); 
+</pre></blockquote>
+
+<p>
+To fix that, the declaration of the member function <tt>assign</tt> should be changed in such a way that its declaration 
+would be fully compatible with the declaration of the corresponding constructor, that is to specify the same default argument 
+for the third parameter of the <tt>assign</tt>.
+</p>
+
+<p>
+The <tt>assign</tt> function is not the only function that requires to be revised. 
+<p/>
+Now let include in the list of pairs constructor-assign with the modified method <tt>assign</tt> one more member function 
+<tt>append</tt>. We will get:
+</p>
+
+<blockquote><pre>
+explicit basic_string(const Allocator&amp; a = Allocator());
+
+basic_string(const basic_string&amp; str);
+basic_string&amp; assign(const basic_string&amp; str);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(const basic_string&amp; str);</span>
+
+basic_string(basic_string&amp;&amp; str) noexcept;
+basic_string&amp; assign(basic_string&amp;&amp; str) noexcept;
+
+basic_string(const basic_string&amp; str, size_type pos, size_type n = npos,
+  const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const basic_string&amp; str, size_type pos,
+  size_type n);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(const basic_string&amp; str, size_type pos,
+  size_type n);</span>
+
+basic_string(const charT* s,
+  size_type n, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const charT* s, size_type n);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(const charT* s, size_type n);</span>
+
+basic_string(const charT* s, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const charT* s);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(const charT* s);</span>
+
+basic_string(size_type n, charT c, const Allocator&amp; a = Allocator());
+basic_string&amp; assign(size_type n, charT c);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(size_type n, charT c);</span>
+
+template&lt;class InputIterator&gt;
+basic_string(InputIterator begin, InputIterator end,
+  const Allocator&amp; a = Allocator());
+template&lt;class InputIterator&gt;
+basic_string&amp; assign(InputIterator first, InputIterator last);
+<span style="color:#009900;font-weight:bold">template&lt;class InputIterator&gt;
+basic_string&amp; append(InputIterator first, InputIterator last);</span>
+
+basic_string(initializer_list&lt;charT&gt;, const Allocator&amp; = Allocator());
+basic_string&amp; assign(initializer_list&lt;charT&gt;);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(initializer_list&lt;charT&gt;);</span>
+</pre></blockquote>
+
+<p>As it seen from this record:</p>
+
+<blockquote><pre>
+basic_string(const basic_string&amp; str, size_type pos, size_type n = npos,
+  const Allocator&amp; a = Allocator());
+basic_string&amp; assign(const basic_string&amp; str, size_type pos,
+  size_type n);
+<span style="color:#009900;font-weight:bold">basic_string&amp; append(const basic_string&amp; str, size_type pos,
+  size_type n);</span>
+</pre></blockquote>
+
+<p>
+it is obvious that the function <tt>append</tt> also should have the default argument that is that it should be declared as:
+</p>
+
+<blockquote><pre>
+basic_string&amp; append(const basic_string&amp; str, size_type pos,
+  size_type n <ins>= npos</ins>);
+</pre></blockquote>
+
+<p>
+In fact there is no a great difference in using <tt>assign</tt> or <tt>append</tt> especially when the string is empty:
+</p>
+
+<blockquote><pre>
+std::string s("Hello World");
+std::string t;
+t.assign(s, 6);
+ 
+std::string s("Hello World");
+std::string t;
+t.append(s, 6);
+</pre></blockquote>
+
+<p>
+In both cases the result will be the same. So the <tt>assign</tt> and <tt>append</tt> will be interchangeable from the point 
+of view of used arguments.
+<p/>
+There are another three member functions in class <tt>std::basic_string</tt> that could be brought in conformity with considered above functions.  
+They are member functions <tt>insert</tt>, <tt>replace</tt>, and <tt>compare</tt>.
+<p/>
+So it is suggested to substitute the following declarations of <tt>insert</tt>, <tt>replace</tt>, and <tt>compare</tt>:
+</p>
+
+<blockquote><pre>
+basic_string&amp; insert(size_type pos1, const basic_string&amp; str,
+  size_type pos2, size_type n);
+
+basic_string&amp; replace(size_type pos1, size_type n1,
+  const basic_string&amp; str, size_type pos2, size_type n2);
+
+int compare(size_type pos1, size_type n1,
+  const basic_string&amp; str, size_type pos2, size_type n2) const;
+</pre></blockquote>
+
+<p>
+by the declarations:
+</p>
+
+<blockquote><pre>
+basic_string&amp; insert(size_type pos1, const basic_string&amp; str,
+  size_type pos2, size_type n <ins>= npos</ins>);
+
+basic_string&amp; replace(size_type pos1, size_type n1,
+  const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>);
+
+int compare(size_type pos1, size_type n1,
+  const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>) const;
+</pre></blockquote>
+
+<p><i>[2013-09 Chicago]</i></p>
+
+<p>
+Howard: Are we positive this won't conflict with any other overloads? 
+<p/>
+They all appear to be unambiguous. 
+<p/>
+Alisdair: Ok, move to Ready. 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+<ol>
+<li><p>Change class template <tt>basic_string</tt> synopsis, 20.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a> p5, as indicated:</p>
+
+<blockquote><pre>
+namespace std {
+  template&lt;class charT, class traits = char_traits&lt;charT&gt;,
+    class Allocator = allocator&lt;charT&gt; &gt;
+  class basic_string {
+  public:
+    [&hellip;]
+    basic_string&amp; append(const basic_string&amp; str, size_type pos, size_type n <ins>= npos</ins>);
+    [&hellip;]
+    basic_string&amp; assign(const basic_string&amp; str, size_type pos, size_type n <ins>= npos</ins>);
+    [&hellip;]
+    basic_string&amp; insert(size_type pos1, const basic_string&amp; str, size_type pos2, size_type n <ins>= npos</ins>);
+    [&hellip;]
+    basic_string&amp; replace(size_type pos1, size_type n1, const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>);
+    [&hellip;]
+    int compare(size_type pos1, size_type n1, const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>) const;
+    [&hellip;]
+  };
+}
+</pre></blockquote>
+</li>
+
+<li><p>Change 20.3.2.6.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a> before p3 as indicated:</p>
+
+<blockquote><pre>
+basic_string&amp; append(const basic_string&amp; str, size_type pos, size_type n <ins>= npos</ins>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 20.3.2.6.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> before p4 as indicated:</p>
+
+<blockquote><pre>
+basic_string&amp; assign(const basic_string&amp; str, size_type pos, size_type n <ins>= npos</ins>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 20.3.2.6.4 <a href="https://timsong-cpp.github.io/cppwp/string.insert">[string.insert]</a> before p5 as indicated:</p>
+
+<blockquote><pre>
+basic_string&amp; insert(size_type pos1, const basic_string&amp; str, size_type pos2, size_type n <ins>= npos</ins>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 20.3.2.6.6 <a href="https://timsong-cpp.github.io/cppwp/string.replace">[string.replace]</a> before p5 as indicated:</p>
+
+<blockquote><pre>
+basic_string&amp; replace(size_type pos1, size_type n1, const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>);
+</pre></blockquote>
+</li>
+
+<li><p>Change 20.3.2.7.4 <a href="https://timsong-cpp.github.io/cppwp/string.compare">[string.compare]</a> before p4 as indicated:</p>
+
+<blockquote><pre>
+int compare(size_type pos1, size_type n1, const basic_string&amp; str, size_type pos2, size_type n2 <ins>= npos</ins>) const;
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

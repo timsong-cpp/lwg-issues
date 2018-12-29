@@ -1,0 +1,428 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2510: Tag types should not be DefaultConstructible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2510" href="lwg-defects.html#2510">2510.</a> Tag types should not be <tt>DefaultConstructible</tt></h3>
+<p><b>Section:</b> 16.6 <a href="https://timsong-cpp.github.io/cppwp/support.dynamic">[support.dynamic]</a>, 19.2 <a href="https://timsong-cpp.github.io/cppwp/utility">[utility]</a>, 19.4.5 <a href="https://timsong-cpp.github.io/cppwp/pair.piecewise">[pair.piecewise]</a>, 19.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, 19.10.7 <a href="https://timsong-cpp.github.io/cppwp/allocator.tag">[allocator.tag]</a>, 31.4 <a href="https://timsong-cpp.github.io/cppwp/thread.mutex">[thread.mutex]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2015-06-13 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#support.dynamic">issues</a> in [support.dynamic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>std::experimental::optional</tt>, for certain reasons, specifies its <tt>nullopt</tt> type
+to not be <tt>DefaultConstructible</tt>. It doesn't do so for its tag type <tt>in_place_t</tt>
+and neither does the standard proper for any of its tag types. That turns
+out to be very unfortunate, consider the following:
+</p>
+<blockquote><pre>
+#include &lt;memory&gt;
+#include &lt;array&gt;
+
+void f(std::array&lt;int, 1&gt;, int) {} // #1
+void f(std::allocator_arg_t, int) {} // #2
+
+int main()
+{
+  f({}, 666); // #3
+}
+</pre></blockquote>
+<p>
+The call at #3 is ambiguous. What's even worse is that if the overload #1
+is removed, the call works just fine. The whole point of a tag type is that
+it either needs to mentioned in a call or it needs to be a forwarded argument,
+so being able to construct a tag type like that makes no sense.
+<p/>
+Making the types have an <em>explicit default constructor</em> might have helped, but 
+<a href="http://open-std.org/JTC1/SC22/WG21/docs/cwg_active.html#1518">CWG 1518</a>
+is going against that idea.
+<p/>
+[optional.nullopt]/3 solves this problem for <tt>nullopt</tt>:
+</p>
+<blockquote>
+<p>
+Type <tt>nullopt_t</tt> shall not have a default constructor. It shall be a
+literal type. Constant <tt>nullopt</tt> shall be initialized with an argument
+of literal type.
+</p>
+</blockquote>
+
+<p><i>[2015-06, Telecon]</i></p>
+
+<p>
+Move to Tentatively Ready.
+</p>
+
+<p><i>[2015-10, Kona Saturday afternoon]</i></p>
+
+<p>Move back to Open</p>
+<p>JW: The linked Core issue (CWG 1518) gives us a better tool to solve this (explicit default constructors). [The CWG Issue means that an explicit default constructor will no longer match "{}".] JW explains that it's important that tag types cannot be constructed from "{}" (e.g. the allocator tag in the tuple constructors).</p>
+<p>WEB: Should we now go back and update our constructors? JW: For tag types, yes.</p>
+<p>VV: The guideline is that anything that does not mention the type name explicitly should not invoke an explicit constructor.</p>
+<p>Ville will provide wording.</p>
+<p>Discussion about pair/tuple's default constructor - should they now be explicit?</p>
+
+<p><i>[2016-01-31]</i></p>
+
+<p>
+Ville provides revised wording.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>
+This wording is relative to N4527.
+</p>
+
+<ol>
+<li><p>In 16.6 <a href="https://timsong-cpp.github.io/cppwp/support.dynamic">[support.dynamic]</a>/1, change the header <tt>&lt;new&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+struct nothrow_t <del>{}</del>; <ins><i>see below</i></ins>
+extern const nothrow_t nothrow;
+[&hellip;]
+</pre></blockquote>
+</li>
+<li><p>Add a new paragraph after 16.6 <a href="https://timsong-cpp.github.io/cppwp/support.dynamic">[support.dynamic]</a>/1 (<em>following</em> the header <tt>&lt;new&gt;</tt> synopsis):</p>
+
+<blockquote>
+<p>
+<ins>-?- Type <tt>nothrow_t</tt> shall not have a default constructor.</ins>
+</p>
+</blockquote>
+</li>
+<li><p>In 19.2 <a href="https://timsong-cpp.github.io/cppwp/utility">[utility]</a>/2, change the header <tt>&lt;utility&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+// <i>20.3.5, pair piecewise construction</i>
+struct piecewise_construct_t <del>{ }</del>; <ins><i>see below</i></ins>
+constexpr piecewise_construct_t piecewise_construct{ <ins><i>unspecified</i></ins> };
+[&hellip;]
+</pre></blockquote>
+</li>
+<li><p>Add a new paragraph after 19.2 <a href="https://timsong-cpp.github.io/cppwp/utility">[utility]</a>/2 (<em>following</em> the header <tt>&lt;utility&gt;</tt> synopsis):</p>
+
+<blockquote>
+<p>
+<ins>-?- Type <tt>piecewise_construct_t</tt> shall not have a default constructor. It shall
+be a literal type. Constant <tt>piecewise_construct</tt> shall be initialized with an argument of literal type.</ins>
+</p>
+</blockquote>
+</li>
+<li><p>In 19.4.5 <a href="https://timsong-cpp.github.io/cppwp/pair.piecewise">[pair.piecewise]</a>, apply the following edits:</p>
+
+<blockquote><pre>
+struct piecewise_construct_t <del>{ }</del>;
+constexpr piecewise_construct_t piecewise_construct{ <ins><i>unspecified</i></ins> };
+</pre></blockquote>
+</li>
+<li><p>In 19.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>/1, change the header <tt>&lt;memory&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+// <i>20.7.6, allocator argument tag</i>
+struct allocator_arg_t <del>{ }</del>; <ins><i>see below</i></ins>
+constexpr allocator_arg_t allocator_arg{ <ins><i>unspecified</i></ins> };
+[&hellip;]
+</pre></blockquote>
+</li>
+<li><p>Add a new paragraph after 19.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>/1 (<em>following</em> the header <tt>&lt;memory&gt;</tt> synopsis):</p>
+
+<blockquote>
+<p>
+<ins>-?- Type <tt>allocator_arg_t</tt> shall not have a default constructor. It shall
+be a literal type. Constant <tt>allocator_arg</tt> shall be initialized with an
+argument of literal type.</ins>
+</p>
+</blockquote>
+</li>
+<li><p>In 19.10.7 <a href="https://timsong-cpp.github.io/cppwp/allocator.tag">[allocator.tag]</a>, apply the following edits:</p>
+
+<blockquote><pre>
+namespace std {
+  struct allocator_arg_t <del>{ }</del>;
+  constexpr allocator_arg_t allocator_arg{ <ins><i>unspecified</i></ins> };
+}
+</pre></blockquote>
+<blockquote class="note">
+<p>
+Editorial drive-by: <tt>piecewise_construct_t</tt> is written, in 19.4.5 <a href="https://timsong-cpp.github.io/cppwp/pair.piecewise">[pair.piecewise]</a> like
+</p>
+<blockquote><pre>
+struct piecewise_construct_t { };
+constexpr piecewise_construct_t piecewise_construct{};
+</pre></blockquote>
+<p>
+whereas other tag types such as <tt>allocator_construct_t</tt> are, in e.g.
+19.10.7 <a href="https://timsong-cpp.github.io/cppwp/allocator.tag">[allocator.tag]</a>, written like
+</p>
+<blockquote><pre>
+namespace std {
+  struct allocator_arg_t { };
+  constexpr allocator_arg_t allocator_arg{};
+}
+</pre></blockquote>
+<p>
+We should decide whether or not to write out the <tt>std</tt> namespace in such
+paragraphs. I would suggest not to write it out.
+</p>
+</blockquote>
+
+</li>
+<li><p>In 31.4 <a href="https://timsong-cpp.github.io/cppwp/thread.mutex">[thread.mutex]</a>/1, change the header <tt>&lt;mutex&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+struct defer_lock_t <del>{ }</del>; <ins><i>see below</i></ins>
+struct try_to_lock_t <del>{ }</del>; <ins><i>see below</i></ins>
+struct adopt_lock_t <del>{ }</del>; <ins><i>see below</i></ins>
+
+constexpr defer_lock_t defer_lock { <ins><i>unspecified </i></ins> };
+constexpr try_to_lock_t try_to_lock { <ins><i>unspecified </i></ins> };
+constexpr adopt_lock_t adopt_lock { <ins><i>unspecified </i></ins> };
+[&hellip;]
+</pre></blockquote>
+</li>
+<li><p>Add three new paragraphs after [thread.mutex]/1 (<em>following</em> the header <tt>&lt;mutex&gt;</tt> synopsis):</p>
+
+<blockquote>
+<p>
+<ins>-?- Type <tt>defer_lock_t</tt> shall not have a default constructor. It shall
+be a literal type. Constant <tt>defer_lock</tt> shall be initialized with an
+argument of literal type.</ins>
+<p/>
+<ins>-?- Type <tt>try_to_lock_t</tt> shall not have a default constructor. It shall
+be a literal type. Constant <tt>try_to_lock</tt> shall be initialized with an
+argument of literal type.</ins>
+<p/>
+<ins>-?- Type <tt>adopt_lock_t</tt> shall not have a default constructor. It shall
+be a literal type. Constant <tt>adopt_lock</tt> shall be initialized with an
+argument of literal type.</ins>
+</p>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2016-03 Jacksonville]</i></p>
+
+<p>
+AM: should have note about compatibility in Annex C<br/>
+HH: like this idiom well enough that I've started using it in my own code<br/>
+AM: why are pair and tuple involved here?<br/>
+GR: they are the only types which forward explicitness with EXPLICIT<br/>
+AM: British spelling of behaviour<br/>
+AM: happy to drop my issue about Annex C<br/>
+</p>
+
+<p><i>[2016-06 Oulu]</i></p>
+
+<p>This is waiting on Core issue 1518</p>
+<p>Saturday: Core 1518 was resolved in Oulu</p>
+
+<p><i>[2016-07 Chicago]</i></p>
+
+<p>This is related to <a href="2736">2736</a></p>
+<p>Monday PM: Moved to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4567.
+</p>
+
+<ol>
+<li><p>In 16.6 <a href="https://timsong-cpp.github.io/cppwp/support.dynamic">[support.dynamic]</a>/1, change the header <tt>&lt;new&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+struct nothrow_t { <ins>explicit nothrow_t() = default;</ins> };
+extern const nothrow_t nothrow;
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>In 19.2 <a href="https://timsong-cpp.github.io/cppwp/utility">[utility]</a>/2, change the header <tt>&lt;utility&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+// <i>20.3.5, pair piecewise construction</i>
+struct piecewise_construct_t { <ins>explicit piecewise_construct_t() = default;</ins> };
+constexpr piecewise_construct_t piecewise_construct{};
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>In 19.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>, change the class template <tt>pair</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+pair(pair&amp;&amp;) = default;
+<ins><i>EXPLICIT</i></ins> constexpr pair();
+<i>EXPLICIT</i> constexpr pair(const T1&amp; x, const T2&amp; y);
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Around 19.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a> p3, apply the following edits:</p>
+
+<blockquote>
+<pre>
+<ins><i>EXPLICIT</i></ins> constexpr pair();
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Value-initializes <tt>first</tt> and <tt>second</tt>.
+<p/>
+-4- <i>Remarks</i>: This constructor shall not participate in overload resolution unless 
+<tt>is_default_constructible&lt;first_type&gt;::value</tt> is <tt>true</tt> and 
+<tt>is_default_constructible&lt;second_type&gt;::value</tt> is <tt>true</tt>. 
+[<i>Note</i>: This
+behaviour can be implemented by a constructor template with default template arguments. &mdash; 
+<i>end note</i>]
+<ins>The constructor is explicit if and only if either <tt>first_type</tt> or <tt>second_type</tt> 
+is not implicitly default-constructible. 
+[<i>Note</i>: This behaviour can be implemented with a trait 
+that checks whether a <tt>const first_type&amp;</tt> or a <tt>const second_type&amp;</tt> can be 
+initialized with <tt>{}</tt>. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 19.4.5 <a href="https://timsong-cpp.github.io/cppwp/pair.piecewise">[pair.piecewise]</a>, apply the following edits:</p>
+
+<blockquote><pre>
+struct piecewise_construct_t { <ins>explicit piecewise_construct_t() = default;</ins> };
+constexpr piecewise_construct_t piecewise_construct{};
+</pre></blockquote>
+</li>
+
+<li><p>In 19.5.3 <a href="https://timsong-cpp.github.io/cppwp/tuple.tuple">[tuple.tuple]</a>, change the class template <tt>tuple</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+<i>// 20.4.2.1, tuple construction</i>
+<ins><i>EXPLICIT</i></ins> constexpr tuple();
+<i>EXPLICIT</i> constexpr tuple(const Types&amp;...); <i>// only if sizeof...(Types) &gt;= 1</i>
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>Around 19.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> p4, apply the following edits:</p>
+
+<blockquote>
+<pre>
+<ins><i>EXPLICIT</i></ins> constexpr tuple();
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects</i>: Value initializes each element.
+<p/>
+-5- <i>Remarks</i>: This constructor shall not participate in overload resolution unless 
+<tt>is_default_constructible&lt;<i>T<sub>i</sub></i>&gt;::value</tt> is <tt>true</tt> for all <i>i</i>. 
+[<i>Note</i>: This
+behaviour can be implemented by a constructor template with default template arguments. &mdash; 
+<i>end note</i>]
+<ins>The constructor is explicit if and only if <tt><i>T<sub>i</sub></i></tt> 
+is not implicitly default-constructible for at least one <i>i</i>.
+[<i>Note</i>: This behaviour can be implemented with a trait that checks whether
+a <tt>const Ti&amp;</tt> can be initialized with <tt>{}</tt>. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>In 19.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>/1, change the header <tt>&lt;memory&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+// <i>20.7.6, allocator argument tag</i>
+struct allocator_arg_t { <ins>explicit allocator_arg_t() = default;</ins> };
+constexpr allocator_arg_t allocator_arg{};
+[&hellip;]
+</pre></blockquote>
+</li>
+
+<li><p>In 19.10.7 <a href="https://timsong-cpp.github.io/cppwp/allocator.tag">[allocator.tag]</a>, apply the following edits:</p>
+
+<blockquote><pre>
+namespace std {
+  struct allocator_arg_t { <ins>explicit allocator_arg_t() = default;</ins> };
+  constexpr allocator_arg_t allocator_arg{};
+}
+</pre></blockquote>
+<blockquote class="note">
+<p>
+Editorial drive-by: <tt>piecewise_construct_t</tt> is written, in 19.4.5 <a href="https://timsong-cpp.github.io/cppwp/pair.piecewise">[pair.piecewise]</a> like
+</p>
+<blockquote><pre>
+struct piecewise_construct_t { };
+constexpr piecewise_construct_t piecewise_construct{};
+</pre></blockquote>
+<p>
+whereas other tag types such as <tt>allocator_construct_t</tt> are, in e.g.
+19.10.7 <a href="https://timsong-cpp.github.io/cppwp/allocator.tag">[allocator.tag]</a>, written like
+</p>
+<blockquote><pre>
+namespace std {
+  struct allocator_arg_t { };
+  constexpr allocator_arg_t allocator_arg{};
+}
+</pre></blockquote>
+<p>
+We should decide whether or not to write out the <tt>std</tt> namespace in such
+paragraphs. I would suggest not to write it out.
+</p>
+</blockquote>
+</li>
+
+<li><p>In 31.4 <a href="https://timsong-cpp.github.io/cppwp/thread.mutex">[thread.mutex]</a>/1, change the header <tt>&lt;mutex&gt;</tt> synopsis:</p>
+
+<blockquote><pre>
+[&hellip;]
+struct defer_lock_t { <ins>explicit defer_lock_t() = default;</ins> };
+struct try_to_lock_t { <ins>explicit try_to_lock_t() = default;</ins> };
+struct adopt_lock_t { <ins>explicit adopt_lock_t() = default;</ins> };
+
+constexpr defer_lock_t defer_lock { };
+constexpr try_to_lock_t try_to_lock { };
+constexpr adopt_lock_t adopt_lock { };
+[&hellip;]
+</pre></blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3085: char_traits::copy precondition too weak</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3085" href="lwg-active.html#3085">3085.</a> <tt>char_traits::copy</tt> precondition too weak</h3>
+<p><b>Section:</b> 20.2.1 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-03-16 <b>Last modified:</b> 2018-08-24 13:31:33 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#char.traits.require">issues</a> in [char.traits.require].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Table 54, Character traits requirements, says that <tt>char_traits::move</tt> allows the ranges to overlap, 
+but <tt>char_traits::copy</tt> requires that <tt>p</tt> is not in the range <tt>[s, s + n)</tt>. This 
+appears to be an attempt to map to the requirements of <tt>memmove</tt> and <tt>memcpy</tt> respectively,
+allowing those to be used to implement the functions, however the requirements for <tt>copy</tt> are 
+weaker than those for <tt>memcpy</tt>. The C standard says for <tt>memcpy</tt> "If copying takes place 
+between objects that overlap, the behavior is undefined" which is a stronger requirement than the start 
+of the source range not being in the destination range.
+<p/>
+All of libstdc++, libc++ and VC++ simply use <tt>memcpy</tt> for <tt>char_traits&lt;char&gt;::copy</tt>, 
+resulting in undefined behaviour in this example:
+</p>
+<blockquote><pre>
+char p[] = "abc";
+char* s = p + 1;
+std::char_traits&lt;char&gt;::copy(s, p, 2);
+assert(std::char_traits&lt;char&gt;::compare(p, "aab", 3) == 0);
+</pre></blockquote>
+<p>
+If the intention is to allow <tt>memcpy</tt> as a valid implementation then the precondition is 
+wrong (unfortunately nobody realized this when fixing <tt>char_traits::move</tt> in LWG DR <a href="7">7</a>). 
+If the intention is to require <tt>memmove</tt> then it is strange to have separate <tt>copy</tt> and 
+<tt>move</tt> functions that both use <tt>memmove</tt>.
+<p/>
+N.B. <tt>std::copy</tt> and <tt>std::copy_backward</tt> are not valid implementations of 
+<tt>char_traits::copy</tt> either, due to different preconditions.
+<p/>
+Changing the precondition implicitly applies to <tt>basic_string::copy</tt> (20.3.2.6.7 <a href="https://timsong-cpp.github.io/cppwp/string.copy">[string.copy]</a>), 
+and <tt>basic_string_view::copy</tt> (20.4.2.6 <a href="https://timsong-cpp.github.io/cppwp/string.view.ops">[string.view.ops]</a>), which are currently required 
+to support partially overlapping ranges:
+</p>
+<blockquote><pre>
+std::string s = "abc";
+s.copy(s.data() + 1, s.length() - 1);
+assert(s == "aab");
+</pre></blockquote>
+
+<p><i>[2018-04-03 Priority set to 2 after discussion on the reflector.]</i></p>
+
+
+<p><i>[2018-08-23 Batavia Issues processing]</i></p>
+
+<p>No consensus for direction; revisit in San Diego. Status to Open.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4727">N4727</a>.
+</p>
+
+<p>
+Option A:
+</p>
+<blockquote>
+<ol>
+<li>
+<p>Edit 20.2.1 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a>, Table 54 &mdash; "Character traits requirements", as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 54 &mdash; Character traits requirements</caption>
+<tr style="text-align:center">
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion/note<br/>pre/post-condition</th>
+<th>Complexity</th>
+</tr>
+<tr>
+<td colspan="4" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td>
+<tt>X::copy(s,p,n)</tt>
+</td>
+<td>
+<tt>X::char_type*</tt>
+</td>
+<td>
+<i>Requires:</i> <del><tt>p</tt> not in <tt>[s,s+n)</tt></del><ins>The ranges <tt>[p,p+n)</tt><br/>
+and <tt>[s,s+n)</tt> do not overlap</ins>.<br/>
+<i>Returns:</i> <tt>s</tt>.<br/>
+for each <tt>i</tt> in <tt>[0,n)</tt>, performs<br/>
+<tt>X::assign(s[i],p[i])</tt>.
+</td>
+<td>
+linear
+</td>
+</tr>
+<tr>
+<td colspan="4" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p>
+Option B:
+</p>
+<blockquote>
+<p>NAD (i.e. implementations need to be fixed, in practice <tt>char_traits::copy</tt> and 
+<tt>char_traits::move</tt> might be equivalent).
+</p>
+</blockquote>
+
+
+
+
+
+</body>
+</html>

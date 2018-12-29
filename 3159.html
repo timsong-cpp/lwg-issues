@@ -1,0 +1,92 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3159: &sect;[unique.ptr.single] requirements on deleter may be too strict</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3159" href="lwg-active.html#3159">3159.</a> &sect;[unique.ptr.single] requirements on deleter may be too strict</h3>
+<p><b>Section:</b> 19.11.1.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single">[unique.ptr.single]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-09-17 <b>Last modified:</b> 2018-10-06 10:50:02 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unique.ptr.single">active issues</a> in [unique.ptr.single].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single">issues</a> in [unique.ptr.single].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+19.11.1.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single">[unique.ptr.single]</a> p1 says:
+</p>
+<blockquote><p>
+The default type for the template parameter <tt>D</tt> is <tt>default_delete</tt>. A client-supplied template argument 
+<tt>D</tt> shall be a function object type (19.14), lvalue reference to function, or lvalue reference to function object 
+type for which, given a value <tt>d</tt> of type <tt>D</tt> and a value ptr of type <tt>unique_ptr&lt;T, D&gt;::pointer</tt>, 
+the expression <tt>d(ptr)</tt> is valid and has the effect of disposing of the pointer as appropriate for that deleter.
+</p></blockquote>
+<p>
+That means this is undefined:
+</p>
+<blockquote><pre>
+#include &lt;memory&gt;
+
+struct IncompleteBase;
+
+struct Deleter {
+  void operator()(IncompleteBase*) const;
+};
+
+struct IncompleteDerived;
+
+struct X {
+  std::unique_ptr&lt;IncompleteDerived, Deleter&gt; p;
+  ~X();
+};
+</pre></blockquote>
+<p>
+<tt>unique_ptr::pointer</tt> is <tt>IncompleteDerived*</tt>, but <tt>is_invocable&lt;Deleter, IncompleteDerived*&gt;</tt> 
+is unknowable until the type is complete (see LWG <a href="3099">3099</a> etc).
+<p/>
+The intention is that <tt>IncompleteDerived</tt> only needs to be complete when the deleter is invoked, which is in the 
+definition of <tt>X::~X()</tt> for this example. But the requirement for <tt>d(ptr)</tt> to be valid requires a complete type. 
+If the <tt>unique_ptr</tt> implementation adds <tt>static_assert(is_invocable_v&lt;D, pointer&gt;)</tt> to enforce the 
+requirement, the example above fails to compile. GCC recently added that assertion.
+<p/>
+Do we want to relax that requirement, or do we want to force the code above to define <tt>Deleter::pointer</tt> as 
+<tt>IncompleteBase*</tt> so that the <tt>is_invocable</tt> condition can be checked?
+<p/>
+The destructor and <tt>reset</tt> member function already require that the deleter can be invoked (and that <i>Requires:</i> 
+element will be turned into a <i>Mandates:</i> one soon). We can just remove that requirement from the preamble for the 
+class template, or say that the expression only needs to be valid when the destructor and <tt>reset</tt> member are 
+instantiated. We could also rephrase it in terms of <tt>is_invocable_v&lt;D, unique_ptr&lt;T, D&gt;::pointer&gt;</tt>.
+</p>
+
+<p><i>[2018-10 Reflector prioritization]</i></p>
+
+<p>Set Priority to 3</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

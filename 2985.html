@@ -1,0 +1,93 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2985: std::reverse should be permitted to be vectorized</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2985" href="lwg-active.html#2985">2985.</a> <tt>std::reverse</tt> should be permitted to be vectorized</h3>
+<p><b>Section:</b> 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/alg.reverse">[alg.reverse]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2017-06-24 <b>Last modified:</b> 2018-04-03 18:48:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.reverse">issues</a> in [alg.reverse].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The fine folks on our backend team suggested that we special case <tt>std::reverse</tt> of 1/2/4/8 to take 
+advantage of vector units. Unfortunately, at present <tt>std::reverse</tt> says it does <tt>N/2 iter_swap</tt>s, 
+which doesn't permit our vector implementation even if the iterator inputs are pointers to trivially copyable <tt>T</tt>s.
+<p/>
+The vectorized version for pointers to <tt>short</tt>s is 
+<a href="https://twitter.com/MalwareMinigun/status/878150939512717312">~8x faster on Skylake</a> than the serial version, 
+and about 7x faster for <tt>unsigned long long</tt>s; and users don't actually care whether or not we call <tt>swap</tt> here.
+</p>
+
+<p><i>[2017-07 Toronto Monday issue prioritization]</i></p>
+
+<p>Status to LEWG; this is similar to <a href="2973">2973</a></p>
+
+<p><i>[2018-04-02, Billy comments]</i></p>
+
+<p>
+This issue should be resolved by <a href="https://wg21.link/p0551">P0551</a>, because it prohibits user specialization of  
+<tt>std::swap</tt> and <tt>std::iter_swap</tt>, which means the proposed vectorization optimization for 
+pointers-to-trivially-copyable is now implementable without changes to <tt>reverse</tt>'s specification (We can detect 
+if the user has provided an alternate <tt>swap</tt> in their own namespace, but not if they explicitly specialized 
+<tt>swap</tt> or <tt>iter_swap</tt>).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
+</p>
+
+<ol>
+<li><p>Edit 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/alg.reverse">[alg.reverse]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class BidirectionalIterator&gt;
+  void reverse(BidirectionalIterator first, BidirectionalIterator last);
+template&lt;class ExecutionPolicy, class BidirectionalIterator>
+  void reverse(ExecutionPolicy&amp;&amp; exec,
+               BidirectionalIterator first, BidirectionalIterator last);
+</pre>
+<blockquote>
+<p>
+-1- <i>Requires:</i> <tt>*first</tt> shall be swappable (15.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>).
+<p/>
+-2- <i>Effects:</i> For each non-negative integer <tt>i &lt; (last - first) / 2</tt>, applies <tt>iter_swap</tt> 
+to all pairs of iterators <tt>first + i, (last - i) - 1</tt>. <ins>If 
+<tt>is_trivially_copyable_v&lt;typename iterator_traits&lt;BidirectionalIterator&gt;::value_type&gt;</tt> is 
+<tt>true</tt>, an implementation may permute the elements by making temporary copies, rather than by calling 
+<tt>iter_swap</tt>. [<i>Note:</i> this allows the implementation to be vectorized. &mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

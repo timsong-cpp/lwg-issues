@@ -1,0 +1,194 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2544: istreambuf_iterator(basic_streambuf&lt;charT, traits&gt;* s) effects unclear when s is 0</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2544" href="lwg-defects.html#2544">2544.</a> <tt>istreambuf_iterator(basic_streambuf&lt;charT, traits&gt;* s)</tt> effects unclear when <tt>s</tt> is <tt>0</tt></h3>
+<p><b>Section:</b> 22.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2015-10-05 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+N4527 22.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> does not mention what the effect of calling 
+<tt>istreambuf_iterator(basic_streambuf&lt;charT, traits&gt;* s)</tt> is when <tt>s</tt> is a null pointer. 
+It should be made clear that this case is well-formed and the result is a end-of-stream iterator.
+<p/>
+Daniel:
+<p/>
+According to 22.6.3 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator">[istreambuf.iterator]</a> p1:
+</p>
+<blockquote><p>
+[&hellip;] The default constructor <tt>istreambuf_iterator()</tt> and the constructor <tt>istreambuf_iterator(0)</tt> both 
+construct an end-of-stream iterator object suitable for use as an end-of-range. [&hellip;]
+</p></blockquote>
+<p>
+This indicates that the described constructor creates an end-of-stream iterator, but this wording is part of the introductory 
+wording and I recommend to make 22.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> clearer, because the existing specification is already
+flawed, e.g. it never specifies when and how the exposition-only-member <tt>sbuf_</tt> is initialized. The proposed wording 
+below attempts to solve these problems as well.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>This wording is relative to N4527.</p>
+
+<ol>
+<li>
+<p>Change 22.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> as indicated:
+<p/>
+[<i>Editorial note</i>: The proposed wording changes also performs some editorial clean-up of the existing mismatches
+of the declarations in the class template synopsis and the individual member specifications. The below wording intentionally
+does not say anything about the concrete value of <tt>sbuf_</tt> for end-of-stream iterator values, because that
+was never specified before; in theory, this could be some magic non-null pointer that can be used in constant expressions. 
+But the wording could be drastically simplified by requiring <tt>sbuf_</tt> to be a null pointer for an end-of-stream iterator value, 
+since I have not yet seen any implementation where this requirement does not hold. &mdash; <i>end editorial note</i>]
+</p>
+<blockquote>
+<pre>
+constexpr istreambuf_iterator() noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Constructs the end-of-stream iterator.
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator(<del>basic_istream&lt;charT,traits&gt;</del><ins>istream_type</ins>&amp; s) noexcept;
+<del>istreambuf_iterator(basic_streambuf&lt;charT,traits&gt;* s) noexcept;</del>
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: <ins>If <tt>s.rdbuf()</tt> is a null pointer, constructs an end-of-stream iterator; otherwise 
+initializes  <tt>sbuf_</tt> with <tt>s.rdbuf()</tt> and constructs an <tt>istreambuf_iterator</tt> that uses the 
+<tt>streambuf_type</tt> object <tt>*sbuf_</tt></ins><del>Constructs an <tt>istreambuf_iterator&lt;&gt;</tt> that 
+uses the <tt>basic_streambuf&lt;&gt;</tt> object <tt>*(s.rdbuf())</tt>, or <tt>*s</tt>, respectively. Constructs 
+an end-of-stream iterator if <tt>s.rdbuf()</tt> is null</del>.
+</p>
+</blockquote>
+<pre>
+<ins>istreambuf_iterator(streambuf_type* s) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: If <tt>s</tt> is a null pointer, constructs an end-of-stream iterator; otherwise initializes 
+<tt>sbuf_</tt> with <tt>s</tt> and constructs an <tt>istreambuf_iterator</tt> that uses the <tt>streambuf_type</tt> 
+object <tt>*sbuf_</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator(const proxy&amp; p) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: <ins>Initializes <tt>sbuf_</tt> with <tt>p.sbuf_</tt> and constructs an <tt>istreambuf_iterator</tt> 
+that uses the <tt>streambuf_type</tt> object <tt>*sbuf_</tt></ins><del>Constructs a <tt>istreambuf_iterator&lt;&gt;</tt> 
+that uses the <tt>basic_streambuf&lt;&gt;</tt> object pointed to by the <tt>proxy</tt> object's constructor argument 
+<tt>p</tt></del>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2015-10-20, Daniel provides alternative wording]</i></p>
+
+
+<p><i>[2016-08-03 Chicago]</i></p>
+
+<p>Fri AM: Moved to Tentatively Ready</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li>
+<p>Change 22.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> as indicated:</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The proposed wording changes also performs some editorial clean-up of the existing mismatches
+of the declarations in the class template synopsis and the individual member specifications. The below wording is 
+simplified by requiring <tt>sbuf_</tt> to be a null pointer for an end-of-stream iterator value, 
+since I have not yet seen any implementation where this requirement does not hold. Even if there <em>were</em> such an 
+implementation, this would still be conforming, because concrete exposition-only member values are not part of public 
+API. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+<blockquote>
+<p>
+<ins>For each <tt>istreambuf_iterator</tt> constructor in this section, an end-of-stream iterator is 
+constructed if and only if the exposition-only member <tt>sbuf_</tt> is initialized with a null 
+pointer value.</ins>
+</p>
+<pre>
+constexpr istreambuf_iterator() noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: <ins>Initializes <tt>sbuf_</tt> with <tt>nullptr</tt></ins><del>Constructs the end-of-stream iterator</del>.
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator(<del>basic_istream&lt;charT,traits&gt;</del><ins>istream_type</ins>&amp; s) noexcept;
+<del>istreambuf_iterator(basic_streambuf&lt;charT,traits&gt;* s) noexcept;</del>
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: <ins>Initializes <tt>sbuf_</tt> with <tt>s.rdbuf()</tt></ins><del>Constructs 
+an <tt>istreambuf_iterator&lt;&gt;</tt> that uses the <tt>basic_streambuf&lt;&gt;</tt> object 
+<tt>*(s.rdbuf())</tt>, or <tt>*s</tt>, respectively. Constructs 
+an end-of-stream iterator if <tt>s.rdbuf()</tt> is null</del>.
+</p>
+</blockquote>
+<pre>
+<ins>istreambuf_iterator(streambuf_type* s) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Initializes <tt>sbuf_</tt> with <tt>s</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator(const proxy&amp; p) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: <ins>Initializes <tt>sbuf_</tt> with <tt>p.sbuf_</tt></ins><del>Constructs a <tt>istreambuf_iterator&lt;&gt;</tt> 
+that uses the <tt>basic_streambuf&lt;&gt;</tt> object pointed to by the <tt>proxy</tt> object's constructor argument 
+<tt>p</tt></del>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

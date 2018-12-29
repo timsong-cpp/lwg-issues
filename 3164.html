@@ -1,0 +1,105 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3164: Unhelpful "shall not participate" constraints for unique_ptr with reference deleter</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3164" href="lwg-closed.html#3164">3164.</a> Unhelpful "shall not participate" constraints for <tt>unique_ptr</tt> with reference deleter</h3>
+<p><b>Section:</b> 19.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-10-09 <b>Last modified:</b> 2018-11-27 04:34:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single.ctor">issues</a> in [unique.ptr.single.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[unique.ptr.single.ctor] defines these constructors:
+</p>
+<blockquote><pre>
+unique_ptr(pointer p, const D&amp; d) noexcept;
+unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
+</pre></blockquote>
+<p>
+and p13 says:
+</p>
+<blockquote>
+<p>
+<i>Remarks:</i> If <tt>D</tt> is a reference type, the second constructor is defined
+as deleted. These constructors shall not participate in overload resolution unless 
+<tt>is_constructible_v&lt;D, decltype(d)&gt;</tt> is true.
+</p>
+</blockquote>
+<p>
+The first sentence in the <i>Remarks</i> has no effect. If <tt>D</tt> is a reference
+type <tt>A&amp;</tt>, then for the second constructor the condition is
+<tt>is_constructible&lt;A&amp;, A&amp;&amp;&gt;</tt> which is <tt>false</tt>. So the 
+second constructor never participates in overload resolution for reference deleters, and
+so it's irrelevant whether it's deleted or not.
+<p/>
+We should either strike that sentence, or adjust the <tt>is_constructible</tt>
+constraint so that the deleted constructor participates in overload
+resolution for deleters of reference type. That way trying to
+initialize a deleter of reference type from an rvalue will resolve to
+the deleted function as intended.
+<p/>
+I think we can just change the "shall not participate" condition to only apply to 
+non-reference deleters. For reference deleters the condition is always true for the 
+first constructor, because <tt>is_constructible&lt;A&amp;, A&amp;&gt;</tt> is 
+<tt>true</tt>, and always <tt>false</tt> for the second constructor (but we want 
+it to be true so the deleted constructor is used). So for both constructors, the 
+"shall not participate" isn't useful when <tt>D</tt> is a reference type.
+</p>
+
+<p>11-2018 Status to NAD after discussion on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4778">N4778</a>.</p>
+
+<ol>
+<li><p>Change 19.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> as indicated:</p>
+<blockquote><pre>
+unique_ptr(pointer p, const D&amp; d) noexcept;
+unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-11- <i>Remarks:</i> If <tt>D</tt> is a reference type, the second constructor is defined as deleted. 
+<ins>If <tt>D</tt> is not a reference type, t</ins><del>T</del>hese constructors shall not participate 
+in overload resolution unless <tt>is_constructible_v&lt;D, decltype(d)&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

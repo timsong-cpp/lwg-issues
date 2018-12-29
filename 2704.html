@@ -1,0 +1,205 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2704: recursive_directory_iterator's members should require '*this is dereferenceable'</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2704" href="lwg-defects.html#2704">2704.</a> <tt>recursive_directory_iterator</tt>'s members should require '<tt>*this</tt> is dereferenceable'</h3>
+<p><b>Section:</b> 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a>, 28.11.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2016-05-08 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.rec.dir.itr.members">issues</a> in [fs.rec.dir.itr.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> the following members are specified as having the requirement 
+"<tt>*this != recursive_directory_iterator{}</tt>":
+</p>
+<ul>
+<li><p><tt>options()</tt></p></li>
+<li><p><tt>depth()</tt></p></li>
+<li><p><tt>recursion_pending()</tt></p></li>
+<li><p><tt>operator++</tt></p></li>
+<li><p><tt>increment(...)</tt></p></li>
+<li><p><tt>pop()</tt></p></li>
+<li><p><tt>disable_recursion_pending()</tt></p></li>
+</ul>
+<p>
+This requirement is not strong enough since it still allows non-dereferenceable iterators to invoke these methods. 
+For example:
+</p>
+<blockquote><pre>
+recursive_directory_iterator it(".");
+recursive_directory_iterator it_copy(it);
+assert(it_copy.depth() == 0); // OK
+++it;
+assert(it_copy.depth() == ???); // Not OK
+auto x = *it_copy; // Is this OK?
+</pre></blockquote>
+<p>
+I believe these should instead require that <tt>*this</tt> is dereferenceable, however the current specification 
+seems to say that all previous copies of <tt>it</tt> are still dereferenceable although not what they dereference to.
+<p/>
+[fs.class.directory_iterator] p4:
+</p>
+<blockquote class="note">
+<p>
+The result of <tt>operator*</tt> on an end iterator is undefined behavior. For any other iterator value a <tt>const 
+recursive_directory_entry&amp;</tt> is returned. The result of <tt>operator-&gt;</tt> on an end iterator is 
+undefined behavior. For any other iterator value a <tt>const directory_entry*</tt> is returned.
+</p>
+</blockquote>
+<p>
+Is the intention of this clause to make all non-end iterators dereferenceable?
+<p/>
+One further complication with these methods comes from the specification of <tt>recursive_directory_iterator</tt>'s 
+copy/move constructors and assignment operators which specify the following post conditions:
+</p>
+<ul>
+<li><p><tt>this-&gt;options() == rhs.options()</tt></p></li>
+<li><p><tt>this-&gt;depth() == rhs.depth()</tt></p></li>
+<li><p><tt>this-&gt;recursion_pending() == rhs.recursion_pending()</tt></p></li>
+</ul>
+<p>
+If <tt>rhs</tt> is the end iterator these post conditions are poorly stated.
+</p>
+
+<p><i>[2016-06, Oulu &mdash; Daniel comments]</i></p>
+
+<p>
+The loss of information caused by bullet three of the suggested wording below is corrected by <a href="2726">2726</a>'s
+wording.
+</p>
+<p>Voted to Ready 7-0 Monday morning in Oulu</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to N4582.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: I have not attempted to fix the specification of the copy/move constructors and assignment 
+operators for <tt>recursive_directory_iterator</tt>]</p>
+
+<p>
+[<i>Drafting note</i>: <tt>increment</tt> directly specifies "Effects: As specified by Input iterators (24.2.3)",
+ so no additional specification is needed.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Change 28.11.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory_iterator">[fs.class.directory_iterator]</a> p4 as indicated:</p>
+
+
+<blockquote><p>
+-4- <del>The result of <tt>operator*</tt> on an end iterator is undefined behavior. For any other iterator value a <tt>const
+directory_entry&amp;</tt> is returned. The result of <tt>operator-&gt;</tt> on an end iterator is undefined behavior. 
+For any other iterator value a <tt>const directory_entry*</tt> is returned</del><ins>The end iterator is not 
+dereferenceable</ins>.
+</p></blockquote>
+</li>
+
+<li><p>Add a new bullet after the class synopsis in 28.11.13 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a>:</p>
+
+<blockquote>
+<ins>-?- Calling <code>options</code>, <code>depth</code>, <code>recursion_pending</code>, <code>pop</code> or
+<code>disable_recursion_pending</code> on an iterator that is not dereferencable results in undefined behavior.</ins>
+
+</blockquote>
+</li>
+
+<li><p>Change 28.11.13.1 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+directory_options options() const;
+</pre>
+<blockquote>
+<p>
+-17- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+int depth() const;
+</pre>
+<blockquote>
+<p>
+-20- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+bool recursion_pending() const;
+</pre>
+<blockquote>
+<p>
+-23- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator&amp; operator++();
+recursive_directory_iterator&amp; increment(error_code&amp; ec) noexcept;
+</pre>
+<blockquote>
+<p>
+-26- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void pop();
+</pre>
+<blockquote>
+<p>
+-30- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void disable_recursion_pending();
+</pre>
+<blockquote>
+<p>
+-32- <del><i>Requires</i>: <tt>*this != recursive_directory_iterator()</tt>.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

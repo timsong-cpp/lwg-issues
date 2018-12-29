@@ -1,0 +1,84 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2472: Heterogeneous comparisons in the standard library can result in ambiguities</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2472" href="lwg-active.html#2472">2472.</a> Heterogeneous comparisons in the standard library can result in ambiguities</h3>
+<p><b>Section:</b> 19.5.3.8 <a href="https://timsong-cpp.github.io/cppwp/tuple.rel">[tuple.rel]</a>, 19.10.10.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.globals">[allocator.globals]</a>, 19.11.1.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.special">[unique.ptr.special]</a>, 19.11.3.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.cmp">[util.smartptr.shared.cmp]</a>, 26.5.6 <a href="https://timsong-cpp.github.io/cppwp/time.duration.comparisons">[time.duration.comparisons]</a>, 26.6.6 <a href="https://timsong-cpp.github.io/cppwp/time.point.comparisons">[time.point.comparisons]</a>, 19.13.5 <a href="https://timsong-cpp.github.io/cppwp/scoped.adaptor.operators">[scoped.adaptor.operators]</a>, 99 [reverse.iter.op==], 22.5.3.7 <a href="https://timsong-cpp.github.io/cppwp/move.iter.op.comp">[move.iter.op.comp]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2015-02-07 <b>Last modified:</b> 2015-05-05 12:24:28 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.rel">active issues</a> in [tuple.rel].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.rel">issues</a> in [tuple.rel].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard library specifies a lot of heterogeneous comparison operators. For instance:
+</p>
+<blockquote>
+<pre>
+template&lt;class... TTypes, class... UTypes&gt;
+constexpr bool operator!=(const tuple&lt;TTypes...&gt;&amp;, const tuple&lt;UTypes...&gt;&amp;);
+</pre>
+</blockquote>
+<p>
+This has an unfortunate consequence:
+</p>
+<blockquote>
+<pre>
+#include &lt;tuple&gt;
+#include &lt;utility&gt;
+
+using namespace std::rel_ops;
+std::tuple&lt;int&gt; a(0);
+bool b = a != a;
+</pre>
+</blockquote>
+<p>
+The last line here is ill-formed due to ambiguity: it might be <tt>rel_ops::operator!=</tt>, and it might be the 
+heterogeneous tuple <tt>operator!=</tt>. These are not partially ordered, because they have different constraints: 
+<tt>rel_ops</tt> requires the types to match, whereas the tuple comparison requires both types to be tuples (but not 
+to match). The same thing happens for user code that defines its own unconstrained 
+'<tt>template&lt;typename T&gt; operator!=(const T&amp;, const T&amp;)</tt>' rather than using <tt>rel_ops</tt>.
+<p/>
+One straightforward fix would be to add a homogeneous overload for each heterogeneous comparison:
+</p>
+<blockquote>
+<pre>
+template&lt;class... TTypes&gt;
+constexpr bool operator!=(const tuple&lt;TTypes...&gt;&amp;, const tuple&lt;TTypes...&gt;&amp;);
+</pre>
+<p>
+This is then unambiguously chosen over the other options in the preceding case. FWIW, libstdc++ already does this 
+<a href="https://gcc.gnu.org/onlinedocs/gcc-4.6.4/libstdc++/api/a01065_source.html#l00788">in some cases</a>.
+</p>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

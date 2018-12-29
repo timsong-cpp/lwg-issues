@@ -1,0 +1,256 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 2766: Swapping non-swappable types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="2766" href="lwg-active.html#2766">2766.</a> Swapping non-swappable types</h3>
+<p><b>Section:</b> 19.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a>, 19.5.3.10 <a href="https://timsong-cpp.github.io/cppwp/tuple.special">[tuple.special]</a>, 19.6.9 <a href="https://timsong-cpp.github.io/cppwp/optional.specalg">[optional.specalg]</a>, 19.7.10 <a href="https://timsong-cpp.github.io/cppwp/variant.specalg">[variant.specalg]</a>, 19.11.1.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.special">[unique.ptr.special]</a>, 21.3.7.4 <a href="https://timsong-cpp.github.io/cppwp/array.special">[array.special]</a>, 21.6.4.5 <a href="https://timsong-cpp.github.io/cppwp/queue.special">[queue.special]</a>, 21.6.5.5 <a href="https://timsong-cpp.github.io/cppwp/priqueue.special">[priqueue.special]</a>, 21.6.6.5 <a href="https://timsong-cpp.github.io/cppwp/stack.special">[stack.special]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2016-08-15 <b>Last modified:</b> 2016-09-12 04:36:33 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Related: <a href="2748">2748</a> swappable traits for optionals, <a href="2749">2749</a> swappable traits for variants.
+</p>
+<p>
+The adoption of <a href="http://wg21.link/p0185r1">P0185R1</a> "Adding [nothrow-]swappable traits" makes certain 
+non-swappable types indirectly swappable. Consider a type defined as follows:
+</p>
+<blockquote><pre>
+struct non_swappable {
+  friend void swap(non_swappable&amp;, non_swappable&amp;) = delete;
+};
+
+non_swappable ns1, ns2;
+using std::swap;
+swap(ns1, ns2); // ill-formed
+
+static_assert(std::is_swappable_v&lt;non_swappable&gt; == false); // holds
+</pre></blockquote>
+<p>
+Lvalues of type <tt>non_swappable</tt> are not swappable, as defined by 15.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>, 
+overload resolution selects the deleted function. Consistently, <tt>is_swappable_v&lt;non_swappable&gt;</tt> yields 
+false. It should be noted that since <tt>non_swappable</tt> is move constructible and move assignable, a qualified 
+call to <tt>std::swap</tt> would be well-formed, even under P0185. Now consider the following snippet:
+</p>
+<blockquote><pre>
+std::tuple&lt;non_swappable&gt; tns1, tns2;
+using std::swap;
+swap(tns1, tns2); // previously ill-formed, now well-formed
+
+static_assert(std::is_swappable_v&lt;std::tuple&lt;non_swappable&gt;&gt; == false); // fires
+</pre></blockquote>
+<p>
+Before P0185, this snippet would violate the implicit requirement of specialized swap for tuples that each tuple 
+element be swappable. After P0185, this specialized swap overload for tuples would be SFINAEd away, resulting 
+in overload resolution selecting the base swap overload, and performing the exchange via move construction and 
+move assignment of tuples.
+<p/>
+This issue affects all of <tt>pair</tt>, <tt>tuple</tt>, <tt>unique_ptr</tt>, <tt>array</tt>, <tt>queue</tt>, 
+<tt>priority_queue</tt>, <tt>stack</tt>, and should eventually also apply to <tt>optional</tt> and <tt>variant</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to N4606, except when otherwise noted.</p>
+
+<ol>
+<li><p>Modify 19.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T1, class T2&gt; void swap(pair&lt;T1, T2&gt;&amp; x, pair&lt;T1, T2&gt;&amp; y)
+  noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+<p/>
+-8- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as 
+deleted</ins> unless <tt>is_swappable_v&lt;T1&gt;</tt> is <tt>true</tt> and <tt>is_swappable_v&lt;T2&gt;</tt> 
+is <tt>true</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.5.3.10 <a href="https://timsong-cpp.github.io/cppwp/tuple.special">[tuple.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class... Types&gt;
+  void swap(tuple&lt;Types...&gt;&amp; x, tuple&lt;Types...&gt;&amp; y) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_swappable_v&lt;<tt>T<sub>i</sub></tt>&gt;</tt> is <tt>true</tt> for all <tt><i>i</i></tt>, where 
+<tt>0 &lt;= <i>i</i></tt> and <tt><i>i</i> &lt; sizeof...(Types)</tt>. The expression inside <tt>noexcept</tt> 
+is equivalent to:
+</p>
+<blockquote><pre>
+noexcept(x.swap(y))
+</pre></blockquote>
+<p>
+-2- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.11.1.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.special">[unique.ptr.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T, class D&gt; void swap(unique_ptr&lt;T, D&gt;&amp; x, unique_ptr&lt;T, D&gt;&amp; y) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_swappable_v&lt;D&gt;</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> Calls <tt>x.swap(y)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.7.4 <a href="https://timsong-cpp.github.io/cppwp/array.special">[array.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T, size_t N&gt;
+  void swap(array&lt;T, N&gt;&amp; x, array&lt;T, N&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>N == 0</tt> or <tt>is_swappable_v&lt;T&gt;</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.6.4.5 <a href="https://timsong-cpp.github.io/cppwp/queue.special">[queue.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T, class Container&gt;
+  void swap(queue&lt;T, Container&gt;&amp; x, queue&lt;T, Container&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_swappable_v&lt;Container&gt;</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.6.5.5 <a href="https://timsong-cpp.github.io/cppwp/priqueue.special">[priqueue.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T, class Container, class Compare&gt;
+  void swap(priority_queue&lt;T, Container, Compare&gt;&amp; x,
+            priority_queue&lt;T, Container, Compare&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-1- <tt>Remarks:</tt> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_swappable_v&lt;Container&gt;</tt> is <tt>true</tt> and <tt>is_swappable_v&lt;Compare&gt;</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.6.6.5 <a href="https://timsong-cpp.github.io/cppwp/stack.special">[stack.special]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class T, class Container&gt;
+  void swap(stack&lt;T, Container&gt;&amp; x, stack&lt;T, Container&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_swappable_v&lt;Container&gt;</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> As if by <tt>x.swap(y)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.6.9 <a href="https://timsong-cpp.github.io/cppwp/optional.specalg">[optional.specalg]</a> as indicated:</p>
+<blockquote class="note">
+<p>
+This change should be performed if and only if LWG <a href="2748">2748</a> is accepted and is against the wording of <a href="2748">2748</a>:
+</p>
+</blockquote>
+<blockquote>
+<pre>
+template &lt;class T&gt; void swap(optional&lt;T&gt;&amp; x, optional&lt;T&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Calls <tt>x.swap(y)</tt>.
+<p/>
+-2- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_move_constructible_v&lt;T&gt;</tt> is <tt>true</tt> and <tt>is_swappable_v&lt;T&gt;</tt> is <tt>true</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 19.7.10 <a href="https://timsong-cpp.github.io/cppwp/variant.specalg">[variant.specalg]</a> as indicated:</p>
+<blockquote class="note">
+<p>
+This change should be performed if and only if LWG <a href="2749">2749</a> is accepted and is against the wording of <a href="2749">2749</a>:
+</p>
+</blockquote>
+<blockquote>
+<pre>
+template &lt;class... Types&gt; void swap(variant&lt;Types...&gt;&amp; v, variant&lt;Types...&gt;&amp; w) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to <tt>v.swap(w)</tt>.
+<p/>
+-2- <i>Remarks:</i> This function shall <del>not participate in overload resolution</del><ins>be defined as deleted</ins> 
+unless <tt>is_move_constructible_v&lt;<i>T<sub>i</sub></i>&gt; &amp;&amp; is_swappable_v&lt;<i>T<sub>i</sub></i>&gt;</tt> 
+is <tt>true</tt> for all <tt><i>i</i></tt>. The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(v.swap(w))</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

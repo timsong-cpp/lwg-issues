@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3025: Map-like container deduction guides should use pair&lt;Key, T&gt;, not pair&lt;const Key, T&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3025" href="lwg-defects.html#3025">3025.</a> Map-like container deduction guides should use <tt>pair&lt;Key, T&gt;</tt>, not <tt>pair&lt;const Key, T&gt;</tt></h3>
+<p><b>Section:</b> 21.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a>, 21.4.5.1 <a href="https://timsong-cpp.github.io/cppwp/multimap.overview">[multimap.overview]</a>, 21.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/unord.map.overview">[unord.map.overview]</a>, 21.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/unord.multimap.overview">[unord.multimap.overview]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2017-10-08 <b>Last modified:</b> 2018-11-12 04:39:29 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#map.overview">issues</a> in [map.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+With the deduction guides as specified currently, code like this doesn't work:
+</p>
+<blockquote><pre>
+map m{pair{1, 1}, {2, 2}, {3, 3}};
+</pre></blockquote>
+<p>
+Same problem occurs with <tt>multimap</tt>, <tt>unordered_map</tt> and <tt>unordered_multimap</tt>.
+The problem is in deduction guides like
+</p>
+<blockquote><pre>
+template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+          class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+map(initializer_list&lt;pair&lt;const Key, T&gt;&gt;, Compare = Compare(),
+    Allocator = Allocator()) -&gt; map&lt;Key, T, Compare, Allocator&gt;;
+</pre></blockquote>
+<p>
+The <tt>pair&lt;const Key, T&gt;</tt> is not matched by a <tt>pair&lt;int, int&gt;</tt>, because 
+<tt>int</tt> can't match a <tt>const Key</tt>. Dropping the <tt>const</tt> from the parameter of the 
+deduction guide makes it work with no loss of functionality.
+</p>
+
+<p><i>[2017-11-03, Zhihao Yuan comments]</i></p>
+
+<p>
+The fix described <a href=" https://wandbox.org/permlink/VFFelmbsAs1Zy0UB">here</a> prevents
+</p>
+<blockquote><pre>
+std::map m2{m0.begin(), m0.end()};
+</pre></blockquote>
+<p>
+from falling back to direct-non-list-initialization. Treating a uniform initialization with &gt;1 clauses
+of the same un-cvref type as <tt>std::initializer_list</tt> is the only consistent interpretation I found 
+so far.
+</p>
+
+<p><i>[2017-11 Albuquerque Wednesday night issues processing]</i></p>
+
+<p>Priority set to 2</p>
+
+<p><i>[2018-08-23 Batavia Issues processing]</i></p>
+
+<p>Status to Tentatively Ready</p>
+<p><i>[2018-11, Adopted in San Diego]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4687">N4687</a>.</p>
+
+<ol>
+<li><p>Change 21.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a> p3, class template <tt>map</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+         class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Compare = Compare(), Allocator = Allocator())
+    -&gt; map&lt;Key, T, Compare, Allocator&gt;;
+[&hellip;]
+template&lt;class Key, class T, class Allocator&gt;
+  map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Allocator) -&gt; map&lt;Key, T, less&lt;Key&gt;, Allocator&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 21.4.5.1 <a href="https://timsong-cpp.github.io/cppwp/multimap.overview">[multimap.overview]</a> p3, class template <tt>multimap</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+         class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Compare = Compare(), Allocator = Allocator())
+    -&gt; multimap&lt;Key, T, Compare, Allocator&gt;;
+[&hellip;]
+template&lt;class Key, class T, class Allocator&gt;
+  multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Allocator)
+    -&gt; multimap&lt;Key, T, less&lt;Key&gt;, Allocator&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/unord.map.overview">[unord.map.overview]</a> p3, class template <tt>unordered_map</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Key, class T, class Hash = hash&lt;Key&gt;,
+         class Pred = equal_to&lt;Key&gt;, class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  unordered_map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, typename <i>see below</i>::size_type = <i>see below</i>, Hash = Hash(),
+                Pred = Pred(), Allocator = Allocator())
+    -&gt; unordered_map&lt;Key, T, Hash, Pred, Allocator&gt;;
+[&hellip;]
+template&lt;class Key, class T, typename Allocator&gt;
+  unordered_map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, typename <i>see below</i>::size_type,
+                Allocator)
+    -&gt; unordered_map&lt;Key, T, hash&lt;Key&gt;, equal_to&lt;Key&gt;, Allocator&gt;;
+
+template&lt;class Key, class T, typename Allocator&gt;
+  unordered_map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Allocator)
+    -&gt; unordered_map&lt;Key, T, hash&lt;Key&gt;, equal_to&lt;Key&gt;, Allocator&gt;;
+
+template&lt;class Key, class T, class Hash, class Allocator&gt;
+  unordered_map(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, typename <i>see below</i>::size_type, Hash,
+                Allocator)
+    -&gt; unordered_map&lt;Key, T, Hash, equal_to&lt;Key&gt;, Allocator&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 21.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/unord.multimap.overview">[unord.multimap.overview]</a> p3, class template <tt>unordered_multimap</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Key, class T, class Hash = hash&lt;Key&gt;,
+         class Pred = equal_to&lt;Key&gt;, class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  unordered_multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;,
+                     typename <i>see below</i>::size_type = <i>see below</i>,
+                     Hash = Hash(), Pred = Pred(), Allocator = Allocator())
+    -&gt; unordered_multimap&lt;Key, T, Hash, Pred, Allocator&gt;;
+[&hellip;]
+template&lt;class Key, class T, typename Allocator&gt;
+  unordered_multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, typename <i>see below</i>::size_type,
+                     Allocator)
+    -&gt; unordered_multimap&lt;Key, T, hash&lt;Key&gt;, equal_to&lt;Key&gt;, Allocator&gt;;
+
+template&lt;class Key, class T, typename Allocator&gt;
+  unordered_multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, Allocator)
+    -> unordered_multimap&lt;Key, T, hash&lt;Key&gt;, equal_to&lt;Key&gt;, Allocator&gt;;
+
+template&lt;class Key, class T, class Hash, class Allocator&gt;
+  unordered_multimap(initializer_list&lt;pair&lt;<del>const</del> Key, T&gt;&gt;, typename <i>see below</i>::size_type,
+                     Hash, Allocator)
+    -&gt; unordered_multimap&lt;Key, T, Hash, equal_to&lt;Key&gt;, Allocator&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

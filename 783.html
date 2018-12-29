@@ -1,0 +1,112 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 783: thread::id reuse</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="783" href="lwg-defects.html#783">783.</a> <tt>thread::id</tt> reuse</h3>
+<p><b>Section:</b> 31.3.2.1 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.id">[thread.thread.id]</a> <b>Status:</b> <a href="lwg-active.html#CD1">CD1</a>
+ <b>Submitter:</b> Hans Boehm <b>Opened:</b> 2008-02-01 <b>Last modified:</b> 2016-01-28 10:19:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.thread.id">issues</a> in [thread.thread.id].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#CD1">CD1</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current working paper 
+(<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2008/n2497.html">N2497</a>,
+integrated just before Bellevue) is
+not completely clear whether a given <tt>thread::id</tt> value may be reused once
+a thread has exited and has been joined or detached.  Posix allows
+thread ids (<tt>pthread_t</tt> values) to be reused in this case.  Although it is
+not completely clear whether this originally was the right decision, it
+is clearly the established practice, and we believe it was always the
+intent of the C++ threads API to follow Posix and allow this.  Howard
+Hinnant's example implementation implicitly relies on allowing reuse
+of ids, since it uses Posix thread ids directly.
+</p>
+
+<p>
+It is important to be clear on this point, since it the reuse of thread
+ids often requires extra care in client code, which would not be
+necessary if thread ids were unique across all time.  For example, a
+hash table indexed by thread id may have to be careful not to associate
+data values from an old thread with a new one that happens to reuse the
+id.  Simply removing the old entry after joining a thread may not be
+sufficient, if it creates a visible window between the join and removal
+during which a new thread with the same id could have been created and
+added to the table.
+</p>
+
+<p><i>[
+post Bellevue Peter adds:
+]</i></p>
+
+
+<blockquote>
+<p>
+There is a real issue with <tt>thread::id</tt> reuse, but I urge the LWG to
+reconsider fixing this by disallowing reuse, rather than explicitly allowing
+it. Dealing with thread id reuse is an incredibly painful exercise that
+would just force the world to reimplement a non-conflicting <tt>thread::id</tt> over
+and over.
+</p>
+<p>
+In addition, it would be nice if a <tt>thread::id</tt> could be manipulated
+atomically in a lock-free manner, as motivated by the recursive lock
+example:
+</p>
+
+<p>
+<a href="http://www.decadent.org.uk/pipermail/cpp-threads/2006-August/001091.html">http://www.decadent.org.uk/pipermail/cpp-threads/2006-August/001091.html</a>
+</p>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Add a sentence to 31.3.2.1 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.id">[thread.thread.id]</a>/p1:
+</p>
+
+<blockquote>
+<p>
+An object of type <code>thread::id</code> provides
+a unique identifier for each thread of execution
+and a single distinct value for all thread objects
+that do not represent a thread of execution ([thread.threads.class]).
+Each thread of execution has a <code>thread::id</code>
+that is not equal to the <code>thread::id</code>
+of other threads of execution
+and that is not equal to
+the <code>thread::id</code> of <code>std::thread</code> objects
+that do not represent threads of execution.
+<ins>The library may reuse the value of a <code>thread::id</code> of a
+terminated thread that can no longer be joined.</ins>
+</p>
+</blockquote>
+
+
+
+
+
+</body>
+</html>
