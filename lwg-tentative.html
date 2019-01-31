@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-01-22 at 18:21:32 UTC</p>
+<p><p>Revised 2019-01-30 at 20:15:32 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="708" href="708">708.</a> Locales need to be per thread and updated for POSIX changes</h3>
@@ -2084,6 +2084,195 @@ struct nothrow_t { explicit nothrow_t() = default; };
 </li>
 </ol>
 
+
+
+
+
+<hr>
+<h3><a name="3178" href="3178">3178.</a> <tt>std::mismatch</tt> is missing an upper bound</h3>
+<p><b>Section:</b> 24.5.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2018-12-20 <b>Last modified:</b> 2019-01-26 14:10:54 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#mismatch">issues</a> in [mismatch].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following code:
+</p>
+<blockquote><pre>
+std::vector&lt;int&gt; v1 = {1, 2, 3, 4};
+std::vector&lt;int&gt; v2 = {1, 2, 3, 5};
+auto result = std::mismatch(v1.begin(), v1.begin() + 2, v2.begin(), v2.begin() + 2);
+</pre></blockquote>
+<p>
+The current wording of [mismatch] seems to require <tt>result</tt> to be <tt>{v1.begin() + 3, v2.begin() + 3}</tt>, because 3
+is the smallest integer <tt>n</tt> such that <tt>*(v1.begin() + n) != *(v2.begin + n)</tt>. In other words, if there's a
+mismatch that's reachable from <tt>first1</tt> and <tt>first2</tt>, then <tt>std::mismatch</tt> must find and return it,
+even if it's beyond the end iterators passed by the user.
+<p/>
+This is doubly unimplementable: the library has no way of knowing that it's safe to keep going past the end of the user-supplied
+range, and even if it could, doing so would violate the complexity requirements. More importantly, it would violate the
+fundamental convention that STL algorithms operate on user-supplied ranges, not on the underlying containers.
+</p>
+
+<p><i>[2019-01-26 Priority to 0 and Status to Tentatively Ready after discussions on the reflector]</i></p>
+
+<p>
+During that reflector discussion several contributers argued in favour for changing the current wording in
+24.5.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> p3 from "smallest integer" to "smallest <ins>nonnegative</ins> integer". This minor 
+wording delta has also been added to the original proposed wording.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
+
+<ol>
+<li><p>Change 24.5.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator1, class InputIterator2&gt;
+  constexpr pair&lt;InputIterator1, InputIterator2&gt;
+    mismatch(InputIterator1 first1, InputIterator1 last1,
+             InputIterator2 first2);
+[&hellip;]
+namespace ranges {
+  template&lt;InputIterator I1, Sentinel&lt;I1&gt; S1, InputIterator I2, Sentinel&lt;I2&gt; S2,
+           class Proj1 = identity, class Proj2 = identity,
+           IndirectRelation&lt;projected&lt;I1, Proj1&gt;,
+           projected&lt;I2, Proj2&gt;&gt; Pred = ranges::equal_to&lt;&gt;&gt;
+    constexpr mismatch_result&lt;I1, I2>
+      mismatch(I1 first1, S1 last1, I2 first2, S2 last2, Pred pred = {},
+               Proj1 proj1 = {}, Proj2 proj2 = {});
+  template&lt;InputRange R1, InputRange R2,
+           class Proj1 = identity, class Proj2 = identity,
+           IndirectRelation&lt;projected&lt;iterator_t&lt;R1&gt;, Proj1&gt;,
+           projected&lt;iterator_t&lt;R2&gt;, Proj2&gt;&gt; Pred = ranges::equal_to&lt;&gt;&gt;
+    constexpr mismatch_result&lt;safe_iterator_t&lt;R1&gt;, safe_iterator_t&lt;R2&gt;&gt;
+      mismatch(R1&amp;&amp; r1, R2&amp;&amp; r2, Pred pred = {},
+               Proj1 proj1 = {}, Proj2 proj2 = {});
+}
+</pre>
+<blockquote>
+<p>
+-1- Let <tt>last2</tt> be <tt>first2 + (last1 - first1)</tt> for the overloads with no parameter <tt>last2</tt> or <tt>r2</tt>.
+<p/>
+-2- Let <tt><i>E</i></tt> be:
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>!(*(first1 + n) == *(first2 + n))</tt> for the overloads with no parameter <tt>pred</tt>,</p></li>
+<li><p>(2.2) &mdash; <tt>pred(*(first1 + n), *(first2 + n)) == false</tt> for the overloads with a parameter <tt>pred</tt> and
+no parameter <tt>proj1</tt>,</p></li>
+<li><p>(2.3) &mdash; <tt>!invoke(pred, invoke(proj1, *(first1 + n)), invoke(proj2, *(first2 + n)))</tt> for the overloads with
+both parameters <tt>pred</tt> and <tt>proj1</tt>.</p></li>
+</ol>
+<ins>-?- Let <tt><i>N</i></tt> be <tt>min(last1 - first1, last2 - first2)</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> <tt>{ first1 + n, first2 + n }</tt>, where <tt>n</tt> is the smallest <ins>nonnegative</ins> integer such 
+that <tt><i>E</i></tt> holds, or <tt><del>min(last1 - first1, last2 - first2)</del><ins><i>N</i></ins></tt> if no such integer 
+<ins>less than <tt><i>N</i></tt></ins> exists.
+<p/>
+-4- <i>Complexity:</i> At most <tt><del>min(last1 - first1, last2 - first2)</del><ins><i>N</i></ins></tt> applications of the
+corresponding predicate and any projections.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3184" href="3184">3184.</a> Inconsistencies in <tt>bind_front</tt> wording</h3>
+<p><b>Section:</b> 19.14.13 <a href="https://timsong-cpp.github.io/cppwp/func.bind_front">[func.bind_front]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-01-16 <b>Last modified:</b> 2019-01-26 14:09:17 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+During the merge of the <a href="https://wg21.link/p0356r5">P0356R5</a>, following "oddities" of the new wording was pointed 
+out by Jens Maurer:
+<ol>
+<li><p>The initialization of the state entities of the <tt>bind_front/not_fn</tt> is specified using formulation "<tt>xx</tt> 
+initialized with the <i>initializer</i> <tt>(yyy)</tt>". Per author knowledge this specification is correct, however 
+inconsistent with the other parts of the of the standard, that direct-non-list-initialization term in such context.</p></li>
+<li><p>The specification of the <i>Mandates</i> element for <tt>bind_front</tt> uses <tt>conjunction_v</tt> to specify 
+conjunction of the requirements, while corresponding element of the <tt>not_fn</tt> specifies it using <tt>&amp;&amp;</tt>. 
+As <tt>conjuction_v</tt> implies order of evaluation that is not necessary in this case (for every valid program, all 
+provided traits must evaluate to true), it may be replaced with usage of fold expression with operator <tt>&amp;&amp;</tt>.</p></li>
+</ol>
+</p>
+
+<p><i>[2019-01-26 Priority to 0 and Status to Tentatively Ready after five positive votes on the reflector.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
+
+<ol>
+<li><p>Change 19.14.12 <a href="https://timsong-cpp.github.io/cppwp/func.not_fn">[func.not_fn]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class F&gt; <i>unspecified</i> not_fn(F&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-1- In the text that follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; [&hellip;]</p></li>
+<li><p>(1.2) &mdash; [&hellip;]</p></li>
+<li><p>(1.3) &mdash; <tt>fd</tt> is the target object of <tt>g</tt> (19.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.def">[func.def]</a>) of type 
+<tt>FD</tt> <ins>direct-non-list-initialized with</ins><del>initialized with the <i>initializer</i></del> 
+<tt><del>(</del>std::forward&lt;F&gt;(f)<del>)</del></tt><del> (9.3 <a href="https://timsong-cpp.github.io/cppwp/dcl.init">[dcl.init]</a>)</del>,</p></li>
+<li><p>(1.4) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 19.14.13 <a href="https://timsong-cpp.github.io/cppwp/func.bind_front">[func.bind_front]</a> as indicated:</p>
+<blockquote>
+<pre>
+template &lt;class F, class... Args&gt;
+<i>unspecified</i> bind_front(F&amp;&amp; f, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- In the text that follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; [&hellip;]</p></li>
+<li><p>(1.2) &mdash; [&hellip;]</p></li>
+<li><p>(1.3) &mdash; <tt>fd</tt> is the target object of <tt>g</tt> (19.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.def">[func.def]</a>) of type 
+<tt>FD</tt> <ins>direct-non-list-initialized with</ins><del>initialized with the <i>initializer</i></del> 
+<tt><del>(</del>std::forward&lt;F&gt;(f)<del>)</del></tt><del> (9.3 <a href="https://timsong-cpp.github.io/cppwp/dcl.init">[dcl.init]</a>)</del>,</p></li>
+<li><p>(1.4) &mdash; [&hellip;]</p></li>
+<li><p>(1.5) &mdash; <tt>bound_args</tt> is a pack of bound argument entities of <tt>g</tt> (19.14.2 <a href="https://timsong-cpp.github.io/cppwp/func.def">[func.def]</a>) 
+of types <tt>BoundArgs...</tt>, <ins>direct-non-list-initialized with</ins><del>initialized with 
+<i>initializer</i>s </del><tt><del>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...</tt>, 
+respectively, and</p></li>
+<li><p>(1.6) &mdash; [&hellip;]</p></li>
+</ol>
+<p>
+-2- <i>Mandates:</i>
+</p>
+<blockquote><pre>
+<ins>is_constructible_v&lt;FD, F&gt; &amp;&amp; is_move_constructible_v&lt;FD&gt; &amp;&amp; 
+(is_constructible_v&lt;BoundArgs, Args&gt; &amp;&amp; ...) &amp;&amp; (is_move_constructible_v&lt;BoundArgs&gt; &amp;&amp; ...)</ins><del>conjunction_v&lt;is_constructible&lt;FD, F&gt;, is_move_constructible&lt;FD&gt;,
+is_constructible&lt;BoundArgs, Args&gt;..., is_move_constructible&lt;BoundArgs&gt;...&gt;</del>
+</pre></blockquote>
+<p>
+shall be true.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
