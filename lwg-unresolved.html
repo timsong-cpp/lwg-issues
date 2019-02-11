@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-02-03 at 12:20:33 UTC</p>
+<p><p>Revised 2019-02-10 at 20:18:49 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -30389,7 +30389,7 @@ template<ins>, provided that the added declaration depends on at least one progr
 <hr>
 <h3><a name="3185" href="3185">3185.</a> Uses-allocator construction functions missing <tt>constexpr</tt> and <tt>noexcept</tt></h3>
 <p><b>Section:</b> 19.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2019-01-29 <b>Last modified:</b> 2019-01-30 20:15:32 UTC</p>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2019-01-29 <b>Last modified:</b> 2019-02-06 19:48:17 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -30399,9 +30399,11 @@ The uses-allocator construction functions introduced into WP when <a href="https
 was accepted (Nov 2018, San Diego) should all be <tt>constexpr</tt>. All but two should also be <tt>noexcept</tt>. 
 Getting this right is an important part of correctly adding <tt>constexpr</tt> memory allocation into the WP.
 <p/>
-The minimal change is to add the <tt>constexpr</tt> to all of the new functions and <tt>noexcept</tt> to all 
+The minimal change is to add the <tt>constexpr</tt> to all of the new functions except 
+<tt>uninitialized_construct_using_allocator</tt> and <tt>noexcept</tt> to all 
 of the overloads of <tt>uses_allocator_construction_args</tt>. Optionally, we could consider adding conditional 
-<tt>noexcept</tt> to the remaining two functions.
+<tt>noexcept</tt> to the remaining two functions. If <a href="https://wg21.link/p0784">p0784</a> is accepted, 
+then also add <tt>constexpr</tt> to <tt>uninitialized_construct_using_allocator</tt>.
 </p>
 
 
@@ -30430,7 +30432,7 @@ template &lt;class T, class Alloc, class U, class V&gt;
 template &lt;class T, class Alloc, class... Args&gt;
 <ins>constexpr</ins> T make_obj_using_allocator(const Alloc&amp; alloc, Args&amp;&amp;... args);
 template &lt;class T, class Alloc, class... Args&gt;
-<ins>constexpr</ins> T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
+T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
 [&hellip;]
 </pre>
 </blockquote>
@@ -30504,10 +30506,307 @@ template &lt;class T, class Alloc, class... Args&gt;
 </blockquote>
 <pre>
 template &lt;class T, class Alloc, class... Args&gt;
-  <ins>constexpr</ins> T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
+  T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
 </pre>
 <blockquote>
 <p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3186" href="3186">3186.</a> <tt>ranges</tt> removal, partition, and <tt>partial_sort_copy</tt> algorithms discard useful information</h3>
+<p><b>Section:</b> 24.6.8 <a href="https://timsong-cpp.github.io/cppwp/alg.remove">[alg.remove]</a>, 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a>, 24.7.1.4 <a href="https://timsong-cpp.github.io/cppwp/partial.sort.copy">[partial.sort.copy]</a>, 24.7.4 <a href="https://timsong-cpp.github.io/cppwp/alg.partitions">[alg.partitions]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-02-05 <b>Last modified:</b> 2019-02-10 20:18:49 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.remove">issues</a> in [alg.remove].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This is direct follow-up on the LWG issue <a href="3169">3169</a>, that proposed to change additional algorithms that drop the 
+iterator value equal to sentinel, that needs to be always computed. These set include removal (<code>remove</code>, 
+<code>remove_if</code>, and <code>unique</code>), partition (<code>partition</code>, <code>stable_partition</code>), 
+and <code>partial_sort_copy</code>.
+<p/>
+For removal algorithms, the end of "not-erased" objects, and the "end-of-range" iterator forms a valid range of objects 
+with unspecified value (that can be overwritten), thus we propose to return <code>subrange</code>.
+<p/>
+For partition algorithms, the end of "true" object, and the "end-of-range" iterator forms a valid range of objects for 
+which predicate returns "false", thus we propose to return <code>subrange</code>.
+<p/>
+For <tt>partial_sort_copy</tt> we propose to return <code>partial_sort_copy_result</code> as an alias to 
+<code>copy_result</code> to match other copy algorithms.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4800">N4800</a>.</p>
+
+<ol>
+<li><p>Change header <tt>&lt;algorithm&gt;</tt> synopsis, 24.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+<i>//24.6.8 <a href="https://timsong-cpp.github.io/cppwp/alg.remove">[alg.remove]</a>, remove</i>
+[&hellip;]
+namespace ranges {
+template&lt;Permutable I, Sentinel&lt;I&gt; S, class T, class Proj = identity&gt;
+  requires IndirectRelation&lt;ranges::equal_to&lt;&gt;, projected&lt;I, Proj&gt;, const T*&gt;
+  constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> remove(I first, S last, const T&amp; value, Proj proj = {});
+template&lt;ForwardRange R, class T, class Proj = identity&gt;
+  requires Permutable&lt;iterator_t&lt;R&gt;&gt; &amp;&amp;
+           IndirectRelation&lt;ranges::equal_to&lt;&gt;, projected&lt;iterator_t&lt;R&gt;, Proj&gt;, const T*&gt;
+  constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+    remove(R&amp;&amp; r, const T&amp; value, Proj proj = {});
+template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+         IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+  constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> remove_if(I first, S last, Pred pred, Proj proj = {});
+template&lt;ForwardRange R, class Proj = identity,
+         IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+  requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+  constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+    remove_if(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+[&hellip;]
+<i>// 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a>, unique</i>
+[&hellip;]
+namespace ranges {
+  template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectRelation&lt;projected&lt;I, Proj&gt;&gt; C = ranges::equal_to&lt;&gt;&gt;
+    constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> unique(I first, S last, C comp = {}, Proj proj = {});
+  template&lt;ForwardRange R, class Proj = identity,
+           IndirectRelation&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; C = ranges::equal_to&lt;&gt;&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+    constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+      unique(R&amp;&amp; r, C comp = {}, Proj proj = {});
+}
+[&hellip;]
+<i>// 24.7.1 <a href="https://timsong-cpp.github.io/cppwp/alg.sort">[alg.sort]</a>, sorting</i>
+[&hellip;]
+namespace ranges {
+  <ins>template&lt;class I, class O&gt; using partial_sort_copy_result = copy_result&lt;I, O&gt;;</ins>
+
+  template&lt;InputIterator I1, Sentinel&lt;I1&gt; S1, RandomAccessIterator I2, Sentinel&lt;I2&gt; S2,
+           class Comp = ranges::less&lt;&gt;, class Proj1 = identity, class Proj2 = identity&gt;
+    requires IndirectlyCopyable&lt;I1, I2&gt; &amp;&amp; Sortable&lt;I2, Comp, Proj2&gt; &amp;&amp;
+             IndirectStrictWeakOrder&lt;Comp, projected&lt;I1, Proj1&gt;, projected&lt;I2, Proj2&gt;&gt;
+    constexpr <ins>partial_sort_copy_result&lt;I1, </ins>I2<ins>&gt;</ins>
+      partial_sort_copy(I1 first, S1 last, I2 result_first, S2 result_last,
+                        Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+  template&lt;InputRange R1, RandomAccessRange R2, class Comp = ranges::less&lt;&gt;,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires IndirectlyCopyable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;&gt; &amp;&amp;
+             Sortable&lt;iterator_t&lt;R2&gt;, Comp, Proj2&gt; &amp;&amp;
+             IndirectStrictWeakOrder&lt;Comp, projected&lt;iterator_t&lt;R1&gt;, Proj1&gt;,
+                                     projected&lt;iterator_t&lt;R2&gt;, Proj2&gt;&gt;
+    constexpr <ins>partial_sort_copy_result&lt;safe_iterator_t&lt;R1&gt;, </ins>safe_iterator_t&lt;R2&gt;<ins>&gt;</ins>
+      partial_sort_copy(R1&amp;&amp; r, R2&amp;&amp; result_r, Comp comp = {},
+                        Proj1 proj1 = {}, Proj2 proj2 = {});
+}
+[&hellip;]
+<i>// 24.7.4 <a href="https://timsong-cpp.github.io/cppwp/alg.partitions">[alg.partitions]</a>, partitions</i>
+[&hellip;]
+namespace ranges {
+  template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+    constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins>
+      partition(I first, S last, Pred pred, Proj proj = {});
+  template&lt;ForwardRange R, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+    constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+      partition(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+[&hellip;]
+namespace ranges {
+  template&lt;BidirectionalIterator I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;I&gt;
+      <ins>subrange&lt;</ins>I<ins>&gt;</ins> stable_partition(I first, S last, Pred pred, Proj proj = {});
+  template&lt;BidirectionalRange R, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+      safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt; stable_partition(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Change 24.6.8 <a href="https://timsong-cpp.github.io/cppwp/alg.remove">[alg.remove]</a> as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+template&lt;Permutable I, Sentinel&lt;I&gt; S, class T, class Proj = identity&gt;
+  requires IndirectRelation&lt;ranges::equal_to&lt;&gt;, projected&lt;I, Proj&gt;, const T*&gt;
+  constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> remove(I first, S last, const T&amp; value, Proj proj = {});
+template&lt;ForwardRange R, class T, class Proj = identity&gt;
+  requires Permutable&lt;iterator_t&lt;R&gt;&gt; &amp;&amp;
+           IndirectRelation&lt;ranges::equal_to&lt;&gt;, projected&lt;iterator_t&lt;R&gt;, Proj&gt;, const T*&gt;
+  constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+    remove(R&amp;&amp; r, const T&amp; value, Proj proj = {});
+template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+         IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+  constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> remove_if(I first, S last, Pred pred, Proj proj = {});
+template&lt;ForwardRange R, class Proj = identity,
+         IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+  requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+  constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+    remove_if(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-4- <i>Returns:</i> <ins>Let <code><i>e</i></code> be t</ins><del>T</del>he end of the resulting range. <ins>Returns:</ins>
+<ol style="list-style-type: none">
+<li><p><ins>(4.?) &mdash; <code><i>e</i></code> for the overloads in namespace <tt>std</tt>, or</ins></p></li>
+<li><p><ins>(4.?) &mdash; <tt>{<i>e</i>, last}</tt> for the overloads in namespace <tt>ranges</tt>.</ins></p></li>
+</ol>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/alg.unique">[alg.unique]</a> as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectRelation&lt;projected&lt;I, Proj&gt;&gt; C = ranges::equal_to&lt;&gt;&gt;
+    constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins> unique(I first, S last, C comp = {}, Proj proj = {});
+  template&lt;ForwardRange R, class Proj = identity,
+           IndirectRelation&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; C = ranges::equal_to&lt;&gt;&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+    constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+      unique(R&amp;&amp; r, C comp = {}, Proj proj = {});
+}
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-4- <i>Returns:</i> <ins>Let <code><i>e</i></code> be t</ins><del>T</del>he end of the resulting range. <ins>Returns:</ins>
+<ol style="list-style-type: none">
+<li><p><ins>(4.?) &mdash; <code><i>e</i></code> for the overloads in namespace <tt>std</tt>, or</ins></p></li>
+<li><p><ins>(4.?) &mdash; <tt>{<i>e</i>, last}</tt> for the overloads in namespace <tt>ranges</tt>.</ins></p></li>
+</ol>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 24.7.1.4 <a href="https://timsong-cpp.github.io/cppwp/partial.sort.copy">[partial.sort.copy]</a> as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  <ins>template&lt;class I, class O&gt; using partial_sort_copy_result = copy_result&lt;I, O&gt;;</ins>
+
+  template&lt;InputIterator I1, Sentinel&lt;I1&gt; S1, RandomAccessIterator I2, Sentinel&lt;I2&gt; S2,
+           class Comp = ranges::less&lt;&gt;, class Proj1 = identity, class Proj2 = identity&gt;
+    requires IndirectlyCopyable&lt;I1, I2&gt; &amp;&amp; Sortable&lt;I2, Comp, Proj2&gt; &amp;&amp;
+             IndirectStrictWeakOrder&lt;Comp, projected&lt;I1, Proj1&gt;, projected&lt;I2, Proj2&gt;&gt;
+    constexpr <ins>partial_sort_copy_result&lt;I1, </ins>I2<ins>&gt;</ins>
+      partial_sort_copy(I1 first, S1 last, I2 result_first, S2 result_last,
+                        Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+  template&lt;InputRange R1, RandomAccessRange R2, class Comp = ranges::less&lt;&gt;,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires IndirectlyCopyable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;&gt; &amp;&amp;
+             Sortable&lt;iterator_t&lt;R2&gt;, Comp, Proj2&gt; &amp;&amp;
+             IndirectStrictWeakOrder&lt;Comp, projected&lt;iterator_t&lt;R1&gt;, Proj1&gt;,
+                                     projected&lt;iterator_t&lt;R2&gt;, Proj2&gt;&gt;
+    constexpr <ins>partial_sort_copy_result&lt;safe_iterator_t&lt;R1&gt;, </ins>safe_iterator_t&lt;R2&gt;<ins>&gt;</ins>
+      partial_sort_copy(R1&amp;&amp; r, R2&amp;&amp; result_r, Comp comp = {},
+                        Proj1 proj1 = {}, Proj2 proj2 = {});
+}
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-4- <i>Returns:</i> 
+<ol style="list-style-type: none">
+<li><p><ins>(4.?) &mdash;</ins> <tt>result_first + <i>N</i></tt> <ins>for the overloads in namespace <tt>std</tt>, or</ins></p></li>
+<li><p><ins>(4.?) &mdash; <tt>{last, result_first + <i>N</i>}</tt> for the overloads in namespace <tt>ranges</tt>.</ins></p></li>
+</ol>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Change 24.7.4 <a href="https://timsong-cpp.github.io/cppwp/alg.partitions">[alg.partitions]</a> as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  template&lt;Permutable I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+    constexpr <ins>subrange&lt;</ins>I<ins>&gt;</ins>
+      partition(I first, S last, Pred pred, Proj proj = {});
+  template&lt;ForwardRange R, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+    constexpr safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt;
+      partition(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- <i>Returns:</i> <ins>Let <code>i</code> be a</ins><del>A</del>n iterator <del><tt>i</tt></del> such that <tt><i>E</i>(*j)</tt> is 
+<tt>true</tt> for every iterator <tt>j</tt> in <tt>[first, i)</tt> and <tt>false</tt> for every iterator <tt>j</tt> in 
+<tt>[i, last)</tt>. <ins>Returns:</ins>
+<ol style="list-style-type: none">
+<li><p><ins>(7.?) &mdash; <code>i</code> for the overloads in namespace <tt>std</tt>, or</ins></p></li>
+<li><p><ins>(7.?) &mdash; <tt>{i, last}</tt> for the overloads in namespace <tt>ranges</tt>.</ins></p></li>
+</ol>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  template&lt;BidirectionalIterator I, Sentinel&lt;I&gt; S, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;I&gt;
+      <ins>subrange&lt;</ins>I<ins>&gt;</ins> stable_partition(I first, S last, Pred pred, Proj proj = {});
+  template&lt;BidirectionalRange R, class Proj = identity,
+           IndirectUnaryPredicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+    requires Permutable&lt;iterator_t&lt;R&gt;&gt;
+      safe_<ins>subrange</ins><del>iterator</del>_t&lt;R&gt; stable_partition(R&amp;&amp; r, Pred pred, Proj proj = {});
+}
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-11- <i>Returns:</i> <ins>Let <code>i</code> be a</ins><del>A</del>n iterator <del><tt>i</tt></del> such that for every iterator 
+<tt>j</tt> in <tt>[first, i)</tt>, <tt><i>E</i>(*j)</tt> is <tt>true</tt>, and for every iterator <tt>j</tt> in the range 
+<tt>[i, last)</tt>, <tt><i>E</i>(*j)</tt> is <tt>false</tt><del>,</del><ins>. Returns:</ins>
+<ol style="list-style-type: none">
+<li><p><ins>(11.?) &mdash; <code>i</code> for the overloads in namespace <tt>std</tt>, or</ins></p></li>
+<li><p><ins>(11.?) &mdash; <tt>{i, last}</tt> for the overloads in namespace <tt>ranges</tt>.</ins></p></li>
+</ol>
+<p/>
 [&hellip;]
 </p>
 </blockquote>
