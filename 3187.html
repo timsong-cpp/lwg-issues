@@ -1,0 +1,112 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3187: P0591R4 reverted DR 2586 fixes to scoped_allocator_adaptor::construct()</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3187" href="lwg-active.html#3187">3187.</a> <a href="https://wg21.link/p0591r4">P0591R4</a> reverted DR 2586 fixes to <tt>scoped_allocator_adaptor::construct()</tt></h3>
+<p><b>Section:</b> 19.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2019-02-14 <b>Last modified:</b> 2019-02-14 20:29:10 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="2586">2586</a> fixed the value category in the uses-allocator checks done by <tt>scoped_allocator_adaptor</tt>. 
+When we made that use <tt>uses_allocator_construction_args</tt> we reintroduced the problem, because that 
+function has the same bug.
+</p>
+<blockquote><pre>
+#include &lt;memory&gt;
+
+struct X {
+  using allocator_type = std::allocator&lt;X&gt;;
+  X(std::allocator_arg_t, allocator_type&amp;&amp;) { }
+  X(const allocator_type&amp;) { }
+};
+
+int main() {
+  std::allocator&lt;X&gt; a;
+  std::make_obj_using_allocator&lt;X&gt;(a);
+}
+</pre></blockquote>
+<p>
+This will fail to compile, because <tt>uses_allocator_construction_args</tt> will check <tt>is_constructible</tt> 
+using an rvalue allocator, but then return <tt>tuple&lt;allocator_arg_t, const allocator&lt;X&gt;&amp;&gt;</tt> 
+containing an lvalue allocator. Those args cannot be used to construct an <tt>X</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4800">N4800</a>.</p>
+
+<ol>
+<li><p>Change 19.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Arguably the <tt>uses_allocator</tt> specialization should also use <tt>const Alloc&amp;</tt> 
+but in practice that doesn't matter, except for even more contrived cases than the very contrived example above.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template &lt;class T, class Alloc, class... Args&gt;
+  auto uses_allocator_construction_args(const Alloc&amp; alloc, Args&amp;&amp;... args) -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-5- <i>Returns:</i> A <tt>tuple</tt> value determined as follows:
+<ol>
+<li><p>(5.1) &mdash; If <tt>uses_allocator_v&lt;T, Alloc&gt;</tt> is <tt>false</tt> and 
+<tt>is_constructible_v&lt;T, Args...&gt;</tt> is <tt>true</tt>, return 
+<tt>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</tt>.</p></li>
+<li><p>(5.2) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T, Alloc&gt;</tt> is <tt>true</tt> and <tt>is_constructible_v&lt;T, 
+allocator_arg_t, <ins>const</ins> Alloc<ins>&amp;</ins>, Args...&gt;</tt> is <tt>true</tt>, return
+<blockquote><pre>
+tuple&lt;allocator_arg_t, const Alloc&amp;, Args&amp;&amp;...&gt;(
+  allocator_arg, alloc, std::forward&lt;Args&gt;(args)...)
+</pre></blockquote>
+</p></li>
+<li><p>(5.3) &mdash; Otherwise, if <tt>uses_allocator_v&lt;T, Alloc&gt;</tt> is <tt>true</tt> and <tt>is_constructible_v&lt;T, 
+Args..., <ins>const</ins> Alloc<ins>&amp;</ins>&gt;</tt> is <tt>true</tt>, return 
+<tt>forward_as_tuple(std::forward&lt;Args&gt;(args)..., alloc)</tt>.</p></li>
+<li><p>(5.4) &mdash; Otherwise, the program is ill-formed.</p></li>
+</ol>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
