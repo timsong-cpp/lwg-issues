@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3192: &sect;[allocator.uses.construction] functions misbehave for const types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3192" href="lwg-active.html#3192">3192.</a> &sect;[allocator.uses.construction] functions misbehave for <tt>const</tt> types</h3>
+<p><b>Section:</b> 19.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2019-02-28 <b>Last modified:</b> 2019-03-04 17:08:09 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The new functions added by <a href="https://wg21.link/p0591r4">P0591R4</a> misbehave for <i>cv</i>-qualified types. 
+A specialization <tt>std::uses_allocator&lt;X, Alloc&gt;</tt> will not match <tt>const X</tt>, so 
+<tt>std::uses_allocator_construction_args&lt;const X&gt;</tt> will return a different result from 
+<tt>std::uses_allocator_construction_args&lt;X&gt;</tt>. It makes no sense to construct <tt>X</tt> and <tt>const X</tt> 
+differently, either the type wants to use an allocator or it doesn't. I think 
+<tt>std::uses_allocator_construction_args&lt;T&gt;</tt> should remove <i>cv</i>-qualifiers before checking 
+<tt>uses_allocator</tt>, so that it works consistently. 
+<p/>
+We could consider changing <tt>std::make_obj_using_allocator</tt> to also strip <i>cv</i>-qualifiers, but it's not 
+necessary as C++17 guaranteed elision works even for prvalues of <tt>const</tt> types. We only need to make the 
+construction args ignore <i>cv</i>-qualifiers. We don't want to make <i>cv</i>-qualified types ill-formed, because 
+that would require users of uses-allocator construction to strip <i>cv</i>-qualifiers before using these functions, 
+e.g. in cases like <tt>std::tuple&lt;const int&gt; t(allocator_arg, alloc, 1);</tt>
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4800">N4800</a>.</p>
+
+<ol>
+<li><p>Change 19.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T, class Alloc, class... Args&gt;
+  auto uses_allocator_construction_args(const Alloc&amp; alloc, Args&amp;&amp;... args) -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i> <tt>T</tt> is not a specialization of <tt>pair</tt>.
+<p/>
+-5- <i>Returns:</i> A <tt>tuple</tt> value determined as follows<ins>, where <tt>U</tt> denotes the type 
+<tt>remove_cv_t&lt;T&gt;</tt></ins>:
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; If <tt>uses_allocator_v&lt;<del>T</del><ins>U</ins>, Alloc&gt;</tt> is <tt>false</tt> and 
+<tt>is_constructible_v&lt;T, Args...&gt;</tt> is <tt>true</tt>, return 
+<tt>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</tt>.</p></li>
+<li><p>(5.2) &mdash; Otherwise, if <tt>uses_allocator_v&lt;<del>T</del><ins>U</ins>, Alloc&gt;</tt> is <tt>true</tt> and 
+<tt>is_constructible_v&lt;T, allocator_arg_t, Alloc, Args...&gt;</tt> is <tt>true</tt>, return</p>
+<blockquote><pre>
+tuple&lt;allocator_arg_t, const Alloc&amp;, Args&amp;&amp;...&gt;(
+  allocator_arg, alloc, std::forward&lt;Args&gt;(args)...)
+</pre></blockquote>
+</li>
+<li><p>(5.3) &mdash; Otherwise, if <tt>uses_allocator_v&lt;<del>T</del><ins>U</ins>, Alloc&gt;</tt> is <tt>true</tt> and 
+<tt>is_constructible_v&lt;T, Args..., Alloc&gt;</tt> is <tt>true</tt>, return 
+<tt>forward_as_tuple(std::forward&lt;Args&gt;(args)..., alloc)</tt>.</p></li>
+<li><p>(5.4) &mdash; Otherwise, the program is ill-formed.</p></li>
+</ol>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template &lt;class T, class Alloc, class Tuple1, class Tuple2&gt;
+  auto uses_allocator_construction_args(const Alloc&amp; alloc, piecewise_construct_t,
+                                        Tuple1&amp;&amp; x, Tuple2&amp;&amp; y) -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>.
+<p/>
+-7- <i>Effects:</i> For <tt>T</tt> specified as <ins>(possibly <tt>const</tt>)</ins> <tt>pair&lt;T1, T2&gt;</tt>, equivalent to:
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template &lt;class T, class Alloc, class... Args&gt;
+  T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-17- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return ::new(<del>static_cast&lt;void*&gt;</del><ins><i>voidify</i></ins>(<ins>*</ins>p))
+  T(make_obj_using_allocator&lt;T&gt;(alloc, std::forward&lt;Args&gt;(args)...));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
