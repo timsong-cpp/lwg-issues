@@ -3,7 +3,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Issue 3205: The name "Boolean" conflicts with Windows headers</title>
+<title>Issue 3205: decay_t in the new common_type fallback should be remove_cvref_t</title>
 <style type="text/css">
   p {text-align:justify}
   li {text-align:justify}
@@ -22,26 +22,146 @@
 </head>
 <body>
 <hr>
-<h3><a name="3205" href="lwg-active.html#3205">3205.</a> The name "<tt>Boolean</tt>" conflicts with Windows headers</h3>
-<p><b>Section:</b> 18.5.2 <a href="https://timsong-cpp.github.io/cppwp/concept.boolean">[concept.boolean]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-05-10 <b>Last modified:</b> 2019-05-11 16:02:59 UTC</p>
+<h3><a name="3205" href="lwg-active.html#3205">3205.</a> <tt>decay_t</tt> in the new <tt>common_type</tt> fallback should be <tt>remove_cvref_t</tt></h3>
+<p><b>Section:</b> 20.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-05-12 <b>Last modified:</b> 2019-05-20 17:01:19 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.trans.other">active issues</a> in [meta.trans.other].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.trans.other">issues</a> in [meta.trans.other].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The <tt>Boolean</tt> concept was recently added to the C++20 working draft. Unfortunately, there are 
-Windows platform headers that use the name "<tt>Boolean</tt>" in the global namespace. Programs that import 
-namespace <tt>std</tt> into the global namespace via using directive &mdash; as is common in the 
-Windows codebase &mdash; will be broken by the C++20 Standard Library if this name is not changed.
+<a href="http://wg21.link/p0898r4">P0898R4</a> "The One Ranges Proposal" added a new fallback case to 
+the definition of <tt>common_type</tt> in 20.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a>, bullet 3.3.4:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Otherwise, if <tt><i>COND_RES</i>(<i>CREF</i>(D1), <i>CREF</i>(D2))</tt> denotes a type, let <tt>C</tt> 
+denote the type <tt>decay_t&lt;<i>COND_RES</i>(<i>CREF</i>(D1), <i>CREF</i>(D2))&gt;</tt>.
+</p>
+</blockquote>
+<p>
+Per para 3.3, <tt>D1</tt> and <tt>D2</tt> are decayed types. If both are <tt>void</tt>, bullet 3.3.4 
+is not reached. If either is an abominable function type or <tt>void</tt>, the <tt><i>COND_RES</i></tt> 
+type expression above is ill-formed and bullet 3.3.4 does not apply. In all cases in which the 
+<tt><i>COND_RES</i></tt> expression is well-formed, <tt>D1</tt> and <tt>D2</tt> denote <i>cv</i>-unqualified 
+non-array object types. Given that fact, (1) <tt><i>CREF</i>(D1)</tt> and <tt><i>CREF</i>(D2)</tt> 
+are equivalent to <tt>const D1&amp;</tt> and <tt>const D2&amp;</tt>, respectively, and (2) the 
+<tt><i>COND_RES</i></tt> expression is equivalent to <tt>decltype(false ? 
+declval&lt;const D1&amp;&gt;() : declval&lt;const D1&amp;&gt;())</tt>, i.e., the second and third 
+operands of the conditional operator are lvalues of type <tt>const D1</tt> and <tt>const D2</tt>, respectively.
 <p/>
-Daniel:
+[expr.cond]/3 cannot apply since the operands are not glvalue bit-fields.
 <p/>
-This issue was intensively discussed on the <a href="http://lists.isocpp.org/lib/2019/05/index.php">LWG reflector</a>.
+If <tt>D1</tt> and <tt>D2</tt> are the same type, [expr.cond]/4 does not apply. If <tt>D1</tt> and 
+<tt>D2</tt> are different types, there are a few cases to consider:
+</p>
+<ol>
+<li><p>If [expr.cond]/4.1 applies, one operand is converted into an lvalue reference to the type of the other, 
+i.e., both resulting operands are lvalues of type either <tt>const D1</tt> or <tt>const D2</tt>.</p></li>
+<li><p>[expr.cond]/4.2 cannot apply since neither operand is an xvalue.</p></li>
+<li><p>[expr.cond]/4.3.1 cannot apply since it would imply that the operands have the same type.</p></li>
+<li><p>If [expr.cond]/4.3.2 applies &mdash; if either <tt>D1</tt> or <tt>D2</tt> is a base class of the 
+other &mdash; again the resulting operands are lvalues of type either <tt>const D1</tt> or <tt>const D2</tt>.</p></li>
+<li><p>If [expr.cond]/4.3.3 applies, the either the <tt>const D1&amp;</tt> operand converts to 
+<tt>const D2</tt> or the <tt>const D2&amp;</tt> operand converts to <tt>const D1</tt>.</p></li>
+<li><p>If none of the sub-bullets in [expr.cond]/4 applies, the operands are left unchanged.</p></li>
+</ol>
+<p>
+[expr.cond]/5 applies if the operands initially had the same type, or in cases 1 and 4 above. The 
+conditional expression is an lvalue of type <tt>const D1</tt> or <tt>const D2</tt>, and the 
+<tt><i>COND_RES</i></tt> expression yields <tt>const D1&amp;</tt> or <tt>const D2&amp;</tt>.
+<p/>
+Only cases 5 and 6 reach [expr.cond]/6. This paragraph performs overload resolution, which may result 
+in converting both operands to the same non-class type to invoke a builtin conditional operator "overload". 
+<p/>
+[expr.cond]/7 applies standard conversions including array-to-pointer and function-to-pointer conversion to the operands. Consequently, the operands are once more "decayed" if [expr.cond]/6 converted them to an array or function type. Again case-by-case:
+</p>
+<ol>
+<li><p>[expr.cond]/7.1 applies if the operands now have the same type, which is the type of the conditional 
+expression.</p></li>
+<li><p>[expr.cond]/7.2 applies if the operands have arithmetic or enumeration type; the conditional expression yields the result of applying the usual arithmetic conversions.</p></li>
+<li><p>[expr.cond]/7.3 applies if the operands have pointer type; the conditional expression yields their composite pointer type.</p></li>
+<li><p>[expr.cond]/7.4 applies if the operands have pointer-to-member type; the conditional expression applies some more standard conversions and yields their composite pointer type.</p></li>
+<li><p>[expr.cond]/7.5 applies if one operand has type <tt>nullptr_t</tt> and the other is either a null 
+pointer constant or has type <tt>nullptr_t</tt>; the conditional expression yields <tt>nullptr_t</tt>.</p></li>
+</ol>
+<p>
+In every case above, the conditional expression is either ill-formed, an lvalue of type <tt>const D1</tt> or 
+<tt>const D2</tt>, or a prvalue of a non-array non-function type. Consequently the <tt><i>COND_RES</i></tt> 
+type expression always yields a non-array non-function type, for which <tt>decay_t</tt> and <tt>remove_cvref_t</tt> 
+are equivalent. We can therefore replace <tt><i>COND_RES</i>(<i>CREF</i>(D1), <i>CREF</i>(D2))</tt> in
+[meta.trans.other]/3.3.4 with <tt>decltype(false ? declval&lt;const D1&amp;&gt;() : 
+declval&lt;const D2&amp;&gt;())</tt>, and replace the usage of <tt>decay_t</tt> with <tt>remove_cvref_t</tt>.
+<p/>
+Furthermore, there are now quite a few different cases describing the behavior of <tt>common_type</tt>. 
+It's not clear that <tt>common_type&lt;T...&gt;::type</tt> is always a decayed type without in-depth analysis. 
+We should non-normatively clarify that fact.
 </p>
 
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4810">N4810</a>.</p>
+
+<ol>
+<li><p>Modify 20.15.7.6 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.other">[meta.trans.other]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p><del>(2.1) &mdash; <tt><i>CREF</i>(A)</tt> be 
+<tt>add_lvalue_reference_t&lt;const remove_reference_t&lt;A&gt;&gt;</tt>,</del></p></li>
+<li><p>(2.2) &mdash; [&hellip;]</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(2.9) &mdash; [&hellip;]</p></li>
+</ol>
+<p>
+If any of the types computed above is ill-formed, then <tt><i>COMMON_REF</i>(A, B)</tt> is ill-formed.
+<p/>
+-3- Note A: For the <tt>common_type</tt> trait applied to a template parameter pack <tt>T</tt> of types, the member 
+<tt>type</tt> shall be either defined or not present as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; [&hellip;]</p></li>
+<li><p>(3.2) &mdash; [&hellip;]</p></li>
+<li><p>(3.3) &mdash; If <tt>sizeof...(T)</tt> is two, let the first and second types constituting <tt>T</tt> 
+be denoted by <tt>T1</tt> and <tt>T2</tt>, respectively, and let <tt>D1</tt> and <tt>D2</tt> denote the 
+same types as <tt>decay_t&lt;T1&gt;</tt> and <tt>decay_t&lt;T2&gt;</tt>, respectively.</p>
+<ol style="list-style-type: none">
+<li><p>(3.3.1) &mdash; [&hellip;]</p></li>
+<li><p>(3.3.2) &mdash; [&hellip;]</p></li>
+<li><p>(3.3.3) &mdash; Otherwise, if</p>
+<blockquote><pre>
+decay_t&lt;decltype(false ? declval&lt;D1&gt;() : declval&lt;D2&gt;())&gt;
+</pre></blockquote>
+<p>
+denotes a valid type, let <tt>C</tt> denote that type.
+</p>
+</li>
+<li><p>(3.3.4) &mdash; Otherwise, if <del><tt><i>COND_RES</i>(<i>CREF</i>(D1), <i>CREF</i>(D2))</tt></del></p>
+<blockquote><pre>
+<ins>remove_cvref_t&lt;decltype(false ? declval&lt;const D1&amp;&gt;() : declval&lt;const D2&amp;&gt;())&gt;</ins>
+</pre></blockquote>
+<p> 
+denotes a type, let <tt>C</tt> denote th<del>e</del><ins>at</ins> type 
+<del><tt>decay_t&lt;<i>COND_RES</i>(<i>CREF</i>(D1), <i>CREF</i>(D2))&gt;</tt></del>.</p></li>
+</ol>
+</li>
+<li><p>(3.4) &mdash; [&hellip;]</p></li>
+</ol>
+<p>
+<ins>[<i>Note:</i> Whenever the <i>qualified-id</i> <tt>common_type&lt;T...&gt;::type</tt> is valid, 
+it denotes the same type as <tt>decay_t&lt;common_type&lt;T...&gt;::type&gt;</tt>. &mdash; <i>end note</i>]</ins>
+<p/>
+-4- Note B: [&hellip;]
+</p>
+</blockquote>
+</li>
+
+</ol>
 
 
 

@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3023" href="lwg-active.html#3023">3023.</a> Clarify <i>unspecified</i> call wrappers</h3>
 <p><b>Section:</b> 20.14.15 <a href="https://timsong-cpp.github.io/cppwp/func.memfn">[func.memfn]</a>, 99 [func.not_fn], 20.14.14 <a href="https://timsong-cpp.github.io/cppwp/func.bind">[func.bind]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Detlef Vollmann <b>Opened:</b> 2017-10-07 <b>Last modified:</b> 2017-11-10 20:35:52 UTC</p>
+ <b>Submitter:</b> Detlef Vollmann <b>Opened:</b> 2017-10-07 <b>Last modified:</b> 2019-05-13 18:39:13 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#func.memfn">issues</a> in [func.memfn].</p>
@@ -61,8 +61,57 @@ However, the existence of this issue, shows that some library-wide
 clarification note would be welcomed.
 </p>
 
+<p><i>[2019-05-12; Tomasz comments]</i></p>
 
-<p><b>Proposed resolution:</b></p>
+<p>
+I have realized that this issue indicates an real problem with the
+usability of <tt>bind</tt> as the replacement of the <tt>binder1st/binder2nd</tt>.
+Currently it is not required that a binding functor of the same type with
+same argument, produces the same result, as the type of the call wrapper
+may depend on the <i>cv</i> ref qualifiers of arguments. For example we are
+not requiring that the types of <tt>f1, f2, f3, f4</tt> are the same (and actually
+they are not for clang):
+</p>
+<blockquote><pre>
+auto func = [](std::string) {};
+std::string s("foo");
+auto f1 = std::bind(func, s);
+auto f2 = std::bind(std::as_const(func), std::as_const(s));
+auto f3 = std::bind(func, std::string("bar"));
+auto f4 = std::bind(std::move(func), std::move(s));
+// online link: https://wandbox.org/permlink/dcXJaITMJCnBWt7R
+</pre></blockquote>
+<p>
+As a consequence, if the user creates a <tt>std::vector&lt;decltype(std::bind(func,
+std::string(), _2))&gt;</tt> (instead of <tt>std::vector&lt;std::binder1st&lt;FuncType,
+std::string&gt;&gt;</tt>) he may not be able to store the result of the binding <tt>func</tt> 
+with <tt>std::string</tt> instance, if an copy of <tt>std::string</tt> is made. That leads me
+to conclusion that this issue actually require wording change, to provide such 
+guarantee, and is materially different from LWG <a href="3015">3015</a>.
+<p/>
+During migration from <tt>std::bind1st/std::bind2nd</tt> (removed in C++17) to
+<tt>std::bind</tt>, the user may need to replace <tt>std::binder1st/std::binder2nd</tt>
+with an appropriate <tt>decltype</tt> of <tt>std::bind</tt> invocation. For example:
+</p>
+<blockquote><pre>
+FuncType func; std::string s;
+
+std::vector&lt;std::binder1st&lt;FuncType&gt;&gt; v;
+v.push_back(std::bind1st(func, s));
+v.push_back(std::bind1st(func, std::string("text")));
+needs to be replaced with:
+std::vector&lt;decltype(std::bind(func, s, _1))&gt; v;
+v.push_back(std::bind(func, s, _1));
+v.push_back(std::bind(func, std::string("text"), _1));
+</pre></blockquote>
+<p>
+but the last statement is not guaranteed to be well-formed.
+<p/>
+Therefore I would like to withdraw my previously suggested wording change.
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="http://wg21.link/n4700">N4700</a>.</p>
 
 <ol>
@@ -85,6 +134,11 @@ the return type depends only on the template arguments of the specialization. Gi
 </blockquote>
 </li>
 </ol>
+
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
 
 
 
