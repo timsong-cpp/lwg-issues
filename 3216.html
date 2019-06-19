@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3216: Rebinding the allocator before calling construct/destroy in allocate_shared</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3216" href="lwg-active.html#3216">3216.</a> Rebinding the allocator before calling <tt>construct</tt>/<tt>destroy</tt> in <tt>allocate_shared</tt></h3>
+<p><b>Section:</b> 20.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2019-06-11 <b>Last modified:</b> 2019-06-13 19:52:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared.create">active issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.create">issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The new <tt>allocate_shared</tt> wording says we need to rebind the allocator back to <tt>T</tt>'s 
+type before we can call <tt>construct</tt> or <tt>destroy</tt>, but this is suboptimal (might make 
+extra unnecessary allocator copies), and is inconsistent with the containers' behavior, which call 
+allocator <tt>construct</tt> on whatever <tt>T</tt> they want. (For example, 
+<tt>std::list&lt;T, alloc&lt;T&gt;&gt;</tt> rebinds to <tt>alloc&lt;_ListNode&lt;T&gt;&gt;</tt>, 
+but calls <tt>construct(T*)</tt> without rebinding back)
+<p/>
+It seems like we should be consistent with the containers and not require a rebind here. PR would 
+look something like this, relative to N4810; I'm still not super happy with this wording because 
+it looks like it might be saying a copy of the allocator must be made we would like to avoid&hellip;
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4810">N4810</a>.</p>
+
+<ol>
+<li><p>Modify 20.11.3.6 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The edits to change <tt>pv</tt> to <tt>pu</tt> were suggested by Jonathan 
+Wakely (thanks!). This wording also has the <tt>remove_cv_t</tt> fixes specified by LWG <a href="3210">3210</a> 
+&mdash; if that change is rejected some of those have to be stripped here.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared_default_init(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared_default_init(const A&amp; a, <i>args</i>);
+</pre>
+<blockquote>
+<p>
+-2- <i>Requires:</i> [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; [&hellip;]</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.5) &mdash; When a (sub)object of a non-array type <tt>U</tt> is specified to have an initial 
+value of <tt>v</tt>, or <tt>U(l...)</tt>, where <tt>l...</tt> is a list of constructor arguments, 
+<tt>allocate_shared</tt> shall initialize this (sub)object via the expression
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.5.1) &mdash; <tt>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, v)</tt> or</p></li>
+<li><p>(7.5.2) &mdash; <tt>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, l...)</tt></p></li>
+</ol>
+<p>
+respectively, where <tt>p<del>v</del><ins>u</ins></tt> <ins>is a pointer of type 
+<tt>remove_cv_t&lt;U&gt;*</tt></ins> point<del>s</del><ins>ing</ins> to storage suitable to hold 
+an object of type <tt><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></tt> and <tt>a2</tt> of type 
+<tt>A2</tt> is a <ins>potentially</ins> rebound copy of the allocator <tt>a</tt> 
+passed to <tt>allocate_shared</tt> <del>such that its <tt>value_type</tt> is <tt>remove_cv_t&lt;U&gt;</tt></del>.
+</p>
+</li>
+<li><p>(7.6) &mdash; [&hellip;]</p></li>
+<li><p>(7.7) &mdash; When a (sub)object of non-array type <tt>U</tt> is specified to have a default 
+initial value, <tt>allocate_shared</tt> <del>shall</del> initialize<ins>s</ins> this (sub)object via 
+the expression <tt>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>)</tt>, where 
+<tt>p<del>v</del><ins>u</ins></tt> <ins>is a pointer of type <tt>remove_cv_t&lt;U&gt;*</tt></ins>
+point<del>s</del><ins>ing</ins> to storage suitable to hold an object of type 
+<tt><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></tt> and <tt>a2</tt> of type <tt>A2</tt> is a 
+<ins>potentially</ins> rebound copy of the allocator <tt>a</tt> passed to <tt>allocate_shared</tt> 
+<del>such that its <tt>value_type</tt> is <tt>remove_cv_t&lt;U&gt;</tt></del>.</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.12) &mdash; When a (sub)object of non-array type <tt>U</tt> that was initialized by 
+<tt>allocate_shared</tt> is to be destroyed, it is destroyed via the expression 
+<tt>allocator_traits&lt;A2&gt;::destroy(a2, p<del>v</del><ins>u</ins>)</tt> where 
+<tt>p<del>v</del><ins>u</ins></tt> <ins>is a pointer of type <tt>remove_cv_t&lt;U&gt;*</tt></ins>
+point<del>s</del><ins>ing</ins> to that object of type <tt>remove_cv_t&lt;U&gt;</tt> and 
+<tt>a2</tt> of type <tt>A2</tt> is a <ins>potentially</ins> rebound copy of the 
+allocator <tt>a</tt> passed to <tt>allocate_shared</tt> <del>such that its <tt>value_type</tt> is 
+<tt>remove_cv_t&lt;U&gt;</tt></del>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
