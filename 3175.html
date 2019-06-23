@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3175" href="lwg-active.html#3175">3175.</a> The <tt>CommonReference</tt> requirement of concept <tt>SwappableWith</tt> is not satisfied in the example</h3>
 <p><b>Section:</b> 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Kostas Kyrimis <b>Opened:</b> 2018-12-14 <b>Last modified:</b> 2018-12-17 17:04:00 UTC</p>
+ <b>Submitter:</b> Kostas Kyrimis <b>Opened:</b> 2018-12-14 <b>Last modified:</b> 2019-06-23 11:43:39 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -72,8 +72,31 @@ The compiler will issue a diagnostic for #1 because:
 from the example that there is no common reference for [<tt>T</tt> = <tt>N::A&amp;</tt>, <tt>U</tt> = <tt>N::Proxy</tt>]</p></li>
 </ol>
 
+<p><i>[2019-06-20; Casey Carter comments and provides improved wording]</i></p>
 
-<p><b>Proposed resolution:</b></p>
+<p>
+The purpose of the <tt>CommonReference</tt> requirements in the cross-type concepts is to provide a 
+sanity check. The fact that two types satisfy a single-type concept, have a common reference type 
+that satisfies that concept, and implement cross-type operations required by the cross-type flavor 
+of that concept very strongly suggests the programmer intends them to model the cross-type concept. 
+It's an opt-in that requires some actual work, so it's unlikely to be inadvertent.
+<p/>
+The <tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt> pattern makes sense for the comparison 
+concepts which require that all variations of <tt>const</tt> and value category be comparable: we 
+use <tt>const</tt> lvalues to trigger the "implicit expression variation" wording in 
+<sref="[concepts.equality]"/>. <tt>SwappableWith</tt>, however, doesn't care about implicit expression 
+variations: it only needs to witness that we can exchange the values denoted by two reference-y 
+expressions <tt>E1</tt> and <tt>E2</tt>. This suggests that <tt>CommonReference&lt;decltype((E1)), 
+decltype((E2))&gt;</tt> is a more appropriate requirement than the current 
+<tt>CommonReference&lt;const remove_reference_t&lt;&hellip;&gt;</tt> mess that was blindly copied 
+from the comparison concepts.
+<p/>
+We must change the definition of "exchange the values" in 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> &mdash; 
+which refers to the common reference type &mdash; consistently.
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
 
 <ol>
@@ -137,6 +160,107 @@ namespace N {
     ranges::swap(x.m, p.a->m);
   }
   void swap(Proxy p, A&amp; x) { swap(x, p); } // satisfy symmetry requirement
+}
+
+int main() {
+  int i = 1, j = 2;
+  lv_swap(i, j);
+  assert(i == 2 &amp;&amp; j == 1);
+  N::A a1 = { 5 }, a2 = { -5 };
+  value_swap(a1, proxy(a2));
+  assert(a1.m == -5 &amp;&amp; a2.m == 5);
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Change 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Let <tt>t1</tt> and <tt>t2</tt> be equality-preserving expressions that denote distinct equal objects 
+of type <tt>T</tt>, and let <tt>u1</tt> and <tt>u2</tt> similarly denote distinct equal objects of type 
+<tt>U</tt>. [<i>Note:</i> <tt>t1</tt> and <tt>u1</tt> can denote distinct objects, or the same object. 
+&mdash; <i>end note</i>] An operation <i>exchanges the values</i> denoted by <tt>t1</tt> and <tt>u1</tt> if 
+and only if the operation modifies neither <tt>t2</tt> nor <tt>u2</tt> and:
+</p>
+<ol style="list-style-type:none">
+<li><p>(1.1) &mdash; If <tt>T</tt> and <tt>U</tt> are the same type, the result of the operation is that 
+<tt>t1</tt> equals <tt>u2</tt> and <tt>u1</tt> equals <tt>t2</tt>.</p></li>
+<li><p>(1.2) &mdash; If <tt>T</tt> and <tt>U</tt> are different types <del>that model 
+<tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt></del><ins>and 
+<tt>CommonReference&lt;decltype((t1)), decltype((u1))&gt;</tt> is modeled</ins>, the result of the 
+operation is that <tt>C(t1)</tt> equals <tt>C(u2)</tt> and <tt>C(u1)</tt> equals <tt>C(t2)</tt> where 
+<tt>C</tt> is <tt>common_reference_t&lt;<del>const T&amp;, 
+const U&amp;</del><ins>decltype((t1)), decltype((u1))</ins>&gt;</tt>.</p></li>
+</ol>
+<p>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept Swappable = requires(T&amp; a, T&amp; b) { ranges::swap(a, b); };
+  
+template&lt;class T, class U&gt;
+  concept SwappableWith =
+  CommonReference&lt;<ins>T, U</ins><del>const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;</del>&gt; &amp;&amp;
+  requires(T&amp;&amp; t, U&amp;&amp; u) {
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;T&gt;(t));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+  };
+</pre>
+</blockquote>
+<p>
+-4- [&hellip;]
+<p/>
+-5- [<i>Example:</i> User code can ensure that the evaluation of <tt>swap</tt> calls is performed in an appropriate context
+under the various conditions as follows:
+</p>
+<blockquote>
+<pre>
+#include &lt;cassert&gt;
+#include &lt;concepts&gt;
+#include &lt;utility&gt;
+
+namespace ranges = std::ranges;
+
+template&lt;class T, std::SwappableWith&lt;T&gt; U&gt;
+void value_swap(T&amp;&amp; t, U&amp;&amp; u) {
+  ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+}
+
+template&lt;std::Swappable T&gt;
+void lv_swap(T&amp; t1, T&amp; t2) {
+  ranges::swap(t1, t2);
+}
+
+namespace N {
+  struct A { int m; };
+  struct Proxy { 
+    A* a;
+    <ins>Proxy(A&amp; a) : a{&amp;a} {}</ins>
+    <ins>friend void swap(Proxy x, Proxy y) {
+      ranges::swap(*x.a, *y.a);
+    }</ins>
+  };
+  Proxy proxy(A&amp; a) { return Proxy{ <del>&amp;</del>a }; }
+  <del>void swap(A&amp; x, Proxy p) {
+    ranges::swap(x.m, p.a->m);
+  }
+  void swap(Proxy p, A&amp; x) { swap(x, p); } <i>// satisfy symmetry requirement</i></del>
 }
 
 int main() {

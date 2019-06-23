@@ -28,7 +28,7 @@
 </tr>
 <tr>
   <td align="left">Date:</td>
-  <td align="left">2019-06-20</td>
+  <td align="left">2019-06-23</td>
 </tr>
 <tr>
   <td align="left">Project:</td>
@@ -40,7 +40,7 @@
 </tr>
 </table>
 <h1>C++ Standard Library Active Issues List (Revision D117)</h1>
-<p><p>Revised 2019-06-18 at 01:53:18 UTC</p>
+<p><p>Revised 2019-06-23 at 14:55:30 UTC</p>
 </p>
   <p>Reference ISO/IEC IS 14882:2014(E)</p>
   <p>Also see:</p>
@@ -158,13 +158,13 @@ ownership of it.
 <ul>
 <li>D117: 2019-08-05 2019 post-Cologne mailing<ul>
 <li><b>Summary:</b><ul>
-<li>295 open issues, up by 0.</li>
+<li>300 open issues, up by 5.</li>
 <li>2413 closed issues, up by 0.</li>
 <li>35 reassigned issues, up by 0.</li>
-<li>2743 issues total, up by 0.</li>
+<li>2748 issues total, up by 5.</li>
 </ul></li>
 <li><b>Details:</b><ul>
-<li>No issues added.</li>
+<li>Added the following 5 New issues: <a href="3222">3222</a>, <a href="3223">3223</a>, <a href="3224">3224</a>, <a href="3225">3225</a>, <a href="3226">3226</a>.</li>
 <li>Changed the following 6 issues to Voting (from Ready): <a href="2899">2899</a>, <a href="3055">3055</a>, <a href="3158">3158</a>, <a href="3169">3169</a>, <a href="3186">3186</a>, <a href="3187">3187</a>.</li>
 <li>Changed the following 11 issues to Voting (from Tentatively Ready): <a href="3183">3183</a>, <a href="3184">3184</a>, <a href="3185">3185</a>, <a href="3191">3191</a>, <a href="3196">3196</a>, <a href="3198">3198</a>, <a href="3199">3199</a>, <a href="3202">3202</a>, <a href="3206">3206</a>, <a href="3208">3208</a>, <a href="3209">3209</a>.</li>
 </ul></li>
@@ -33774,7 +33774,7 @@ or <i>cv</i> <tt>void</tt> <del>types</del>.
 <hr>
 <h3><a name="3175" href="3175">3175.</a> The <tt>CommonReference</tt> requirement of concept <tt>SwappableWith</tt> is not satisfied in the example</h3>
 <p><b>Section:</b> 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Kostas Kyrimis <b>Opened:</b> 2018-12-14 <b>Last modified:</b> 2018-12-17 17:04:00 UTC</p>
+ <b>Submitter:</b> Kostas Kyrimis <b>Opened:</b> 2018-12-14 <b>Last modified:</b> 2019-06-23 11:43:39 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -33822,8 +33822,31 @@ The compiler will issue a diagnostic for #1 because:
 from the example that there is no common reference for [<tt>T</tt> = <tt>N::A&amp;</tt>, <tt>U</tt> = <tt>N::Proxy</tt>]</p></li>
 </ol>
 
+<p><i>[2019-06-20; Casey Carter comments and provides improved wording]</i></p>
 
-<p><b>Proposed resolution:</b></p>
+<p>
+The purpose of the <tt>CommonReference</tt> requirements in the cross-type concepts is to provide a 
+sanity check. The fact that two types satisfy a single-type concept, have a common reference type 
+that satisfies that concept, and implement cross-type operations required by the cross-type flavor 
+of that concept very strongly suggests the programmer intends them to model the cross-type concept. 
+It's an opt-in that requires some actual work, so it's unlikely to be inadvertent.
+<p/>
+The <tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt> pattern makes sense for the comparison 
+concepts which require that all variations of <tt>const</tt> and value category be comparable: we 
+use <tt>const</tt> lvalues to trigger the "implicit expression variation" wording in 
+<sref="[concepts.equality]"/>. <tt>SwappableWith</tt>, however, doesn't care about implicit expression 
+variations: it only needs to witness that we can exchange the values denoted by two reference-y 
+expressions <tt>E1</tt> and <tt>E2</tt>. This suggests that <tt>CommonReference&lt;decltype((E1)), 
+decltype((E2))&gt;</tt> is a more appropriate requirement than the current 
+<tt>CommonReference&lt;const remove_reference_t&lt;&hellip;&gt;</tt> mess that was blindly copied 
+from the comparison concepts.
+<p/>
+We must change the definition of "exchange the values" in 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> &mdash; 
+which refers to the common reference type &mdash; consistently.
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
 
 <ol>
@@ -33887,6 +33910,107 @@ namespace N {
     ranges::swap(x.m, p.a->m);
   }
   void swap(Proxy p, A&amp; x) { swap(x, p); } // satisfy symmetry requirement
+}
+
+int main() {
+  int i = 1, j = 2;
+  lv_swap(i, j);
+  assert(i == 2 &amp;&amp; j == 1);
+  N::A a1 = { 5 }, a2 = { -5 };
+  value_swap(a1, proxy(a2));
+  assert(a1.m == -5 &amp;&amp; a2.m == 5);
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Change 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Let <tt>t1</tt> and <tt>t2</tt> be equality-preserving expressions that denote distinct equal objects 
+of type <tt>T</tt>, and let <tt>u1</tt> and <tt>u2</tt> similarly denote distinct equal objects of type 
+<tt>U</tt>. [<i>Note:</i> <tt>t1</tt> and <tt>u1</tt> can denote distinct objects, or the same object. 
+&mdash; <i>end note</i>] An operation <i>exchanges the values</i> denoted by <tt>t1</tt> and <tt>u1</tt> if 
+and only if the operation modifies neither <tt>t2</tt> nor <tt>u2</tt> and:
+</p>
+<ol style="list-style-type:none">
+<li><p>(1.1) &mdash; If <tt>T</tt> and <tt>U</tt> are the same type, the result of the operation is that 
+<tt>t1</tt> equals <tt>u2</tt> and <tt>u1</tt> equals <tt>t2</tt>.</p></li>
+<li><p>(1.2) &mdash; If <tt>T</tt> and <tt>U</tt> are different types <del>that model 
+<tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt></del><ins>and 
+<tt>CommonReference&lt;decltype((t1)), decltype((u1))&gt;</tt> is modeled</ins>, the result of the 
+operation is that <tt>C(t1)</tt> equals <tt>C(u2)</tt> and <tt>C(u1)</tt> equals <tt>C(t2)</tt> where 
+<tt>C</tt> is <tt>common_reference_t&lt;<del>const T&amp;, 
+const U&amp;</del><ins>decltype((t1)), decltype((u1))</ins>&gt;</tt>.</p></li>
+</ol>
+<p>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept Swappable = requires(T&amp; a, T&amp; b) { ranges::swap(a, b); };
+  
+template&lt;class T, class U&gt;
+  concept SwappableWith =
+  CommonReference&lt;<ins>T, U</ins><del>const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;</del>&gt; &amp;&amp;
+  requires(T&amp;&amp; t, U&amp;&amp; u) {
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;T&gt;(t));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+  };
+</pre>
+</blockquote>
+<p>
+-4- [&hellip;]
+<p/>
+-5- [<i>Example:</i> User code can ensure that the evaluation of <tt>swap</tt> calls is performed in an appropriate context
+under the various conditions as follows:
+</p>
+<blockquote>
+<pre>
+#include &lt;cassert&gt;
+#include &lt;concepts&gt;
+#include &lt;utility&gt;
+
+namespace ranges = std::ranges;
+
+template&lt;class T, std::SwappableWith&lt;T&gt; U&gt;
+void value_swap(T&amp;&amp; t, U&amp;&amp; u) {
+  ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+}
+
+template&lt;std::Swappable T&gt;
+void lv_swap(T&amp; t1, T&amp; t2) {
+  ranges::swap(t1, t2);
+}
+
+namespace N {
+  struct A { int m; };
+  struct Proxy { 
+    A* a;
+    <ins>Proxy(A&amp; a) : a{&amp;a} {}</ins>
+    <ins>friend void swap(Proxy x, Proxy y) {
+      ranges::swap(*x.a, *y.a);
+    }</ins>
+  };
+  Proxy proxy(A&amp; a) { return Proxy{ <del>&amp;</del>a }; }
+  <del>void swap(A&amp; x, Proxy p) {
+    ranges::swap(x.m, p.a->m);
+  }
+  void swap(Proxy p, A&amp; x) { swap(x, p); } <i>// satisfy symmetry requirement</i></del>
 }
 
 int main() {
@@ -36884,7 +37008,7 @@ separators then they must be at the expected positions, and there must not be an
 <hr>
 <h3><a name="3215" href="3215">3215.</a> <tt>variant</tt> default constructor has vague <tt>constexpr</tt> requirements</h3>
 <p><b>Section:</b> 20.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/variant.ctor">[variant.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2019-06-04 <b>Last modified:</b> 2019-06-09 14:04:12 UTC</p>
+ <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2019-06-04 <b>Last modified:</b> 2019-06-23 10:41:44 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#variant.ctor">active issues</a> in [variant.ctor].</p>
@@ -36902,7 +37026,8 @@ the alternative type <tt>T<sub>0</sub></tt> would satisfy the requirements for a
 <p>
 First of all, I find it confusing that we say "This function shall be <tt>constexpr</tt> if [&hellip;]", 
 when the declaration of the function clearly has the <tt>constexpr</tt> keyword on it 
-unconditionally. Instead, I would use the wording "This function shall be usable in a constexpr context if [...]".
+unconditionally. Instead, I would use the wording "This function shall be usable in a constexpr context 
+if [&hellip;]".
 <p/>
 Secondly, I think we shouldn't be using if-and-only-if since it restricts whether implementations can be 
 <tt>constexpr</tt>-friendly as an extension. Instead, it seems better to just say "if".
@@ -36913,6 +37038,12 @@ something we can test for because it says "value-initialization of the alternati
 the value initialization can actually be be performed inside a constexpr context (for example the 
 default constructor could be <tt>constexpr</tt> friendly <em>but</em> not marked with the 
 <tt>constexpr</tt> keyword).
+</p>
+
+<p><i>[2017-06-17, Tim Song comments]</i></p>
+
+<p>
+This issue is related to LWG <a href="2833">2833</a>.
 </p>
 
 
@@ -37110,7 +37241,7 @@ macros", as indicated:</p>
 <hr>
 <h3><a name="3218" href="3218">3218.</a> Modifier for <tt>%d</tt> parse flag does not match POSIX and <tt>format</tt> specification</h3>
 <p><b>Section:</b> 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-13 <b>Last modified:</b> 2019-06-15 20:23:45 UTC</p>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-13 <b>Last modified:</b> 2019-06-22 17:58:08 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#time.parse">issues</a> in [time.parse].</p>
@@ -37161,7 +37292,7 @@ as indicated:</p>
 </tr>
 <tr>
 <td><tt>%d</tt></td>
-<td>The day of the month as a decimal number. The modified command <tt>%<i>N</i> d</tt> 
+<td>The day of the month as a decimal number. The modified command <tt>%<i>N</i>d</tt> 
 specifies the maximum number of characters to read. If <tt><i>N</i></tt> is not specified, 
 the default is 2. Leading zeroes are permitted but not required. The modified command 
 <tt>%<del>E</del><ins>O</ins>d</tt> interprets the locale's alternative representation 
@@ -37488,6 +37619,350 @@ constexpr year_month operator+(const year_month&amp; ym, const months&amp; dm) n
 z - ym == dm</tt>.
 <p/>
 <i>Complexity:</i> <tt>&#x1d4aa;(1)</tt> with respect to the value of <tt>dm</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3222" href="3222">3222.</a> P0574R1 introduced preconditions on non-existent parameters</h3>
+<p><b>Section:</b> 25.9.8 <a href="https://timsong-cpp.github.io/cppwp/inclusive.scan">[inclusive.scan]</a>, 25.9.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2019-06-18 <b>Last modified:</b> 2019-06-23 11:43:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+after applying <a href="http://wg21.link/p0574r1">P0574R1</a> to the working draft,
+25.9.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> bullet 1.1 says "If <tt>init</tt> is provided, [&hellip;]; 
+otherwise, <tt>ForwardIterator1</tt>'s value type shall be [&hellip;]."
+25.9.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> bullet 1.2 says "If <tt>init</tt> is provided, [&hellip;]; 
+otherwise, [&hellip;] shall be convertible to <tt>ForwardIterator1</tt>'s value type."
+<p/>
+For the first overload <tt>init</tt> is not provided, but there is no <tt>ForwardIterator1</tt>, so 
+these requirements cannot be met. The requirements for the first overload need to be stated in terms 
+of <tt>InputIterator</tt>'s value type, not <tt>ForwardIterator1</tt>'s value type.
+<p/>
+The same problem exists in 25.9.8 <a href="https://timsong-cpp.github.io/cppwp/inclusive.scan">[inclusive.scan]</a>. 25.9.11 <a href="https://timsong-cpp.github.io/cppwp/adjacent.difference">[adjacent.difference]</a> solves 
+this problem by saying "Let <tt>T</tt> be the value type of <tt>decltype(first)</tt>".
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 25.9.8 <a href="https://timsong-cpp.github.io/cppwp/inclusive.scan">[inclusive.scan]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator, class OutputIterator, class BinaryOperation&gt;
+  OutputIterator inclusive_scan(InputIterator first, InputIterator last,
+                                OutputIterator result, BinaryOperation binary_op);
+template&lt;class ExecutionPolicy, class ForwardIterator1, class ForwardIterator2,
+         class BinaryOperation&gt;
+  ForwardIterator2 inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                                  ForwardIterator1 first, ForwardIterator1 last,
+                                  ForwardIterator2 result, BinaryOperation binary_op);
+template&lt;class InputIterator, class OutputIterator, class BinaryOperation, class T&gt;
+  OutputIterator inclusive_scan(InputIterator first, InputIterator last,
+                                OutputIterator result, BinaryOperation binary_op, T init);
+template&lt;class ExecutionPolicy,
+         class ForwardIterator1, class ForwardIterator2, class BinaryOperation, class T&gt;
+  ForwardIterator2 inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                                  ForwardIterator1 first, ForwardIterator1 last,
+                                  ForwardIterator2 result, BinaryOperation binary_op, T init);
+</pre>
+<blockquote>
+<p>
+<ins>-?- Let <tt>U</tt> be the value type of <tt>decltype(first)</tt>.</ins>
+<p/>
+-3- <i>Requires:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(3.1) &mdash; If <tt>init</tt> is provided, <tt>T</tt> shall be <i>Cpp17MoveConstructible</i> (Table 26); otherwise, <del><tt>ForwardIterator1</tt>'s value type</del><ins><tt>U</tt></ins> shall be 
+<i>Cpp17MoveConstructible</i>.</p></li>
+<li><p>(3.2) &mdash; If <tt>init</tt> is provided, all of <tt>binary_op(init, init)</tt>, <tt>binary_op(init, 
+*first)</tt>, and <tt>binary_op(*first, *first)</tt> shall be convertible to <tt>T</tt>; otherwise, 
+<tt>binary_op(*first, *first)</tt> shall be convertible to <del><tt>ForwardIterator1</tt>'s value 
+type</del><ins><tt>U</tt></ins>.</p></li>
+<li><p>(3.3) &mdash; <tt>binary_op</tt> shall neither invalidate iterators or subranges, nor modify elements 
+in the ranges <tt>[first, last]</tt> or <tt>[result, result + (last - first)]</tt>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 25.9.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator, class OutputIterator,
+         class BinaryOperation, class UnaryOperation&gt;
+  OutputIterator transform_inclusive_scan(InputIterator first, InputIterator last,
+                                          OutputIterator result,
+                                          BinaryOperation binary_op, UnaryOperation unary_op);
+template&lt;class ExecutionPolicy,
+         class ForwardIterator1, class ForwardIterator2,
+         class BinaryOperation, class UnaryOperation&gt;
+  ForwardIterator2 transform_inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                                            ForwardIterator1 first, ForwardIterator1 last,
+                                            ForwardIterator2 result,
+                                            BinaryOperation binary_op, UnaryOperation unary_op);
+template&lt;class InputIterator, class OutputIterator,
+         class BinaryOperation, class UnaryOperation, class T&gt;
+  OutputIterator transform_inclusive_scan(InputIterator first, InputIterator last,
+                                          OutputIterator result,
+                                          BinaryOperation binary_op, UnaryOperation unary_op,
+                                          T init);
+template&lt;class ExecutionPolicy,
+         class ForwardIterator1, class ForwardIterator2,
+         class BinaryOperation, class UnaryOperation, class T&gt;
+  ForwardIterator2 transform_inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                                            ForwardIterator1 first, ForwardIterator1 last,
+                                            ForwardIterator2 result,
+                                            BinaryOperation binary_op, UnaryOperation unary_op,
+                                            T init);
+</pre>
+<blockquote>
+<p>
+<ins>-?- Let <tt>U</tt> be the value type of <tt>decltype(first)</tt>.</ins>
+<p/>
+-1- <i>Requires:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(1.1) &mdash; If <tt>init</tt> is provided, <tt>T</tt> shall be <i>Cpp17MoveConstructible</i> (Table 26); otherwise, <del><tt>ForwardIterator1</tt>'s value type</del><ins><tt>U</tt></ins> shall be 
+<i>Cpp17MoveConstructible</i>.</p></li>
+<li><p>(1.2) &mdash; If <tt>init</tt> is provided, all of</p> 
+<ol style="list-style-type:none">
+<li><p>(1.2.1) &mdash; <tt>binary_op(init, init)</tt>,</p></li>
+<li><p>(1.2.2) &mdash; <tt>binary_op(init, unary_op(*first))</tt>, and</p></li>
+<li><p>(1.2.3) &mdash; <tt>binary_op(unary_op(*first), unary_op(*first))</tt></p></li>
+</ol>
+<p>shall be convertible to <tt>T</tt>; otherwise, <tt>binary_op(unary_op(*first), unary_op(*first))</tt> 
+shall be convertible to <del><tt>ForwardIterator1</tt>'s value type</del><ins><tt>U</tt></ins>.</p></li>
+<li><p>(1.3) &mdash; Neither <tt>unary_op</tt> nor <tt>binary_op</tt> shall invalidate iterators or subranges, 
+nor modify elements in the ranges <tt>[first, last]</tt> or <tt>[result, result + (last - first)]</tt>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3223" href="3223">3223.</a> <tt>lerp</tt> should not add the "sufficient additional overloads"</h3>
+<p><b>Section:</b> 26.8.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2019-06-20 <b>Last modified:</b> 2019-06-23 10:53:36 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#cmath.syn">active issues</a> in [cmath.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmath.syn">issues</a> in [cmath.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It seems that <tt>lerp</tt> can't give a sensible answer for integer inputs. It's new machinery, 
+not the legacy C stuff extended with extra overloads.
+<p/>
+I would prefer to fix this by explicitly annotating the functions that are supposed to get additional 
+overloads because we keep getting this wrong, but we could also exempt <tt>lerp</tt> in 
+26.8.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> p2.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3224" href="3224">3224.</a> <tt>zoned_time</tt> constructor from <tt>TimeZonePtr</tt> does not specify initialization of 
+<tt>tp_</tt></h3>
+<p><b>Section:</b> 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-20 <b>Last modified:</b> 2019-06-23 12:25:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.zone.zonedtime.ctor">active issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.ctor">issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <code>zoned_time(TimeZonePtr z)</code> does not specify how the <code>tp_</code> 
+sub-element is initialized. It should be consistent with <code>zoned_time(string_view)</code> 
+that default initializes <code>tp_</code>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit zoned_time(TimeZonePtr z);
+</pre>
+<blockquote>
+<p>
+-5- <i>Requires:</i> <tt>z</tt> refers to a time zone.
+<p/>
+-6- <i>Effects:</i> Constructs a <tt>zoned_time</tt> by initializing <tt>zone_</tt> with <tt>std::move(z)</tt>
+<ins>and default constructing <tt>tp_</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3225" href="3225">3225.</a> <tt>zoned_time</tt> converting constructor shall not be <tt>noexcept</tt></h3>
+<p><b>Section:</b> 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-20 <b>Last modified:</b> 2019-06-23 12:26:10 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.zone.zonedtime.ctor">active issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.ctor">issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <code>zoned_time</code> constructor from <code>zoned_time&lt;Duration2,
+TimeZonePtr&gt;</code> (preserving same time zone, different precision of
+representation) is currently marked <tt>noexcept</tt>. Given that the <i>exposition-only</i> 
+member <tt>tp_</tt> of type <tt>sys_time&lt;duration&gt;</tt> has essentially type 
+<tt>time_point&lt;system_clock, Duration&gt;</tt>, this is incompatible with the
+invoked <code>time_point</code> constructor, which is not marked as <tt>noexcept</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 27.10.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a>, class template <tt>zoned_time</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration2&gt;
+  zoned_time(const zoned_time&lt;Duration2, TimeZonePtr&gt;&amp; zt) <del>noexcept</del>;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration2&gt;
+  zoned_time(const zoned_time&lt;Duration2, TimeZonePtr&gt;&amp; y) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-9- <i>Requires:</i> Does not participate in overload resolution unless <tt>sys_time&lt;Duration2&gt;</tt> 
+is implicitly convertible to <tt>sys_time&lt;Duration&gt;</tt>.
+<p/>
+-10- <i>Effects:</i> Constructs a <tt>zoned_time</tt> by initializing <tt>zone_</tt> with 
+<tt>y.zone_</tt> and <tt>tp_</tt> with <tt>y.tp_</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3226" href="3226">3226.</a> <tt>zoned_time</tt> constructor from <tt>string_view</tt> should accept
+<tt>zoned_time&lt;Duration2, TimeZonePtr2&gt;</tt></h3>
+<p><b>Section:</b> 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-23 <b>Last modified:</b> 2019-06-23 14:55:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.zone.zonedtime.ctor">active issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.ctor">issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>zoned_time</code> constructors with <code>string_view</code> and
+another <code>zoned_time</code> are not accepting <code>zoned_time</code>
+instances that use a different time zone representation (<code>TimeZonePtr</code> parameter):
+</p>
+<blockquote><pre>
+zoned_time(string_view name, const zoned_time&lt;Duration&gt;&amp; zt);
+zoned_time(string_view name, const zoned_time&lt;Duration&gt;&amp; zt, choose);
+</pre></blockquote>
+<p>
+This makes them inconsistent with the constructors from <code>TimeZonePtr</code> 
+and <code>zoned_time</code>, that they delegate to: 
+</p>
+<blockquote><pre>
+template&lt;class Duration2, class TimeZonePtr2&gt;
+  zoned_time(TimeZonePtr z, const zoned_time&lt;Duration2, TimeZonePtr2&gt;&amp; zt);
+template&lt;class Duration2, class TimeZonePtr2&gt;
+  zoned_time(TimeZonePtr z, const zoned_time&lt;Duration2, TimeZonePtr2&gt;&amp; zt, choose);
+</pre></blockquote>
+<p>
+Furthermore it forces the creation of a temporary <code>zoned_time</code> object in 
+case when the source uses the same <code>TimeZonePtr</code>, but different <code>Duration</code>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 27.10.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a>, class template <tt>zoned_time</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Duration2, class TimeZonePtr2&gt;</ins>
+zoned_time(string_view name, const zoned_time&lt;Duration<ins>2, TimeZonePtr2</ins>&gt;&amp; zt);
+<ins>template&lt;class Duration2, class TimeZonePtr2&gt;</ins>
+zoned_time(string_view name, const zoned_time&lt;Duration<ins>2, TimeZonePtr2</ins>&gt;&amp; zt, choose);</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 27.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Duration2, class TimeZonePtr2&gt;</ins>
+zoned_time(string_view name, const zoned_time&lt;Duration<ins>2, TimeZonePtr2</ins>&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-32- <i>Remarks:</i> This constructor does not participate in overload resolution unless 
+<tt>zoned_time</tt> is constructible from the return type of <tt>traits::locate_zone(name)</tt> 
+and <tt>zoned_time<ins>&lt;Duration2, TimeZonePtr2&gt;</ins></tt>.
+<p/>
+-33- <i>Effects:</i> Equivalent to construction with <tt>{traits::locate_zone(name), y}</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class Duration2, class TimeZonePtr2&gt;</ins>
+zoned_time(string_view name, const zoned_time&lt;Duration<ins>2, TimeZonePtr2</ins>&gt;&amp; y, choose c););
+</pre>
+<blockquote>
+<p>
+-34- <i>Remarks:</i> This constructor does not participate in overload resolution unless 
+<tt>zoned_time</tt> is constructible from the return type of <tt>traits::locate_zone(name)</tt>, 
+<tt>zoned_time<ins>&lt;Duration2, TimeZonePtr2&gt;</ins></tt>, and <tt>choose</tt>.
+<p/>
+-35- <i>Effects:</i> Equivalent to construction with <tt>{traits::locate_zone(name), y, c}</tt>.
+<p/>
+-36- [<i>Note:</i> The <tt>choose</tt> parameter has no effect. &mdash; <i>end note</i>]
 </p>
 </blockquote>
 </blockquote>
