@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3103" href="lwg-active.html#3103">3103.</a> Errors in taking subview of <tt>span</tt> should be ill-formed where possible</h3>
 <p><b>Section:</b> 22.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/span.sub">[span.sub]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2018-04-13 <b>Last modified:</b> 2018-11-14 19:14:35 UTC</p>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2018-04-13 <b>Last modified:</b> 2019-06-23 18:02:44 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
@@ -152,8 +152,8 @@ Count != dynamic_extent ? Count
 I have decided to replace all <i>Requires:</i> elements in the section 22.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/span.sub">[span.sub]</a> to preserve consistency.
 </p>
 
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution: [SUPERSEDED]</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="http://wg21.link/n4778">N4778</a>.</p>
 
 <blockquote>
@@ -237,6 +237,102 @@ constexpr span&lt;element_type, dynamic_extent&gt; subspan(
 <p>
 -12- <i><del>Requires</del><ins>Expects</ins>:</i> <tt>(0 &lt;= offset &amp;&amp; offset &lt;= size())
 &amp;&amp; (count == dynamic_extent || count &gt;= 0 &amp;&amp; offset + count &lt;= size())</tt>
+<p/>
+-13- <i>Effects:</i> Equivalent to: <tt>return {data() + offset, count == dynamic_extent ? size() - offset : count};</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+
+<p><i>[2019-06-23; Tomasz comments and provides updated wording]</i></p>
+
+<p>
+The current proposed resolution no longer applies to the newest revision of the standard 
+(<a href="http://wg21.link/n4820">N4820</a>), due changes introduced in 
+<a href="http://wg21.link/p1227">P1227</a> (making <tt>size()</tt> and template parameters 
+of <tt>span</tt> unsigned).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<blockquote class="note">
+[<i>Drafting note:</i> This wording relies on observation, that the condition in form 
+<code>Extent == dynamic_extent || Count &lt;= Extent</code>, can be simplified into 
+<code>Count &lt;= Extent</code>, because <code>dynamic_extent</code> is equal to 
+<code>numeric_limits&lt;size_t&gt;::max()</code>, thus <code>size() &lt;= Extent</code> 
+is always true, and <code>Extent == dynamic_extent</code> implies that <code>Count &lt;= Extent</code>.
+<p/>
+Furthermore we check that <code>Count != dynamic_extent || Count &lt;= Extent - Offset</code>, 
+as the <code>Offset + Count &lt;= Extent</code> may overflow (defined for unsigned integers) and 
+produce false positive result. This change is also applied to <i>Expects</i> clause. ]
+</blockquote>
+
+<blockquote>
+<ol>
+<li>
+<p>Edit 22.7.3.3 <a href="https://timsong-cpp.github.io/cppwp/span.sub">[span.sub]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;size_t Count&gt; constexpr span&lt;element_type, Count&gt; first() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>Count &lt;= Extent</tt> is <tt>true</tt>.</ins>
+<p/>
+-1- <i>Expects:</i> <tt>Count &lt;= size()</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects:</i> Equivalent to: <tt>return {data(), Count};</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;size_t Count&gt; constexpr span&lt;element_type, Count&gt; last() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>Count &lt;= Extent</tt> is <tt>true</tt>.</ins>
+<p/>
+-3- <i>Expects:</i> <tt>Count &lt;= size()</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to: <tt>return {data() + (size() - Count), Count};</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;size_t Offset, size_t Count = dynamic_extent&gt;
+  constexpr span&lt;element_type, <i>see below</i>&gt; subspan() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>Offset &lt;= Extent &amp;&amp; (Count == dynamic_extent || 
+Count &lt;= Extent - Offset)</tt> is <tt>true</tt>.</ins>
+<p/>
+-5- <i>Expects:</i> <tt>Offset &lt;= size() &amp;&amp; (Count == dynamic_extent || <del>Offset + 
+Count &lt;= size()</del><ins>Count &lt;= size() - Offset</ins>)</tt> is <tt>true</tt>.
+<p/>
+-6- <i>Effects:</i> Equivalent to: <tt>return span&lt;ElementType, <i>see below</i>&gt;(data() 
++ Offset, Count != dynamic_extent ? Count : size() - Offset);</tt>
+<p/>
+-7- <i>Remarks:</i> The second template argument of the returned <tt>span</tt> type is:
+</p>
+<blockquote><pre>
+Count != dynamic_extent ? Count
+                        : (Extent != dynamic_extent ? Extent - Offset
+                                                    : dynamic_extent)
+</pre></blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr span&lt;element_type, dynamic_extent&gt; subspan(
+  index_type offset, index_type count = dynamic_extent) const;
+</pre>
+<blockquote>
+<p>
+-12- <i>Expects:</i> <tt>offset &lt;= size() &amp;&amp; (count == dynamic_extent || <del>offset + 
+count &lt;= size()</del><ins>count &lt;= size() - offset</ins>)</tt> is <tt>true</tt>.
 <p/>
 -13- <i>Effects:</i> Equivalent to: <tt>return {data() + offset, count == dynamic_extent ? size() - offset : count};</tt>
 </p>
