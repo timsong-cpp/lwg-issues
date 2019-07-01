@@ -1,0 +1,94 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3232: Inconsistency in zoned_time deduction guides</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3232" href="lwg-active.html#3232">3232.</a> Inconsistency in <tt>zoned_time</tt> deduction guides</h3>
+<p><b>Section:</b> 27.10.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-06-30 <b>Last modified:</b> 2019-06-30 19:21:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the <code>time_zone</code> is always storing the time with
+the precision not coarser that <code>seconds</code>, as consequence any
+instance with the duration with coarser precision with <code>seconds</code>, 
+is de-facto equivalent to one instantiated to the duration of seconds. 
+This is caused by the fact, that time zone offset can be defined up to 
+seconds precision. To illustrate both of following specialization has 
+the same behavior (keep <code>seconds</code>):
+</p>
+<blockquote><pre>
+zoned_time&lt;minutes&gt; zt(current_zone(), floor&lt;minutes&gt;(system_clock::now());
+zoned_time&lt;hours&gt;   zt(current_zone(), floor&lt;hours&gt;(system_clock::now());
+zoned_time&lt;seconds&gt; zt(current_zone(), floor&lt;seconds&gt;(system_clock::now());
+</pre></blockquote>
+<p>
+To avoid unnecessary code bloat caused by above, most deduction guides
+are instantiating <code>zoned_time</code> with at least <code>seconds</code> 
+precision (i.e. <code>zoned_time&lt;seconds&gt;</code> will be deduced 
+for all of above):
+</p>
+<blockquote><pre>
+template&lt;class TimeZonePtr, class Duration>
+  zoned_time(TimeZonePtr, zoned_time&lt;Duration>, choose = choose::earliest)
+    -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;, TimeZonePtr&gt;;
+</pre></blockquote>
+<p>
+However there is single exception:
+</p>
+<blockquote><pre>
+template&lt;class Duration, class TimeZonePtr, class TimeZonePtr2&gt;
+  zoned_time(TimeZonePtr, zoned_time&lt;Duration, TimeZonePtr2&gt;, choose = choose::earliest)
+     -&gt; zoned_time&lt;Duration, TimeZonePtr&gt;;
+</pre></blockquote>
+<p>
+This deduction guide should be updated to preserve the consistency of
+design.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 27.10.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Duration, class TimeZonePtr, class TimeZonePtr2&gt;
+  zoned_time(TimeZonePtr, zoned_time&lt;Duration, TimeZonePtr2&gt;, choose = choose::earliest)
+    -&gt; zoned_time&lt;<ins>common_type_t&lt;</ins>Duration<ins>, seconds&gt;</ins>, TimeZonePtr&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
