@@ -1,0 +1,90 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3238: Insufficiently-defined behavior of std::function deduction guides</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3238" href="lwg-active.html#3238">3238.</a> Insufficiently-defined behavior of <tt>std::function</tt> deduction guides</h3>
+<p><b>Section:</b> 20.14.16.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2019-07-17 <b>Last modified:</b> 2019-07-28 15:43:50 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code is currently undefined behavior:
+</p>
+<blockquote><pre>
+#include &lt;functional&gt;
+
+struct R { };
+struct f0 { R operator()() &amp;&amp; { return {}; } };
+
+int main() { std::function f = f0{}; }
+</pre></blockquote>
+<p>
+The reason is that 20.14.16.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a>/12 says:
+</p>
+<blockquote><p>
+This deduction guide participates in overload resolution only if <tt>&amp;F::operator()</tt> is well-formed 
+when treated as an unevaluated operand. In that case, if <tt>decltype(&amp;F::operator())</tt> is of the 
+form <tt>R(G::*)(A...) <i>cv</i> &amp;<sub><i>opt</i></sub> noexcept<sub><i>opt</i></sub></tt> for a 
+class type <tt>G</tt>, then the deduced type is <tt>function&lt;R(A...)&gt;</tt>.
+</p></blockquote>
+<p>
+However, it does not define the behavior when <tt>&amp;F::operator()</tt> is well-formed but <em>not</em> 
+of the required form (in the above example it's of the form <tt>R(G::*)(A...) &amp;&amp;</tt>, which is 
+rvalue-reference qualified instead of optionally-lvalue-reference qualified). libc++'s implementation 
+of the deduction guide SFINAE's out when either <tt>&amp;F::operator()</tt> is not well-formed, or it 
+is not of the required form. It seems like mandating that behavior in the Standard is the way to go.
+</p>
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 20.14.16.2.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; function(F) -&gt; function&lt;<i>see below</i>&gt;;
+</pre><blockquote>
+<p>
+-12- <i>Remarks:</i> This deduction guide participates in overload resolution only if 
+<tt>&amp;F::operator()</tt> is well-formed when treated as an unevaluated operand<ins>, and is 
+of the form <tt>R(G::*)(A...) <i>cv</i> &amp;<sub><i>opt</i></sub> 
+noexcept<sub><i>opt</i></sub></tt> for a class type <tt>G</tt></ins>. In that case, <del>if 
+<tt>decltype(&amp;F::operator())</tt> is of the form <tt>R(G::*)(A...) <i>cv</i> 
+&amp;<sub><i>opt</i></sub> noexcept<sub><i>opt</i></sub></tt> for a class type <tt>G</tt>, 
+then</del> the deduced type is <tt>function&lt;R(A...)&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
