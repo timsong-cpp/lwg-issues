@@ -1,0 +1,92 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3244: Constraints for Source in [fs.path.req] insufficiently constrainty</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3244" href="lwg-active.html#3244">3244.</a> Constraints for <tt>Source</tt> in [fs.path.req] insufficiently constrainty</h3>
+<p><b>Section:</b> 29.11.7.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.req">[fs.path.req]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-08-02 <b>Last modified:</b> 2019-08-03 02:08:35 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>std::filesystem::path</tt> has a number of functions - notably including a conversion
+constructor template (29.11.7.4.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.construct">[fs.path.construct]</a>) and assignment operator template
+(29.11.7.4.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.assign">[fs.path.assign]</a>) - that accept <tt>const Source&amp;</tt>. Per
+29.11.7.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.req">[fs.path.req]</a> paragraph 2:
+</p><blockquote><p>
+-2- Functions taking template parameters named <tt>Source</tt> shall not participate in overload
+resolution unless either
+</p><p>
+(2.1) &mdash; <tt>Source</tt> is a specialization of <tt>basic_string</tt> or
+<tt>basic_string_view</tt>, or
+</p><p>
+(2.2) &mdash; the <i>qualified-id</i>
+<tt>iterator_traits&lt;decay_t&lt;Source&gt;&gt;::value_type</tt> is valid and denotes a possibly
+<tt>const</tt> encoded character type.
+</p></blockquote><p>
+<tt>iterator_traits&lt;decay_t&lt;path&gt;&gt;::value_type</tt> is not valid in C++17, so this
+specification was sufficient to guard against the conversion constructor template (respectively
+assignment operator template) "pretending" to be copy constructor (respectively copy assignment
+operator). <a href="https://wg21.link/p0896r4">P0896R4 "The One Ranges Proposal"</a>, however,
+altered the definition of <tt>iterator_traits</tt> in the working draft. It now has some convenient
+default behaviors for types that meet (roughly) the syntax of the <i><tt>Cpp17InputIterator</tt></i>
+requirements. Notably those requirements include copy construction and copy assignment.
+</p><p>
+In the working draft, to determine the copyability of <tt>std::filesystem::path</tt> we must perform
+overload resolution to determine if we can initialize a <tt>path</tt> from a constant lvalue of type
+<tt>path</tt>. The conversion constructor template that accepts <tt>const Source&amp;</tt> is a
+candidate, since its second argument is defaulted, so
+we must perform template argument deduction to see if this constructor is viable. <tt>Source</tt> is
+deduced to <tt>path</tt> and we then must check the constraint from 29.11.7.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.req">[fs.path.req]</a>
+paragraph 2.2 (above). Checking the constraint requires us to specialize
+<tt>iterator_traits&lt;path&gt;</tt>, which (per 23.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> paragraph 3.2)
+requires us to determine if <tt>path</tt> satisfies the exposition-only
+<i><tt>cpp17-input-iterator</tt></i> concept, which requires <tt>path</tt> to be copyable.
+</p><p>
+We've completed a cycle: determining if <tt>path</tt> is copyable requires us to first determine if
+<tt>path</tt> is copyable. This unfortunate constraint recursion can be broken by explicitly
+specifying that <tt>path</tt> is not a valid <tt>Source</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Modify 29.11.7.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.req">[fs.path.req]</a> as indicated:</p>
+<blockquote><p>
+-2- Functions taking template parameters named <tt>Source</tt> shall not participate in overload
+resolution unless <ins><tt>Source</tt> denotes a type other than <tt>path</tt>, and</ins> either
+</p><p>
+[&hellip;]
+</p></blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

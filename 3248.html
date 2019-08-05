@@ -1,0 +1,228 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3248: std::format #b, #B, #o, #x, and #X 
+presentation types misformat negative numbers</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3248" href="lwg-active.html#3248">3248.</a> <tt>std::format</tt> <tt>#b</tt>, <tt>#B</tt>, <tt>#o</tt>, <tt>#x</tt>, and <tt>#X</tt> 
+presentation types misformat negative numbers</h3>
+<p><b>Section:</b> 99 [format.string] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2019-08-01 <b>Last modified:</b> 2019-08-04 19:34:00 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string">active issues</a> in [format.string].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string">issues</a> in [format.string].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+According to both the specification for <tt>'#'</tt> and the presentation types <tt>b</tt>, <tt>B</tt>, 
+<tt>o</tt>, <tt>x</tt>, and <tt>X</tt> (which redundantly duplicate the rule for the relevant prefixes), 
+the string <tt>0b</tt>, <tt>0B</tt>, <tt>0</tt>, <tt>0x</tt>, or <tt>0X</tt> is prefixed to the result 
+of <tt>to_chars</tt>. That means:
+</p>
+<blockquote><pre>
+std::format("{0:#b} {0:#B} {0:#o} {0:#x} {0:#X}", -1)
+</pre></blockquote>
+<p>
+produces
+</p>
+<blockquote><pre>
+"0b-1 0B-1 0-1 0x-1 0X-1"
+</pre></blockquote>
+<p>
+I assume that's a bug?
+<p/>
+(Additionally, if the <tt>+</tt> specifier is used, there appears to be no specification of where 
+the sign is inserted into the output.)
+<p/>
+<b>Victor Zverovich:</b>
+<p/>
+Yes. I suggest replacing
+</p>
+<blockquote><p>
+adds the respective prefix <tt>"0b"</tt> (<tt>"0B"</tt>), <tt>"0"</tt>, or <tt>"0x"</tt> (<tt>"0X"</tt>) 
+to the output value
+</p></blockquote>
+<p>
+with something like 
+</p>
+<blockquote><p>
+inserts the respective prefix <tt>"0b"</tt> (<tt>"0B"</tt>), <tt>"0"</tt>, or <tt>"0x"</tt> (<tt>"0X"</tt>) 
+to the output value after the sign, if any,
+</p></blockquote>
+<p>
+I think the duplicate wording in the presentation types <tt>b</tt>, <tt>B</tt>, <tt>o</tt>, <tt>x</tt>, and 
+<tt>X</tt> can be dropped.
+<p/>
+Regarding the <tt>+</tt> specifier problem: How about adding
+</p>
+<blockquote><p>
+The sign is inserted before the output of <tt>to_chars</tt>.
+</p></blockquote>
+<p>
+?
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to the Post Cologne working draft.</p>
+
+<ol>
+<li><p>Modify the sign option table in [format.string] as indicated:</p>
+
+<blockquote>
+<table border="1">
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers. <ins>The sign is 
+inserted before the output of <tt>to_chars</tt>.</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used only for negative numbers (this is the default behavior)
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers, and a minus sign for negative numbers.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify [format.string] as indicated:</p>
+
+<blockquote>
+<p>
+The <tt>'#'</tt> option causes the alternate form to be used for the conversion. This option is only 
+valid for arithmetic types other than <tt>charT</tt> and <tt>bool</tt> or when an integer presentation 
+type is specified. For integers, when binary, octal, or hexadecimal output is used, this option 
+<del>adds</del><ins>inserts</ins> the respective prefix <tt>"0b"</tt> (<tt>"0B"</tt>), <tt>"0"</tt>, 
+or <tt>"0x"</tt> (<tt>"0X"</tt>) to the output value <ins>after the sign, if any</ins>. [&hellip;]
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify the table for the available integer presentation types and their mapping to 
+<tt>to_chars</tt> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<tr align="center">
+<th>Type</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'b'</tt>
+</td>
+<td>
+<tt>to_chars(first, last, value, 2);</tt> <del>using the <tt>'#'</tt> option with this type adds the prefix 
+<tt>"0b"</tt> to the output.</del>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'B'</tt>
+</td>
+<td>
+The same as <tt>'b'</tt><del>, except that the <tt>'#'</tt> option adds the prefix <tt>"0B"</tt> 
+to the output</del>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'d'</tt>
+</td>
+<td>
+<tt>to_chars(first, last, value)</tt>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'o'</tt>
+</td>
+<td>
+<tt>to_chars(first, last, value, 8);</tt> <del>using the <tt>'#'</tt> option with this type adds the 
+prefix <tt>"0"</tt> to the output</del>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'x'</tt>
+</td>
+<td>
+<tt>to_chars(first, last, value, 16);</tt> <del>using the <tt>'#'</tt> option with this type adds the 
+prefix <tt>"0x"</tt> to the output</del>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'X'</tt>
+</td>
+<td>
+The same as <tt>'x'</tt>, except that it uses uppercase letters for digits above 9 <del>and the <tt>'#'</tt> 
+option adds the prefix <tt>"0X"</tt> to the output</del>.
+</td>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

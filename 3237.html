@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3237" href="lwg-active.html#3237">3237.</a> LWG 3038 and 3190 have inconsistent PRs</h3>
 <p><b>Section:</b> 20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-07-18 <b>Last modified:</b> 2019-07-28 15:43:50 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-07-18 <b>Last modified:</b> 2019-07-29 16:31:34 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
@@ -44,6 +44,16 @@ Reflector discussion of 3190 seemed to achieve consensus that <tt>bad_array_new_
 the better option. Unlike <tt>length_error</tt>, <tt>bad_array_new_length</tt> derives from 
 <tt>bad_alloc</tt> so we can make this change without altering the invariant that allocation functions 
 either succeed or throw an exception derived from <tt>bad_alloc</tt>.
+<p/>
+Further, <a href="http://wg21.link/p0339r6">P0339R6</a> "<tt>polymorphic_allocator&lt;&gt;</tt> as a 
+vocabulary type" recently added the function template "<tt>template&lt;class T&gt; T* 
+allocate_object(size_t n = 1);</tt>" to <tt>std::pmr::polymorphic_allocator</tt>, which is another 
+instance of the "allocate memory for <tt>n</tt> objects of type <tt>T</tt>" pattern. 
+20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> paragraph 8.1 specifies that <tt>allocate_object</tt> throws 
+<tt>length_error</tt> when <tt>SIZE_MAX / sizeof(T) &lt; n</tt>, presumably for consistency with <tt>std::pmr::polymorphic_allocator::allocate</tt> specified in paragraph 1. <tt>allocate_object</tt>'s 
+behavior should be consistent with <tt>allocator::allocate</tt> and 
+<tt>polymorphic_allocator::allocate</tt> so we have a single means of communicating "request for 
+allocation of unrepresentable size" errors in the Standard Library.
 </p>
 
 <p><b>Proposed resolution:</b></p>
@@ -63,7 +73,27 @@ Otherwise equivalent to:
 </p>
 <blockquote><pre>
 return static_cast&lt;Tp*&gt;(memory_rsrc-&gt;allocate(n * sizeof(Tp), alignof(Tp)));
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class T&gt;
+  T* allocate_object(size_t n = 1);
+</pre><blockquote>
+<p>
+-8- <i>Effects:</i> Allocates memory suitable for holding an array of <tt>n</tt> objects of type 
+<tt>T</tt>, as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(8.1) &mdash; if <tt>SIZE_MAX / sizeof(T) &lt; n</tt>, throws 
+<tt><del>length_error</del><ins>bad_array_new_length</ins></tt>,</p></li>
+<li><p>(8.2) &mdash; otherwise equivalent to:</p>
+<blockquote><pre>
+return static_cast&lt;T*&gt;(allocate_bytes(n*sizeof(T), alignof(T)));
 </pre></blockquote>
+</li>
+</ol>
 </blockquote>
 </blockquote>
 </li>
