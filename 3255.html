@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3255: span's array constructor is too strict</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3255" href="lwg-active.html#3255">3255.</a> <tt>span</tt>'s <tt>array</tt> constructor is too strict</h3>
+<p><b>Section:</b> 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jean Guegant &amp; Barry Revzin <b>Opened:</b> 2019-08-10 <b>Last modified:</b> 2019-08-17 19:20:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#span.cons">issues</a> in [span.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<b>Barry Revzin:</b>
+<p/>
+From <a href="https://stackoverflow.com/q/57444188/2069064">StackOverflow</a>:
+<p/>
+This compiles:
+</p>
+<blockquote><pre>
+std::vector&lt;int*&gt; v = {nullptr, nullptr};
+std::span&lt;const int* const&gt; s{v};
+</pre></blockquote>
+<p>
+This does not:
+</p>
+<blockquote><pre>
+std::array&lt;int*, 2&gt; a = {nullptr, nullptr};
+std::span&lt;const int* const&gt; s{a};
+</pre></blockquote>
+<p>
+The problem is that <tt>span</tt>'s constructors include
+</p>
+<ul>
+<li><p>A constructor template that takes any <tt>Container</tt> that is neither a raw array nor a <tt>std::array</tt></p></li>
+<li><p>A constructor template that takes an <tt>array&lt;value_type, N&gt;&amp;</tt></p></li>
+<li><p>A constructor template that takes a <tt>const array&lt;value_type, N&gt;&amp;</tt></p></li>
+</ul>
+<p>
+So the first is excluded, and the other two don't match. We can change the array constructor templates to take an 
+<tt>array&lt;T, N&gt;</tt> with the requirement that <tt>T(*)[]</tt> is convertible to <tt>ElementType(*)[]</tt>?
+<p/>
+<b>Jean Guegant:</b>
+<p/>
+It is impossible to create a <tt>std::span</tt> from a <tt>std::array&lt;const T, X&gt;</tt> given the current 
+set of constructors of <tt>std::span</tt> (22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a>):
+</p>
+<blockquote><pre>
+std::array&lt;const int, 4&gt; a = {1, 2, 3, 4};
+std::span&lt;const int&gt; s{a}; <i>// No overload can be found.</i>
+std::span s{a}; <i>// CTAD doesn't help either.</i>
+</pre></blockquote>
+<p>
+Both constructors accepting a <tt>std::array</tt> (22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> p11) require the first template 
+parameter of the <tt>std::array</tt> parameter to be <tt>value_type</tt>:
+</p>
+<blockquote><pre>
+template&lt;size_t N&gt; constexpr span(array&lt;value_type, N&gt;&amp; arr) noexcept;
+template&lt;size_t N&gt; constexpr span(const array&lt;value_type, N&gt;&amp; arr) noexcept;
+</pre></blockquote>
+<p>
+<tt>value_type</tt> being defined as <tt>remove_cv_t&lt;ElementType&gt;</tt> &mdash; this constrains the first 
+template parameter not to be <tt>const</tt>.
+<p/>
+Both constructors accepting a generic <tt>Container</tt> (22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> p14) have a 
+constraint &mdash; (p14.3) <tt>Container</tt> is not a specialization of <tt>array</tt> &mdash; 
+rejecting <tt>std::array</tt>.
+<p/>
+While you can call <tt>std::array&lt;const T, X&gt;::data</tt> and <tt>std::array&lt;const T, X&gt;::size</tt> 
+to manually create a <tt>std::span</tt>, we should, in my opinion, offer a proper overload for this scenario.
+Two reasons came to my mind:
+</p>
+<ol>
+<li><p><tt>std::span</tt> handles C-arrays and <tt>std::arrays</tt> in an asymmetric way. The constructor 
+taking a C-array (22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> p11) is using <tt>element_type</tt> and as such can work with 
+<tt>const T</tt>:</p>
+<blockquote><pre>
+const int a[] = {1, 2, 3, 4};
+std::span&lt;const int&gt; s{a}; <i>// It works</i>
+</pre></blockquote>
+<p>
+If a user upgrades her/his code from C-arrays to a <tt>std::array</tt>s and literally take the type 
+<tt>const T</tt> and use it as the first parameter of <tt>std::array</tt>, he/she will face an error.
+</p>
+</li>
+<li><p>Even if the user is aware that <tt>const std::array&lt;T, X&gt;</tt> is more idiomatic than 
+<tt>std::array&lt;const T, X&gt;</tt>, the second form may appear in the context of template 
+instantiation.</p></li>
+</ol>
+<p>
+At the time this issue is written <tt>gls::span</tt>, from which <tt>std::span</tt> is partly based on, 
+does not suffer from the same issue: Its constructor taking a generic <tt>const Container&amp;</tt> does 
+not constraint the <tt>Container</tt> not to be a <tt>std::array</tt> (although its constructor taking 
+a generic <tt>Container&amp;</tt> does). For the users willing to upgrade from <tt>gsl::span</tt> to 
+<tt>std::span</tt>, this could be a breaking change.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<blockquote class="note">
+<p>
+The only change is to make the constructors templated on the element type of the array as well. 
+We already have the right constraints in place. It's just that the 2nd constraint is trivially 
+satisfied today by the raw array constructor and either always or never satisfied by the <tt>std::array</tt> one. 
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 22.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a>, class template <tt>span</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
+class span {
+public:
+  [&hellip;]
+  <i>// 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a>, constructors, copy, and assignment</i>
+  constexpr span() noexcept;
+  constexpr span(pointer ptr, index_type count);
+  constexpr span(pointer first, pointer last);
+  template&lt;<ins>class T,</ins> size_t N&gt;
+    constexpr span(<ins>T</ins><del>element_type</del> (&amp;arr)[N]) noexcept;
+  template&lt;<ins>class T,</ins> size_t N&gt;
+    constexpr span(array&lt;<ins>T</ins><del>value_type</del>, N&gt;&amp; arr) noexcept;
+  template&lt;<ins>class T,</ins> size_t N&gt;
+    constexpr span(const array&lt;<ins>T</ins><del>value_type</del>, N&gt;&amp; arr) noexcept;
+  [&hellip;]
+};
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<ins>class T,</ins> size_t N&gt;
+  constexpr span(<ins>T</ins><del>element_type</del> (&amp;arr)[N]) noexcept;
+template&lt;<ins>class T,</ins> size_t N&gt;
+  constexpr span(array&lt;<ins>T</ins><del>value_type</del>, N&gt;&amp; arr) noexcept;
+template&lt;<ins>class T,</ins> size_t N&gt;
+  constexpr span(const array&lt;<ins>T</ins><del>value_type</del>, N&gt;&amp; arr) noexcept;
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; <tt>extent == dynamic_extent || N == extent</tt> is <tt>true</tt>, and</p></li>
+<li><p>(11.2) &mdash; <tt>remove_pointer_t&lt;decltype(data(arr))&gt;(*)[]</tt> is convertible to <tt>ElementType(*)[]</tt>.</p></li>
+</ol>
+<p>
+-12- <i>Effects:</i> Constructs a <tt>span</tt> that is a view over the supplied array.
+<p/>
+-13- <i>Ensures:</i> <tt>size() == N &amp;&amp; data() == data(arr)</tt> <ins>is <tt>true</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
