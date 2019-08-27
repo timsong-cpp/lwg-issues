@@ -1,0 +1,106 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3264: sized_range and ranges::size redundantly use disable_sized_range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3264" href="lwg-active.html#3264">3264.</a> <tt>sized_range</tt> and <tt>ranges::size</tt> redundantly use <tt>disable_sized_range</tt></h3>
+<p><b>Section:</b> 24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-08-26 <b>Last modified:</b> 2019-08-27 01:14:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>disable_sized_range</tt> (24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a>) is an opt-out trait that users may
+specialize when their <tt>range</tt> type conforms to the syntax of <tt>sized_range</tt> but not its
+semantics, or when the type is so poorly suited to the Standard Library that even testing the
+validity of the expressions <tt>r.size()</tt> or <tt>size(r)</tt> for a range <tt>r</tt> is
+impossible. The library inspects <tt>disable_sized_range</tt> in two places. (1) In the definition of
+the <tt>sized_range</tt> concept:
+<blockquote><pre>
+template&lt;class T&gt;
+  concept sized_range =
+    range&lt;T&gt; &amp;&amp;
+    !disable_sized_range&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;
+    requires(T&amp; t) { ranges::size(t); };
+</pre></blockquote>
+If the pertinent specialization of <tt>disable_sized_range</tt> is <tt>true</tt>, we avoid checking
+the validity of the expression <tt>ranges::size(t)</tt> in the <i>requires-expression</i>.
+(2) In the definition of the <tt>ranges::size</tt> CPO itself (24.3.9 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a>),
+the validity of the expressions <tt><i>decay-copy</i>(E.size())</tt> and
+<tt><i>decay-copy</i>(size(E))</tt> is not checked if the pertinent specialization of
+<tt>disable_sized_range</tt> is <tt>true</tt>.
+</p><p>
+<tt>disable_sized_range</tt> is effectively checked <em>twice</em> when evaluating
+<tt>sized_range</tt>. This redundancy could be forgiven, if it did not permit the existence of
+non-<tt>sized_range</tt>s for which <tt>ranges::size</tt> returns a valid size:
+<blockquote><pre>
+struct mytype {};
+using A = mytype[42];
+
+template &lt;&gt;
+constexpr bool std::ranges::disable_sized_range&lt;A&gt; = true;
+
+static_assert(std::ranges::range&lt;A&gt;);
+static_assert(!std::ranges::sized_range&lt;A&gt;);
+static_assert(std::ranges::size(A{}) == 42);
+
+struct myrange {
+    constexpr int* begin() const { return nullptr; }
+    constexpr int* end() const { return nullptr; }
+};
+
+template &lt;&gt;
+constexpr bool std::ranges::disable_sized_range&lt;myrange&gt; = true;
+
+static_assert(std::ranges::range&lt;myrange&gt;);
+static_assert(!std::ranges::sized_range&lt;myrange&gt;);
+static_assert(std::ranges::size(myrange{}) == 0);
+</pre></blockquote>
+We should remove this gap between <tt>ranges::size</tt> and <tt>sized_range</tt> by checking
+<tt>disable_sized_range</tt> only in the definition of <tt>ranges::size</tt>, and continuing to rely
+on the validity of <tt>ranges::size</tt> in the <tt>sized_range</tt> concept.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a> as follows:</p>
+
+<blockquote><pre>
+template&lt;class T&gt;
+  concept sized_range =
+    range&lt;T&gt; &amp;&amp;
+    <del>!disable_sized_range&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;</del>
+    requires(T&amp; t) { ranges::size(t); };
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
