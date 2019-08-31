@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-08-27 at 18:47:30 UTC</p>
+<p><p>Revised 2019-08-31 at 16:58:13 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -36323,6 +36323,266 @@ to_chars_result to_chars(char* first, char* last, <i>see below</i> value, int ba
 to_chars_result to_chars(char* first, char* last, float value);
 [&hellip;]
 </pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3267" href="3267">3267.</a> Rebound allocators and <tt>is_always_equal</tt></h3>
+<p><b>Section:</b> 16.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> FrankHB1989 <b>Opened:</b> 2019-08-27 <b>Last modified:</b> 2019-08-31 14:36:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.requirements">issues</a> in [allocator.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[allocator.requirements] does not mention the interaction between <tt>is_always_equal</tt> 
+and allocator rebinding. As the result, a rebound allocator may have different 
+<tt>is_always_equal::value</tt> to the original allocator.
+<p/>
+Further, for an allocator type <tt>X</tt> satisfying 
+<tt>std::allocator_type&lt;X&gt;::is_always_equal::value == true</tt>, rebound allocators 
+of <tt>X</tt> with same type are not guaranteed equal.
+<p/>
+Consider:
+</p>
+<ol>
+<li><p><tt>X</tt> is used as an allocator for <tt>value_type</tt> used in a node-based container;</p></li>
+<li><p><tt>Y</tt> is the rebound allocator type for the node type used in the implementation;</p></li>
+<li><p><tt>b1</tt> and <tt>b2</tt> are values of <tt>Y</tt> from different allocator objects.</p></li>
+</ol>
+<p>
+Then, <tt>std::allocator_type&lt;X&gt;::is_always_equal::value == true</tt> does not necessarily 
+imply <tt>b1 == b2</tt>.
+<p/>
+Since some of containers in the standard have already explicitly relied on <tt>is_always_equal</tt> 
+of allocators for their <tt>value_type</tt> (notably, in the exception specification of the move 
+assignment), this can cause subtle problems.
+<p/>
+In general, the implementation of the move assignment operator of such a container can not avoid 
+allocation for new nodes when <tt>!std::allocator_traits&lt;Y&gt;::propagate_on_container_move_assignment::value 
+&amp;&amp; b1 != b2</tt>. This can throw, and it can clash with the required exception specification 
+based on <tt>std::allocator_traits&lt;value_type&gt;::is_always_equal</tt>:
+</p>
+<blockquote><pre>
+#include &lt;utility&gt;
+#include &lt;memory&gt;
+#include &lt;new&gt;
+#include &lt;map&gt;
+#include &lt;functional&gt; 
+#include &lt;type_traits&gt; 
+
+using K = int;
+using V = int;
+using P = std::pair&lt;const K, V&gt;; 
+
+bool stop_alloc; 
+
+template&lt;typename T&gt;
+struct AT
+{
+  using value_type = T; 
+
+  std::shared_ptr&lt;void&gt; sp = {}; 
+
+  templatetypename U&gt;
+  struct rebind
+  {
+    using other = AT&lt;U&gt;;
+  }; 
+
+  using is_always_equal = std::is_same&lt;T, P&gt;; 
+
+  AT() : sp(is_always_equal::value ? nullptr : new T*()) {}
+
+  AT(const AT&amp; a) = default;
+
+  template&lt;typename U&gt;
+  AT(const AT&lt;U>&amp; a) noexcept : sp(a.sp) {} 
+
+  T* allocate(std::size_t size)
+  {
+    if (stop_alloc)
+      throw std::bad_alloc();
+    return static_cast&lt;T*&gt;(::operator new(size * sizeof(T)));
+  } 
+
+  void deallocate(T* p, std::size_t)
+  {
+    ::operator delete(p);
+  }
+
+  friend bool operator==(const AT&amp; x, const AT&amp; y) noexcept
+  {
+    return !x.sp.owner_before(y.sp) &amp;&amp; !y.sp.owner_before(x.sp);
+  } 
+
+  friend bool operator!=(const AT&amp; x, const AT&amp; y) noexcept 
+  {
+    return !(x == y);
+  }
+
+};
+
+using A = AT&lt;P&gt;; 
+
+int main()
+{
+  // Some sanity checks:
+  static_assert(std::is_same_v&lt;A::template rebind&lt;A::value_type&gt;::other, A&gt;);
+  // For any U:
+  using U = int;
+  static_assert(std::is_same_v&lt;A::template rebind&lt;U&gt;::other::template rebind&lt;A::value_type&gt;::other, A&gt;); 
+
+  using C = std::less&lt;&gt;;
+  using M = std::map&lt;K, V, C, A&gt;; 
+
+  // As required by the current wording of the container move operator:
+  using always_equal = std::allocator_traits&lt;A&gt;::is_always_equal;
+  constexpr bool std_nothrow = always_equal::value &amp;&amp; std::is_nothrow_move_assignable_v&lt;C&gt;;
+  static_assert(std_nothrow);
+
+  // For conforming implementations:
+  // static_assert(!(std_nothrow &amp;&amp; !std::is_nothrow_move_assignable&lt;M&gt;::value)); 
+
+  M m{{K(), V()}}, m2;
+  auto a = m.get_allocator(); 
+
+  a.sp = std::make_shared&lt;int&gt;(42);
+  stop_alloc = true;
+
+  try
+  {
+    // Call terminate with conforming implementations. This does not work on libstdc++.
+    m2 = std::move(m);
+    // For libstdc++, terminate on allocator-extended move constructor call.
+    //    M m3(std::move(m), a);
+  }
+  catch(...)
+  {}
+}
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Additional questions: Is it necessary to ensure that<br/>
+<tt>X::propagate_on_container_copy_assignment::value == Y::propagate_on_container_copy_assignment::value</tt>?]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 16.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>, Table [tab:cpp17.allocator] 
+"<tt><i>Cpp17Allocator</i></tt> requirements" as indicated:</p>
+<blockquote>
+<table border="1">
+<caption>Table 34 &mdash; <tt><i>Cpp17Allocator</i></tt> requirements [tab:cpp17.allocator]</caption>
+<tr>
+<th>Expression</th>
+<th>Return type</th>
+<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
+<th>Default</th>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>typename<br/>
+X::template<br/>
+rebind&lt;U&gt;::other</tt>
+</td>
+<td>
+<tt>Y</tt>
+</td>
+<td>
+For all <tt>U</tt> (including <tt>T</tt>),<br/>
+<tt>Y::template<br/>
+rebind&lt;T&gt;::other</tt> is <tt>X</tt>.<br/>
+<ins><tt>allocator_traits&lt;X&gt;::is_always_equal::value<br/> 
+== allocator_traits&lt;Y&gt;::is_always_equal::value</tt></ins>
+</td>
+<td>
+See Note A,<br/>
+below.
+</td>
+</tr>
+
+<tr>
+<td colspan="4" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3268" href="3268">3268.</a> <tt>memory_order::memory_order_foo</tt> broken in C++20</h3>
+<p><b>Section:</b> 31.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2019-08-31 <b>Last modified:</b> 2019-08-31 16:58:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#atomics.order">active issues</a> in [atomics.order].</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.order">issues</a> in [atomics.order].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="http://wg21.link/p0439r0">P0439R0</a> renamed the <tt>std::memory_order</tt> enumerators 
+when making it a scoped enumeration. The paper makes the old unscoped names available in the 
+global namespace, but not within the scope of the enumeration.
+<p/>
+For example:
+<p/>
+<tt>std::memory_order::memory_order_consume</tt> is no longer well-formed but 
+<tt>std::memory_order::consume</tt> and <tt>std::memory_order_consume</tt> are.
+<p/>
+In order to prevent unnecessary breakage, we should re-add the <tt>memory_order_foo</tt> names 
+to the enumeration.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Add a new sub-clause at the end of Clause D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins><b>D.?? Deprecated <tt>memory_order</tt> enumerators</b></ins>
+<p/>
+<ins>-?- The following enumerators are declared in addition to those specified in 31.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a>:</ins>
+</p>
+<blockquote>
+<pre>
+<ins>namespace std {
+  enum class memory_order : <i>unspecified</i> {
+    memory_order_relaxed = relaxed, memory_order_consume = consume, memory_order_acquire = acquire, 
+    memory_order_release = release, memory_order_acq_rel = acq_rel, memory_order_seq_cst = seq_cst
+  };
+}</ins>
+</pre>
+</blockquote>
 </blockquote>
 </li>
 </ol>
