@@ -1,0 +1,83 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3278: join_view&lt;V&gt;::iterator&lt;true&gt; tries to write through const join_view ptr</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3278" href="lwg-active.html#3278">3278.</a> <tt>join_view&lt;V&gt;::iterator&lt;true&gt;</tt> tries to write through <tt>const join_view</tt> ptr</h3>
+<p><b>Section:</b> 24.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-09 <b>Last modified:</b> 2019-09-15 12:42:55 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The non-<tt>const</tt> <tt>join_view::begin()</tt> returns <tt>iterator&lt;<i>simple-view</i>&lt;V&gt;&gt;</tt>. 
+If <tt><i>simple-view</i>&lt;V&gt;</tt> is <tt>true</tt>, then the iterator stores a <tt>const join_view*</tt> 
+named <tt>parent_</tt>. <tt>iterator::satisfy()</tt> will try to write to <tt>parent_-&gt;inner_</tt> if 
+<tt>ref_is_glvalue</tt> is <tt>false</tt>. That doesn't work because the <tt>inner_</tt> field is not marked 
+mutable.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, class <tt>template join_view</tt> synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Changing the <tt>join_view&lt;V&gt;::inner_</tt> member to be mutable is safe 
+because this exposition-only member is only used when the <tt>join_view</tt> is single-pass and 
+only modified by operations that invalidate other iterators]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;&gt; &amp;&amp;
+            (is_reference_v&lt;range_reference_t&lt;V&gt;&gt; ||
+            view&lt;range_value_t&lt;V&gt;&gt;)
+  class join_view : public view_interface&lt;join_view&lt;V&gt;&gt; {
+  private:
+    [&hellip;]
+    V base_ = V(); <i>// exposition only</i>
+    <ins>mutable</ins> all_view&lt;InnerRng&gt; inner_ = <i>// exposition only, present only when</i> 
+                                        <ins><i>//</i></ins> !is_reference_v&lt;InnerRng&gt;
+      all_view&lt;InnerRng&gt;();
+  public:
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

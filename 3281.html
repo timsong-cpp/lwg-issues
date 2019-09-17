@@ -1,0 +1,98 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3281: Conversion from pair-like types to subrange is a silent semantic promotion</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3281" href="lwg-active.html#3281">3281.</a> Conversion from <tt><i>pair-like</i></tt> types to <tt>subrange</tt> is a silent semantic promotion</h3>
+<p><b>Section:</b> 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-09-15 14:48:22 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Just because a <tt>pair</tt> is holding two iterators, it doesn't mean those two iterators denote a 
+valid range. Implicitly converting such <tt><i>pair-like</i></tt> types to a <tt>subrange</tt> is 
+dangerous and should be disallowed.
+<p/>
+Suggested priority P1.
+<p/>
+Implementation experience: range-v3's subrange lacks these constructors.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+[&hellip;]
+  <del>template&lt;class T, class U, class V&gt;
+    concept <i>pair-like-convertible-to</i> = <i>// exposition only</i>
+      !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp;
+      requires(T&amp;&amp; t) {
+        { get&lt;0&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;U&gt;;
+        { get&lt;1&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;V&gt;;
+      };</del>
+[&hellip;]
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S = I, subrange_kind K =
+           sized_sentinel_for&lt;S, I&gt; ? subrange_kind::sized : subrange_kind::unsized&gt;
+    requires (K == subrange_kind::sized || !sized_sentinel_for&lt;S, I&gt;)
+  class subrange : public view_interface&lt;subrange&lt;I, S, K&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+    <del>template&lt;<i>not-same-as</i>&lt;subrange&gt; PairLike&gt;
+      requires <i>pair-like-convertible-to</i>&lt;PairLike, I, S&gt;
+    constexpr subrange(PairLike&amp;&amp; r) requires (!StoreSize)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r))}
+    {}
+    template&lt;<i>pair-like-convertible-to</i>&lt;I, S&gt; PairLike&gt;
+    constexpr subrange(PairLike&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r)), n}
+    {}</del>
+  [&hellip;]
+  };
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

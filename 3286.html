@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3286: ranges::size is not required to be valid after a call to ranges::begin on an input range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3286" href="lwg-active.html#3286">3286.</a> <tt>ranges::size</tt> is not required to be valid after a call to <tt>ranges::begin</tt> on an input range</h3>
+<p><b>Section:</b> 24.7.6.2 <a href="https://timsong-cpp.github.io/cppwp/range.take.view">[range.take.view]</a>, 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.ctor">[range.subrange.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-09-16 19:56:23 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+On an input (but not forward) range, <tt>begin(rng)</tt> is not required to be an equality-preserving 
+expression. If the range is <em>also</em> sized, then it is not valid to call <tt>size(rng)</tt> after 
+<tt>begin(rng)</tt>. In several places in the ranges clause, this precondition is violated. A trivial 
+re-expression of the effects clause fixes the problem.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.6.2 <a href="https://timsong-cpp.github.io/cppwp/range.take.view">[range.take.view]</a>, class template <tt>take_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+  class take_view : public view_interface&lt;take_view&lt;V&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+    constexpr auto begin() requires (!<i>simple-view</i>&lt;V&gt;) {
+      if constexpr (sized_range&lt;V&gt;) {
+        if constexpr (random_access_range&lt;V&gt;)
+          return ranges::begin(base_);
+        else <ins>{
+          auto sz = size();</ins>
+          return counted_iterator{ranges::begin(base_), <del>size()</del><ins>sz</ins>};
+        <ins>}</ins>
+      } else
+        return counted_iterator{ranges::begin(base_), count_};
+    }
+
+    constexpr auto begin() const requires range&lt;const V&gt; {
+      if constexpr (sized_range&lt;const V&gt;) {
+        if constexpr (random_access_range&lt;const V&gt;)
+          return ranges::begin(base_);
+        else <ins>{
+          auto sz = size();</ins>
+          return counted_iterator{ranges::begin(base_), <del>size()</del><ins>sz</ins>};
+        <ins>}</ins>
+      } else
+        return counted_iterator{ranges::begin(base_), count_};
+    }
+    
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.ctor">[range.subrange.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+  requires forwarding-range&lt;R&gt; &amp;&amp;
+    convertible_to&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to:
+<ol style="list-style-type: none">
+<li><p>(6.1) &mdash; If <tt>StoreSize</tt> is <tt>true</tt>, <tt>subrange{<del>ranges::begin(r), 
+ranges::end(r)</del><ins>r</ins>, ranges::size(r)}</tt>.</p></li>
+<li><p>(6.2) &mdash; Otherwise, <tt>subrange{ranges::begin(r), ranges::end(r)}</tt>.</p></li>
+</ol>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

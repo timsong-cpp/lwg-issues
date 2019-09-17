@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3282: subrange converting constructor should disallow derived to base conversions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3282" href="lwg-active.html#3282">3282.</a> <tt>subrange</tt> converting constructor should disallow derived to base conversions</h3>
+<p><b>Section:</b> 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-09-16 17:27:06 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code leads to slicing and general badness:
+</p>
+<blockquote><pre>
+struct Base {};
+struct Derived : Base {};
+subrange&lt;Derived*&gt; sd;
+subrange&lt;Base*&gt; sb = sd;
+</pre></blockquote>
+<p>
+Traversal operations on iterators that are pointers do pointer arithmetic. If a <tt>Base*</tt> is 
+actually pointing to a <tt>Derived*</tt>, then pointer arithmetic is invalid. <tt>subrange</tt>'s 
+constructors can easily flag this invalid code, and probably should.
+<p/>
+The following PR incorporates the suggested fix to issue LWG <a href="3281">3281</a> I previously reported.
+<p/>
+Suggested priority: P1, since it will be hard to fix this after C++20 ships.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <ins>template&lt;class From, class To&gt;
+    concept <i>convertible-to-non-slicing</i> = <i>// exposition only</i>
+      convertible_to&lt;From, To&gt; &amp;&amp;
+      !(is_pointer_v&lt;decay_t&lt;From&gt;&gt;> &amp;&amp;
+      is_pointer_v&lt;decay_t&lt;To&gt;&gt; &amp;&amp;
+      <i>not-same-as</i>&lt;remove_pointer_t&lt;decay_t&lt;From&gt;&gt;, remove_pointer_t&lt;decay_t&lt;To&gt;&gt;&gt;);</ins>
+      
+  template&lt;class T&gt;
+    concept <i>pair-like</i> = <i>// exposition only</i>
+      [&hellip;]
+      
+  <del>template&lt;class T, class U, class V&gt;
+    concept <i>pair-like-convertible-to</i> = <i>// exposition only</i>
+      !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp;
+      requires(T&amp;&amp; t) {
+        { get&lt;0&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;U&gt;;
+        { get&lt;1&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;V&gt;;
+      };</del>
+      
+   template&lt;class T, class U, class V&gt;
+     concept <i>pair-like-convertible-from</i> = <i>// exposition only</i>
+       !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;T&gt; &amp;&amp; 
+       constructible_from&lt;T, U, V&gt; <ins>&amp;&amp;
+       <i>convertible-to-non-slicing</i>&lt;U, tuple_element_t&lt;0, T&gt;&gt; &amp;&amp;
+       convertible_to&lt;V, tuple_element_t&lt;1, T&gt;&gt;</ins>;
+
+[&hellip;]
+[&hellip;]
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S = I, subrange_kind K =
+           sized_sentinel_for&lt;S, I&gt; ? subrange_kind::sized : subrange_kind::unsized&gt;
+    requires (K == subrange_kind::sized || !sized_sentinel_for&lt;S, I&gt;)
+  class subrange : public view_interface&lt;subrange&lt;I, S, K&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    subrange() = default;
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                       <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+    
+    template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+      requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+        <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+        convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+    
+    template&lt;<i>forwarding-range</i> R&gt;
+      requires convertible_to&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+        : subrange{ranges::begin(r), ranges::end(r), n}
+    {}
+    
+    <del>template&lt;<i>not-same-as</i>&lt;subrange&gt; PairLike&gt;
+      requires <i>pair-like-convertible-to</i>&lt;PairLike, I, S&gt;
+    constexpr subrange(PairLike&amp;&amp; r) requires (!StoreSize)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r))}
+    {}
+
+    template&lt;<i>pair-like-convertible-to</i>&lt;I, S&gt; PairLike&gt;
+    constexpr subrange(PairLike&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r)), n}
+    {}</del>
+  [&hellip;]
+  };
+  
+  <ins>template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  subrange(I, S) -&gt; subrange&lt;I, S&gt;;</ins>  
+  
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.ctor">[range.subrange.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+</pre>
+<blockquote>
+<p>
+-1- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                   <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+</pre>
+<blockquote>
+<p>
+-2- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+  requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+    <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+    convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
