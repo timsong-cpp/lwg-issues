@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3288: atomic&lt;T&gt;::notify_one is unimplementable</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3288" href="lwg-active.html#3288">3288.</a> <tt>atomic&lt;T&gt;::notify_one</tt> is unimplementable</h3>
+<p><b>Section:</b> 31.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.wait">[atomics.wait]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Anthony Williams <b>Opened:</b> 2019-09-11 <b>Last modified:</b> 2019-09-17 17:38:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#atomics.wait">active issues</a> in [atomics.wait].</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.wait">issues</a> in [atomics.wait].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I am concerned by the wording around <tt>atomic&lt;T&gt;::wait()/atomic&lt;T&gt;::notify_one()</tt>.
+<p/>
+31.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.wait">[atomics.wait]</a> p4 requires that the thread that calls <tt>wait()</tt> observed a
+value <tt>X</tt> prior to the value <tt>Y</tt> which results from a store that happens-before 
+the notify in order to be eligible to be unlocked.
+<p/>
+I am not sure how to implement that.
+</p>
+<blockquote><pre>
+atomic&lt;int&gt; a = 0;
+
+T1: int ra=a, read 0
+T1: a.wait(0)
+T2: a=42
+T3: int ra=a, read 42
+T3: a.wait(42)
+T2: a.notify_one()
+</pre></blockquote>
+<p>
+The wording requires that <tt>T1</tt> is eligible to be unlocked, but not <tt>T3</tt>, as
+there is not a write <em>after</em> the value read by <tt>T3</tt> that happens-before
+the notify.
+<p/>
+However, both <tt>T1</tt> and <tt>T3</tt> are waiting, so <tt>T3</tt> may be woken by the OS.
+Waking <tt>T3</tt> is allowed (<tt>wait()</tt> says it may wake spuriously), but waking <tt>T1</tt>
+is currently required as it is the only thread "eligible to be unblocked".
+<p/>
+This requires <tt>notify_one()</tt> to wake <em>all</em> waiters, which defeats the purpose.
+<p/>
+I suspect we need to change 31.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.wait">[atomics.wait]</a> p4.
+<p/>
+How about:
+</p>
+<blockquote><p>
+"A call to an atomic waiting operation <tt>W</tt> on an atomic object <tt>M</tt> is
+<i>eligible to be unlocked</i> by a call to an atomic notifying operation <tt>N</tt> on
+<tt>M</tt> if
+<ul>
+<li><p><tt>N</tt> does not happen-before <tt>W</tt></p></li>
+<li><p>There are no side effects <tt>X</tt> and <tt>Y</tt> in the modification order of <tt>M</tt> such
+that <tt>N</tt> happens-before <tt>X</tt>, <tt>X</tt> precedes <tt>Y</tt> in the modification order 
+of <tt>M</tt> and an atomic operation that observes the effects of <tt>Y</tt> happens-before <tt>W</tt>.</p></li>
+</ul>
+"
+</p></blockquote>
+<p>
+This would allow <tt>T3</tt> to be woken in the preceding example, but prevent it
+being woken in the following case:
+</p>
+<blockquote><pre>
+T1: int ra=a, read 0
+T1: a.wait(0)
+T2: a=42
+T2: a.notify_one()
+T2: a=69
+T3: int ra=a, read 69
+T3: a.wait(69)
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 31.6 <a href="https://timsong-cpp.github.io/cppwp/atomics.wait">[atomics.wait]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-4- A call to an atomic waiting operation <ins><tt>W</tt></ins> on an atomic object <tt>M</tt> is 
+<i>eligible to be unblocked</i> by a call to an atomic notifying operation <ins><tt>N</tt></ins> on <tt>M</tt> 
+if <del>there exist side effects <tt>X</tt> and <tt>Y</tt> on <tt>M</tt> such that:</del>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; <ins><tt>N</tt> does not happen before <tt>W</tt></ins><del>the atomic waiting operation 
+has blocked after observing the result of <tt>X</tt></del>,</p></li>
+<li><p>(4.2) &mdash; <ins>There are no side effects</ins> <tt>X</tt> <ins>and</ins><del>precedes</del> <tt>Y</tt> 
+in the modification order of <tt>M</tt><del>, and</del><ins>such that <tt>N</tt> happens before <tt>X</tt>, 
+<tt>X</tt> precedes <tt>Y</tt> in the modification order of <tt>M</tt> and an atomic operation that observes 
+the effects of <tt>Y</tt> happens before <tt>W</tt>.</ins></p></li>
+<li><p><del>(4.3) &mdash; <tt>Y</tt> happens before the call to the atomic notifying operation.</del></p></li>
+</ol>
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
