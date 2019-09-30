@@ -1,0 +1,163 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3294: zoned_time deduction guides misinterprets string/char*</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3294" href="lwg-active.html#3294">3294.</a> <tt>zoned_time</tt> deduction guides misinterprets <tt>string</tt>/<tt>char*</tt></h3>
+<p><b>Section:</b> 27.11.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-09-14 <b>Last modified:</b> 2019-09-22 13:54:29 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.zone.zonedtime.overview">active issues</a> in [time.zone.zonedtime.overview].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.overview">issues</a> in [time.zone.zonedtime.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current deduction guide for <code>zoned_time</code> for the following declarations
+</p>
+<blockquote>
+<pre>
+zoned_time zpc("America/New_York", std::chrono::system_clock::now());
+zoned_time zps(std::string("America/New_York"), std::chrono::system_clock::now());
+</pre>
+</blockquote>
+<p>
+will attempt to produce a <code>zoned_time</code> instance with <code>const char*</code> 
+(for <tt>zpc</tt>) and with <code>std::string</code> (for <tt>zps</tt>), respectively, 
+as the deduced type for the <tt>TimeZonePtr</tt> template parameter. This is caused by 
+the fact that the unconstrained <code>TimeZonePtr</code> deduction guide template will 
+produce better candidates and will be selected by overload resolution.
+<p/>
+The proposed resolution merges the deduction of the 
+<code>std::string_view</code>/<code>TimeZonePtr</code> deduction guides
+into one guide, that deduces <code>const time_zone*</code> for any type
+convertible to <code>string_view</code>. This is necessary to override
+the deduction from <code>TimeZonePtr</code> constructor candidates.
+<p/>
+In addition, we disable the deduction from <code>string_view</code>
+constructors, that would produce better candidates than the deduction guides
+and create <code>zoned_time</code> instances with durations coarser than
+<code>seconds</code> (causing similar issue as LWG <a href="3232">3232</a>):
+</p>
+<blockquote>
+<pre>
+std::chrono::local_time&lt;hours&gt; lh(10h);
+std::chrono::zoned_time zt1("Europe/Helsinki", lh);
+std::chrono::zoned_time zt2(std::string("Europe/Helsinki"), lh);
+std::chrono::zoned_time zt3(std::string_view("Europe/Helsinki"), lh);
+</pre>
+</blockquote>
+<p>
+Without disabling the deduction from the <code>string_view</code>
+constructor, the type of the <code>zt3</code> variable would be deduced to 
+<code>zoned_time&lt;hours&gt;</code>, with the proposed change the types
+of the variables <code>zt1</code>, <code>zt2</code>, and <code>zt3</code> 
+are consistently deduced as <code>zoned_time&lt;seconds&gt;</code>.
+<p/>
+Finally, the wording eliminates the unnecessary <code>zoned_time&lt;Duration&gt;</code> 
+guide (covered by <code>zoned_time&lt;Duration, TimeZonePtr2&gt;</code>).
+<p/>
+The change was implemented in the example implementation. The dedicated
+test can be found 
+<a href="https://github.com/HowardHinnant/date/blob/master/test/tz_test/zoned_time_deduction.pass.cpp">here</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 27.11.7.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.overview">[time.zone.zonedtime.overview]</a>, class template <tt>zoned_time</tt> 
+synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::chrono {
+  [&hellip;]
+  zoned_time() -&gt; zoned_time&lt;seconds&gt;;
+  
+  template&lt;class Duration&gt;
+    zoned_time(sys_time&lt;Duration&gt;)
+      -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;;
+      
+  <ins>template&lt;class TimeZonePtrOrName&gt;
+    using <i>time-zone-representation</i> =
+      conditional_t&lt;is_convertible_v&lt;TimeZonePtrOrName, string_view&gt;, 
+        const time_zone*,
+        remove_cv_ref&lt;TimeZonePtrOrName&gt;&gt;; <i>// exposition only</i>
+
+  template&lt;class TimeZonePtrOrName&gt;
+    zoned_time(TimeZonePtrOrName&amp;&amp;)
+      -&gt; zoned_time&lt;seconds, <i>time-zone-representation</i>&lt;TimeZonePtr&gt;&gt;;</ins>
+  
+  template&lt;class TimeZonePtr<ins>OrName</ins>, class Duration&gt;
+    zoned_time(TimeZonePtr<ins>OrName&amp;&amp;</ins>, sys_time&lt;Duration&gt;)
+      -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;, 
+        <ins><i>time-zone-representation</i>&lt;</ins>TimeZonePtr<ins>OrName&gt;</ins>&gt;;
+  
+  template&lt;class TimeZonePtr<ins>OrName</ins>, class Duration&gt;
+    zoned_time(TimeZonePtr<ins>OrName&amp;&amp;</ins>, local_time&lt;Duration&gt;, choose = choose::earliest)
+      -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;, 
+        <ins><i>time-zone-representation</i>&lt;</ins>TimeZonePtr<ins>OrName&gt;</ins>&gt;;
+  
+  <del>template&lt;class TimeZonePtr, class Duration&gt;
+    zoned_time(TimeZonePtr, zoned_time&lt;Duration&gt;, choose = choose::earliest)
+      -&gt;> zoned_time&lt;common_type_t&lt;Duration, seconds&gt;, TimeZonePtr&gt;;
+  
+  zoned_time(string_view) -&gt; zoned_time&lt;seconds&gt;;
+
+  template&lt;class Duration&gt;
+    zoned_time(string_view, sys_time&lt;Duration&gt;)
+      -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;;
+  
+  template&lt;class Duration&gt;
+    zoned_time(string_view, local_time&lt;Duration&gt;, choose = choose::earliest)
+      -&gt; zoned_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;;</del>
+  
+  template&lt;class Duration, class TimeZonePtr<ins>OrName</ins>, class TimeZonePtr2&gt;
+    zoned_time(TimeZonePtr<ins>OrName&amp;&amp;</ins>, zoned_time&lt;Duration, TimeZonePtr2&gt;, choose = choose::earliest)
+     -&gt; zoned_time&lt;Duration, <ins><i>time-zone-representation</i>&lt;</ins>TimeZonePtr<ins>OrName&gt;</ins>&gt;;
+}
+</pre>
+</blockquote>
+<p>
+-1- <tt>zoned_time</tt> represents a logical pairing of a <tt>time_zone</tt> and a <tt>time_point</tt> 
+with precision <tt>Duration</tt>. <tt>zoned_time&lt;Duration&gt;</tt> maintains the invariant that it 
+always refers to a valid time zone and represents a point in time that exists and is not ambiguous in 
+that time zone.
+<p/>
+-2- If <tt>Duration</tt> is not a specialization of <tt>chrono::duration</tt>, the program is ill-formed.
+<p/>
+<ins>-?- Every constructor of <tt>zoned_time</tt> that accepts a <tt>string_view</tt> as first parameter 
+does not participate in class template argument deduction (12.3.1.8 <a href="https://timsong-cpp.github.io/cppwp/over.match.class.deduct">[over.match.class.deduct]</a>).</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
