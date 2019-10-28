@@ -1,0 +1,88 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3306: ranges::advance violates its preconditions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3306" href="lwg-active.html#3306">3306.</a> <tt>ranges::advance</tt> violates its preconditions</h3>
+<p><b>Section:</b> 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-10-27 <b>Last modified:</b> 2019-10-27 06:54:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>Recall that "<tt>[i, s)</tt> denotes a range" for an iterator <tt>i</tt> and sentinel <tt>s</tt>
+means that either <tt>i == s</tt> holds, or <tt>i</tt> is dereferenceable and <tt>[++i, s)</tt>
+denotes a range ( [iterator.requirements.genera]).
+</p><p>
+The three-argument overload <tt>ranges::advance(i, n, bound)</tt> is specified in
+23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> paragraphs 5 through 7. Para 5 establishes a precondition that
+<tt>[bound, i)</tt> denotes a range when <tt>n &lt; 0</tt> (both <tt>bound</tt> and <tt>i</tt> must
+have the same type in this case). When <tt>sized_sentinel_for&lt;S, I&gt;</tt> holds and
+<tt>n &lt; bound - i</tt>, para 6.1.1 says that <tt>ranges::advance(i, n, bound)</tt> is equivalent
+to <tt>ranges::advance(i, bound)</tt>. Para 3, however, establishes a precondition for
+<tt>ranges::advance(i, bound)</tt> that <tt>[i, bound)</tt> denotes a range. <tt>[bound, i)</tt> and
+<tt>[i, bound)</tt> cannot both denote ranges unless <tt>i == bound</tt>, which is not the case for
+all calls that reach 6.1.1.
+</p><p>
+The call in para 6.1.1 wants the effects of either 4.1 - which really has no preconditions - or 4.2,
+which is well-defined if either <tt>[i, bound)</tt> or <tt>[bound, i)</tt> denotes a range. Para 3's
+stronger precondition is actually only required by Para 4.3, which increments <tt>i</tt> blindly
+looking for <tt>bound</tt>. The straight-forward fix here seems to be to relax para 3's precondition
+to only apply when 4.3 will be reached.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<p>
+-3- <i>Expects</i>: <ins>Either <tt>assignable_from&lt;I&amp;, S&gt; ||
+sized_sentinel_for&lt;S, I&gt;</tt> is modeled, or</ins> <tt>[i, bound)</tt> denotes a range.
+</p><p>
+-4- <i>Effects</i>:
+</p><p>
+(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt>assignable_from&lt;I&amp;, S&gt;</tt>,
+equivalent to <tt>i = std::move(bound)</tt>.
+</p><p>
+(4.2) &mdash; Otherwise, if <tt>S</tt> and <tt>I</tt> model <tt>sized_sentinel_for&lt;S, I&gt;</tt>,
+equivalent to <tt>ranges::advance(i, bound - i)</tt>.
+</p><p>
+(4.3) &mdash; Otherwise, while <tt>bool(i != bound)</tt> is <tt>true</tt>, increments <tt>i</tt>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
