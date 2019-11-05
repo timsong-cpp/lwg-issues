@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3313: join_view::iterator::operator-- is incorrectly constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3313" href="lwg-active.html#3313">3313.</a> <tt>join_view::iterator::operator--</tt> is incorrectly constrained</h3>
+<p><b>Section:</b> 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> United States <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 19:58:29 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses US 294</b></p>
+
+<p>
+<tt>join_view::iterator::operator--</tt> is improperly constrained. In the <i>Effects:</i> clause in
+paragraph 14, we see the statement:
+</p>
+<blockquote><pre>
+inner_ = ranges::end(*--outer_);
+</pre></blockquote>
+<p>
+However, this only well-formed when <tt>end</tt> returns an iterator, not a sentinel. This
+requirement is not reflected in the constraints of the function(s).
+<p/>
+<b>Eric Niebler:</b>
+<p/>
+From the WD, <tt>join_view::iterator::operator--</tt> is specified as:
+</p>
+<blockquote><pre>
+constexpr iterator&amp; operator--()
+  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
+    bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt;;
+</pre>
+-14- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+if (outer_ == ranges::end(parent_-&gt;base_))
+  inner_ = ranges::end(*--outer_);
+while (inner_ == ranges::begin(*outer_))
+  inner_ = ranges::end(*--outer_);
+--inner_;
+return *this;
+</pre></blockquote>
+</blockquote>
+<p>
+The trouble is from the lines that do:
+</p>
+<blockquote><pre>
+  inner_ = ranges::end(*--outer_);
+</pre></blockquote>
+<p>
+Clearly this will only compile when <tt>*--outer</tt> returns a <tt>common_range</tt>, but 
+nowhere is that requirement stated.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>, class template <tt>join_view::iterator</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr iterator&amp; operator--()
+  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
+           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
+
+constexpr iterator operator--(int)
+  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
+           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr iterator&amp; operator--()
+  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
+           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+if (outer_ == ranges::end(parent_-&gt;base_))
+  inner_ = ranges::end(*--outer_);
+while (inner_ == ranges::begin(*outer_))
+  inner_ = ranges::end(*--outer_);
+--inner_;
+return *this;
+</pre></blockquote>
+</p>
+</blockquote>
+<pre>
+constexpr iterator operator--(int)
+  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
+           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+auto tmp = *this;
+--*this;
+return tmp;
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

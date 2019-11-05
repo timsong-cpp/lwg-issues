@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3314: Is stream insertion behavior locale dependent when Period::type is micro?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3314" href="lwg-active.html#3314">3314.</a> Is stream insertion behavior locale dependent when <tt>Period::type</tt> is <tt>micro</tt>?</h3>
+<p><b>Section:</b> 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tom Honermann <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 21:36:06 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.duration.io">active issues</a> in [time.duration.io].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.duration.io">issues</a> in [time.duration.io].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> states:
+</p>
+<blockquote>
+<pre>
+template&lt;class charT, class traits, class Rep, class Period>
+  basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const duration&lt;Rep, Period&gt;&amp; d);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-3- The units suffix depends on the type <tt>Period::type</tt> as follows:
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(3.5) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>micro</tt>, the suffix is <tt>"&micro;s"</tt> 
+(<tt>"\u00b5\u0073"</tt>).</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+<p/>
+[&hellip;]
+<p/>
+-4- If <tt>Period::type</tt> is <tt>micro</tt>, but the character U+00B5 cannot be represented in the 
+encoding used for <tt>charT</tt>, the unit suffix <tt>"us"</tt> is used instead of <tt>"&micro;s"</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+<p>
+Which encoding is intended by "the encoding used for <tt>charT</tt>"?  There are two candidates:
+</p>
+<ol>
+<li><p>The associated execution character set as defined by 5.3 <a href="https://timsong-cpp.github.io/cppwp/lex.charset">[lex.charset]</a> p3 used to encode 
+character and string literals (e.g., the "execution wide-character set" for <tt>wchar_t</tt>).</p></li>
+<li><p>The locale dependent character set used by the <tt>std::locale ctype</tt> and <tt>codecvt</tt> 
+facets as specified in 28.4.1 <a href="https://timsong-cpp.github.io/cppwp/category.ctype">[category.ctype]</a>, sometimes referred to as the 
+"native character set".</p></li>
+</ol>
+<p>
+The behavior should not be dependent on <tt>locale</tt> and should therefore be specified in terms of 
+the execution character sets.
+<p/>
+The execution character set is implementation defined and some implementations allow the choice of 
+execution character set to be specified via a compiler option or determined based on the locale active 
+when the compiler is run. For example, the Microsoft compiler, when run on a Windows system with regional 
+language settings configured for "English (United States)", will use Windows-1252 for the execution 
+character set, but allows this choice to be overridden with the <tt>/execution-charset</tt> compiler 
+option. The Microsoft compiler might therefore use <tt>"us"</tt> by default, but <tt>"&micro;s"</tt> 
+when invoked with the <tt>/execution-charset:utf-8</tt> or <tt>/execution-charset:.437</tt> options. 
+In the latter two cases, the string contents would contain <tt>"\xb5\x73"</tt> and <tt>"\xe6\x73"</tt> 
+respectively (Unicode and Windows code page 437 map &micro; (U+00B5, MICRO SIGN) to different code points).
+<p/>
+This resolution relies on the character set for the locale used at run-time being compatible with the 
+execution character set if the produced string is to be displayed correctly when written to a terminal 
+or console. This is a typical requirement for character and string literals but is more strongly 
+relevant for this issue since &micro; lacks representation in many character sets. Additionally, if the 
+stream is imbued with a <tt>std::codecvt</tt> facet, the facet must provide appropriate conversion 
+support for behavior to be well defined.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> "implementation's native character set" is used in 28.4.1.1 <a href="https://timsong-cpp.github.io/cppwp/locale.ctype">[locale.ctype]</a> 
+and 28.4.1.4 <a href="https://timsong-cpp.github.io/cppwp/locale.codecvt">[locale.codecvt]</a> to refer to the locale dependent character encoding.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class charT, class traits, class Rep, class Period>
+  basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const duration&lt;Rep, Period&gt;&amp; d);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-3- The units suffix depends on the type <tt>Period::type</tt> as follows:
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(3.5) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>micro</tt>, the suffix is <tt>"&micro;s"</tt> 
+(<tt>"\u00b5\u0073"</tt>).</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+<p/>
+[&hellip;]
+<p/>
+-4- If <tt>Period::type</tt> is <tt>micro</tt>, but the character U+00B5 <del>cannot be represented in the 
+encoding used</del><ins>lacks representation in the execution character set</ins> for <tt>charT</tt>, the 
+unit suffix <tt>"us"</tt> is used instead of <tt>"&micro;s"</tt>. <ins>If <tt>"&micro;s"</tt> is used but 
+the implementation's native character set lacks representation for U+00B5 and the stream is associated 
+with a terminal or console, or if the stream is imbued with a <tt>std::codecvt</tt> facet that lacks 
+conversion support for the character, then the result is unspecified.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
