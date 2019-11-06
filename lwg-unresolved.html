@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-11-06 at 19:19:36 UTC</p>
+<p><p>Revised 2019-11-06 at 21:04:26 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -40539,6 +40539,405 @@ constexpr explicit join_view(R&amp;&amp; r);
 </blockquote>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3323" href="3323">3323.</a> <tt><i>has-tuple-element</i></tt> helper concept needs <tt>convertible_to</tt></h3>
+<p><b>Section:</b> 24.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Great Britain <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 19:37:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/295">GB 299</a></b></p>
+
+<p>
+<tt><i>has-tuple-element</i></tt> helper concept needs <tt>convertible_to</tt>
+<p/>
+The exposition-only <tt><i>has-tuple-element</i></tt> concept (for <tt>elements_view</tt>) is defined as
+</p>
+<blockquote><pre>
+template&lt;class T, size_t N&gt;
+concept <i>has-tuple-element</i> = <i>exposition only</i>
+  requires(T t) {
+    typename tuple_size&lt;T&gt;::type;
+    requires N &lt; tuple_size_v&lt;T&gt;;
+    typename tuple_element_t&lt;N, T&gt;;
+    { get&lt;N&gt;(t) } -&gt; const tuple_element_t&lt;N, T&gt;&amp;;
+  };
+</pre></blockquote>
+<p>
+However, the return type constraint for <tt>{ get&lt;N&gt;(t) }</tt> is no longer valid 
+under the latest concepts changes
+<p/>
+Proposed change:
+</p>
+<p>
+Change to:
+</p>
+<blockquote><pre>
+template&lt;class T, size_t N&gt;
+concept <i>has-tuple-element</i> = <i>exposition only</i>
+  requires(T t) {
+    typename tuple_size&lt;T&gt;::type;
+    requires N &lt; tuple_size_v&lt;T&gt;;
+    typename tuple_element_t&lt;N, T&gt;;
+    { get&lt;N&gt;(t) } -&gt; convertible_to&lt;const tuple_element_t&lt;N, T&gt;&amp;&gt;;
+  };
+</pre></blockquote>
+<p>
+<b>Jonathan Wakely:</b>
+<p/>
+The NB comment says "The return type constraint for <tt>{ get(t) }</tt> is no longer valid under 
+the latest concepts changes." The changes referred to are those in <a href="https://wg21.link/p1452r2">P1452R2</a>. 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a>, class template <tt>elements_view</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class T, size_t N&gt;
+  concept <i>has-tuple-element</i> = <i>// exposition only</i>
+    requires(T t) {
+      typename tuple_size&lt;T&gt;::type;
+      requires N &lt; tuple_size_v&lt;T&gt;;
+      typename tuple_element_t&lt;N, T&gt;;
+      { get&lt;N&gt;(t) } -&gt; <ins>convertible_to&lt;</ins>const tuple_element_t&lt;N, T&gt;&amp;<ins>&gt;</ins>;
+    };
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3324" href="3324">3324.</a> Special-case <tt>std::strong/weak/partial_order</tt> for pointers</h3>
+<p><b>Section:</b> 17.11.7 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Canada <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 20:09:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/176">CA 178</a></b></p>
+
+<p>
+<tt>std::strong_order</tt>, <tt>weak_order</tt>, and <tt>partial_order</tt> have special cases 
+for floating point, but are missing special casing for pointers. <tt>compare_three_way</tt> and 
+<tt>std::less</tt> have the special casing for pointers.
+</p>
+Proposed change:
+<p/>
+Change [cmp.alg] bullet 1.4 from
+<br/>
+"Otherwise, <tt>strong_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
+<br/>
+to
+<br/>
+"Otherwise, <tt>strong_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
+<p/>
+Change [cmp.alg] bullet 2.4 from
+<br/>
+"Otherwise, <tt>weak_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
+<br/>
+to
+<br/>
+"Otherwise, <tt>weak_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
+<br/>
+Change [cmp.alg] bullet 3.3 from
+<br/>
+"Otherwise, <tt>partial_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
+<br/>
+to
+<br/>
+"Otherwise, <tt>partial_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
+<p>
+<b>Dietmar K&uuml;hl:</b>
+<p/>
+Use <tt>compare_three_way</tt> instead of <tt>&lt;=&gt;</tt> for the various comparison algorithms.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change 17.11.7 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The name <tt>strong_order</tt> [&hellip;]
+</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(1.4) &mdash; Otherwise, <tt>strong_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
+if it is a well-formed expression.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+<p>
+-2- The name <tt>weak_order</tt> [&hellip;]
+</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(2.4) &mdash; Otherwise, <tt>weak_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
+if it is a well-formed expression.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+<p>
+-3- The name <tt>partial_order</tt> [&hellip;]
+</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+<li><p>(3.3) &mdash; Otherwise, <tt>partial_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
+if it is a well-formed expression.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3325" href="3325">3325.</a> Constrain return type of transformation function for <tt>transform_view</tt></h3>
+<p><b>Section:</b> 24.7.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.transform.view">[range.transform.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> United States <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 20:24:59 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/299">US 303</a></b></p>
+
+<p>
+The <tt>transform_view</tt> does not constrain the return type of the transformation function. It
+is invalid to pass a <tt>void</tt>-returning transformation function to the <tt>transform_view</tt>, 
+which would cause its <tt>iterator</tt>s' <tt>operator*</tt> member to return <tt>void</tt>.
+<p/>
+Proposed change:
+</p>
+<p>
+Change the constraints on <tt>transform_view</tt> to the following:
+</p>
+<blockquote><pre>
+template&lt;input_range V, copy_constructible F&gt;
+  requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+           regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
+           <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
+class transform_view;
+</pre></blockquote>
+<p>
+<b>Jonathan Wakely:</b>
+<p/>
+The NB comment says "The <tt>transform_view</tt> does not constrain the return type of the transformation 
+function. It is invalid to pass a <tt>void</tt>-returning transformation function to the <tt>transform_view</tt>, 
+which would cause its <tt>iterator</tt>s' <tt>operator*</tt> member to return <tt>void</tt>."
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.transform.view">[range.transform.view]</a>, class template <tt>elements_view</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; <ins>&amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;</ins>
+  class transform_view : public view_interface&lt;transform_view&lt;V, F&gt;&gt; {
+    [&hellip;]
+  };
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3326" href="3326">3326.</a> <tt>enable_view</tt> has false positives</h3>
+<p><b>Section:</b> 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Germany <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 21:04:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/278">DE 282</a></b></p>
+
+<p>
+"Since the difference between range and view is largely semantic, the
+two are differentiated with the help of <tt>enable_view</tt>." (&sect;3)
+<p/>
+<tt>enable_view</tt> is designed as on opt-in trait to specify that a type is a
+view. It defaults to true for types derived from <tt>view_base</tt> (&sect;4.2) which
+is clearly a form of opt-in. But it also employs a heuristic assuming that anything with 
+<tt>iterator == const_iterator</tt> is also view (&sect;4.3).
+<p/>
+This is a very poor heuristic, the same paragraph already needs to define six
+exceptions from this rule for standard library types (&sect;4.2).
+<p/>
+Experience in working with range-v3 has revealed multiple of our own library types as being 
+affected from needing to opt-out from the "auto-opt-in", as well. This is counter-intuitive: 
+something that was never designed to be a view shouldn't go through hoops so that it isn't
+treated as a view.
+<p/>
+Proposed change:
+</p>
+<p>
+Make <tt>enable_view</tt> truly be opt-in by relying only on explicit specialisation or 
+inheritance from <tt>view_base</tt>. This means removing 24.4.4 &sect;4.2 - &sect;4.4 and 
+introducing new &sect;4.2 "Otherwise, false".
+<p/>
+Double-check if existing standard library types like <tt>basic_string_view</tt> and <tt>span</tt> 
+need to opt-in to being a view now.
+</p>
+<p>
+<b>Casey Carter:</b>
+<p/>
+<tt>enable_view</tt> (24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a>) is designed as on opt-in trait to specify that a type 
+is a view. It defaults to <tt>true</tt> for types derived from <tt>view_base</tt> &mdash; which is a 
+form of opt-in &mdash; and it also employs a heuristic. Unfortunately, the heuristic has false positives. 
+The working draft itself includes six exceptions to the heuristic for standard library types. Since 
+false positives are much more problematic for users than false negatives, we should eliminate the heuristic.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  inline constexpr bool enable_view = <del><i>see below</i></del><ins>derived_from&lt;T, view_base&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+<del>-4- <i>Remarks:</i> For a type <tt>T</tt>, the default value of <tt>enable_view&lt;T&gt;</tt> is:</del>
+<ol style="list-style-type: none">
+<li><p><del>(4.1) &mdash; If <tt>derived_from&lt;T, view_base&gt;</tt> is <tt>true</tt>, 
+<tt>true</tt>.</del></p></li>
+<li><p><del>(4.2) &mdash; Otherwise, if <tt>T</tt> is a specialization of class template 
+<tt>initializer_list</tt> (17.10 <a href="https://timsong-cpp.github.io/cppwp/support.initlist">[support.initlist]</a>), <tt>set</tt> (22.4.6 <a href="https://timsong-cpp.github.io/cppwp/set">[set]</a>),
+<tt>multiset</tt> (22.4.7 <a href="https://timsong-cpp.github.io/cppwp/multiset">[multiset]</a>), <tt>unordered_set</tt> (22.5.6 <a href="https://timsong-cpp.github.io/cppwp/unord.set">[unord.set]</a>), 
+<tt>unordered_multiset</tt> (22.5.7 <a href="https://timsong-cpp.github.io/cppwp/unord.multiset">[unord.multiset]</a>), or <tt>match_results</tt>
+(30.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a>), <tt>false</tt>.</del></p></li>
+<li><p><del>(4.3) &mdash; Otherwise, if both <tt>T</tt> and <tt>const T</tt> model <tt>range</tt> and 
+<tt>range_reference_t&lt;T&gt;</tt> is not the same type as <tt>range_reference_t&lt;const T&gt;</tt>, 
+<tt>false</tt>. [<i>Note:</i> Deep <tt>const</tt>-ness implies element ownership, whereas shallow const-ness 
+implies reference semantics. &mdash; <i>end note</i>]</del></p></li>
+<li><p><del>(4.4) &mdash; Otherwise, true.</del></p></li>
+</ol>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.4.1 <a href="https://timsong-cpp.github.io/cppwp/string.view.synop">[string.view.synop]</a>, header <tt>&lt;string_view&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// 21.4.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.template">[string.view.template]</a>, class template basic_string_view</i>
+  template&lt;class charT, class traits = char_traits&lt;charT&gt;&gt;
+  class basic_string_view;
+  
+  <ins>template&lt;class charT, class traits&gt;
+    inline constexpr bool ranges::enable_view&lt;basic_string_view&lt;charT, traits&gt;&gt; = true;</ins>
+    
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.7.2 <a href="https://timsong-cpp.github.io/cppwp/span.syn">[span.syn]</a>, header <tt>&lt;apsn&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// constants</i>
+  inline constexpr size_t dynamic_extent = numeric_limits&lt;size_t&gt;::max();
+  
+  <i>// 22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>, class template span</i>
+  template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
+  class span;
+    
+  <ins>template&lt;class ElementType, size_t Extent&gt;
+    inline constexpr bool ranges::enable_view&lt;span&lt;ElementType, Extent&gt;&gt; = Extent == 0 || 
+      Extent == dynamic_extent;</ins>
+    
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.11.4 <a href="https://timsong-cpp.github.io/cppwp/range.split.outer.value">[range.split.outer.value]</a>, class <tt>split_view::outer_iterator::value_type</tt>
+synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The following applies the proposed wording for LWG <a href="3276">3276</a>]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, class Pattern&gt;
+  template&lt;bool Const&gt;
+  struct split_view&lt;V, Pattern&gt;::outer_iterator&lt;Const&gt;::value_type 
+    <ins>: view_interface&lt;value_type&gt;</ins> {
+  private:
+    outer_iterator i_ = outer_iterator(); <i>// exposition only</i>
+  public:
+    value_type() = default;
+    constexpr explicit value_type(outer_iterator i);
+
+    constexpr inner_iterator&lt;Const&gt; begin() const;
+    constexpr default_sentinel_t end() const;
+  };
+}
+</pre>
+</blockquote>
+</li>
+
 </ol>
 
 

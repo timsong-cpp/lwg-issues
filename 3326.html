@@ -1,0 +1,182 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3326: enable_view has false positives</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3326" href="lwg-active.html#3326">3326.</a> <tt>enable_view</tt> has false positives</h3>
+<p><b>Section:</b> 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Germany <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 21:04:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/278">DE 282</a></b></p>
+
+<p>
+"Since the difference between range and view is largely semantic, the
+two are differentiated with the help of <tt>enable_view</tt>." (&sect;3)
+<p/>
+<tt>enable_view</tt> is designed as on opt-in trait to specify that a type is a
+view. It defaults to true for types derived from <tt>view_base</tt> (&sect;4.2) which
+is clearly a form of opt-in. But it also employs a heuristic assuming that anything with 
+<tt>iterator == const_iterator</tt> is also view (&sect;4.3).
+<p/>
+This is a very poor heuristic, the same paragraph already needs to define six
+exceptions from this rule for standard library types (&sect;4.2).
+<p/>
+Experience in working with range-v3 has revealed multiple of our own library types as being 
+affected from needing to opt-out from the "auto-opt-in", as well. This is counter-intuitive: 
+something that was never designed to be a view shouldn't go through hoops so that it isn't
+treated as a view.
+<p/>
+Proposed change:
+</p>
+<p>
+Make <tt>enable_view</tt> truly be opt-in by relying only on explicit specialisation or 
+inheritance from <tt>view_base</tt>. This means removing 24.4.4 &sect;4.2 - &sect;4.4 and 
+introducing new &sect;4.2 "Otherwise, false".
+<p/>
+Double-check if existing standard library types like <tt>basic_string_view</tt> and <tt>span</tt> 
+need to opt-in to being a view now.
+</p>
+<p>
+<b>Casey Carter:</b>
+<p/>
+<tt>enable_view</tt> (24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a>) is designed as on opt-in trait to specify that a type 
+is a view. It defaults to <tt>true</tt> for types derived from <tt>view_base</tt> &mdash; which is a 
+form of opt-in &mdash; and it also employs a heuristic. Unfortunately, the heuristic has false positives. 
+The working draft itself includes six exceptions to the heuristic for standard library types. Since 
+false positives are much more problematic for users than false negatives, we should eliminate the heuristic.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  inline constexpr bool enable_view = <del><i>see below</i></del><ins>derived_from&lt;T, view_base&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+<del>-4- <i>Remarks:</i> For a type <tt>T</tt>, the default value of <tt>enable_view&lt;T&gt;</tt> is:</del>
+<ol style="list-style-type: none">
+<li><p><del>(4.1) &mdash; If <tt>derived_from&lt;T, view_base&gt;</tt> is <tt>true</tt>, 
+<tt>true</tt>.</del></p></li>
+<li><p><del>(4.2) &mdash; Otherwise, if <tt>T</tt> is a specialization of class template 
+<tt>initializer_list</tt> (17.10 <a href="https://timsong-cpp.github.io/cppwp/support.initlist">[support.initlist]</a>), <tt>set</tt> (22.4.6 <a href="https://timsong-cpp.github.io/cppwp/set">[set]</a>),
+<tt>multiset</tt> (22.4.7 <a href="https://timsong-cpp.github.io/cppwp/multiset">[multiset]</a>), <tt>unordered_set</tt> (22.5.6 <a href="https://timsong-cpp.github.io/cppwp/unord.set">[unord.set]</a>), 
+<tt>unordered_multiset</tt> (22.5.7 <a href="https://timsong-cpp.github.io/cppwp/unord.multiset">[unord.multiset]</a>), or <tt>match_results</tt>
+(30.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a>), <tt>false</tt>.</del></p></li>
+<li><p><del>(4.3) &mdash; Otherwise, if both <tt>T</tt> and <tt>const T</tt> model <tt>range</tt> and 
+<tt>range_reference_t&lt;T&gt;</tt> is not the same type as <tt>range_reference_t&lt;const T&gt;</tt>, 
+<tt>false</tt>. [<i>Note:</i> Deep <tt>const</tt>-ness implies element ownership, whereas shallow const-ness 
+implies reference semantics. &mdash; <i>end note</i>]</del></p></li>
+<li><p><del>(4.4) &mdash; Otherwise, true.</del></p></li>
+</ol>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.4.1 <a href="https://timsong-cpp.github.io/cppwp/string.view.synop">[string.view.synop]</a>, header <tt>&lt;string_view&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// 21.4.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.template">[string.view.template]</a>, class template basic_string_view</i>
+  template&lt;class charT, class traits = char_traits&lt;charT&gt;&gt;
+  class basic_string_view;
+  
+  <ins>template&lt;class charT, class traits&gt;
+    inline constexpr bool ranges::enable_view&lt;basic_string_view&lt;charT, traits&gt;&gt; = true;</ins>
+    
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.7.2 <a href="https://timsong-cpp.github.io/cppwp/span.syn">[span.syn]</a>, header <tt>&lt;apsn&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <i>// constants</i>
+  inline constexpr size_t dynamic_extent = numeric_limits&lt;size_t&gt;::max();
+  
+  <i>// 22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>, class template span</i>
+  template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
+  class span;
+    
+  <ins>template&lt;class ElementType, size_t Extent&gt;
+    inline constexpr bool ranges::enable_view&lt;span&lt;ElementType, Extent&gt;&gt; = Extent == 0 || 
+      Extent == dynamic_extent;</ins>
+    
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.11.4 <a href="https://timsong-cpp.github.io/cppwp/range.split.outer.value">[range.split.outer.value]</a>, class <tt>split_view::outer_iterator::value_type</tt>
+synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The following applies the proposed wording for LWG <a href="3276">3276</a>]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, class Pattern&gt;
+  template&lt;bool Const&gt;
+  struct split_view&lt;V, Pattern&gt;::outer_iterator&lt;Const&gt;::value_type 
+    <ins>: view_interface&lt;value_type&gt;</ins> {
+  private:
+    outer_iterator i_ = outer_iterator(); <i>// exposition only</i>
+  public:
+    value_type() = default;
+    constexpr explicit value_type(outer_iterator i);
+
+    constexpr inner_iterator&lt;Const&gt; begin() const;
+    constexpr default_sentinel_t end() const;
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
