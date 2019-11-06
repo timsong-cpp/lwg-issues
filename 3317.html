@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3317: Incorrect operator&lt;&lt; for floating-point durations</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3317" href="lwg-active.html#3317">3317.</a> Incorrect <tt>operator&lt;&lt;</tt> for floating-point durations</h3>
+<p><b>Section:</b> 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> United States <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-05 20:11:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.duration.io">active issues</a> in [time.duration.io].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.duration.io">issues</a> in [time.duration.io].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/330">US 334</a></b></p>
+
+<p>
+<tt>operator&lt;&lt;</tt> for floating-point durations always produces output with six digits 
+after the decimal point, and doesn't use the stream's locale either.
+</p>
+<p>
+Proposed change:
+<p/>
+Rewrite the specification to not rely on <tt>to_string()</tt> for floating-point formatting.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class charT, class traits, class Rep, class Period>
+  basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const duration&lt;Rep, Period&gt;&amp; d);
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Requires:</i> <tt>Rep</tt> is an integral type whose integer conversion rank 
+(6.8.4 <a href="https://timsong-cpp.github.io/cppwp/conv.rank">[conv.rank]</a>) is greater than or equal to that of <tt>short</tt>, or a floating-point type. 
+<tt>charT</tt> is <tt>char</tt> or <tt>wchar_t</tt>.</del>
+<p/>
+-2- <i>Effects:</i> <del>Forms a <tt>basic_string&lt;charT, traits&gt;</tt> from <tt>d.count()</tt> using 
+<tt>to_string</tt> if <tt>charT</tt> is <tt>char</tt>, or <tt>to_wstring</tt> if <tt>charT</tt> is 
+<tt>wchar_t</tt>. Appends the units suffix described below to the <tt>basic_string</tt>.
+Inserts the resulting <tt>basic_string</tt> into <tt>os</tt>. [<i>Note:</i> This specification ensures 
+that the result of this streaming operation will obey the width and alignment properties of the stream. 
+&mdash; <i>end note</i>]</del><ins>Inserts the duration <tt>d</tt> onto the stream <tt>os</tt> as if it 
+were implemented as follows:</ins>
+<blockquote><pre>
+<ins>basic_ostringstream&lt;charT, traits&gt; s;
+s.flags(os.flags());
+s.imbue(os.getloc());
+s.precision(os.precision());
+s &lt;&lt; d.count() &lt;&lt; <i>units_suffix</i>;
+return os &lt;&lt; s.str();</ins>
+</pre></blockquote>
+<p/>
+-3- <del>The units suffix</del><ins><tt><i>units_suffix</i></tt></ins> depends on the type 
+<tt>Period::type</tt> as follows:
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; If <tt>Period::type</tt> is <tt>atto</tt>, <del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
+is <tt>"as"</tt>.</p></li>
+<li><p>(3.2) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>femto</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"fs"</tt>.</p></li>
+<li><p>(3.3) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>pico</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ps"</tt>.</p></li>
+<li><p>(3.4) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>nano</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ns"</tt>.</p></li>
+<li><p>(3.5) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>micro</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"&micro;s"</tt> 
+(<tt>"\u00b5\u0073"</tt>).</p></li>
+<li><p>(3.6) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>milli</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ms"</tt>.</p></li>
+<li><p>(3.7) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>centi</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"cs"</tt>.</p></li>
+<li><p>(3.8) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>deci</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ds"</tt>.</p></li>
+<li><p>(3.9) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;1&gt;</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"s"</tt>.</p></li>
+<li><p>(3.10) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>deca</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"das"</tt>.</p></li>
+<li><p>(3.11) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>hecto</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"hs"</tt>.</p></li>
+<li><p>(3.12) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>kilo</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ks"</tt>.</p></li>
+<li><p>(3.13) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>mega</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ms"</tt>.</p></li>
+<li><p>(3.14) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>giga</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Gs"</tt>.</p></li>
+<li><p>(3.15) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>tera</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ts"</tt>.</p></li>
+<li><p>(3.16) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>peta</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ps"</tt>.</p></li>
+<li><p>(3.17) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>exa</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Es"</tt>.</p></li>
+<li><p>(3.18) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;60&gt;</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"min"</tt>.</p></li>
+<li><p>(3.19) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;3600&gt;</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"h"</tt>.</p></li>
+<li><p>(3.20) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;86400&gt;</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"d"</tt>.</p></li>
+<li><p>(3.21) &mdash; Otherwise, if <tt>Period::type::den == 1</tt>, 
+<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"<i>[num</i>]s"</tt>.</p></li>
+<li><p>(3.22) &mdash; Otherwise, <del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
+is <tt>"[<i>num</i>/<i>den</i>]s"</tt>.</p></li>
+</ol>
+<p/>
+In the list above the use of <tt><i>num</i></tt> and <tt><i>den</i></tt> refer to the static data members 
+of <tt>Period::type</tt>, which are converted to arrays of <tt>charT</tt> using a decimal conversion with 
+no leading zeroes.
+<p/>
+-4- If <tt>Period::type</tt> is <tt>micro</tt>, but the character U+00B5 cannot be represented in the 
+encoding used for <tt>charT</tt>, <del>the unit suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
+<tt>"us"</tt> is used instead of <tt>"&micro;s"</tt>.
+<p/>
+-5- <i>Returns:</i> <tt>os</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
