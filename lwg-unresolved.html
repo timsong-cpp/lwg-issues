@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-11-06 at 21:04:26 UTC</p>
+<p><p>Revised 2019-11-07 at 08:57:59 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -31854,7 +31854,7 @@ element results in undefined behavior.
 <hr>
 <h3><a name="3194" href="3194">3194.</a> <tt>ConvertibleTo</tt> prose does not match code</h3>
 <p><b>Section:</b> 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hubert Tong  <b>Opened:</b> 2019-03-05 <b>Last modified:</b> 2019-09-23 16:43:45 UTC</p>
+ <b>Submitter:</b> Hubert Tong  <b>Opened:</b> 2019-03-05 <b>Last modified:</b> 2019-11-06 22:59:06 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#concept.convertible">active issues</a> in [concept.convertible].</p>
@@ -31949,9 +31949,8 @@ but unspecified (16.5.5.15 <a href="https://timsong-cpp.github.io/cppwp/lib.type
 Due to the concept renaming caused by <a href="http://wg21.link/p1754r1">P1754R1</a> the proposed
 wording is outdated and needs adjustments.
 </p>
-
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>, and also resolves LWG <a href="3151">3151</a>.</p>
 
 <ol>
@@ -31994,6 +31993,69 @@ is equal to <tt>test(f)</tt>.</p></li>
 <li><p>(2.2) &mdash; <tt><ins>add_rvalue_reference_t&lt;</ins>From<ins>&gt;</ins></tt> is not a reference-to-object type, or</p>
 <ol style="list-style-type:none">
 <li><p>(2.2.1) &mdash; If <tt><ins>add_rvalue_reference_t&lt;</ins>From<ins>&gt;</ins></tt> is an rvalue reference 
+to a non const-qualified type, the resulting state of the object referenced by <tt>f()</tt> after either above expression is valid
+but unspecified (16.5.5.15 <a href="https://timsong-cpp.github.io/cppwp/lib.types.movedfrom">[lib.types.movedfrom]</a>).</p></li>
+<li><p>(2.2.2) &mdash; Otherwise, the object referred to by <tt>f()</tt> is not modified by either above expression.</p></li>
+</ol>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+<p><i>[2019-11-16 Tim updates PR based on discussion in Belfast LWG evening session]</i></p>
+
+<p>
+"glvalue" is incorrect because we want to allow testing <tt>convertible_to&lt;void, void&gt;</tt>. It's also less than clear
+how the "expression" and "a particular type" in the first sentence correspond to the parameters of the concept.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4835</a>, and also resolves LWG <a href="3151">3151</a>.</p>
+
+<ol>
+<li><p>Modify 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The <tt>convertible_to</tt> concept <ins>for types <tt>From</tt> and <tt>To</tt></ins> requires an expression
+<ins><tt>E</tt> such that <tt>decltype((E))</tt> is <tt>add_rvalue_reference_t&lt;From&gt;</tt></ins>
+<del>of a particular type and value category</del> to be both implicitly and explicitly convertible to 
+<del>some other type</del> <ins><tt>To</tt></ins>. The implicit and explicit conversions are required to produce equal results.
+</p>
+
+<pre>
+template&lt;class From, class To&gt;
+  concept convertible_to =
+    is_convertible_v&lt;From, To&gt; &amp;&amp;
+    requires(<ins>add_rvalue_reference_t&lt;</ins>From<ins>&gt;</ins> (&amp;f)()) {
+      static_cast&lt;To&gt;(f());
+    };
+</pre>
+<blockquote>
+<p>
+-2- Let <ins><tt>FromR</tt> be <tt>add_rvalue_reference_t&lt;From&gt;</tt> and</ins> <tt>test</tt> be the invented function:
+</p>
+<blockquote>
+<pre>
+To test(From<ins>R</ins> (&amp;f)()) {
+  return f();
+}
+</pre>
+</blockquote>
+<p>
+for some types <tt>From</tt> and <tt>To</tt>, and let <tt>f</tt> be a function with no arguments and return type
+<tt>From<ins>R</ins></tt> such that <tt>f()</tt> is equality-preserving.
+<tt>From</tt> and <tt>To</tt> model <tt>convertible_to&lt;From, To&gt;</tt> only if:
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) &mdash; <tt>To</tt> is not an object or reference-to-object type, or <tt>static_cast&lt;To&gt;(f())</tt>
+is equal to <tt>test(f)</tt>.</p></li>
+<li><p>(2.2) &mdash; <tt>From<ins>R</ins></tt> is not a reference-to-object type, or</p>
+<ol style="list-style-type:none">
+<li><p>(2.2.1) &mdash; If <tt>From<ins>R</ins></tt> is an rvalue reference 
 to a non const-qualified type, the resulting state of the object referenced by <tt>f()</tt> after either above expression is valid
 but unspecified (16.5.5.15 <a href="https://timsong-cpp.github.io/cppwp/lib.types.movedfrom">[lib.types.movedfrom]</a>).</p></li>
 <li><p>(2.2.2) &mdash; Otherwise, the object referred to by <tt>f()</tt> is not modified by either above expression.</p></li>
@@ -36401,90 +36463,6 @@ unblocked, and</ins> there exist side effects <tt>X</tt> and <tt>Y</tt> on <tt>M
 
 
 <hr>
-<h3><a name="3264" href="3264">3264.</a> <tt>sized_range</tt> and <tt>ranges::size</tt> redundantly use <tt>disable_sized_range</tt></h3>
-<p><b>Section:</b> 24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-08-26 <b>Last modified:</b> 2019-09-14 16:47:29 UTC</p>
-<p><b>Priority: </b>1
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-<tt>disable_sized_range</tt> (24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a>) is an opt-out trait that users may
-specialize when their <tt>range</tt> type conforms to the syntax of <tt>sized_range</tt> but not its
-semantics, or when the type is so poorly suited to the Standard Library that even testing the
-validity of the expressions <tt>r.size()</tt> or <tt>size(r)</tt> for a range <tt>r</tt> is
-impossible. The library inspects <tt>disable_sized_range</tt> in two places. (1) In the definition of
-the <tt>sized_range</tt> concept:
-<blockquote><pre>
-template&lt;class T&gt;
-  concept sized_range =
-    range&lt;T&gt; &amp;&amp;
-    !disable_sized_range&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;
-    requires(T&amp; t) { ranges::size(t); };
-</pre></blockquote>
-If the pertinent specialization of <tt>disable_sized_range</tt> is <tt>true</tt>, we avoid checking
-the validity of the expression <tt>ranges::size(t)</tt> in the <i>requires-expression</i>.
-(2) In the definition of the <tt>ranges::size</tt> CPO itself (24.3.9 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a>),
-the validity of the expressions <tt><i>decay-copy</i>(E.size())</tt> and
-<tt><i>decay-copy</i>(size(E))</tt> is not checked if the pertinent specialization of
-<tt>disable_sized_range</tt> is <tt>true</tt>.
-</p><p>
-<tt>disable_sized_range</tt> is effectively checked <em>twice</em> when evaluating
-<tt>sized_range</tt>. This redundancy could be forgiven, if it did not permit the existence of
-non-<tt>sized_range</tt>s for which <tt>ranges::size</tt> returns a valid size:
-<blockquote><pre>
-struct mytype {};
-using A = mytype[42];
-
-template &lt;&gt;
-constexpr bool std::ranges::disable_sized_range&lt;A&gt; = true;
-
-static_assert(std::ranges::range&lt;A&gt;);
-static_assert(!std::ranges::sized_range&lt;A&gt;);
-static_assert(std::ranges::size(A{}) == 42);
-
-struct myrange {
-    constexpr int* begin() const { return nullptr; }
-    constexpr int* end() const { return nullptr; }
-};
-
-template &lt;&gt;
-constexpr bool std::ranges::disable_sized_range&lt;myrange&gt; = true;
-
-static_assert(std::ranges::range&lt;myrange&gt;);
-static_assert(!std::ranges::sized_range&lt;myrange&gt;);
-static_assert(std::ranges::size(myrange{}) == 0);
-</pre></blockquote>
-We should remove this gap between <tt>ranges::size</tt> and <tt>sized_range</tt> by checking
-<tt>disable_sized_range</tt> only in the definition of <tt>ranges::size</tt>, and continuing to rely
-on the validity of <tt>ranges::size</tt> in the <tt>sized_range</tt> concept.
-</p>
-
-<p><i>[2019-09-14 Priority set to 1 based on reflector discussion]</i></p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
-
-<ol>
-<li><p>Modify 24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a> as follows:</p>
-
-<blockquote><pre>
-template&lt;class T&gt;
-  concept sized_range =
-    range&lt;T&gt; &amp;&amp;
-    <del>!disable_sized_range&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;</del>
-    requires(T&amp; t) { ranges::size(t); };
-</pre></blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
 <h3><a name="3265" href="3265">3265.</a> <tt>move_iterator</tt>'s conversions are more broken after P1207</h3>
 <p><b>Section:</b> 23.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/move.iter.cons">[move.iter.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-08-23 <b>Last modified:</b> 2019-09-14 17:05:44 UTC</p>
@@ -37312,7 +37290,7 @@ namespace std::ranges {
 <hr>
 <h3><a name="3279" href="3279">3279.</a> <tt>shared_ptr&lt;int&gt;&amp;</tt> does not not satisfy <tt>readable</tt></h3>
 <p><b>Section:</b> 23.3.4.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.readable">[iterator.concept.readable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-09 <b>Last modified:</b> 2019-10-07 02:21:30 UTC</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-09 <b>Last modified:</b> 2019-11-07 08:57:59 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -37329,6 +37307,8 @@ associated type (e.g., <tt>iter_value_t&lt;remove_reference_t&lt;In&gt;&gt;</tt>
 Suggest priority P1 because it effects the definition of a concept which cannot change after C++20.
 </p>
 <p><i>[2019-10 Priority set to 1 after reflector discussion]</i></p>
+
+<p><i>[2019-11 This should be resolved by <a href="https://wg21.link/P1878">P1878</a>]</i></p>
 
 
 
@@ -37903,7 +37883,7 @@ constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
 <h3><a name="3283" href="3283">3283.</a> Types satisfying <tt>input_iterator</tt> but not <tt>equality_comparable</tt> look like 
 C++17 output iterators</h3>
 <p><b>Section:</b> 23.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-10-16 20:17:05 UTC</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-11-07 08:57:59 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#iterator.traits">active issues</a> in [iterator.traits].</p>
@@ -37940,6 +37920,9 @@ This fix has been implemented in range-v3.
 
 <p><i>[2019-10-12 Priority set to 1 after reflector discussion]</i></p>
 
+<p><i>[2019-11 Wednesday night Issue processing in Belfast]</i></p>
+
+<p>Much discussion along with <a href="3289">3289</a>. CC to write rationale for NAD.</p>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -38151,7 +38134,7 @@ the effects of <tt>Y</tt> happens before <tt>W</tt>.</ins></p></li>
 <hr>
 <h3><a name="3289" href="3289">3289.</a> Cannot opt out of C++17 iterator-ness without also opting out of C++20 iterator-ness</h3>
 <p><b>Section:</b> 23.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a>, 23.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/common.iter.types">[common.iter.types]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-11 <b>Last modified:</b> 2019-10-19 11:34:19 UTC</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-11 <b>Last modified:</b> 2019-11-07 08:57:59 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#iterator.traits">active issues</a> in [iterator.traits].</p>
@@ -38182,6 +38165,9 @@ iterator's <tt>iterator_category</tt> typedef (as distinct from the iterator con
 <p><i>[2019-10-19 Issue Prioritization]</i></p>
 
 <p>Priority to 1 after reflector discussion.</p>
+<p><i>[2019-11 Wednesday night Issue processing in Belfast]</i></p>
+
+<p>Much discussion; no consensus that this is a good approach. Need to coordinate between this and <a href="3283">3283</a></p>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -38535,11 +38521,11 @@ template&lt;class Iterator&gt;
 
 <hr>
 <h3><a name="3295" href="3295">3295.</a> Comparison category <tt>operator==</tt> are mis-specified</h3>
-<p><b>Section:</b> 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/cmp.categories">[cmp.categories]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2019-09-14 <b>Last modified:</b> 2019-10-31 18:46:30 UTC</p>
+<p><b>Section:</b> 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/cmp.categories">[cmp.categories]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2019-09-14 <b>Last modified:</b> 2019-11-07 08:57:59 UTC</p>
 <p><b>Priority: </b>1
 </p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 All the defaulted <tt>operator==</tt>s in 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/cmp.categories">[cmp.categories]</a> are currently specified as:
@@ -38558,6 +38544,9 @@ friend constexpr bool operator==(const strong_ordering&amp; v, const strong_orde
 <p><i>[2019-10-31 Issue Prioritization]</i></p>
 
 <p>Priority to 1 after reflector discussion.</p>
+<p><i>[2019-11 Wednesday night issue processing - status to Open]</i></p>
+
+<p>Our preference is for CWG to fix this. JW to provide wording in case CWG cannot.</p>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -38826,7 +38815,7 @@ static_cast&lt;common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&g
 <hr>
 <h3><a name="3301" href="3301">3301.</a> <tt>transform_view::iterator</tt> has incorrect <tt>iterator_category</tt></h3>
 <p><b>Section:</b> 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Michel Morin <b>Opened:</b> 2019-10-03 <b>Last modified:</b> 2019-10-31 19:35:45 UTC</p>
+ <b>Submitter:</b> Michel Morin <b>Opened:</b> 2019-10-03 <b>Last modified:</b> 2019-11-06 22:59:16 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -38848,8 +38837,8 @@ in adapted iterators) and concepts-based determination would be a better fix for
 
 <p>Priority to 1 after reflector discussion.</p>
 
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
 
 <ol>
@@ -38877,58 +38866,38 @@ then <tt>iterator_category</tt> denotes <tt>random_access_iterator_tag</tt>;</p>
 </li>
 
 </ol>
+</blockquote>
+<p><i>[2019-11-06, Tim updates P/R based on Belfast LWG evening session discussion]</i></p>
 
-
-
-
-
-<hr>
-<h3><a name="3302" href="3302">3302.</a> Range adaptor objects <tt>keys</tt> and <tt>values</tt> are unspecified</h3>
-<p><b>Section:</b> 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Michel Morin <b>Opened:</b> 2019-10-04 <b>Last modified:</b> 2019-10-31 19:35:45 UTC</p>
-<p><b>Priority: </b>1
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
 <p>
-This issue was submitted as editorial issue 
-<a href="https://github.com/cplusplus/draft/issues/3231">cplusplus/draft#3231</a> but had been
-classified as non-editorial.
-<p/>
-<tt>keys</tt> and <tt>values</tt> are listed in 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, but not specified.
-It seems that <a href="http://wg21.link/p1035r7">P1035R7</a> forgot to specify them (as 
-<tt>elements&lt;0&gt;</tt> and <tt>elements&lt;1&gt;</tt>).
+The check in the original P/R is incorrect; we want to check the transformation's result, not the base iterator.
 </p>
-
-<p><i>[2019-10-31 Issue Prioritization]</i></p>
-
-<p>Priority to 1 after reflector discussion.</p>
 
 
 <p><b>Proposed resolution:</b></p>
 <p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
 
 <ol>
-<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
 
 <blockquote>
-<pre>
-namespace std::ranges {
-  [&hellip;]
-  
-  template&lt;class R&gt;
-    using keys_view = elements_view&lt;all_view&lt;R&gt;, 0&gt;;
-  template&lt;class R&gt;
-    using values_view = elements_view&lt;all_view&lt;R&gt;, 1&gt;;
-  namespace views {
-    template&lt;size_t N&gt;
-      inline constexpr <i>unspecified</i> elements = <i>unspecified</i>;
-    inline constexpr <ins>auto</ins><del><i>unspecified</i></del> keys = <ins>elements&lt;0&gt;</ins><del><i>unspecified</i></del>;
-    inline constexpr <ins>auto</ins><del><i>unspecified</i></del> values = <ins>elements&lt;1&gt;</ins><del><i>unspecified</i></del>;
-  }  
-}
-[&hellip;]
-</pre>
+<p>
+-2- <ins><tt>iterator::iterator_category</tt> is defined as follows:</ins> 
+Let <tt>C</tt> denote the type <tt>iterator_traits&lt;iterator_t&lt;Base&gt;&gt;::iterator_category</tt>.
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?) &mdash; If <tt>is_lvalue_reference_v&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;Base&gt;&gt;&gt;</tt> 
+is <tt>true</tt>,</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?.?) &mdash;</ins> If <tt>C</tt> models <tt>derived_from&lt;contiguous_iterator_tag&gt;</tt>, 
+then <tt>iterator_category</tt> denotes <tt>random_access_iterator_tag</tt>;</p></li>
+<li><p><ins>(2.?.?) &mdash;</ins> <ins>O</ins><del>o</del>therwise, <tt>iterator_category</tt> denotes 
+<tt>C</tt>.</p></li>
+</ol>
+</li>
+<li><p><ins>(2.?) &mdash; Otherwise, <tt>iterator_category</tt> denotes 
+<tt>input_iterator_tag</tt>.</ins></p></li>
+</ol>
 </blockquote>
 </li>
 
@@ -39292,352 +39261,10 @@ choice whether to re-export names from subordinate headers.
 
 
 <hr>
-<h3><a name="3310" href="3310">3310.</a> Replace <tt>SIZE_MAX</tt> with <tt>numeric_limits&lt;size_t&gt;::max()</tt></h3>
-<p><b>Section:</b> 20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Japan <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 18:41:45 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#mem.poly.allocator.mem">active issues</a> in [mem.poly.allocator.mem].</p>
-<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.mem">issues</a> in [mem.poly.allocator.mem].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses JP 218/219</b></p>
-
-<p>
-It's better to use a C++ property than C standard library macro, <tt>SIZE_MAX</tt>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-[[nodiscard]] Tp* allocate(size_t n);
-</pre>
-<blockquote>
-<p>
--1- <i>Effects:</i> If <tt><del>SIZE_MAX</del><ins>numeric_limits&lt;size_t&gt;::max()</ins> / sizeof(Tp) &lt; n</tt>, 
-throws <tt>length_error</tt>. [&hellip;]
-</p>
-</blockquote>
-[&hellip;]
-<pre>
-template&lt;class T&gt;
-  T* allocate_object(size_t n = 1);
-</pre>
-<blockquote>
-<p>
--8- <i>Effects:</i> Allocates memory suitable for holding an array of <tt>n</tt> objects of type <tt>T</tt>, as follows:
-<ol style="list-style-type: none">
-<li><p>(8.1) &mdash; if <tt><del>SIZE_MAX</del><ins>numeric_limits&lt;size_t&gt;::max()</ins> / sizeof(T) &lt; n</tt>, throws <tt>length_error</tt>,</p></li>
-<li><p>(8.2) &mdash; otherwise equivalent to:</p>
-<blockquote><pre>
-return static_cast&lt;T*&gt;(allocate_bytes(n*sizeof(T), alignof(T)));
-</pre></blockquote>
-</li>
-</ol>
-
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
-<h3><a name="3311" href="3311">3311.</a> <tt>basic_string::operator=(charT c)</tt> should be constrained</h3>
-<p><b>Section:</b> 21.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Russia <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 19:01:12 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#string.cons">issues</a> in [string.cons].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses RU 013</b></p>
-
-<p>
-Because of the implicit conversion of arithmetic types it is error prone to use the
-<tt>basic_string::operator=(charT c)</tt>:
-</p>
-<blockquote><pre>
-double d = 3.14;
-std::string s;
-s = d; // Compiles
-</pre></blockquote>
-<p>
-Make sure that the program is ill-formed if an implicit conversion from arithmetic type happens while
-assigning to <tt>std::basic_string</tt>. Or at least make sure that the program is ill-formed if an 
-implicit conversion from floating point type happens while assigning to <tt>std::basic_string</tt>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 21.3.2 <a href="https://timsong-cpp.github.io/cppwp/basic.string">[basic.string]</a> p3, class template <tt>basic_string</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-<ins>template&lt;class T&gt;</ins>
-constexpr basic_string&amp; operator=(<del>char</del>T c);
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 21.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-<ins>template&lt;class T&gt;</ins>
-constexpr basic_string&amp; operator=(<del>char</del>T c);
-</pre>
-<blockquote>
-<p>
-<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;T, charT&gt;</tt> is <tt>true</tt>.</ins>
-<p/>
--30- <i>Effects:</i> Equivalent to:
-<blockquote><pre>
-return *this = basic_string_view&lt;charT, traits&gt;(addressof(c), 1);
-</pre></blockquote>
-</p>
-</blockquote>
-</blockquote>
-
-</li>
-</ol>
-
-
-
-
-<hr>
-<h3><a name="3312" href="3312">3312.</a> <tt>polymorphic_allocator::allocate_object</tt> and <tt>new_object</tt> should be <tt>[[nodiscard]]</tt></h3>
-<p><b>Section:</b> 20.12.3 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.class">[mem.poly.allocator.class]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 19:27:15 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#mem.poly.allocator.class">active issues</a> in [mem.poly.allocator.class].</p>
-<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.class">issues</a> in [mem.poly.allocator.class].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses US 217</b></p>
-
-<p>
-Add <tt>[[nodiscard]]</tt> in front of the return type for <tt>allocate_object</tt> and <tt>new_object</tt> in class
-declaration and in member-function description for <tt>polymorphic_allocator</tt> template.
-</p>
-
-<p><i>[Daniel comments]</i></p>
-
-<p>
-This issue is related to LWG <a href="3304">3304</a>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 20.12.3 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.class">[mem.poly.allocator.class]</a> p2, class template <tt>polymorphic_allocator</tt> synopsis, 
-as indicated:</p>
-
-<blockquote>
-<pre>
-<i>// 20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a>, member functions</i>
-[[nodiscard]] Tp* allocate(size_t n);
-void deallocate(Tp* p, size_t n);
-
-void* allocate_bytes(size_t nbytes, size_t alignment = alignof(max_align_t));
-void deallocate_bytes(void* p, size_t nbytes, size_t alignment = alignof(max_align_t));
-template&lt;class T&gt; <ins>[[nodiscard]]</ins> T* allocate_object(size_t n = 1);
-template&lt;class T&gt; void deallocate_object(T* p, size_t n = 1);
-template&lt;class T, class... CtorArgs&gt; <ins>[[nodiscard]]</ins> T* new_object(CtorArgs&amp;&amp;... ctor_args);
-template&lt;class T&gt; void delete_object(T* p);
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 20.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.mem">[mem.poly.allocator.mem]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T&gt;
-  <ins>[[nodiscard]]</ins> T* allocate_object(size_t n = 1);
-</pre>
-<blockquote>
-<p>
--8- <i>Effects:</i> Allocates memory suitable for holding an array of <tt>n</tt> objects of type <tt>T</tt>, as follows:
-<ol style="list-style-type: none">
-<li><p>(8.1) &mdash; if <tt>SIZE_MAX / sizeof(T) &lt; n</tt>, throws <tt>length_error</tt>,</p></li>
-<li><p>(8.2) &mdash; otherwise equivalent to:</p>
-<blockquote><pre>
-return static_cast&lt;T*&gt;(allocate_bytes(n*sizeof(T), alignof(T)));
-</pre></blockquote>
-</li>
-</ol>
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-template&lt;class T, class CtorArgs...&gt;
-  <ins>[[nodiscard]]</ins> T* new_object(CtorArgs&amp;&amp;... ctor_args);
-</pre>
-<blockquote>
-<p>
--11- <i>Effects:</i> Allocates and constructs an object of type <tt>T</tt>, as follows.
-Equivalent to:
-<blockquote><pre>
-T* p = allocate_object&lt;T&gt;();
-try {
-  construct(p, std::forward&lt;CtorArgs&gt;(ctor_args)...);
-} catch (...) {
-  deallocate_object(p);
-  throw;
-}
-return p;
-</pre></blockquote>
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
-<h3><a name="3313" href="3313">3313.</a> <tt>join_view::iterator::operator--</tt> is incorrectly constrained</h3>
-<p><b>Section:</b> 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 19:58:29 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses US 294</b></p>
-
-<p>
-<tt>join_view::iterator::operator--</tt> is improperly constrained. In the <i>Effects:</i> clause in
-paragraph 14, we see the statement:
-</p>
-<blockquote><pre>
-inner_ = ranges::end(*--outer_);
-</pre></blockquote>
-<p>
-However, this only well-formed when <tt>end</tt> returns an iterator, not a sentinel. This
-requirement is not reflected in the constraints of the function(s).
-<p/>
-<b>Eric Niebler:</b>
-<p/>
-From the WD, <tt>join_view::iterator::operator--</tt> is specified as:
-</p>
-<blockquote><pre>
-constexpr iterator&amp; operator--()
-  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
-    bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt;;
-</pre>
--14- <i>Effects:</i> Equivalent to:
-<blockquote><pre>
-if (outer_ == ranges::end(parent_-&gt;base_))
-  inner_ = ranges::end(*--outer_);
-while (inner_ == ranges::begin(*outer_))
-  inner_ = ranges::end(*--outer_);
---inner_;
-return *this;
-</pre></blockquote>
-</blockquote>
-<p>
-The trouble is from the lines that do:
-</p>
-<blockquote><pre>
-  inner_ = ranges::end(*--outer_);
-</pre></blockquote>
-<p>
-Clearly this will only compile when <tt>*--outer</tt> returns a <tt>common_range</tt>, but 
-nowhere is that requirement stated.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>, class template <tt>join_view::iterator</tt> synopsis, 
-as indicated:</p>
-
-<blockquote>
-<pre>
-constexpr iterator&amp; operator--()
-  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
-           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
-           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
-
-constexpr iterator operator--(int)
-  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
-           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
-           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-constexpr iterator&amp; operator--()
-  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
-           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
-           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
-</pre>
-<blockquote>
-<p>
--14- <i>Effects:</i> Equivalent to:
-<blockquote><pre>
-if (outer_ == ranges::end(parent_-&gt;base_))
-  inner_ = ranges::end(*--outer_);
-while (inner_ == ranges::begin(*outer_))
-  inner_ = ranges::end(*--outer_);
---inner_;
-return *this;
-</pre></blockquote>
-</p>
-</blockquote>
-<pre>
-constexpr iterator operator--(int)
-  requires ref_is_glvalue &amp;&amp; bidirectional_range&lt;Base&gt; &amp;&amp;
-           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; <ins>&amp;&amp;
-           common_range&lt;range_reference_t&lt;Base&gt;&gt;</ins>;
-</pre>
-<blockquote>
-<p>
--15- <i>Effects:</i> Equivalent to:
-<blockquote><pre>
-auto tmp = *this;
---*this;
-return tmp;
-</pre></blockquote>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3314" href="3314">3314.</a> Is stream insertion behavior locale dependent when <tt>Period::type</tt> is <tt>micro</tt>?</h3>
 <p><b>Section:</b> 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tom Honermann <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-04 21:36:06 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Tom Honermann <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-07 08:20:25 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#time.duration.io">active issues</a> in [time.duration.io].</p>
 <p><b>View all other</b> <a href="lwg-index.html#time.duration.io">issues</a> in [time.duration.io].</p>
@@ -39705,6 +39332,9 @@ stream is imbued with a <tt>std::codecvt</tt> facet, the facet must provide appr
 support for behavior to be well defined.
 </p>
 
+<p><i>[2019 - 11 Priority to 2 during Tuesday morning issue processing in Belfast.]</i></p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 <p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
@@ -39753,1193 +39383,6 @@ conversion support for the character, then the result is unspecified.</ins>
 </li>
 
 </ol>
-
-
-
-
-<hr>
-<h3><a name="3315" href="3315">3315.</a> Correct Allocator Default Behavior</h3>
-<p><b>Section:</b> 16.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-04 <b>Last modified:</b> 2019-11-05 17:44:28 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
-<p><b>View all other</b> <a href="lwg-index.html#allocator.requirements">issues</a> in [allocator.requirements].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses US 162/US 163</b></p>
-
-<p>
-<b><a href="https://github.com/cplusplus/nbballot/issues/160">US 162</a>:</b>
-<p/>
-The default behavior for <tt>a.destroy</tt> is now to call <tt>destroy_at</tt>
-<p/>
-Proposed change:
-<p/>
-Replace "default" entry with: <tt>destroy_at(c)</tt>
-</p>
-<p>
-<b><a href="https://github.com/cplusplus/nbballot/issues/161">US 163</a>:</b>
-<p/>
-The default behavior for <tt>a.construct</tt> is now to call <tt>construct_at</tt>
-<p/>
-Proposed change:
-<p/>
-Replace "default" entry with: <tt>construct_at(c, std::forward&lt;Args&gt;(args)...)</tt>
-<p/>
-<b>Dietmar K&uuml;hl:</b>
-<p/>
-In Table 34 [tab:cpp17.allocator] the behavior of <tt>a.construct(c, args)</tt> and
-<tt>a.destroy(c)</tt> are described to have a default behavior of 
-<tt>::new ((void*)c) C(forward&lt;Args&gt;(args))</tt> and <tt>c-&gt;~C()</tt>, respectively.
-However, this table doesn't actually define what is happening if these operations are omitted: 
-The behavior is provided when using an allocator is used via <tt>std::allocator_traits</tt> 
-and is, thus, defined by the corresponding <tt>std::allocator_traits</tt> functions. These
-functions are specified in 20.10.9.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.traits.members">[allocator.traits.members]</a> paragraphs 5 and 6 to call 
-<tt>construct_at(c, std::forward&lt;Args&gt;(args)</tt> and <tt>destroy_at(p)</tt>, respectively.  
-The text in the table should be updated to match the actual behavior.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 16.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a>, Table [tab:cpp17.allocator] 
-"<tt><i>Cpp17Allocator</i></tt> requirements" as indicated:</p>
-
-<blockquote>
-<table border="1">
-<caption>Table 34 &mdash; <tt><i>Cpp17Allocator</i></tt> requirements [tab:cpp17.allocator]</caption>
-<tr>
-<th>Expression</th>
-<th>Return type</th>
-<th>Assertion&#47;note<br/>pre-&#47;post-condition</th>
-<th>Default</th>
-</tr>
-
-<tr>
-<td colspan="4" align="center">
-<tt>&hellip;</tt>
-</td>
-</tr>
-
-<tr>
-<td>
-<tt>a.construct(c, args)</tt>
-</td>
-<td>
-(not used)
-</td>
-<td>
-<i>Effects:</i> Constructs an object of type <tt>C</tt> at <tt>c</tt>
-</td>
-<td>
-<tt><del>::new ((void*)c) C(</del><ins>construct_at(c, std::</ins>forward&lt;Args&gt;(args)...)</tt>
-</td>
-</tr>
-
-<tr>
-<td>
-<tt>a.destroy(c)</tt>
-</td>
-<td>
-(not used)
-</td>
-<td>
-<i>Effects:</i> Destroys the object at <tt>c</tt>
-</td>
-<td>
-<tt><del>c-&gt;~C()</del><ins>destroy_at(c)</ins></tt>
-</td>
-</tr>
-
-<tr>
-<td colspan="4" align="center">
-<tt>&hellip;</tt>
-</td>
-</tr>
-
-</table>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3316" href="3316">3316.</a> Correctly define epoch for <tt>utc_clock</tt> / <tt>utc_timepoint</tt></h3>
-<p><b>Section:</b> 27.7.2.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.utc.overview">[time.clock.utc.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Great Britain <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-05 19:45:25 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/329">GB 333</a></b></p>
-
-<p>
-UTC epoch is not correctly defined UTC has an officially recorded epoch of 1/1/1972 00:00:00 
-and is 10 seconds behind TAI.
-This can be confirmed through reference to the 
-<a href="https://www.bipm.org/cc/CCTF/Allowed/18/CCTF_09-32_noteUTC.pdf#page=6">BIPM</a> (the 
-body that oversees international metrology)
-</p>
-<blockquote><p>
-"The defining epoch of 1 January 1972, <tt>0 h 0m 0 s</tt> UTC was set 10 s behind TAI, which
-was the approximate accumulated difference between TAI and UT1 since the inception of
-TAI in 1958, and a unique fraction of a second adjustment was applied so that UTC would
-differ from TAI by an integral number of seconds. The recommended maximum departure of 
-UTC from UT1 was 0.7 s. The term "leap second" was introduced for the stepped second."
-</p></blockquote>
-<p>
-Proposed change:
-<p/>
-<tt>utc_clock</tt> and <tt>utc_timepoint</tt> should correctly report relative to the official 
-UTC epoch. 27.2.2.1 footnote 1 should read: 
-</p>
-<blockquote><p>
-In contrast to <tt>sys_time</tt>, which does not take leap seconds into account, 
-<tt>utc_clock</tt> and its associated <tt>time_point</tt>, <tt>utc_time</tt>, count time,
-including leap seconds, since 1972-01-01 00:00:00 UTC. [<i>Example:</i> 
-<tt>clock_cast&lt;utc_clock&gt;(sys_seconds{sys_days{1972y/January/1}}).time_since_epoch()</tt> 
-is <tt>0s</tt>. <tt>clock_cast&lt;utc_clock&gt;(sys_seconds{sys_days{2000y/January/1}}).time_since_epoch()</tt>
-is <tt>883'612'822</tt>, which is <tt>10'197 * 86'400s + 22s</tt>. &mdash; <i>end example</i>]
-</p></blockquote>
-<p>
-<b>Howard Hinnant:</b>
-<p/>
-Clarify that the epoch of <code>utc_clock</code> is intended to be <tt>1970-01-01</tt>.
-<p/>
-Rationale: The main use case of <code>utc_clock</code> is to get the correct number of seconds 
-when subtracting time points straddling a leap second insertion point, and this computation 
-is independent of the epoch. Furthermore learning/teaching that <code>utc_clock</code> is 
-<code>system_clock</code> except that <code>utc_clock</code> includes leap seconds is easier.  
-And this fact is more easily understood when comparing the underlying <code>.time_since_epoch()</code> 
-of equivalent time points from each clock.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 27.7.2.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.utc.overview">[time.clock.utc.overview]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- In contrast to <tt>sys_time</tt>, which does not take leap seconds into account, <tt>utc_clock</tt> 
-and its associated <tt>time_point</tt>, <tt>utc_time</tt>, count time, including leap seconds, since 
-1970-01-01 00:00:00 UTC. <ins>[<i>Note:</i> The UTC time standard began on 
-1972-01-01 00:00:10 TAI. To measure time since this epoch instead, one can add/subtract the 
-constant <tt>sys_days{1972y/1/1} - sys_days{1970y/1/1}</tt> (<tt>63'072'000s</tt>) from the 
-<tt>utc_time</tt> &mdash; <i>end note</i>]</ins> [<i>Example:</i> <tt>clock_cast&lt;utc_clock&gt;(sys_seconds{sys_days{1970y/January/1}}).time_since_epoch()</tt> is <tt>0s</tt>. 
-<tt>clock_cast&lt;utc_clock&gt;(sys_seconds{sys_days{2000y/January/1}}).time_since_epoch()</tt>
-is <tt>946'684'822s</tt>, which is <tt>10'957 * 86'400s + 22s</tt>. &mdash; <i>end example</i>]
-</p>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3317" href="3317">3317.</a> Incorrect <tt>operator&lt;&lt;</tt> for floating-point durations</h3>
-<p><b>Section:</b> 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-05 20:11:39 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#time.duration.io">active issues</a> in [time.duration.io].</p>
-<p><b>View all other</b> <a href="lwg-index.html#time.duration.io">issues</a> in [time.duration.io].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/330">US 334</a></b></p>
-
-<p>
-<tt>operator&lt;&lt;</tt> for floating-point durations always produces output with six digits 
-after the decimal point, and doesn't use the stream's locale either.
-</p>
-<p>
-Proposed change:
-<p/>
-Rewrite the specification to not rely on <tt>to_string()</tt> for floating-point formatting.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 27.5.10 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class charT, class traits, class Rep, class Period>
-  basic_ostream&lt;charT, traits&gt;&amp;
-    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const duration&lt;Rep, Period&gt;&amp; d);
-</pre>
-<blockquote>
-<p>
-<del>-1- <i>Requires:</i> <tt>Rep</tt> is an integral type whose integer conversion rank 
-(6.8.4 <a href="https://timsong-cpp.github.io/cppwp/conv.rank">[conv.rank]</a>) is greater than or equal to that of <tt>short</tt>, or a floating-point type. 
-<tt>charT</tt> is <tt>char</tt> or <tt>wchar_t</tt>.</del>
-<p/>
--2- <i>Effects:</i> <del>Forms a <tt>basic_string&lt;charT, traits&gt;</tt> from <tt>d.count()</tt> using 
-<tt>to_string</tt> if <tt>charT</tt> is <tt>char</tt>, or <tt>to_wstring</tt> if <tt>charT</tt> is 
-<tt>wchar_t</tt>. Appends the units suffix described below to the <tt>basic_string</tt>.
-Inserts the resulting <tt>basic_string</tt> into <tt>os</tt>. [<i>Note:</i> This specification ensures 
-that the result of this streaming operation will obey the width and alignment properties of the stream. 
-&mdash; <i>end note</i>]</del><ins>Inserts the duration <tt>d</tt> onto the stream <tt>os</tt> as if it 
-were implemented as follows:</ins>
-<blockquote><pre>
-<ins>basic_ostringstream&lt;charT, traits&gt; s;
-s.flags(os.flags());
-s.imbue(os.getloc());
-s.precision(os.precision());
-s &lt;&lt; d.count() &lt;&lt; <i>units_suffix</i>;
-return os &lt;&lt; s.str();</ins>
-</pre></blockquote>
-<p/>
--3- <del>The units suffix</del><ins><tt><i>units_suffix</i></tt></ins> depends on the type 
-<tt>Period::type</tt> as follows:
-<ol style="list-style-type: none">
-<li><p>(3.1) &mdash; If <tt>Period::type</tt> is <tt>atto</tt>, <del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
-is <tt>"as"</tt>.</p></li>
-<li><p>(3.2) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>femto</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"fs"</tt>.</p></li>
-<li><p>(3.3) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>pico</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ps"</tt>.</p></li>
-<li><p>(3.4) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>nano</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ns"</tt>.</p></li>
-<li><p>(3.5) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>micro</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"&micro;s"</tt> 
-(<tt>"\u00b5\u0073"</tt>).</p></li>
-<li><p>(3.6) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>milli</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ms"</tt>.</p></li>
-<li><p>(3.7) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>centi</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"cs"</tt>.</p></li>
-<li><p>(3.8) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>deci</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ds"</tt>.</p></li>
-<li><p>(3.9) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;1&gt;</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"s"</tt>.</p></li>
-<li><p>(3.10) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>deca</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"das"</tt>.</p></li>
-<li><p>(3.11) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>hecto</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"hs"</tt>.</p></li>
-<li><p>(3.12) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>kilo</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"ks"</tt>.</p></li>
-<li><p>(3.13) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>mega</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ms"</tt>.</p></li>
-<li><p>(3.14) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>giga</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Gs"</tt>.</p></li>
-<li><p>(3.15) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>tera</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ts"</tt>.</p></li>
-<li><p>(3.16) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>peta</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Ps"</tt>.</p></li>
-<li><p>(3.17) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>exa</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"Es"</tt>.</p></li>
-<li><p>(3.18) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;60&gt;</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"min"</tt>.</p></li>
-<li><p>(3.19) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;3600&gt;</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"h"</tt>.</p></li>
-<li><p>(3.20) &mdash; Otherwise, if <tt>Period::type</tt> is <tt>ratio&lt;86400&gt;</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"d"</tt>.</p></li>
-<li><p>(3.21) &mdash; Otherwise, if <tt>Period::type::den == 1</tt>, 
-<del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> is <tt>"<i>[num</i>]s"</tt>.</p></li>
-<li><p>(3.22) &mdash; Otherwise, <del>the suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
-is <tt>"[<i>num</i>/<i>den</i>]s"</tt>.</p></li>
-</ol>
-<p/>
-In the list above the use of <tt><i>num</i></tt> and <tt><i>den</i></tt> refer to the static data members 
-of <tt>Period::type</tt>, which are converted to arrays of <tt>charT</tt> using a decimal conversion with 
-no leading zeroes.
-<p/>
--4- If <tt>Period::type</tt> is <tt>micro</tt>, but the character U+00B5 cannot be represented in the 
-encoding used for <tt>charT</tt>, <del>the unit suffix</del><ins><tt><i>units_suffix</i></tt></ins> 
-<tt>"us"</tt> is used instead of <tt>"&micro;s"</tt>.
-<p/>
--5- <i>Returns:</i> <tt>os</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3318" href="3318">3318.</a> Clarify whether clocks can represent time before their epoch</h3>
-<p><b>Section:</b> 27.7.1.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.system.overview">[time.clock.system.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Great Britain <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-05 20:12:06 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/331">GB 335</a></b></p>
-
-<p>
-Wording for clocks should be unified unless they are intended to behave differently
-In 27.7.1.1 note 1 for <tt>system_clock</tt> it is stated: 
-</p>
-<blockquote><p>
-"Objects of type <tt>system_clock</tt> represent wall clock time from the system-wide realtime
-clock. Objects of type <tt>sys_time&lt;Duration&gt;</tt> measure time since (and before) 
-1970-01-01 00:00:00 UTC" 
-</p></blockquote>
-<p>
-The express statement of "since (and before)" is important given the time epoch of these clocks. 
-If all the clocks support time prior to their zero-time then this should be stated explicitly. 
-If not then likewise that should be noted. No change is proposed yet, clarification
-required over the intended behaviour when using values prior to a given clock's epoch is
-needed before the appropriate change can be suggested.
-<p/>
-Proposed change:
-<p/>
-Unify the wording.
-</p>
-<p>
-<b>Howard Hinnant:</b>
-<p/>
-The clocks that are specified to have a signed <code>rep</code> imply that they will support 
-negative time points, but not <i>how</i> negative. For example if <code>system_clock::duration</code> 
-is <code>nanoseconds</code> represented with 64 bits, then <code>system_clock::time_point</code> 
-can't possibly represent dates prior to 1677-09-21 00:12:43.145224192. This is a negative 
-<code>time_point</code> since it is prior to 1970-01-01 00:00:00. But it is not very negative 
-compared to (for example) <code>sys_time&lt;microseconds&gt;::min()</code>.
-<p/>
-Those clocks with a signed <code>rep</code> are:
-</p>
-<ul>
-<li><p><code>system_clock</code></p></li>
-<li><p><code>utc_clock</code></p></li>
-<li><p><code>tai_clock</code></p></li>
-<li><p><code>gps_clock</code></p></li>
-<li><p><code>file_clock</code></p></li>
-</ul>
-<p>
-Those clocks where the signed-ness of <code>rep</code> is unspecified are:
-</p>
-<ul>
-<li><p><code>steady_clock</code></p></li>
-<li><p><code>high_resolution_clock</code></p></li>
-</ul>
-<p>
-Therefore this response emphasizes the "Unify the wording" part of this NB comment.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 27.7.1.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.system.overview">[time.clock.system.overview]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- Objects of type <tt>system_clock</tt> represent wall clock time from the system-wide 
-realtime clock. Objects of type <tt>sys_time&lt;Duration&gt;</tt> measure time since 
-<del>(and before)</del> 1970-01-01 00:00:00 UTC excluding leap seconds. This measure is commonly 
-referred to as Unix time. This measure facilitates an efficient mapping between
-<tt>sys_time</tt> and calendar types (27.8 <a href="https://timsong-cpp.github.io/cppwp/time.cal">[time.cal]</a>). [<i>Example:</i>
-<tt>sys_seconds{sys_days{1970y/January/1}}.time_since_epoch()</tt> is <tt>0s</tt>.
-<tt>sys_seconds{sys_days{2000y/January/1}}.time_since_epoch()</tt> is <tt>946'684'800s</tt>, 
-which is <tt>10'957 * 86'400s</tt>. &mdash; <i>end example</i>]
-</p>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3319" href="3319">3319.</a> Properly reference specification of IANA time zone database</h3>
-<p><b>Section:</b> 27.11.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.general">[time.zone.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Germany <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-05 20:51:57 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/340">DE 344</a></b></p>
-
-<p>
-This paragraph says 
-</p>
-<blockquote><p>
-"27.11 describes an interface for accessing the IANA Time Zone database described in RFC 6557, &hellip;"
-</p></blockquote>
-<p>
-However, RFC 6557 does not describe the database itself; it only describes the maintenance procedures 
-for that database, as its title implies (quoted in clause 2).
-<p/>
-Proposed change:
-<p/>
-Add a reference to a specification of the database itself, or excise all references to the IANA
-time zone database.
-</p>
-<p>
-<b>Howard Hinnant:</b>
-<p/>
-We can not entirely remove the reference to IANA because we need portable <code>time_zone</code> 
-names (e.g. "America/New_York") and definitions. However the NB comment is quite accurate and 
-fixed with the proposed resolution.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 2 <a href="https://timsong-cpp.github.io/cppwp/intro.refs">[intro.refs]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- The following documents are referred to in the text in such a way that some or all of their 
-content constitutes requirements of this document. For dated references, only the edition cited 
-applies. For undated references, the latest edition of the referenced document (including any 
-amendments) applies.
-<ol style="list-style-type: none">
-<li><p>[&hellip;]</p></li>
-<li><p><del>(1.2) &mdash; INTERNET ENGINEERING TASK FORCE (IETF). RFC 6557: Procedures for Maintaining 
-the Time Zone Database [online]. Edited by E. Lear, P. Eggert. February 2012 [viewed 2018-03-26]. 
-Available at https://www.ietf.org/rfc/rfc6557.txt</del></p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</p>
-</blockquote>
-</li>
-
-<li><p>Modify 27.11.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.general">[time.zone.general]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- 27.11 <a href="https://timsong-cpp.github.io/cppwp/time.zone">[time.zone]</a> describes an interface for accessing the IANA Time Zone 
-<del>d</del><ins>D</ins>atabase <del>described in RFC 6557,</del> that interoperates with 
-<tt>sys_time</tt> and <tt>local_time</tt>. This interface provides time zone support to 
-both the civil calendar types (27.8 <a href="https://timsong-cpp.github.io/cppwp/time.cal">[time.cal]</a>) and to user-defined calendars. 
-</p>
-</blockquote>
-</li>
-
-<li><p>Modify section "Bibliography" as indicated:</p>
-
-<blockquote>
-<p>
-The following documents are cited informatively in this document.
-<ol style="list-style-type: none">
-<li><p><ins>&mdash; IANA Time Zone Database. Available at 
-<a href="https://www.iana.org/time-zones">https://www.iana.org/time-zones</a></ins></p></li>
-<li><p>&mdash; ISO/IEC 10967-1:2012, <i>Information technology &mdash; Language independent arithmetic &mdash; 
-Part 1: Integer and floating point arithmetic</i></p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</p>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3320" href="3320">3320.</a> <tt>span::cbegin/cend</tt> methods produce different results than <tt>std::[ranges::]cbegin/cend</tt></h3>
-<p><b>Section:</b> 22.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/span.iterators">[span.iterators]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Poland <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 18:15:33 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/243">PL 247</a></b></p>
-
-<p>
-<tt>span&lt;T&gt;</tt> provides a <tt>const</tt>-qualified <tt>begin()</tt> method and <tt>cbegin()</tt> 
-method that produces a different result if <tt>T</tt> is not <tt>const</tt>-qualifed:
-</p>
-<ol>
-<li><p><tt>begin()</tt> produces mutable iterator over <tt>T</tt> (as if <tt>T*</tt>)</p></li>
-<li><p><tt>cbegin()</tt> produces <tt>const</tt> iterator over <tt>T</tt> (as if <tt>T const*</tt>)</p></li>
-</ol>
-<p>
-As consequence for the object <tt>s</tt> of type <tt>span&lt;T&gt;</tt>, the call to the 
-<tt>std::cbegin(s)/std::ranges::cbegin(s)</tt> produces different result than <tt>s.cbegin()</tt>.
-<p/>
-Proposed change:
-<p/>
-Change <tt>span&lt;T&gt;</tt> members <tt>cbegin()/cend()/crbegin()/crend()/const_iterator</tt> 
-to be equivalent to <tt>begin()/end()/rbegin()/rend()/iterator</tt> respectively.
-</p>
-<p>
-<b>Tomasz Kami&nacute;ski:</b>
-<p/>
-Per <a href="https://github.com/cplusplus/nbballot/issues/243">LEWG discussion in Belfast</a> these 
-methods and related typedefs should be removed.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 22.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a>, class template <tt>span</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std {
-  template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
-  class span {
-  public:
-    <i>// constants and types</i>
-    using element_type = ElementType;
-    using value_type = remove_cv_t&lt;ElementType&gt;;
-    using index_type = size_t;
-    using difference_type = ptrdiff_t;
-    using pointer = element_type*;
-    using const_pointer = const element_type*;
-    using reference = element_type&amp;;
-    using const_reference = const element_type&amp;;
-    using iterator = <i>implementation-defined</i>; <i>// see 22.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/span.iterators">[span.iterators]</a></i>
-    <del>using const_iterator = <i>implementation-defined</i>;</del>
-    using reverse_iterator = std::reverse_iterator&lt;iterator&gt;;
-    <del>using const_reverse_iterator = std::reverse_iterator&lt;const_iterator&gt;;</del>
-    static constexpr index_type extent = Extent;
-    
-    [&hellip;]
-    <i>// 22.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/span.iterators">[span.iterators]</a>, iterator support</i>
-    constexpr iterator begin() const noexcept;
-    constexpr iterator end() const noexcept;
-    <del>constexpr const_iterator cbegin() const noexcept;
-    constexpr const_iterator cend() const noexcept;</del>
-    constexpr reverse_iterator rbegin() const noexcept;
-    constexpr reverse_iterator rend() const noexcept;
-    <del>constexpr const_reverse_iterator crbegin() const noexcept;
-    constexpr const_reverse_iterator crend() const noexcept;</del>
-    friend constexpr iterator begin(span s) noexcept { return s.begin(); }
-    friend constexpr iterator end(span s) noexcept { return s.end(); }
-    [&hellip;]
-  };
-[&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 22.7.3.6 <a href="https://timsong-cpp.github.io/cppwp/span.iterators">[span.iterators]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-using iterator = <i>implementation-defined</i>;
-<del>using const_iterator = <i>implementation-defined</i>;</del>
-</pre>
-<blockquote>
-<p>
--1- The type<del>s</del> model<ins>s</ins> <tt>contiguous_iterator</tt> 
-(23.3.4.14 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.contiguous">[iterator.concept.contiguous]</a>), meet<ins>s</ins> the <i>Cpp17RandomAccessIterator</i> 
-requirements (23.3.5.6 <a href="https://timsong-cpp.github.io/cppwp/random.access.iterators">[random.access.iterators]</a>), and meet<ins>s</ins> the requirements for 
-constexpr iterators (23.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.requirements.general">[iterator.requirements.general]</a>). All requirements on container 
-iterators (22.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements">[container.requirements]</a>) apply to <tt>span::iterator</tt> <del>and 
-<tt>span::const_iterator</tt></del> as well.
-</p>
-</blockquote>
-[&hellip;]
-<pre>
-<del>constexpr const_iterator cbegin() const noexcept;</del>
-</pre>
-<blockquote>
-<p>
-<del>-6- <i>Returns:</i> A constant iterator referring to the first element in the span. If 
-<tt>empty()</tt> is <tt>true</tt>, then it returns the same value as <tt>cend()</tt>.</del>
-</p>
-</blockquote>
-<pre>
-<del>constexpr const_iterator cend() const noexcept;</del>
-</pre>
-<blockquote>
-<p>
-<del>-7- <i>Returns:</i> A constant iterator which is the past-the-end value.</del>
-</p>
-</blockquote>
-<pre>
-<del>constexpr const_reverse_iterator crbegin() const noexcept;</del>
-</pre>
-<blockquote>
-<p>
-<del>-8- <i>Effects:</i> Equivalent to: <tt>return const_reverse_iterator(cend());</tt></del>
-</p>
-</blockquote>
-<pre>
-<del>constexpr const_reverse_iterator crend() const noexcept;</del>
-</pre>
-<blockquote>
-<p>
-<del>-9- <i>Effects:</i> Equivalent to: <tt>return const_reverse_iterator(cbegin());</tt></del>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3321" href="3321">3321.</a> <tt>uninitialized_construct_using_allocator</tt> should use <tt>construct_at</tt></h3>
-<p><b>Section:</b> 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 19:04:02 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
-<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/210">US 213</a></b></p>
-
-<p>
-<tt>uninitialized_construct_using_allocator</tt> should use <tt>construct_at</tt> instead 
-of <tt>operator new</tt>
-<p/>
-Proposed change:
-</p>
-<blockquote>
-<p>
-<i>Effects:</i> Equivalent to:
-</p>
-<blockquote><pre>
-return <del>::new(static_cast&lt;void*&gt;(p))</del>
-<ins>construct_at(p,</ins>
-<del>T(</del>make_obj_using_allocator&lt;T&gt;(alloc,
-std::forward&lt;Args&gt;(args)...))<ins>)</ins>;
-</pre></blockquote>
-</blockquote>
-<p>
-<b>Tim Song:</b>
-<p/>
-The proposed wording in the NB comment is incorrect, because it prevents guaranteed elision.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T, class Alloc, class... Args&gt;
-  constexpr T* uninitialized_construct_using_allocator(T* p, const Alloc&amp; alloc, Args&amp;&amp;... args);
-</pre>
-<blockquote>
-<p>
--17- <i>Effects:</i> Equivalent to:
-<blockquote><pre>
-return <del>::new(static_cast&lt;void*&gt;(p))
-  T(make_obj_using_allocator&lt;T&gt;(</del><ins>apply([&amp;](auto&amp;&amp;...xs) {
-         return construct_at(p, std::forward&lt;decltype(xs)&gt;(xs)...);
-     }, uses_allocator_construction_args&lt;T&gt;(</ins>alloc, std::forward&lt;Args&gt;(args)...));
-</pre></blockquote>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3322" href="3322">3322.</a> Add <tt>join_view::base()</tt> member function</h3>
-<p><b>Section:</b> 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 19:19:36 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#range.join.view">active issues</a> in [range.join.view].</p>
-<p><b>View all other</b> <a href="lwg-index.html#range.join.view">issues</a> in [range.join.view].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/289">US 293</a></b></p>
-
-<p>
-<tt>join_view</tt> is missing a <tt>base()</tt> member for returning the underlying view. All the other
-range adaptors provide this.
-<p/>
-Proposed change:
-</p>
-<p>
-To the <tt>join_view</tt> class template add the member:
-</p>
-<blockquote><pre>
-constexpr V base() const { return base_; }
-</pre></blockquote>
-<p>
-<b>Jonathan Wakely:</b>
-<p/>
-The NB comment says "<code>join_view</code> is missing a <code>base()</code> member for returning the 
-underlying view. All the other range adaptors provide this."
-<p/>
-In fact, <tt>split_view</tt> and <tt>istream_view</tt> do not provide <tt>base()</tt> either. Of the 
-views that do define <tt>base()</tt>, all except <tt>all_view</tt> do so out-of-line, so the proposed 
-resolution adds it out-of-line too.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, class template <tt>join_view</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-template&lt;input_range R&gt;
-  requires viewable_range&lt;R&gt; &amp;&amp; constructible_from&lt;V, all_view&lt;R&gt;&gt;
-constexpr explicit join_view(R&amp;&amp; r);
-
-<ins>constexpr V base() const;</ins>
-
-constexpr auto begin() {
-  return iterator&lt;<i>simple-view</i>&lt;V&gt;&gt;{*this, ranges::begin(base_)};
-}
-[&hellip;]
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;input_range R&gt;
-  requires viewable_range&lt;R&gt; &amp;&amp; constructible_from&lt;V, all_view&lt;R&gt;&gt;
-constexpr explicit join_view(R&amp;&amp; r);
-</pre>
-<blockquote>
-<p>
--2- <i>Effects:</i> [&hellip;]
-</p>
-</blockquote>
-<pre>
-<ins>constexpr V base() const;</ins>
-</pre>
-<blockquote>
-<p>
-<ins>-?- <i>Effects:</i> Equivalent to: <tt>return base_;</tt></ins>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3323" href="3323">3323.</a> <tt><i>has-tuple-element</i></tt> helper concept needs <tt>convertible_to</tt></h3>
-<p><b>Section:</b> 24.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Great Britain <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 19:37:45 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/295">GB 299</a></b></p>
-
-<p>
-<tt><i>has-tuple-element</i></tt> helper concept needs <tt>convertible_to</tt>
-<p/>
-The exposition-only <tt><i>has-tuple-element</i></tt> concept (for <tt>elements_view</tt>) is defined as
-</p>
-<blockquote><pre>
-template&lt;class T, size_t N&gt;
-concept <i>has-tuple-element</i> = <i>exposition only</i>
-  requires(T t) {
-    typename tuple_size&lt;T&gt;::type;
-    requires N &lt; tuple_size_v&lt;T&gt;;
-    typename tuple_element_t&lt;N, T&gt;;
-    { get&lt;N&gt;(t) } -&gt; const tuple_element_t&lt;N, T&gt;&amp;;
-  };
-</pre></blockquote>
-<p>
-However, the return type constraint for <tt>{ get&lt;N&gt;(t) }</tt> is no longer valid 
-under the latest concepts changes
-<p/>
-Proposed change:
-</p>
-<p>
-Change to:
-</p>
-<blockquote><pre>
-template&lt;class T, size_t N&gt;
-concept <i>has-tuple-element</i> = <i>exposition only</i>
-  requires(T t) {
-    typename tuple_size&lt;T&gt;::type;
-    requires N &lt; tuple_size_v&lt;T&gt;;
-    typename tuple_element_t&lt;N, T&gt;;
-    { get&lt;N&gt;(t) } -&gt; convertible_to&lt;const tuple_element_t&lt;N, T&gt;&amp;&gt;;
-  };
-</pre></blockquote>
-<p>
-<b>Jonathan Wakely:</b>
-<p/>
-The NB comment says "The return type constraint for <tt>{ get(t) }</tt> is no longer valid under 
-the latest concepts changes." The changes referred to are those in <a href="https://wg21.link/p1452r2">P1452R2</a>. 
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 24.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a>, class template <tt>elements_view</tt> synopsis, 
-as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;class T, size_t N&gt;
-  concept <i>has-tuple-element</i> = <i>// exposition only</i>
-    requires(T t) {
-      typename tuple_size&lt;T&gt;::type;
-      requires N &lt; tuple_size_v&lt;T&gt;;
-      typename tuple_element_t&lt;N, T&gt;;
-      { get&lt;N&gt;(t) } -&gt; <ins>convertible_to&lt;</ins>const tuple_element_t&lt;N, T&gt;&amp;<ins>&gt;</ins>;
-    };
-[&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3324" href="3324">3324.</a> Special-case <tt>std::strong/weak/partial_order</tt> for pointers</h3>
-<p><b>Section:</b> 17.11.7 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Canada <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 20:09:41 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/176">CA 178</a></b></p>
-
-<p>
-<tt>std::strong_order</tt>, <tt>weak_order</tt>, and <tt>partial_order</tt> have special cases 
-for floating point, but are missing special casing for pointers. <tt>compare_three_way</tt> and 
-<tt>std::less</tt> have the special casing for pointers.
-</p>
-Proposed change:
-<p/>
-Change [cmp.alg] bullet 1.4 from
-<br/>
-"Otherwise, <tt>strong_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
-<br/>
-to
-<br/>
-"Otherwise, <tt>strong_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
-<p/>
-Change [cmp.alg] bullet 2.4 from
-<br/>
-"Otherwise, <tt>weak_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
-<br/>
-to
-<br/>
-"Otherwise, <tt>weak_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
-<br/>
-Change [cmp.alg] bullet 3.3 from
-<br/>
-"Otherwise, <tt>partial_ordering(E &lt;=&gt; F)</tt> if it is a well-formed expression."
-<br/>
-to
-<br/>
-"Otherwise, <tt>partial_ordering(compare_three_way()(E, F))</tt> if it is a well-formed expression."
-<p>
-<b>Dietmar K&uuml;hl:</b>
-<p/>
-Use <tt>compare_three_way</tt> instead of <tt>&lt;=&gt;</tt> for the various comparison algorithms.
-</p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Change 17.11.7 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- The name <tt>strong_order</tt> [&hellip;]
-</p>
-<blockquote>
-<ol style="list-style-type: none">
-<li><p>[&hellip;]</p></li>
-<li><p>(1.4) &mdash; Otherwise, <tt>strong_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
-if it is a well-formed expression.</p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</blockquote>
-<p>
--2- The name <tt>weak_order</tt> [&hellip;]
-</p>
-<blockquote>
-<ol style="list-style-type: none">
-<li><p>[&hellip;]</p></li>
-<li><p>(2.4) &mdash; Otherwise, <tt>weak_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
-if it is a well-formed expression.</p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</blockquote>
-<p>
--3- The name <tt>partial_order</tt> [&hellip;]
-</p>
-<blockquote>
-<ol style="list-style-type: none">
-<li><p>[&hellip;]</p></li>
-<li><p>(3.3) &mdash; Otherwise, <tt>partial_ordering(<del>E &lt;=&gt; F</del><ins>compare_three_way()(E, F)</ins>)</tt> 
-if it is a well-formed expression.</p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
-<h3><a name="3325" href="3325">3325.</a> Constrain return type of transformation function for <tt>transform_view</tt></h3>
-<p><b>Section:</b> 24.7.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.transform.view">[range.transform.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> United States <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 20:24:59 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/299">US 303</a></b></p>
-
-<p>
-The <tt>transform_view</tt> does not constrain the return type of the transformation function. It
-is invalid to pass a <tt>void</tt>-returning transformation function to the <tt>transform_view</tt>, 
-which would cause its <tt>iterator</tt>s' <tt>operator*</tt> member to return <tt>void</tt>.
-<p/>
-Proposed change:
-</p>
-<p>
-Change the constraints on <tt>transform_view</tt> to the following:
-</p>
-<blockquote><pre>
-template&lt;input_range V, copy_constructible F&gt;
-  requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
-           regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
-           <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
-class transform_view;
-</pre></blockquote>
-<p>
-<b>Jonathan Wakely:</b>
-<p/>
-The NB comment says "The <tt>transform_view</tt> does not constrain the return type of the transformation 
-function. It is invalid to pass a <tt>void</tt>-returning transformation function to the <tt>transform_view</tt>, 
-which would cause its <tt>iterator</tt>s' <tt>operator*</tt> member to return <tt>void</tt>."
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 24.7.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.transform.view">[range.transform.view]</a>, class template <tt>elements_view</tt> synopsis, 
-as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;input_range V, copy_constructible F&gt;
-    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
-             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; <ins>&amp;&amp;
-             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;</ins>
-  class transform_view : public view_interface&lt;transform_view&lt;V, F&gt;&gt; {
-    [&hellip;]
-  };
-[&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3326" href="3326">3326.</a> <tt>enable_view</tt> has false positives</h3>
-<p><b>Section:</b> 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Germany <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-11-06 21:04:26 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/278">DE 282</a></b></p>
-
-<p>
-"Since the difference between range and view is largely semantic, the
-two are differentiated with the help of <tt>enable_view</tt>." (&sect;3)
-<p/>
-<tt>enable_view</tt> is designed as on opt-in trait to specify that a type is a
-view. It defaults to true for types derived from <tt>view_base</tt> (&sect;4.2) which
-is clearly a form of opt-in. But it also employs a heuristic assuming that anything with 
-<tt>iterator == const_iterator</tt> is also view (&sect;4.3).
-<p/>
-This is a very poor heuristic, the same paragraph already needs to define six
-exceptions from this rule for standard library types (&sect;4.2).
-<p/>
-Experience in working with range-v3 has revealed multiple of our own library types as being 
-affected from needing to opt-out from the "auto-opt-in", as well. This is counter-intuitive: 
-something that was never designed to be a view shouldn't go through hoops so that it isn't
-treated as a view.
-<p/>
-Proposed change:
-</p>
-<p>
-Make <tt>enable_view</tt> truly be opt-in by relying only on explicit specialisation or 
-inheritance from <tt>view_base</tt>. This means removing 24.4.4 &sect;4.2 - &sect;4.4 and 
-introducing new &sect;4.2 "Otherwise, false".
-<p/>
-Double-check if existing standard library types like <tt>basic_string_view</tt> and <tt>span</tt> 
-need to opt-in to being a view now.
-</p>
-<p>
-<b>Casey Carter:</b>
-<p/>
-<tt>enable_view</tt> (24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a>) is designed as on opt-in trait to specify that a type 
-is a view. It defaults to <tt>true</tt> for types derived from <tt>view_base</tt> &mdash; which is a 
-form of opt-in &mdash; and it also employs a heuristic. Unfortunately, the heuristic has false positives. 
-The working draft itself includes six exceptions to the heuristic for standard library types. Since 
-false positives are much more problematic for users than false negatives, we should eliminate the heuristic.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
-
-<ol>
-<li><p>Modify 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T&gt;
-  inline constexpr bool enable_view = <del><i>see below</i></del><ins>derived_from&lt;T, view_base&gt;</ins>;
-</pre>
-<blockquote>
-<p>
-<del>-4- <i>Remarks:</i> For a type <tt>T</tt>, the default value of <tt>enable_view&lt;T&gt;</tt> is:</del>
-<ol style="list-style-type: none">
-<li><p><del>(4.1) &mdash; If <tt>derived_from&lt;T, view_base&gt;</tt> is <tt>true</tt>, 
-<tt>true</tt>.</del></p></li>
-<li><p><del>(4.2) &mdash; Otherwise, if <tt>T</tt> is a specialization of class template 
-<tt>initializer_list</tt> (17.10 <a href="https://timsong-cpp.github.io/cppwp/support.initlist">[support.initlist]</a>), <tt>set</tt> (22.4.6 <a href="https://timsong-cpp.github.io/cppwp/set">[set]</a>),
-<tt>multiset</tt> (22.4.7 <a href="https://timsong-cpp.github.io/cppwp/multiset">[multiset]</a>), <tt>unordered_set</tt> (22.5.6 <a href="https://timsong-cpp.github.io/cppwp/unord.set">[unord.set]</a>), 
-<tt>unordered_multiset</tt> (22.5.7 <a href="https://timsong-cpp.github.io/cppwp/unord.multiset">[unord.multiset]</a>), or <tt>match_results</tt>
-(30.10 <a href="https://timsong-cpp.github.io/cppwp/re.results">[re.results]</a>), <tt>false</tt>.</del></p></li>
-<li><p><del>(4.3) &mdash; Otherwise, if both <tt>T</tt> and <tt>const T</tt> model <tt>range</tt> and 
-<tt>range_reference_t&lt;T&gt;</tt> is not the same type as <tt>range_reference_t&lt;const T&gt;</tt>, 
-<tt>false</tt>. [<i>Note:</i> Deep <tt>const</tt>-ness implies element ownership, whereas shallow const-ness 
-implies reference semantics. &mdash; <i>end note</i>]</del></p></li>
-<li><p><del>(4.4) &mdash; Otherwise, true.</del></p></li>
-</ol>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 21.4.1 <a href="https://timsong-cpp.github.io/cppwp/string.view.synop">[string.view.synop]</a>, header <tt>&lt;string_view&gt;</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std {
-  <i>// 21.4.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.template">[string.view.template]</a>, class template basic_string_view</i>
-  template&lt;class charT, class traits = char_traits&lt;charT&gt;&gt;
-  class basic_string_view;
-  
-  <ins>template&lt;class charT, class traits&gt;
-    inline constexpr bool ranges::enable_view&lt;basic_string_view&lt;charT, traits&gt;&gt; = true;</ins>
-    
-  [&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 22.7.2 <a href="https://timsong-cpp.github.io/cppwp/span.syn">[span.syn]</a>, header <tt>&lt;apsn&gt;</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std {
-  <i>// constants</i>
-  inline constexpr size_t dynamic_extent = numeric_limits&lt;size_t&gt;::max();
-  
-  <i>// 22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>, class template span</i>
-  template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
-  class span;
-    
-  <ins>template&lt;class ElementType, size_t Extent&gt;
-    inline constexpr bool ranges::enable_view&lt;span&lt;ElementType, Extent&gt;&gt; = Extent == 0 || 
-      Extent == dynamic_extent;</ins>
-    
-  [&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.11.4 <a href="https://timsong-cpp.github.io/cppwp/range.split.outer.value">[range.split.outer.value]</a>, class <tt>split_view::outer_iterator::value_type</tt>
-synopsis, as indicated:</p>
-
-<blockquote class="note">
-<p>
-[<i>Drafting note:</i> The following applies the proposed wording for LWG <a href="3276">3276</a>]
-</p>
-</blockquote>
-
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;class V, class Pattern&gt;
-  template&lt;bool Const&gt;
-  struct split_view&lt;V, Pattern&gt;::outer_iterator&lt;Const&gt;::value_type 
-    <ins>: view_interface&lt;value_type&gt;</ins> {
-  private:
-    outer_iterator i_ = outer_iterator(); <i>// exposition only</i>
-  public:
-    value_type() = default;
-    constexpr explicit value_type(outer_iterator i);
-
-    constexpr inner_iterator&lt;Const&gt; begin() const;
-    constexpr default_sentinel_t end() const;
-  };
-}
-</pre>
-</blockquote>
-</li>
-
-</ol>
-
 
 
 
