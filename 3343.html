@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3343: Ordering of calls to unlock() and notify_all() in Effects element of notify_all_at_thread_exit() should be reversed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3343" href="lwg-active.html#3343">3343.</a> Ordering of calls to <tt>unlock()</tt> and <tt>notify_all()</tt> in <i>Effects</i> element of <tt>notify_all_at_thread_exit()</tt> should be reversed</h3>
+<p><b>Section:</b> 32.6.2 <a href="https://timsong-cpp.github.io/cppwp/thread.condition.nonmember">[thread.condition.nonmember]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Lewis Baker <b>Opened:</b> 2019-11-21 <b>Last modified:</b> 2019-11-23 17:29:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+32.6.2 <a href="https://timsong-cpp.github.io/cppwp/thread.condition.nonmember">[thread.condition.nonmember]</a> p2 states:
+</p>
+<blockquote>
+<p>
+<i>Effects:</i> Transfers ownership of the lock associated with <tt>lk</tt> into internal storage 
+and schedules <tt>cond</tt> to be notified when the current thread exits, after all objects of 
+thread storage duration associated with the current thread have been destroyed. This notification 
+shall be as if:
+</p>
+<blockquote><pre>
+lk.unlock();
+cond.notify_all();
+</pre></blockquote>
+</blockquote>
+<p>
+One common use-cases for the <tt>notify_all_at_thread_exit()</tt> is in conjunction with
+<tt>thread::detach()</tt> to allow detached threads to signal when they complete and to allow 
+another thread to wait for them to complete using the <tt>condition_variable/mutex</tt> pair.
+<p/>
+However, the current wording for <tt>notify_all_at_thread_exit(condition_variable&amp; cond, 
+unique_lock&lt;mutex&gt; lk)</tt> makes it impossible to know when it is safe to destroy the 
+<tt>condition_variable</tt> in the presence of spurious wake-ups and detached threads.
+<p/>
+For example: Consider the following code-snippet:
+</p>
+<blockquote><pre>
+#include &lt;condition_variable&gt;
+#include &lt;mutex&gt;
+#include &lt;thread&gt;
+
+int main() {
+  std::condition_variable cv;
+  std::mutex mut;
+  bool complete = false;
+
+  std::thread{[&amp;] {
+    <i>// do work here</i>
+
+    <i>// Signal thread completion</i>
+    std::unique_lock lk{mut};
+    complete = true;
+    std::notify_all_at_thread_exit(cv, std::move(lk));
+  }}.detach();
+
+  <i>// Wait until thread completes</i>
+  std::unique_lock lk{mut};
+  cv.wait(lk, [&amp;] { return complete; });
+
+  <i>// condition_variable destroyed on scope exit</i>
+  return 0;
+}
+</pre></blockquote>
+<p>
+This seems to an intended usage of <tt>thread::detach()</tt> and <tt>std::notify_all_at_thread_exit()</tt> 
+and yet this code contains a race involving the call to <tt>cv.notify_all()</tt> on the created thread, 
+and the destructor of the <tt>condition_variable</tt>.
+<p/>
+To highlight the issue, consider the following case:
+<p/>
+Let <tt>T0</tt> be the thread that executes <tt>main()</tt> and <tt>T1</tt> be the thread created 
+by the <tt>std::thread</tt> construction.
+</p> 
+<blockquote>
+<p>
+<tt>T0</tt>: creates thread <tt>T1</tt><br/>
+<tt>T0</tt>: context-switched out by OS<br/>
+<tt>T1</tt>: starts running<br/>
+<p/>
+<tt>T1</tt>: acquires mutex lock<br/>
+<tt>T1</tt>: sets <tt>complete = true</tt><br/>
+<p/>
+<tt>T1</tt>: calls <tt>notify_all_at_thread_exit()</tt><br/>
+<tt>T1</tt>: returns from thread-main function and runs all thread-local destructors<br/>
+<tt>T1</tt>: calls <tt>lk.unlock()</tt><br/>
+<tt>T1</tt>: context-switched out by OS<br/>
+<tt>T0</tt>: resumes execution<br/>
+<tt>T0</tt>: acquires mutex lock<br/>
+<tt>T0</tt>: calls <tt>cv.wait()</tt> which returns immediately as <tt>complete</tt> is <tt>true</tt><br/>
+<p/>
+<tt>T0</tt>: returns from <tt>main()</tt>, destroying <tt>condition_variable</tt><br/>
+<tt>T1</tt>: resumes execution<br/>
+<p/>
+<tt>T1</tt>: calls <tt>cv.notify_all()</tt> on a dangling <tt>cv</tt> reference (undefined behaviour)<br/>
+</p>
+</blockquote>
+<p>
+Other sequencings are possible involving spurious wake-ups of the <tt>cv.wait()</tt> call.
+<p/>
+A proof-of-concept showing this issue can be found <a href="https://wandbox.org/permlink/eUu3eiQbLl7JQKMm">here</a>.
+<p/>
+The current wording requires releasing the mutex lock before calling <tt>cv.notify_all()</tt>. In the 
+presence of spurious wake-ups of a <tt>condition_variable::wait()</tt>, there is no way to know whether 
+or not a detached thread that called <tt>std::notify_all_at_thread_exit()</tt> has finished calling 
+<tt>cv.notify_all()</tt>. This means there is no portable way to know when it will be safe for the 
+waiting thread to destroy that <tt>condition_variable</tt>.
+<p/>
+However, if we were to reverse the order of the calls to <tt>lk.unlock()</tt> and <tt>cond.notify_all()</tt> 
+then the thread waiting for the detached thread to exit would not be able to observe the completion of the 
+thread (in the above case, this would be observing the assignment of <tt>true</tt> to the <tt>complete</tt> 
+variable) until the mutex lock was released by that thread and subsequently acquired by the waiting thread 
+which would only happen after the completion of the call to <tt>cv.notify_all()</tt>. This would allow the 
+above code example to eliminate the race between a subsequent destruction of the condition-variable and 
+the call to <tt>cv.notify_all()</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change 32.6.2 <a href="https://timsong-cpp.github.io/cppwp/thread.condition.nonmember">[thread.condition.nonmember]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void notify_all_at_thread_exit(condition_variable&amp; cond, unique_lock&lt;mutex&gt; lk);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Effects:</i> Transfers ownership of the lock associated with <tt>lk</tt> into internal 
+storage and schedules <tt>cond</tt> to be notified when the current thread exits, after all 
+objects of thread storage duration associated with the current thread have been destroyed. 
+This notification shall be as if:
+</p>
+<blockquote><pre>
+<del>lk.unlock();</del>
+cond.notify_all();
+<ins>lk.unlock();</ins>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

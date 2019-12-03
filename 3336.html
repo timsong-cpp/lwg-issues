@@ -1,0 +1,178 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3336: How does std::vformat handle exception thrown by formatters?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3336" href="lwg-active.html#3336">3336.</a> How does <tt>std::vformat</tt> handle exception thrown by formatters?</h3>
+<p><b>Section:</b> 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tam S. B. <b>Opened:</b> 2019-11-11 <b>Last modified:</b> 2019-11-25 20:12:19 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.functions">active issues</a> in [format.functions].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.functions">issues</a> in [format.functions].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification for <tt>std::vformat</tt> in 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/7 says
+</p>
+<blockquote>
+<p>
+<i>Throws:</i> <tt>format_error</tt> if <tt>fmt</tt> is not a format string.
+</p>
+</blockquote>
+<p>
+It seems unclear whether <tt>vformat</tt> throws when an exception is thrown by the <tt>formatter</tt>, 
+e.g. when the format string is valid, but the corresponding argument cannot be formatted with the given 
+format string.
+<p/>
+For example, the <tt>"c"</tt> format specifier is specified to throw <tt>format_error</tt> if the 
+corresponding argument is not in the range of representable values for <tt>charT</tt> 
+(Table 60 [tab:format.type.int]). It seems unclear whether <tt>vformat</tt> propagates this exception.
+<p/>
+It also appears unclear whether <tt>vformat</tt> may throw other types of exception (e.g. <tt>bad_alloc</tt>) 
+when the formatter or the constructor of <tt>std::string</tt> result throws.
+</p>
+
+<p><i>[2019-11-20 Issue Prioritization]</i></p>
+
+<p>Priority to 2 after reflector discussion.</p>
+
+<p><i>[2019-11-20; Victor Zverovich provides initial wording]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4835">N4835</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> LWG <a href="3340">3340</a> has considerable wording overlap with this issue.
+If LWG <a href="3336">3336</a> is applied at the same meeting or later than LWG <a href="3340">3340</a>, 
+please refer to <b>Option A</b> in LWG <a href="3340">3340</a> as a guideline how to apply the merge.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Before 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> insert a new sub-clause as indicated:</p>
+
+<blockquote>
+<p>
+<ins><b>20.20.? Error reporting [format.err.report]</b></ins>
+<p/>
+<ins>-?- Formatting functions throw exceptions to report formatting and other errors. They throw 
+<tt>format_error</tt> if an argument <tt>fmt</tt> is passed that is not a format string and 
+propagate exceptions thrown by <tt>formatter</tt> specializations and iterator operations. Failure 
+to allocate storage is reported by throwing an exception as described in 
+16.5.5.12 <a href="https://timsong-cpp.github.io/cppwp/res.on.exception.handling">[res.on.exception.handling]</a>.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+string vformat(string_view fmt, format_args args);
+wstring vformat(wstring_view fmt, wformat_args args);
+string vformat(const locale&amp; loc, string_view fmt, format_args args);
+wstring vformat(const locale&amp; loc, wstring_view fmt, wformat_args args);
+</pre>
+<blockquote>
+<p>
+-6- [&hellip;]
+<p/>
+-7- <i>Throws:</i> <del><tt>format_error</tt> if <tt>fmt</tt> is not a format string</del><ins>As specified in  [format.err.report]</ins>.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class Out&gt;
+  Out vformat_to(Out out, string_view fmt, format_args_t&lt;Out, char&gt; args);
+template&lt;class Out&gt;
+  Out vformat_to(Out out, wstring_view fmt, format_args_t&lt;Out, wchar_t&gt; args);
+template&lt;class Out&gt;
+  Out vformat_to(Out out, const locale&amp; loc, string_view fmt,
+                 format_args_t&lt;Out, char&gt; args);
+template&lt;class Out&gt;
+  Out vformat_to(Out out, const locale&amp; loc, wstring_view fmt,
+                 format_args_t&lt;Out, wchar_t&gt; args);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-15- <i>Throws:</i> <del><tt>format_error</tt> if <tt>fmt</tt> is not a format string</del><ins>As specified in  [format.err.report]</ins>.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class Out, class... Args&gt;
+  format_to_n_result&lt;Out&gt; format_to_n(Out out, iter_difference_t&lt;Out&gt; n,
+                                      string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  format_to_n_result&lt;Out&gt; format_to_n(Out out, iter_difference_t&lt;Out&gt; n,
+                                      wstring_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  format_to_n_result&lt;Out&gt; format_to_n(Out out, iter_difference_t&lt;Out&gt; n,
+                                      const locale&amp; loc, string_view fmt,
+                                      const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  format_to_n_result&lt;Out&gt; format_to_n(Out out, iter_difference_t&lt;Out&gt; n,
+                                      const locale&amp; loc, wstring_view fmt,
+                                      const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-21- <i>Throws:</i> <del><tt>format_error</tt> if <tt>fmt</tt> is not a format string</del><ins>As specified in  [format.err.report]</ins>.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class... Args&gt;
+  size_t formatted_size(string_view fmt, const Args&amp;... args);
+template&lt;class... Args&gt;
+  size_t formatted_size(wstring_view fmt, const Args&amp;... args);
+template&lt;class... Args&gt;
+  size_t formatted_size(const locale&amp; loc, string_view fmt, const Args&amp;... args);
+template&lt;class... Args&gt;
+  size_t formatted_size(const locale&amp; loc, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-25- <i>Throws:</i> <del><tt>format_error</tt> if <tt>fmt</tt> is not a format string</del><ins>As specified in  [format.err.report]</ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>

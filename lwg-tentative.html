@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2019-11-08 at 15:56:47 UTC</p>
+<p><p>Revised 2019-12-01 at 11:34:16 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="2155" href="2155">2155.</a> Macro <tt>__bool_true_false_are_defined</tt> should be removed</h3>
@@ -545,13 +545,105 @@ template&lt;class T, <del>ptrdiff</del><ins>size</ins>_t N&gt; constexpr ptrdiff
 
 
 <hr>
+<h3><a name="3233" href="3233">3233.</a> Broken requirements for <tt>shared_ptr</tt> converting constructors</h3>
+<p><b>Section:</b> 20.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-07-10 <b>Last modified:</b> 2019-11-17 12:16:59 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared.const">active issues</a> in [util.smartptr.shared.const].</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.const">issues</a> in [util.smartptr.shared.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Issue <a href="2875">2875</a> added 20.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> paragraph 13:
+<blockquote>
+<i>Remarks</i>: When <tt>T</tt> is an array type, this constructor shall not participate in overload
+resolution unless <tt>is_move_constructible_v&lt;D&gt;</tt> is <tt>true</tt>, the expression
+<tt>d(p)</tt> is well-formed, and either <tt>T</tt> is <tt>U[N]</tt> and <tt>Y(*)[N]</tt> is
+convertible to <tt>T*</tt>, or <tt>T</tt> is <tt>U[]</tt> and <tt>Y(*)[]</tt> is convertible to
+<tt>T*</tt>. When <tt>T</tt> is not an array type, this constructor shall not participate in
+overload resolution unless <tt>is_move_constructible_v&lt;D&gt;</tt> is <tt>true</tt>, the
+expression <tt>d(p)</tt> is well-formed, and <tt>Y*</tt> is convertible to <tt>T*</tt>.
+</blockquote>
+which pertains to the four constructor overloads:
+<blockquote><pre>
+template&lt;class Y, class D&gt; shared_ptr(Y* p, D d);
+template&lt;class Y, class D, class A&gt; shared_ptr(Y* p, D d, A a);
+template&lt;class D&gt; shared_ptr(nullptr_t p, D d);
+template&lt;class D, class A&gt; shared_ptr(nullptr_t p, D d, A a);
+</pre></blockquote>
+which is fine (ignoring for now that two occurrences of "this constructor" should read "these
+constructors") for the two overloads with a template parameter <tt>Y</tt>, but not so much for the
+two with no such template parameter.
+</p>
+<p>
+MSVC ignores the constraints on <tt>Y</tt> for the overloads with no such template parameter,
+whereas libstdc++ and libc++ seem to ignore <em>all</em> of the constraints for those overloads (See
+<a href="https://gcc.godbolt.org/z/ECdop6">Compiler Explorer</a>). We should fix the broken wording,
+ideally by requiring the MSVC interpretation - the <tt>nullptr_t</tt> constructors participate in
+overload resolution only when <tt>is_movable_v&lt;D&gt;</tt> is <tt>true</tt> and <tt>d(p)</tt> is
+well-formed - so concepts and traits that check constructibility are correct.
+</p>
+
+<p><i>[2019-11-17 Issue Prioritization]</i></p>
+
+<p>Status to Tentatively Ready and priority to 0 after six positive votes on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 20.11.3.1 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+template&lt;class Y, class D&gt; shared_ptr(Y* p, D d);
+template&lt;class Y, class D, class A&gt; shared_ptr(Y* p, D d, A a);
+template&lt;class D&gt; shared_ptr(nullptr_t p, D d);
+template&lt;class D, class A&gt; shared_ptr(nullptr_t p, D d, A a);
+</pre></blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>is_move_constructible_v&lt;D&gt;</tt> is <tt>true</tt>, and
+<tt>d(p)</tt> is a well-formed expression. For the first two overloads:</ins>
+</p>
+<ul>
+  <li><p><ins>
+    If <tt>T</tt> is an array type, then either <tt>T</tt> is <tt>U[N]</tt> and <tt>Y(*)[N]</tt> is
+    convertible to <tt>T*</tt>, or <tt>T</tt> is <tt>U[]</tt> and <tt>Y(*)[]</tt> is convertible to
+    <tt>T*</tt>.
+  </ins></p></li>
+  <li><p><ins>
+    If <tt>T</tt> is not an array type, then <tt>Y*</tt> is convertible to <tt>T*</tt>.
+  </ins></p></li>
+</ul>
+<p>
+-9- <i><del>Requires</del><ins>Expects</ins>:</i> Construction of <tt>d</tt> and a deleter of type [&hellip;]
+</p>
+<p>[&hellip;]</p>
+<p>
+<del>-13- <i>Remarks:</i> When <tt>T</tt> is an array type, this constructor shall not participate
+in overload resolution unless <tt>is_move_constructible_v&lt;D&gt;</tt> is <tt>true</tt>, the
+expression <tt>d(p)</tt> is well-formed, and either <tt>T</tt> is <tt>U[N]</tt> and <tt>Y(*)[N]</tt>
+is convertible to <tt>T*</tt>, or <tt>T</tt> is <tt>U[]</tt> and <tt>Y(*)[]</tt> is convertible to
+<tt>T*</tt>. When <tt>T</tt> is not an array type, this constructor shall not participate in
+overload resolution unless <tt>is_move_constructible_v&lt;D&gt;</tt> is <tt>true</tt>, the
+expression <tt>d(p)</tt> is well-formed, and <tt>Y*</tt> is convertible to <tt>T*</tt>.</del>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3284" href="3284">3284.</a> <tt>random_access_iterator</tt> semantic constraints accidentally promote difference type
  using unary negate</h3>
 <p><b>Section:</b> 23.3.4.13 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.random.access">[iterator.concept.random.access]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2019-10-12 11:33:15 UTC</p>
 <p><b>Priority: </b>0
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#iterator.concept.random.access">active issues</a> in [iterator.concept.random.access].</p>
 <p><b>View all other</b> <a href="lwg-index.html#iterator.concept.random.access">issues</a> in [iterator.concept.random.access].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -805,7 +897,6 @@ namespace std::ranges {
  <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-09-14 <b>Last modified:</b> 2019-10-31 18:54:10 UTC</p>
 <p><b>Priority: </b>0
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#time.zone.zonedtime.overview">active issues</a> in [time.zone.zonedtime.overview].</p>
 <p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.overview">issues</a> in [time.zone.zonedtime.overview].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -1006,6 +1097,345 @@ basic_regex&amp; assign(initializer_list&lt;charT&gt;,
 [&hellip;]
 </pre>
 </blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3299" href="3299">3299.</a> Pointers don't need customized iterator behavior</h3>
+<p><b>Section:</b> 23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a>, 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.swap">[iterator.cust.swap]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-10-07 <b>Last modified:</b> 2019-11-16 12:50:33 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.cust.move">active issues</a> in [iterator.cust.move].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.cust.move">issues</a> in [iterator.cust.move].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It is not intentional design that users may customize the behavior of
+<tt>ranges::iter_move</tt> (23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a>) and
+<tt>ranges::iter_swap</tt> (23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.swap">[iterator.cust.swap]</a>)  for pointers to program-defined
+type by defining e.g. <tt>iter_move(my_type*)</tt> or <tt>iter_swap(my_type*, my_type*)</tt> in a
+namespace associated with <tt>my_type</tt>. The intent of customization points is that users may
+define behavior for types they define, not that users may mess with the well-defined semantics for
+existing types like pointers.
+</p><p>
+We should forbid such silliness by constraining the "finds an overload via ADL" cases for
+customization points to only trigger with argument expressions of class or enumeration type. Note
+that WG21 made a similar change to <tt>ranges::swap</tt> shortly before merging it into the working
+draft to forbid users customizing behavior for pointers to program-defined types or arrays of
+program-defined types.
+</p>
+
+<p><i>[2019-11-16 Issue Prioritization]</i></p>
+
+<p>Status to Tentatively Ready and priority to 0 after seven positive votes on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<blockquote class="note"><p>
+[<i>Drafting note:</i> <a href="3247">3247</a> touches the same wording in
+23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a>; if both are resolved simultaneously the changes should be
+reconciled before passing them on to the Editor.]
+</p></blockquote>
+
+<ol>
+<li><p>Modify 23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a> as follows:</p>
+
+<blockquote><p>
+(1.1) &mdash; <tt>iter_move(E)</tt>, if <del>that expression is valid,</del> <ins><tt>E</tt> has
+class or enumeration type and <tt>iter_move(E)</tt> is a well-formed expression</ins> with overload
+resolution performed in a context that does not include a declaration of <tt>ranges::iter_move</tt>.
+</p></blockquote>
+</li>
+
+<li><p>Modify 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.swap">[iterator.cust.swap]</a> as follows:</p>
+
+<blockquote><p>
+(4.1) &mdash; <tt>(void)iter_swap(E1, E2)</tt>, if <del>that expression is valid,</del> <ins>either
+<tt>E1</tt> or <tt>E2</tt> has class or enumeration type and <tt>iter_swap(E1, E2)</tt> is a
+well-formed expression</ins> with overload resolution performed in a context that includes the
+declaration
+<blockquote><pre>
+template&lt;class I1, class I2&gt;
+void iter_swap(I1, I2) = delete;
+</pre></blockquote>
+and does not include a declaration of <tt>ranges::iter_swap</tt>. If the function selected by
+overload resolution does not exchange the values denoted by <tt>E1</tt> and <tt>E2</tt>, the program
+is ill-formed with no diagnostic required.
+</p></blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3300" href="3300">3300.</a> Non-array <tt>ssize</tt> overload is underconstrained</h3>
+<p><b>Section:</b> 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-09-27 <b>Last modified:</b> 2019-11-23 16:16:34 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.range">active issues</a> in [iterator.range].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.range">issues</a> in [iterator.range].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The overload of <tt>ssize</tt> specified in 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a>/18 has no constraints, 
+yet it specializes <tt>make_signed_t</tt> which has a precondition that its type parameter is an 
+integral type or enumeration but not <tt>bool</tt> (20.15.7.3 <a href="https://timsong-cpp.github.io/cppwp/meta.trans.sign">[meta.trans.sign]</a>). This 
+precondition needs to be propagated to <tt>ssize</tt> as "<i>Mandates</i> [or <i>Constraints</i>]: 
+<tt>decltype(c.size())</tt> [meets the requirements for the type argument to <tt>make_signed</tt>]". 
+"<i>Mandates</i>" seems to be more in line with LWG guidance since there are no traits nor concepts 
+that observe <tt>ssize</tt>.
+</p>
+
+<p><i>[2019-11-16 Issue Prioritization]</i></p>
+
+<p>Priority to 3 after reflector discussion.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C&gt; constexpr auto ssize(const C&amp; c)
+  -&gt; common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>decltype(c.size())</tt> is a (possibly <i>cv</i>-qualified) integral or 
+enumeration type but not a <tt>bool</tt> type.</ins>
+<p/>
+-18- <i>Returns:</i>
+<blockquote>
+<pre>
+static_cast&lt;common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;&gt;(c.size())
+</pre>
+</blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol></blockquote>
+
+<p><i>[2019-10-28; Tim provides improved wording]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C&gt; constexpr auto ssize(const C&amp; c)
+  -&gt; common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>decltype(c.size())</tt> is an integral or enumeration type
+other than <tt>bool</tt>.</ins>
+<p/>
+-18- <i>Returns:</i>
+<blockquote>
+<pre>
+static_cast&lt;common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;&gt;(c.size())
+</pre>
+</blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2019-11-18; Casey comments and improves wording]</i></p>
+
+<p>
+It would be better to provided the <i>Mandates:</i> guarantee in [tab:meta.trans.sign] instead of
+one special place where the <tt>make_signed</tt> template is used. The wording below attempts to 
+realize that.
+</p>
+
+<p><i>[2019-11-23 Issue Prioritization]</i></p>
+
+<p>Status to Tentatively Ready after five positive votes on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change Table 52 &mdash; "Sign modifications" in  [tab:meta.trans.sign] as indicated:</p>
+
+<table border="1">
+<caption>Table 52 &mdash; Sign modifications [tab:meta.trans.sign]</caption>
+<tr>
+<th>Template</th>
+<th>Comments</th>
+</tr> 
+
+<tr>
+<td>
+<tt>template &lt;class T&gt;<br/>
+struct make_signed;</tt>
+</td>
+<td>
+If <tt>T</tt> names a (possibly <i>cv</i>-qualified) signed integer type (6.8.1 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>) then<br/>
+the member typedef <tt>type</tt> names the type <tt>T</tt>; otherwise, if <tt>T</tt> names a<br/>
+(possibly <i>cv</i>-qualified) unsigned integer type then <tt>type</tt> names the<br/>
+corresponding signed integer type, with the same <i>cv</i>-qualifiers as <tt>T</tt>;<br/>
+otherwise, <tt>type</tt> names the signed integer type with smallest<br/>
+rank (6.8.4 <a href="https://timsong-cpp.github.io/cppwp/conv.rank">[conv.rank]</a>) for which <tt>sizeof(T) == sizeof(type)</tt>, with the same<br/>
+<i>cv</i>-qualifiers as <tt>T</tt>.<br/>
+<i><del>Requires</del><ins>Mandates</ins>:</i> <tt>T</tt> <del>shall be</del><ins>is</ins> a<ins>n</ins> <del>(possibly <i>cv</i>-qualified)</del> integral <del>type</del> or enumeration <ins>type other than <i>cv</i></ins> <del>but not a</del> <tt>bool</tt> <del>type</del>.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>template &lt;class T&gt;<br/>
+struct make_unsigned;</tt>
+</td>
+<td>
+If <tt>T</tt> names a (possibly <i>cv</i>-qualified) unsigned integer type (6.8.1 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>) then<br/>
+the member typedef <tt>type</tt> names the type <tt>T</tt>; otherwise, if <tt>T</tt> names a<br/>
+(possibly <i>cv</i>-qualified) signed integer type then <tt>type</tt> names the<br/>
+corresponding unsigned integer type, with the same <i>cv</i>-qualifiers as <tt>T</tt>;<br/>
+otherwise, <tt>type</tt> names the unsigned integer type with smallest<br/>
+rank (6.8.4 <a href="https://timsong-cpp.github.io/cppwp/conv.rank">[conv.rank]</a>) for which <tt>sizeof(T) == sizeof(type)</tt>, with the same<br/>
+<i>cv</i>-qualifiers as <tt>T</tt>.<br/>
+<i><del>Requires</del><ins>Mandates</ins>:</i> <tt>T</tt> <del>shall be</del><ins>is</ins> a<ins>n</ins> <del>(possibly <i>cv</i>-qualified)</del> integral <del>type</del> or enumeration <ins>type other than <i>cv</i></ins> <del>but not a</del> <tt>bool</tt> <del>type</del>.
+</td>
+</tr>
+</table>
+
+</li>
+
+<li><p>Change 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C&gt; constexpr auto ssize(const C&amp; c)
+  -&gt; common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-18- <i><del>Returns</del><ins>Effects</ins>:</i> <ins>Equivalent to:</ins>
+<blockquote>
+<pre>
+<ins>return</ins> static_cast&lt;common_type_t&lt;ptrdiff_t, make_signed_t&lt;decltype(c.size())&gt;&gt;&gt;(c.size())<ins>;</ins>
+</pre>
+</blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3332" href="3332">3332.</a> Issue in &sect;[time.format]</h3>
+<p><b>Section:</b> 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Mateusz Pusz <b>Opened:</b> 2019-11-05 <b>Last modified:</b> 2019-11-23 16:02:39 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Table 97 [tab:time.format.spec] enumerates <tt>'q'</tt> and <tt>'Q'</tt> but those are not specified in 
+<i>chrono-format-spec</i> provided in paragraph 1 of sub-clause 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>.
+</p>
+
+<p><i>[2019-11-23 Issue Prioritization]</i></p>
+
+<p>Status to Tentatively Ready and priority to 0 after eight positive votes on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change the <i>type</i> grammar element in 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> p1 as indicated:</p>
+
+<blockquote>
+<pre>
+<i>type:</i> one of
+         a A b B c C d D e F g G h H I j m M n
+         p <ins>q Q</ins> r R S t T u U V w W x X y Y z Z %
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3338" href="3338">3338.</a> Rename <tt>default_constructible</tt> to <tt>default_initializable</tt></h3>
+<p><b>Section:</b> 18.4.12 <a href="https://timsong-cpp.github.io/cppwp/concept.defaultconstructible">[concept.defaultconstructible]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-11-18 <b>Last modified:</b> 2019-11-30 13:52:01 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.defaultconstructible">issues</a> in [concept.defaultconstructible].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+WG21 merged <a href="http://wg21.link/p1754r1">P1754R1</a> "Rename concepts to <tt>standard_case</tt> for C++20" 
+into the working draft as LWG Motion 11 in 2019 Cologne. That proposal contains editorial instructions to 
+rename what was the <tt>DefaultConstructible</tt> concept:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<pre>
+IF LWG3151 ACCEPTED:
+  default_initializable
+ELSE
+  default_constructible
+</pre>
+</blockquote>
+<p>
+Notably LWG <a href="3151">3151</a> "<tt>ConvertibleTo</tt> rejects conversions from array and function types" is 
+not the intended issue number, LWG <a href="3149">3149</a> "<tt>DefaultConstructible</tt> should require default 
+initialization" is. It was made clear during discussion in LEWG that 3149 would change the concept to require default-initialization to be valid rather than value-initialization which the <tt>is_default_constructible</tt> 
+trait requires. LEWG agreed that it would be confusing to have a trait and concept with very similar names 
+yet slightly different meanings, and approved <a href="http://wg21.link/p1754r1">P1754R1</a>'s proposed renaming.
+<p/>
+LWG <a href="3149">3149</a> was moved to "Ready" but not approved by WG21 until Belfast &mdash; after the application 
+of P1754R1 to the working draft &mdash; so this renaming has not happened, but the rationale remains valid.
+</p>
+
+<p><i>[2019-11-30 Issue Prioritization]</i></p>
+
+<p>Status to Tentatively Ready and priority to 0 after eight positive votes on the reflector.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change the stable name "[concept.defaultconstructible]" to "[concept.default.init]" and retitle 
+"Concept <tt>default_constructible</tt>" to "Concept <tt>default_initializable</tt>". Replace all references 
+to the name <tt>default_constructible</tt> with <tt>default_initializable</tt> (There are 20 occurrences).</p>
 </li>
 </ol>
 
