@@ -1,0 +1,156 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3355: The memory algorithms should support move-only input iterators introduced by P1207</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3355" href="lwg-active.html#3355">3355.</a> The memory algorithms should support move-only input iterators introduced by P1207</h3>
+<p><b>Section:</b> 20.10.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a>, 20.10.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Corentin Jabot <b>Opened:</b> 2019-11-12 <b>Last modified:</b> 2019-12-11 19:14:09 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#uninitialized.copy">issues</a> in [uninitialized.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p1207">P1207</a> introduced move-only input iterators but did not modify the 
+specialized memory algorithms to support them.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 20.10.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, sentinel_for&lt;I&gt; S1,
+           <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S2&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_reference_t&lt;I&gt;&gt;
+    uninitialized_copy_result&lt;I, O&gt;
+      uninitialized_copy(I ifirst, S1 ilast, O ofirst, S2 olast);
+  template&lt;input_range IR, <i>no-throw-forward-range</i> OR&gt;
+      requires constructible_from&lt;range_value_t&lt;OR&gt;, range_reference_t&lt;IR&gt;&gt;
+    uninitialized_copy_result&lt;safe_iterator_t&lt;IR&gt;, safe_iterator_t&lt;OR&gt;&gt;
+      uninitialized_copy(IR&amp;&amp; in_range, OR&amp;&amp; out_range);
+}
+</pre>
+<blockquote>
+<p>
+-4- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, ilast)</tt>.
+<p/>
+-5- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+for (; ifirst != ilast &amp;&amp; ofirst != olast; ++ofirst, (void)++ifirst) {
+  ::new (<i>voidify</i>(*ofirst)) remove_reference_t&lt;iter_reference_t&lt;O&gt;&gt;(*ifirst);
+}
+return {<ins>std::move(</ins>ifirst<ins>)</ins>, ofirst};
+</pre></blockquote>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_reference_t&lt;I&gt;&gt;
+    uninitialized_copy_n_result&lt;I, O&gt;
+      uninitialized_copy_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-9- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, n)</tt>.
+<p/>
+-10- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+auto t = uninitialized_copy(counted_iterator(ifirst, n),
+                            default_sentinel, ofirst, olast);
+return {<ins>std::move(</ins>t.in<ins>)</ins>.base(), t.out};
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.10.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, sentinel_for&lt;I&gt; S1,
+           <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S2&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_rvalue_reference_t&lt;I&gt;&gt;
+    uninitialized_move_result&lt;I, O&gt;
+      uninitialized_move(I ifirst, S1 ilast, O ofirst, S2 olast);
+  template&lt;input_range IR, <i>no-throw-forward-range</i> OR&gt;
+      requires constructible_from&lt;range_value_t&lt;OR&gt;, range_rvalue_reference_t&lt;IR&gt;&gt;
+    uninitialized_move_result&lt;safe_iterator_t&lt;IR&gt;, safe_iterator_t&lt;OR&gt;&gt;
+      uninitialized_move(IR&amp;&amp; in_range, OR&amp;&amp; out_range);
+}
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, ilast)</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+for (; ifirst != ilast &amp;&amp; ofirst != olast; ++ofirst, (void)++ifirst) {
+  ::new (<i>voidify</i>(*ofirst)) 
+    remove_reference_t&lt;iter_reference_t&lt;O&gt;&gt;(ranges::iter_move(*ifirst));
+}
+return {<ins>std::move(</ins>ifirst<ins>)</ins>, ofirst};
+</pre></blockquote>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_rvalue_reference_t&lt;I&gt;&gt;
+    uninitialized_move_n_result&lt;I, O&gt;
+      uninitialized_move_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-8- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, n)</tt>.
+<p/>
+-9- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+auto t = uninitialized_move(counted_iterator(ifirst, n),
+                            default_sentinel, ofirst, olast);
+return {<ins>std::move(</ins>t.in<ins>)</ins>.base(), t.out};
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
