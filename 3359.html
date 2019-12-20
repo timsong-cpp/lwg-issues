@@ -1,0 +1,244 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3359: &lt;chrono&gt; leap second support should allow for negative leap seconds</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3359" href="lwg-active.html#3359">3359.</a> <tt>&lt;chrono&gt;</tt> leap second support should allow for negative leap seconds</h3>
+<p><b>Section:</b> 27.11.8 <a href="https://timsong-cpp.github.io/cppwp/time.zone.leap">[time.zone.leap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Asher Dunn <b>Opened:</b> 2019-12-16 <b>Last modified:</b> 2019-12-17 16:49:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>class leap</tt> (which is expected to be renamed by <a href="https://wg21.link/p1981r0">P1981R0</a> to 
+<tt>leap_second</tt>) defined in 27.11.8 <a href="https://timsong-cpp.github.io/cppwp/time.zone.leap">[time.zone.leap]</a> should include support for both
+positive leap seconds (<tt>23:59:60</tt> added to UTC at a specified time) and negative leap seconds 
+(<tt>23:59:59</tt> removed from UTC at a specified time). While only positive leap seconds have been 
+inserted to date, the definition of UTC allows for both.
+<p/>
+Update 27.11.8 <a href="https://timsong-cpp.github.io/cppwp/time.zone.leap">[time.zone.leap]</a> to specify the value of leap seconds in addition to
+their insertion date, and update wording and examples in 27.7 <a href="https://timsong-cpp.github.io/cppwp/time.clock">[time.clock]</a> and
+27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> that involve leap seconds to account for both types of leap second.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 27.7.2.2 <a href="https://timsong-cpp.github.io/cppwp/time.clock.utc.members">[time.clock.utc.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration&gt;
+static sys_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;
+  constexpr span(It first, size_type count);
+    to_sys(const utc_time&lt;Duration&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns:</i> A <tt>sys_time t</tt>, such that <tt>from_sys(t) == u</tt> if such a mapping exists. 
+Otherwise <tt>u</tt> represents a <tt>time_point</tt> during a <ins>positive</ins> leap second 
+insertion<ins>, the conversion counts that leap second as not inserted,</ins> and the last 
+representable value of <tt>sys_time</tt> prior to the insertion of the leap second is returned.
+</p>
+</blockquote>
+<pre>
+template&lt;class Duration&gt;
+  static utc_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;
+    from_sys(const sys_time&lt;Duration&gt;&amp; t);
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> A <tt>utc_time u</tt>, such that <tt>u.time_since_epoch() - t.time_since_epoch()</tt> 
+is equal to the <del>number</del><ins>sum</ins> of leap seconds that were inserted between <tt>t</tt> 
+and 1970-01-01. If <tt>t</tt> is exactly the date of leap second insertion, then the conversion counts 
+that leap second as inserted.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.7.2.3 <a href="https://timsong-cpp.github.io/cppwp/time.clock.utc.nonmembers">[time.clock.utc.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration&gt;
+  leap_second_info get_leap_second_info(const utc_time&lt;Duration&gt;&amp; ut);
+</pre>
+<blockquote>
+<p>
+-6- <i>Returns:</i> A <tt>leap_second_info</tt> where <tt>is_leap_second</tt> is <tt>true</tt> if 
+<tt>ut</tt> is during a <ins>positive</ins> leap second insertion, and otherwise <tt>false</tt>. 
+<tt>elapsed</tt> is the <del>number</del><ins>sum</ins> of leap seconds between 1970-01-01 and 
+<tt>ut</tt>. If <tt>is_leap_second</tt> is <tt>true</tt>, the leap second referred to by <tt>ut</tt> 
+is included in the count.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.tai.overview">[time.clock.tai.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The clock <tt>tai_clock</tt> measures seconds since 1958-01-01 00:00:00 and is offset 10s ahead of 
+UTC at this date. That is, 1958-01-01 00:00:00 TAI is equivalent to 1957-12-31 23:59:50 UTC. Leap seconds 
+are not inserted into TAI. Therefore every time a leap second is inserted into UTC, UTC <del>falls another 
+second behind</del><ins>shifts another second with respect to</ins> TAI. For example by 2000-01-01 there 
+had been 22 <ins>positive and 0 negative</ins> leap seconds inserted so 2000-01-01 00:00:00 UTC is 
+equivalent to 2000-01-01 00:00:32 TAI (22s plus the initial 10s offset).
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 27.7.4.1 <a href="https://timsong-cpp.github.io/cppwp/time.clock.gps.overview">[time.clock.gps.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The clock <tt>gps_clock</tt> measures seconds since the first Sunday of January, 1980 00:00:00 UTC. 
+Leap seconds are not inserted into GPS. Therefore every time a leap second is inserted into UTC, UTC 
+<del>falls another second behind</del><ins>shifts another second with respect to</ins> GPS. Aside from 
+the offset from <tt>1958y/January/1</tt> to <tt>1980y/January/Sunday[1]</tt>, GPS is behind TAI by 19s 
+due to the 10s offset between 1958 and 1970 and the additional 9 leap seconds inserted between 1970 and 1980.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 27.11.8.1 <a href="https://timsong-cpp.github.io/cppwp/time.zone.leap.overview">[time.zone.leap.overview]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::chrono {
+  class leap {
+  public:
+    leap(const leap&amp;) = default;
+    leap&amp; operator=(const leap&amp;) = default;
+
+    <i>// unspecified additional constructors</i>
+
+    constexpr sys_seconds date() const noexcept;
+    <ins>constexpr seconds value() const noexcept;</ins>
+  };
+}
+</pre>
+<p>
+-1- Objects of type <tt>leap</tt> representing the date <ins>and value</ins> of the leap second 
+insertions are constructed and stored in the time zone database when initialized.
+<p/>
+-2- [<i>Example:</i>
+</p>
+<blockquote><pre>
+for (auto&amp; l : get_tzdb().leaps)
+  if (l &lt;= 2018y/March/17d)
+    cout &lt;&lt; l.date() &lt;&lt; <ins>": " &lt;&lt; l.value() &lt;&lt;</ins> '\n';
+</pre></blockquote>
+<p>
+Produces the output:
+</p>
+<blockquote><pre>
+1972-07-01 00:00:00<ins>: 1s</ins>
+1973-01-01 00:00:00<ins>: 1s</ins>
+1974-01-01 00:00:00<ins>: 1s</ins>
+1975-01-01 00:00:00<ins>: 1s</ins>
+1976-01-01 00:00:00<ins>: 1s</ins>
+1977-01-01 00:00:00<ins>: 1s</ins>
+1978-01-01 00:00:00<ins>: 1s</ins>
+1979-01-01 00:00:00<ins>: 1s</ins>
+1980-01-01 00:00:00<ins>: 1s</ins>
+1981-07-01 00:00:00<ins>: 1s</ins>
+1982-07-01 00:00:00<ins>: 1s</ins>
+1983-07-01 00:00:00<ins>: 1s</ins>
+1985-07-01 00:00:00<ins>: 1s</ins>
+1988-01-01 00:00:00<ins>: 1s</ins>
+1990-01-01 00:00:00<ins>: 1s</ins>
+1991-01-01 00:00:00<ins>: 1s</ins>
+1992-07-01 00:00:00<ins>: 1s</ins>
+1993-07-01 00:00:00<ins>: 1s</ins>
+1994-07-01 00:00:00<ins>: 1s</ins>
+1996-01-01 00:00:00<ins>: 1s</ins>
+1997-07-01 00:00:00<ins>: 1s</ins>
+1999-01-01 00:00:00<ins>: 1s</ins>
+2006-01-01 00:00:00<ins>: 1s</ins>
+2009-01-01 00:00:00<ins>: 1s</ins>
+2012-07-01 00:00:00<ins>: 1s</ins>
+2015-07-01 00:00:00<ins>: 1s</ins>
+2017-01-01 00:00:00<ins>: 1s</ins>
+</pre></blockquote>
+<p>
+&mdash; <i>end example</i>]
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 27.11.8.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.leap.members">[time.zone.leap.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr sys_seconds date() const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns:</i> The date and time at which the leap second was inserted.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr seconds value() const noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns:</i> The value of the leap second. Always <tt>+1s</tt> to indicate a positive
+leap second or <tt>-1s</tt> to indicate a negative leap second. All leap seconds inserted up 
+through 2017 were positive leap seconds.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration, class charT&gt;
+  struct formatter&lt;chrono::utc_time&lt;Duration&gt;, charT&gt;;
+</pre>
+<blockquote>
+<p>
+-7- <i>Remarks:</i> If <tt>%Z</tt> is used, it is replaced with 
+<tt><i>STATICALLY-WIDEN</i>&lt;charT&gt;("UTC")</tt>. If <tt>%z</tt> (or a modified
+variant of <tt>%z</tt>) is used, an offset of <tt>0min</tt> is formatted. If the argument represents 
+a time during a <ins>positive</ins> leap second insertion, and if a seconds field is formatted, 
+the integral portion of that format is <tt><i>STATICALLY-WIDEN</i>&lt;charT&gt;("60")</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
