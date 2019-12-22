@@ -1,0 +1,116 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3360: three_way_comparable_with is inconsistent with similar concepts</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3360" href="lwg-active.html#3360">3360.</a> <tt>three_way_comparable_with</tt> is inconsistent with similar concepts</h3>
+<p><b>Section:</b> 17.11.4 <a href="https://timsong-cpp.github.io/cppwp/cmp.concept">[cmp.concept]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-12-18 <b>Last modified:</b> 2019-12-21 14:36:49 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The concept <tt>three_way_comparable_with</tt> is defined in 17.11.4 <a href="https://timsong-cpp.github.io/cppwp/cmp.concept">[cmp.concept]</a> as:
+</p>
+<blockquote>
+<pre>
+template&lt;class T, class U, class Cat = partial_ordering&gt;
+  concept three_way_comparable_with =
+    <i>weakly-equality-comparable-with</i>&lt;T, U&gt; &amp;&amp;
+    <i>partially-ordered-with</i>&lt;T, U&gt; &amp;&amp;
+    three_way_comparable&lt;T, Cat&gt; &amp;&amp;
+    three_way_comparable&lt;U, Cat&gt; &amp;&amp;
+    common_reference_with&lt;const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;&gt; &amp;&amp;
+    three_way_comparable&lt;
+      common_reference_t&lt;const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;&gt;, Cat&gt; &amp;&amp;
+    requires(const remove_reference_t&lt;T&gt;&amp; t, const remove_reference_t&lt;U&gt;&amp; u) {
+      { t &lt;=&gt; u } -&gt; <i>compares-as</i>&lt;Cat&gt;;
+      { u &lt;=&gt; t } -&gt; <i>compares-as</i>&lt;Cat&gt;;
+    };
+</pre>
+</blockquote>
+<p>
+Which notably doesn't follow the requirement ordering:
+</p>
+<ol>
+<li><p>same-type requirements on <tt>T</tt></p></li>
+<li><p>same-type requirements on <tt>U</tt></p></li>
+<li><p><tt>common_reference_with</tt> requirement</p></li>
+<li><p>same-type requirements on <tt>common_reference_t&lt;T, U&gt;</tt></p></li>
+<li><p>cross-type requirements on <tt>T</tt> and <tt>U</tt></p></li>
+</ol>
+<p>
+that the other cross-type comparison concepts (18.5.3 <a href="https://timsong-cpp.github.io/cppwp/concept.equalitycomparable">[concept.equalitycomparable]</a>, 
+18.5.4 <a href="https://timsong-cpp.github.io/cppwp/concept.totallyordered">[concept.totallyordered]</a>) use. There were some motivating reasons for that ordering:
+</p>
+<ol>
+<li><p>The existence of a common reference type is effectively an opt-in to cross-type concepts. 
+Avoiding checking cross-type expressions when no common reference type exists can enable the 
+concepts to work even in the presence of poorly-constrained "accidental" cross-type operator 
+templates which could otherwise produce compile errors instead of dissatisfied concepts.</p></li>
+<li><p>Putting the simpler same-type requirements first can help produce simpler error messages 
+when applying the wrong concept to a pair of types, or the right concept to the wrong pair of types. 
+"<tt>Frobnozzle &lt;=&gt; Frobnozzle</tt> is not a valid expression" is more easily deciphered than 
+is "<tt>std::common_reference&lt;int, FrobNozzle&gt;</tt> has no member named type".</p></li>
+</ol>
+<p>
+<tt>three_way_comparable_with</tt> should be made consistent with <tt>equality_comparable_with</tt> and 
+<tt>totally_ordered_with</tt> for the above reasons and to make it easier to reason about comparison concepts 
+in general.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 17.11.4 <a href="https://timsong-cpp.github.io/cppwp/cmp.concept">[cmp.concept]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class U, class Cat = partial_ordering&gt;
+  concept three_way_comparable_with =
+    <del><i>weakly-equality-comparable-with</i>&lt;T, U&gt; &amp;&amp;</del>
+    <del><i>partially-ordered-with</i>&lt;T, U&gt; &amp;&amp;</del>
+    three_way_comparable&lt;T, Cat&gt; &amp;&amp;
+    three_way_comparable&lt;U, Cat&gt; &amp;&amp;
+    common_reference_with&lt;const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;&gt; &amp;&amp;
+    three_way_comparable&lt;
+      common_reference_t&lt;const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;&gt;, Cat&gt; &amp;&amp;
+    <ins><i>weakly-equality-comparable-with</i>&lt;T, U&gt; &amp;&amp;</ins>
+    <ins><i>partially-ordered-with</i>&lt;T, U&gt; &amp;&amp;</ins>
+    requires(const remove_reference_t&lt;T&gt;&amp; t, const remove_reference_t&lt;U&gt;&amp; u) {
+      { t &lt;=&gt; u } -&gt; <i>compares-as</i>&lt;Cat&gt;;
+      { u &lt;=&gt; t } -&gt; <i>compares-as</i>&lt;Cat&gt;;
+    };
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
