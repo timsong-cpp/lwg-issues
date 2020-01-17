@@ -1,0 +1,109 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3368: Exactly when does size return end - begin?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3368" href="lwg-active.html#3368">3368.</a> Exactly when does <tt>size</tt> return <tt>end - begin</tt>?</h3>
+<p><b>Section:</b> 24.3.9 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-01-07 <b>Last modified:</b> 2020-01-15 19:10:21 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of <tt>ranges::size</tt> in 24.3.9 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a> suggests that bullet 1.3 
+("Otherwise, <tt><i>make-unsigned-like</i>(ranges::end(E) - ranges::begin(E)) ...")</tt> only applies 
+when <tt>disable_sized_range&lt;remove_cv_t&lt;T&gt;&gt;</tt> is <tt>true</tt>. This is not the 
+design intent, but the result of an erroneous attempt to factor out the common 
+"<tt>disable_sized_range</tt> is <tt>false</tt>" requirement from the member and non-member <tt>size</tt> 
+cases in bullets 1.2.1 and 1.2.2 that occurred between <a href="http://wg21.link/p0896r3">P0896R3</a> and 
+<a href="http://wg21.link/p0896r4">P0896R4</a>. The intended design has always been that a range with 
+member or non-member <tt>size</tt> with the same syntax but different semantics may opt-out of being 
+sized by specializing <tt>disable_sized_range</tt>. It has never been intended that arrays or ranges 
+whose iterator and sentinel model <tt>sized_sentinel_for</tt> be able to opt out of being sized via 
+<tt>disable_sized_range</tt>. <tt>disable_sized_sentinel_for</tt> can/must be used to opt out in the 
+latter case so that library functions oblivious to the range type that operate on the iterator and 
+sentinel of such a range will avoid subtraction.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 24.3.9 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> There are drive-by changes here to (1) avoid introducing unused type placeholders, 
+(2) avoid reusing "<tt>T</tt>" as both the type of the subexpression and the template parameter of the 
+poison pill, and (3) fix the cross-reference for <tt><i>make-unsigned-like</i></tt> which is defined in 
+[ranges.syn]/1, not in [range.subrange].]
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+-1- The name <tt>size</tt> denotes a customization point object (16.4.2.2.6 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>). 
+The expression <tt>ranges::size(E)</tt> for some subexpression <tt>E</tt> with type <tt>T</tt> is 
+expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; <tt><i>decay-copy</i>(extent_v&lt;T&gt;)</tt> if <tt>T</tt> is an array type 
+(6.8.2 <a href="https://timsong-cpp.github.io/cppwp/basic.compound">[basic.compound]</a>).</p></li>
+<li><p><del>(1.2) &mdash; Otherwise, if <tt>disable_sized_range&lt;remove_cv_t&lt;T&gt;&gt;</tt> 
+(24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a>) is <tt>false</tt>:</del></p>
+<li><p>(1.<ins>?</ins><del>2.1</del>) &mdash; <ins>Otherwise, if 
+<tt>disable_sized_range&lt;remove_cv_t&lt;T&gt;&gt;</tt> (24.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.sized">[range.sized]</a>) is <tt>false</tt> 
+and</ins> <tt><i>decay-copy</i>(E.size())</tt> <del>if it</del> is a valid expression <del>and its 
+type <tt>I</tt> is</del><ins>of</ins> integer-like <ins>type</ins> 
+(23.3.4.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.winc">[iterator.concept.winc]</a>)<ins>, <tt><i>decay-copy</i>(E.size())</tt></ins>.</p></li>
+<li><p>(1.<ins>?</ins><del>2.2</del>) &mdash; Otherwise, <ins>if 
+<tt>disable_sized_range&lt;remove_cv_t&lt;T&gt;&gt;</tt> is <tt>false</tt> and</ins>
+<tt><i>decay-copy</i>(size(E))</tt> <del>if it</del> is a valid expression <del>and its type 
+<tt>I</tt> is</del><ins>of</ins> integer-like <ins>type</ins> with overload resolution performed in a 
+context that includes the declaration:
+<blockquote><pre>
+<del>template&lt;class T&gt;</del> void size(<del>T</del><ins>auto</ins>&amp;&amp;) = delete;
+</pre></blockquote>
+and does not include a declaration of <tt>ranges::size</tt><ins>, <tt><i>decay-copy</i>(size(E))</tt></ins>.</p></li>
+</li>
+<li><p>(1.3) &mdash; Otherwise, <tt><i>make-unsigned-like</i>(ranges::end(E) - ranges::begin(E))</tt> 
+(<del>24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a></del><ins>24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a></ins>) if it is a valid 
+expression and the types <tt>I</tt> and <tt>S</tt> of 
+<tt>ranges::begin(E)</tt> and <tt>ranges::end(E)</tt> (respectively) model both
+<tt>sized_sentinel_for&lt;S, I&gt;</tt> (23.3.4.8 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sizedsentinel">[iterator.concept.sizedsentinel]</a>) and 
+<tt>forward_iterator&lt;I&gt;</tt>. However, <tt>E</tt> is evaluated only once.
+</p></li>
+<li><p>(1.4) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

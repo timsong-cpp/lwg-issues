@@ -1,0 +1,200 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3369: span's deduction-guide for built-in arrays doesn't work</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3369" href="lwg-active.html#3369">3369.</a> <tt>span</tt>'s deduction-guide for built-in arrays doesn't work</h3>
+<p><b>Section:</b> 22.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2020-01-08 <b>Last modified:</b> 2020-01-15 19:14:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#span.overview">active issues</a> in [span.overview].</p>
+<p><b>View all other</b> <a href="lwg-index.html#span.overview">issues</a> in [span.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="http://wg21.link/n4842">N4842</a> 22.7.3.1 [span.overview] depicts:
+</p>
+<blockquote><pre>
+template&lt;class T, size_t N&gt;
+span(T (&amp;)[N]) -&gt; span&lt;T, N&gt;;
+</pre></blockquote> 
+<p>
+This isn't constrained by 22.7.3.3 [span.deduct]. Then, 22.7.3.2 [span.cons]/10 
+specifies:
+</p>
+<blockquote><pre>
+template&lt;size_t N&gt; constexpr span(element_type (&amp;arr)[N]) noexcept;
+template&lt;size_t N&gt; constexpr span(array&lt;value_type, N&gt;&amp; arr) noexcept;
+template&lt;size_t N&gt; constexpr span(const array&lt;value_type, N&gt;&amp; arr) noexcept;
+</pre>
+<blockquote>
+<p>
+<i>Constraints:</i>
+</p>
+<ul>
+<li><p><tt>extent == dynamic_extent || N == extent</tt> is <tt>true</tt>, and</p></li>
+<li><p><tt>remove_pointer_t&lt;decltype(data(arr))&gt;(*)[]</tt> is convertible to 
+<tt>ElementType(*)[]</tt>.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+<p>
+Together, these cause CTAD to behave unexpectedly. Here's a minimal test case, reduced from libcxx's 
+test suite:
+</p>
+<blockquote><pre>
+C:\Temp&gt;type span_ctad.cpp
+#include &lt;stddef.h&gt;
+#include &lt;type_traits&gt; 
+
+inline constexpr size_t dynamic_extent = static_cast&lt;size_t&gt;(-1);
+
+template &lt;typename T, size_t Extent = dynamic_extent&gt;
+struct span {
+  template &lt;size_t Size&gt;
+  requires (Extent == dynamic_extent || Extent == Size)
+#ifdef WORKAROUND_WITH_TYPE_IDENTITY_T
+  span(std::type_identity_t&lt;T&gt; (&amp;)[Size]) {}
+#else
+  span(T (&amp;)[Size]) {}
+#endif
+};
+
+template &lt;typename T, size_t Extent&gt;
+#ifdef WORKAROUND_WITH_REQUIRES_TRUE
+requires (true)
+#endif
+span(T (&amp;)[Extent]) -&gt; span&lt;T, Extent&gt;;
+
+int main() {
+  int arr[] = {1,2,3};
+  span s{arr};
+  static_assert(std::is_same_v&lt;decltype(s), span&lt;int, 3&gt;&gt;,
+    "CTAD should deduce span&lt;int, 3&gt;.");
+}
+
+C:\Temp&gt;cl /EHsc /nologo /W4 /std:c++latest span_ctad.cpp
+span_ctad.cpp
+span_ctad.cpp(26): error C2338: CTAD should deduce span&lt;int, 3&gt;.
+
+C:\Temp&gt;cl /EHsc /nologo /W4 /std:c++latest /DWORKAROUND_WITH_TYPE_IDENTITY_T span_ctad.cpp
+span_ctad.cpp
+
+C:\Temp&gt;cl /EHsc /nologo /W4 /std:c++latest /DWORKAROUND_WITH_REQUIRES_TRUE span_ctad.cpp
+span_ctad.cpp
+
+C:\Temp&gt;
+</pre></blockquote> 
+<p>
+(MSVC and GCC 10 demonstrate this behavior. Clang is currently affected by 
+<a href="https://bugs.llvm.org/show_bug.cgi?id=44484">LLVM#44484</a>.)
+<p/>
+Usually, when there's an explicit deduction-guide, we can ignore any corresponding constructor, 
+because the overload resolution tiebreaker 12.4.3 [over.match.best]/2.10 prefers deduction-guides. 
+However, this is a mental shortcut only, and it's possible for guides generated from constructors 
+to out-compete deduction-guides during CTAD. That's what's happening here.
+<p/>
+Specifically, the constructor is constrained, while the deduction-guide is not constrained. This 
+activates the "more specialized" tiebreaker first (12.4.3 [over.match.best]/2.5 is considered before 
+/2.10 for deduction-guides). That goes through 13.7.6.2 [temp.func.order]/2 and 13.5.4 [temp.constr.order] 
+to prefer the more constrained overload.
+<p/>
+(In the test case, this results in <tt>span&lt;int, dynamic_extent&gt;</tt> being deduced. That's 
+because the constructor allows <tt>T</tt> to be deduced to be <tt>int</tt>. The constructor's <tt>Size</tt> 
+template parameter is deduced to be 3, but that's unrelated to the class's <tt>Extent</tt> parameter. 
+Because <tt>Extent</tt> has a default argument of <tt>dynamic_extent</tt>, CTAD succeeds and deduces 
+<tt>span&lt;int, dynamic_extent&gt;</tt>.)
+<p/>
+There are at least two possible workarounds: we could alter the constructor to prevent it from 
+participating in CTAD, or we could constrain the deduction-guide, as depicted in the test case. Either 
+way, we should probably include a Note, following the precedent of 21.3.2.2 [string.cons]/12.
+<p/>
+Note that there are also deduction-guides for span from <tt>std::array</tt>. However, the constructors 
+take <tt>array&lt;value_type, N&gt;</tt> with <tt>using value_type = remove_cv_t&lt;ElementType&gt;;</tt> 
+so that prevents the constructors from interfering with CTAD.
+<p/>
+I'm currently proposing to alter the constructor from built-in arrays. An alternative resolution to 
+constrain the deduction-guide would look like: "<i>Constraints:</i> <tt>true</tt>. [<i>Note:</i> This 
+affects class template argument deduction. &mdash; <i>end note</i>]"
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 22.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a>, class template <tt>span</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+template&lt;class ElementType, size_t Extent = dynamic_extent&gt;
+class span {
+public:
+  [&hellip;]
+  <i>// 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a>, constructors, copy, and assignment</i>
+  constexpr span() noexcept;
+  [&hellip;]
+  template&lt;size_t N&gt;
+  constexpr span(<ins>type_identity_t&lt;</ins>element_type<ins>&gt;</ins> (&amp;arr)[N]) noexcept;
+  [&hellip;]
+};
+[&hellip;]
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;size_t N&gt; constexpr span(<ins>type_identity_t&lt;</ins>element_type<ins>&gt;</ins> (&amp;arr)[N]) noexcept;
+template&lt;size_t N&gt; constexpr span(array&lt;value_type, N&gt;&amp; arr) noexcept;
+template&lt;size_t N&gt; constexpr span(const array&lt;value_type, N&gt;&amp; arr) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Constraints:</i>
+<ol style="list-style-type: none">
+<li><p>(10.1) &mdash; <tt>extent == dynamic_extent || N == extent</tt> is <tt>true</tt>, and</p></li>
+<li><p>(10.2) &mdash; <tt>remove_pointer_t&lt;decltype(data(arr))&gt;(*)[]</tt> is convertible to 
+<tt>ElementType(*)[]</tt>.</p></li>
+</ol>
+<p/>
+-11- <i>Effects:</i> Constructs a <tt>span</tt> that is a view over the supplied array. <ins>[<i>Note:</i> 
+<tt>type_identity_t</tt> affects class template argument deduction. &mdash; <i>end note</i>]</ins>
+<p/>
+-12- <i>Postconditions:</i> <tt>size() == N &amp;&amp; data() == data(arr)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
