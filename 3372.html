@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3372: vformat_to should not try to deduce Out twice</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3372" href="lwg-active.html#3372">3372.</a> <tt>vformat_to</tt> should not try to deduce <tt>Out</tt> twice</h3>
+<p><b>Section:</b> 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-01-16 <b>Last modified:</b> 2020-01-17 03:58:59 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.functions">active issues</a> in [format.functions].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.functions">issues</a> in [format.functions].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>vformat_to</tt> currently deduces <tt>Out</tt> from its first and last arguments.
+This requires its last argument's type to be a specialization of <tt>basic_format_args</tt>,
+which notably prevents the use of <tt><i>format-arg-store</i></tt> arguments directly.
+This is unnecessary: we should only deduce from the first argument.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Edit 20.20.1 <a href="https://timsong-cpp.github.io/cppwp/format.syn">[format.syn]</a>, header <tt>&lt;format&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+
+  [&hellip;]
+
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, string_view fmt, format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, char&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, wstring_view fmt, format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, wchar_t&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, const locale&amp; loc, string_view fmt,
+                   format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, char&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, const locale&amp; loc, wstring_view fmt,
+                   format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, wchar_t&gt; args);
+
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Edit 20.20.3 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> p8 through p10 as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p> -8- <i>Effects:</i> Equivalent to:</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(out, fmt, <del>{</del>make_format_args&lt;context&gt;(args...)<del>}</del>);
+</pre>
+</blockquote>
+</blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p> -9- <i>Effects:</i> Equivalent to:</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(out, loc, fmt, <del>{</del>make_format_args&lt;context&gt;(args...)<del>}</del>);
+</pre>
+</blockquote>
+</blockquote>
+<pre>
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, string_view fmt, format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, char&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, wstring_view fmt, format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, wchar_t&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, const locale&amp; loc, string_view fmt,
+                   format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, char&gt; args);
+  template&lt;class Out&gt;
+    Out vformat_to(Out out, const locale&amp; loc, wstring_view fmt,
+                   format_args_t&lt;<ins>type_identity_t&lt;</ins>Out<ins>&gt;</ins>, wchar_t&gt; args);
+</pre>
+<blockquote>
+<p> -10- Let <tt>charT</tt> be <tt>decltype(fmt)::value_type</tt>.</p>
+<p> [&hellip;] </p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
