@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2020-02-09 at 20:05:49 UTC</p>
+<td align="left"><p>Revised 2020-02-10 at 20:51:00 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,5 +42,1523 @@
 </tr>
 </table>
 <h2>Immediate Issues</h2>
+<hr>
+<h3><a name="3175" href="3175">3175.</a> The <tt>CommonReference</tt> requirement of concept <tt>SwappableWith</tt> is not satisfied in the example</h3>
+<p><b>Section:</b> 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Kostas Kyrimis <b>Opened:</b> 2018-12-14 <b>Last modified:</b> 2020-02-10 19:48:51 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#concept.swappable">active issues</a> in [concept.swappable].</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.swappable">issues</a> in [concept.swappable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The defect stems from the example found in sub-clause 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> p5:
+</p>
+<blockquote>
+<pre>
+[&hellip;]
+
+template&lt;class T, std::SwappableWith&lt;T&gt; U&gt;
+void value_swap(T&amp;&amp; t, U&amp;&amp; u) {
+  ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+}
+
+[&hellip;]
+namespace N {
+  struct A { int m; };
+  struct Proxy { A* a; };
+  Proxy proxy(A&amp; a) { return Proxy{ &amp;a }; }
+  
+  void swap(A&amp; x, Proxy p) {
+    ranges::swap(x.m, p.a-&gt;m);
+  }
+  void swap(Proxy p, A&amp; x) { swap(x, p); } <i>// satisfy symmetry requirement</i>
+}
+
+int main() {
+  [&hellip;]
+  N::A a1 = { 5 }, a2 = { -5 };
+  value_swap(a1, proxy(a2)); // diagnostic manifests here(#1)
+  assert(a1.m == -5 &amp;&amp; a2.m == 5);
+}
+</pre>
+</blockquote>
+<p>
+The call to <tt>value_swap(a1, proxy(a2))</tt> resolves to [<tt>T</tt> = <tt>N::A&amp;</tt>, <tt>U</tt> = <tt>N::Proxy</tt>]
+The compiler will issue a diagnostic for #1 because:
+</p>
+<ol>
+<li><p>rvalue <tt>proxy(a2)</tt> is not swappable</p></li>
+<li><p>concept <tt>SwappableWith&lt;T, U&gt;</tt> requires <tt>N::A</tt> and <tt>Proxy</tt> to model
+<tt>CommonReference&lt;const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;&gt;</tt> It follows 
+from the example that there is no common reference for [<tt>T</tt> = <tt>N::A&amp;</tt>, <tt>U</tt> = <tt>N::Proxy</tt>]</p></li>
+</ol>
+
+<p><i>[2019-06-20; Casey Carter comments and provides improved wording]</i></p>
+
+<p>
+The purpose of the <tt>CommonReference</tt> requirements in the cross-type concepts is to provide a 
+sanity check. The fact that two types satisfy a single-type concept, have a common reference type 
+that satisfies that concept, and implement cross-type operations required by the cross-type flavor 
+of that concept very strongly suggests the programmer intends them to model the cross-type concept. 
+It's an opt-in that requires some actual work, so it's unlikely to be inadvertent.
+<p/>
+The <tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt> pattern makes sense for the comparison 
+concepts which require that all variations of <tt>const</tt> and value category be comparable: we 
+use <tt>const</tt> lvalues to trigger the "implicit expression variation" wording in 
+18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>. <tt>SwappableWith</tt>, however, doesn't care about implicit expression 
+variations: it only needs to witness that we can exchange the values denoted by two reference-y 
+expressions <tt>E1</tt> and <tt>E2</tt>. This suggests that <tt>CommonReference&lt;decltype((E1)), 
+decltype((E2))&gt;</tt> is a more appropriate requirement than the current 
+<tt>CommonReference&lt;const remove_reference_t&lt;&hellip;&gt;</tt> mess that was blindly copied 
+from the comparison concepts.
+<p/>
+We must change the definition of "exchange the values" in 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> &mdash; 
+which refers to the common reference type &mdash; consistently.
+</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
+
+<ol>
+<li><p>Change 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- [&hellip;]
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept Swappable = requires(T&amp; a, T&amp; b) { ranges::swap(a, b); };
+  
+template&lt;class T, class U&gt;
+  concept SwappableWith =
+  CommonReference&lt;<ins>T, U</ins><del>const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;</del>&gt; &amp;&amp;
+  requires(T&amp;&amp; t, U&amp;&amp; u) {
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;T&gt;(t));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+  };
+</pre>
+</blockquote>
+<p>
+-4- [&hellip;]
+<p/>
+-5- [<i>Example:</i> User code can ensure that the evaluation of <tt>swap</tt> calls is performed in an appropriate context
+under the various conditions as follows:
+</p>
+<blockquote>
+<pre>
+#include &lt;cassert&gt;
+#include &lt;concepts&gt;
+#include &lt;utility&gt;
+
+namespace ranges = std::ranges;
+
+template&lt;class T, std::SwappableWith&lt;T&gt; U&gt;
+void value_swap(T&amp;&amp; t, U&amp;&amp; u) {
+  ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+}
+
+template&lt;std::Swappable T&gt;
+void lv_swap(T&amp; t1, T&amp; t2) {
+  ranges::swap(t1, t2);
+}
+
+namespace N {
+  struct A { int m; };
+  struct Proxy { 
+    A* a;
+    <ins>Proxy(A&amp; a) : a{&amp;a} {}</ins>
+    <ins>friend void swap(Proxy&amp;&amp; x, Proxy&amp;&amp; y) {
+      ranges::swap(x.a, y.a);
+    }</ins>
+  };
+  Proxy proxy(A&amp; a) { return Proxy{ &amp;a }; }
+  void swap(A&amp; x, Proxy p) {
+    ranges::swap(x.m, p.a->m);
+  }
+  void swap(Proxy p, A&amp; x) { swap(x, p); } // satisfy symmetry requirement
+}
+
+int main() {
+  int i = 1, j = 2;
+  lv_swap(i, j);
+  assert(i == 2 &amp;&amp; j == 1);
+  N::A a1 = { 5 }, a2 = { -5 };
+  value_swap(a1, proxy(a2));
+  assert(a1.m == -5 &amp;&amp; a2.m == 5);
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+<p><i>[2020-01-16 Priority set to 1 after discussion on the reflector.]</i></p>
+
+
+<p><i>[2020-02-10 Move to Immediate Monday afternoon in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4820">N4820</a>.</p>
+
+<ol>
+<li><p>Change 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Let <tt>t1</tt> and <tt>t2</tt> be equality-preserving expressions that denote distinct equal objects 
+of type <tt>T</tt>, and let <tt>u1</tt> and <tt>u2</tt> similarly denote distinct equal objects of type 
+<tt>U</tt>. [<i>Note:</i> <tt>t1</tt> and <tt>u1</tt> can denote distinct objects, or the same object. 
+&mdash; <i>end note</i>] An operation <i>exchanges the values</i> denoted by <tt>t1</tt> and <tt>u1</tt> if 
+and only if the operation modifies neither <tt>t2</tt> nor <tt>u2</tt> and:
+</p>
+<ol style="list-style-type:none">
+<li><p>(1.1) &mdash; If <tt>T</tt> and <tt>U</tt> are the same type, the result of the operation is that 
+<tt>t1</tt> equals <tt>u2</tt> and <tt>u1</tt> equals <tt>t2</tt>.</p></li>
+<li><p>(1.2) &mdash; If <tt>T</tt> and <tt>U</tt> are different types <del>that model 
+<tt>CommonReference&lt;const T&amp;, const U&amp;&gt;</tt></del><ins>and 
+<tt>CommonReference&lt;decltype((t1)), decltype((u1))&gt;</tt> is modeled</ins>, the result of the 
+operation is that <tt>C(t1)</tt> equals <tt>C(u2)</tt> and <tt>C(u1)</tt> equals <tt>C(t2)</tt> where 
+<tt>C</tt> is <tt>common_reference_t&lt;<del>const T&amp;, 
+const U&amp;</del><ins>decltype((t1)), decltype((u1))</ins>&gt;</tt>.</p></li>
+</ol>
+<p>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept Swappable = requires(T&amp; a, T&amp; b) { ranges::swap(a, b); };
+  
+template&lt;class T, class U&gt;
+  concept SwappableWith =
+  CommonReference&lt;<ins>T, U</ins><del>const remove_reference_t&lt;T&gt;&amp;, const remove_reference_t&lt;U&gt;&amp;</del>&gt; &amp;&amp;
+  requires(T&amp;&amp; t, U&amp;&amp; u) {
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;T&gt;(t));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+    ranges::swap(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+  };
+</pre>
+</blockquote>
+<p>
+-4- [&hellip;]
+<p/>
+-5- [<i>Example:</i> User code can ensure that the evaluation of <tt>swap</tt> calls is performed in an appropriate context
+under the various conditions as follows:
+</p>
+<blockquote>
+<pre>
+#include &lt;cassert&gt;
+#include &lt;concepts&gt;
+#include &lt;utility&gt;
+
+namespace ranges = std::ranges;
+
+template&lt;class T, std::SwappableWith&lt;T&gt; U&gt;
+void value_swap(T&amp;&amp; t, U&amp;&amp; u) {
+  ranges::swap(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+}
+
+template&lt;std::Swappable T&gt;
+void lv_swap(T&amp; t1, T&amp; t2) {
+  ranges::swap(t1, t2);
+}
+
+namespace N {
+  struct A { int m; };
+  struct Proxy { 
+    A* a;
+    <ins>Proxy(A&amp; a) : a{&amp;a} {}</ins>
+    <ins>friend void swap(Proxy x, Proxy y) {
+      ranges::swap(*x.a, *y.a);
+    }</ins>
+  };
+  Proxy proxy(A&amp; a) { return Proxy{ <del>&amp;</del>a }; }
+  <del>void swap(A&amp; x, Proxy p) {
+    ranges::swap(x.m, p.a->m);
+  }
+  void swap(Proxy p, A&amp; x) { swap(x, p); } <i>// satisfy symmetry requirement</i></del>
+}
+
+int main() {
+  int i = 1, j = 2;
+  lv_swap(i, j);
+  assert(i == 2 &amp;&amp; j == 1);
+  N::A a1 = { 5 }, a2 = { -5 };
+  value_swap(a1, proxy(a2));
+  assert(a1.m == -5 &amp;&amp; a2.m == 5);
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3282" href="3282">3282.</a> <tt>subrange</tt> converting constructor should disallow derived to base conversions</h3>
+<p><b>Section:</b> 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2019-09-10 <b>Last modified:</b> 2020-02-10 19:48:51 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code leads to slicing and general badness:
+</p>
+<blockquote><pre>
+struct Base {};
+struct Derived : Base {};
+subrange&lt;Derived*&gt; sd;
+subrange&lt;Base*&gt; sb = sd;
+</pre></blockquote>
+<p>
+Traversal operations on iterators that are pointers do pointer arithmetic. If a <tt>Base*</tt> is 
+actually pointing to a <tt>Derived*</tt>, then pointer arithmetic is invalid. <tt>subrange</tt>'s 
+constructors can easily flag this invalid code, and probably should.
+<p/>
+The following PR incorporates the suggested fix to issue LWG <a href="3281">3281</a> I previously reported.
+<p/>
+Suggested priority: P1, since it will be hard to fix this after C++20 ships.
+</p>
+<p><i>[2019-10 Priority set to 1 and status to LEWG after reflector discussion]</i></p>
+
+<p><i>[2019-10; Marshall comments]</i></p>
+
+<p>
+This issue would resolve <a href="https://github.com/cplusplus/nbballot/issues/281">US-285</a>.
+</p>
+<p><i>[2019-11 LEWG says OK; Status to Open. Friday PM discussion in Belfast. Casey to investigate and report back.]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <ins>template&lt;class From, class To&gt;
+    concept <i>convertible-to-non-slicing</i> = <i>// exposition only</i>
+      convertible_to&lt;From, To&gt; &amp;&amp;
+      !(is_pointer_v&lt;decay_t&lt;From&gt;&gt; &amp;&amp;
+      is_pointer_v&lt;decay_t&lt;To&gt;&gt; &amp;&amp;
+      <i>not-same-as</i>&lt;remove_pointer_t&lt;decay_t&lt;From&gt;&gt;, remove_pointer_t&lt;decay_t&lt;To&gt;&gt;&gt;);</ins>
+      
+  template&lt;class T&gt;
+    concept <i>pair-like</i> = <i>// exposition only</i>
+      [&hellip;]
+      
+  <del>template&lt;class T, class U, class V&gt;
+    concept <i>pair-like-convertible-to</i> = <i>// exposition only</i>
+      !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp;
+      requires(T&amp;&amp; t) {
+        { get&lt;0&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;U&gt;;
+        { get&lt;1&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;V&gt;;
+      };</del>
+      
+   template&lt;class T, class U, class V&gt;
+     concept <i>pair-like-convertible-from</i> = <i>// exposition only</i>
+       !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;T&gt; &amp;&amp; 
+       constructible_from&lt;T, U, V&gt; <ins>&amp;&amp;
+       <i>convertible-to-non-slicing</i>&lt;U, tuple_element_t&lt;0, T&gt;&gt; &amp;&amp;
+       convertible_to&lt;V, tuple_element_t&lt;1, T&gt;&gt;</ins>;
+
+[&hellip;]
+[&hellip;]
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S = I, subrange_kind K =
+           sized_sentinel_for&lt;S, I&gt; ? subrange_kind::sized : subrange_kind::unsized&gt;
+    requires (K == subrange_kind::sized || !sized_sentinel_for&lt;S, I&gt;)
+  class subrange : public view_interface&lt;subrange&lt;I, S, K&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    subrange() = default;
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                       <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+    
+    template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+      requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+        <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+        convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+    
+    template&lt;<i>forwarding-range</i> R&gt;
+      requires convertible_to&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+        : subrange{ranges::begin(r), ranges::end(r), n}
+    {}
+    
+    <del>template&lt;<i>not-same-as</i>&lt;subrange&gt; PairLike&gt;
+      requires <i>pair-like-convertible-to</i>&lt;PairLike, I, S&gt;
+    constexpr subrange(PairLike&amp;&amp; r) requires (!StoreSize)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r))}
+    {}
+
+    template&lt;<i>pair-like-convertible-to</i>&lt;I, S&gt; PairLike&gt;
+    constexpr subrange(PairLike&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r)), n}
+    {}</del>
+  [&hellip;]
+  };
+  
+  <ins>template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  subrange(I, S) -&gt; subrange&lt;I, S&gt;;</ins>  
+  
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.ctor">[range.subrange.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+</pre>
+<blockquote>
+<p>
+-1- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                   <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+</pre>
+<blockquote>
+<p>
+-2- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+  requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+    <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+    convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-02-10; Prague]</i></p>
+
+<p>
+The group identified minor problems that have been fixed in the revised wording.
+</p>
+
+<p><i>[2020-02-10 Move to Immediate Monday afternoon in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <ins>template&lt;class From, class To&gt;
+    concept <i>convertible-to-non-slicing</i> = <i>// exposition only</i>
+      convertible_to&lt;From, To&gt; &amp;&amp;
+      !(is_pointer_v&lt;decay_t&lt;From&gt;&gt; &amp;&amp;
+      is_pointer_v&lt;decay_t&lt;To&gt;&gt; &amp;&amp;
+      <i>not-same-as</i>&lt;remove_pointer_t&lt;decay_t&lt;From&gt;&gt;, remove_pointer_t&lt;decay_t&lt;To&gt;&gt;&gt;);</ins>
+      
+  template&lt;class T&gt;
+    concept <i>pair-like</i> = <i>// exposition only</i>
+      [&hellip;]
+      
+  <del>template&lt;class T, class U, class V&gt;
+    concept <i>pair-like-convertible-to</i> = <i>// exposition only</i>
+      !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp;
+      requires(T&amp;&amp; t) {
+        { get&lt;0&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;U&gt;;
+        { get&lt;1&gt;(std::forward&lt;T&gt;(t)) } -&gt; convertible_to&lt;V&gt;;
+      };</del>
+      
+   template&lt;class T, class U, class V&gt;
+     concept <i>pair-like-convertible-from</i> = <i>// exposition only</i>
+       !range&lt;T&gt; &amp;&amp; <i>pair-like</i>&lt;T&gt; &amp;&amp; 
+       constructible_from&lt;T, U, V&gt; <ins>&amp;&amp;
+       <i>convertible-to-non-slicing</i>&lt;U, tuple_element_t&lt;0, T&gt;&gt; &amp;&amp;
+       convertible_to&lt;V, tuple_element_t&lt;1, T&gt;&gt;</ins>;
+
+[&hellip;]
+[&hellip;]
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S = I, subrange_kind K =
+           sized_sentinel_for&lt;S, I&gt; ? subrange_kind::sized : subrange_kind::unsized&gt;
+    requires (K == subrange_kind::sized || !sized_sentinel_for&lt;S, I&gt;)
+  class subrange : public view_interface&lt;subrange&lt;I, S, K&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    subrange() = default;
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+    
+    constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                       <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+    
+    template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+      requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+        <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+        convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+    
+    template&lt;<i>forwarding-range</i> R&gt;
+      requires <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+	    convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+    constexpr subrange(R&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+        : subrange{ranges::begin(r), ranges::end(r), n}
+    {}
+    
+    <del>template&lt;<i>not-same-as</i>&lt;subrange&gt; PairLike&gt;
+      requires <i>pair-like-convertible-to</i>&lt;PairLike, I, S&gt;
+    constexpr subrange(PairLike&amp;&amp; r) requires (!StoreSize)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r))}
+    {}
+
+    template&lt;<i>pair-like-convertible-to</i>&lt;I, S&gt; PairLike&gt;
+    constexpr subrange(PairLike&amp;&amp; r, <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n)
+      requires (K == subrange_kind::sized)
+      : subrange{std::get&lt;0&gt;(std::forward&lt;PairLike&gt;(r)),
+                 std::get&lt;1&gt;(std::forward&lt;PairLike&gt;(r)), n}
+    {}</del>
+  [&hellip;]
+  };
+  
+  <ins>template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  subrange(I, S) -&gt; subrange&lt;I, S&gt;;</ins>  
+  
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.ctor">[range.subrange.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s) requires (!StoreSize);
+</pre>
+<blockquote>
+<p>
+-1- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr subrange(<ins><i>convertible-to-non-slicing</i>&lt;</ins>I<ins>&gt; auto</ins> i, S s, 
+                   <i>make-unsigned-like-t</i>(iter_difference_t&lt;I&gt;) n) requires (K == subrange_kind::sized);
+</pre>
+<blockquote>
+<p>
+-2- <i>Expects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;<i>not-same-as</i>&lt;subrange&gt; R&gt;
+  requires <i>forwarding-range</i>&lt;R&gt; &amp;&amp;
+    <del>convertible_to</del><ins><i>convertible-to-non-slicing</i></ins>&lt;iterator_t&lt;R&gt;, I&gt; &amp;&amp; 
+    convertible_to&lt;sentinel_t&lt;R&gt;, S&gt;
+constexpr subrange(R&amp;&amp; r) requires (!StoreSize || sized_range&lt;R&gt;);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3301" href="3301">3301.</a> <tt>transform_view::iterator</tt> has incorrect <tt>iterator_category</tt></h3>
+<p><b>Section:</b> 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Michel Morin <b>Opened:</b> 2019-10-03 <b>Last modified:</b> 2020-02-10 19:48:51 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When the transformation function returns an rvalue, <tt>transform_view::iterator</tt> 
+cannot model <tt><i>cpp17-forward-iterator</i></tt>. However, similar to LWG <a href="3291">3291</a>,
+the current wording on <tt>transform_view::iterator::iterator_category</tt> does not 
+consider this.
+<p/>
+As Casey Carter pointed out <a href="https://github.com/ericniebler/stl2/issues/637#issuecomment-535594100">here</a>,
+the proposed wording below does not consider <tt>input_iterator</tt> that is not 
+<tt><i>cpp17-input-iterator</i></tt> (this problem is not specific to the PR; it's pervasive 
+in adapted iterators) and concepts-based determination would be a better fix for issues around 
+<tt>iterator_category</tt>. But anyway, I consider this PR as a minimal fix at the moment.
+</p>
+
+<p><i>[2019-10-31 Issue Prioritization]</i></p>
+
+<p>Priority to 1 after reflector discussion.</p>
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- <ins><tt>iterator::iterator_category</tt> is defined as follows:</ins> 
+Let <tt>C</tt> denote the type <tt>iterator_traits&lt;iterator_t&lt;Base&gt;&gt;::iterator_category</tt>.
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?) &mdash; If <tt>is_lvalue_reference_v&lt;iter_reference_t&lt;iterator_t&lt;Base&gt;&gt;&gt;</tt> 
+is <tt>true</tt>,</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?.?) &mdash;</ins> If <tt>C</tt> models <tt>derived_from&lt;contiguous_iterator_tag&gt;</tt>, 
+then <tt>iterator_category</tt> denotes <tt>random_access_iterator_tag</tt>;</p></li>
+<li><p><ins>(2.?.?) &mdash;</ins> <ins>O</ins><del>o</del>therwise, <tt>iterator_category</tt> denotes 
+<tt>C</tt>.</p></li>
+</ol>
+</li>
+<li><p><ins>(2.?) &mdash; Otherwise, <tt>iterator_category</tt> denotes 
+<tt>input_iterator_tag</tt>.</ins></p></li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+<p><i>[2019-11-06, Tim updates P/R based on Belfast LWG evening session discussion]</i></p>
+
+<p>
+The check in the original P/R is incorrect; we want to check the transformation's result, not the base iterator.
+</p>
+
+<p><i>[2020-02-10 Move to Immediate Monday afternoon in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- <ins><tt>iterator::iterator_category</tt> is defined as follows:</ins> 
+Let <tt>C</tt> denote the type <tt>iterator_traits&lt;iterator_t&lt;Base&gt;&gt;::iterator_category</tt>.
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?) &mdash; If <tt>is_lvalue_reference_v&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;Base&gt;&gt;&gt;</tt> 
+is <tt>true</tt>,</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(2.?.?) &mdash;</ins> If <tt>C</tt> models <tt>derived_from&lt;contiguous_iterator_tag&gt;</tt>, 
+then <tt>iterator_category</tt> denotes <tt>random_access_iterator_tag</tt>;</p></li>
+<li><p><ins>(2.?.?) &mdash;</ins> <ins>O</ins><del>o</del>therwise, <tt>iterator_category</tt> denotes 
+<tt>C</tt>.</p></li>
+</ol>
+</li>
+<li><p><ins>(2.?) &mdash; Otherwise, <tt>iterator_category</tt> denotes 
+<tt>input_iterator_tag</tt>.</ins></p></li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3335" href="3335">3335.</a> Resolve C++20 NB comments US 273 and GB 274</h3>
+<p><b>Section:</b> 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> United States/Great Britain <b>Opened:</b> 2019-11-08 <b>Last modified:</b> 2020-02-10 19:48:51 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ranges.syn">active issues</a> in [ranges.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ranges.syn">issues</a> in [ranges.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/269">US 273</a>/<a href="https://github.com/cplusplus/nbballot/issues/270">GB 274</a></b></p>
+
+<p>
+<b><a href="https://github.com/cplusplus/nbballot/issues/269">US 273</a>:</b>
+<p/>
+<tt>all_view</tt> is not a view like the others. For the other view types, <tt>foo_view{args...}</tt> is a valid
+way to construct an instance of type foo_view. However, <tt>all_view</tt> is just an alias to the type of 
+<tt>view::all(arg)</tt>, which could be one of several different types. <tt>all_view</tt> feels like the wrong name.
+<p/>
+Proposed change:
+<p/>
+Suggest renaming <tt>all_view</tt> to <tt>all_t</tt> and
+moving it into the <tt>views::</tt> namespace.
+</p>
+
+<p>
+<b><a href="https://github.com/cplusplus/nbballot/issues/270">GB 274</a>:</b>
+<p/>
+Add <tt>range_size_t</tt>.
+<p/>
+LEWG asked that <tt>range_size_t</tt> be removed from <a href="https://wg21.link/p1035">P1035</a>, 
+as they were doing a good job of being neutral w.r.t whether or not size-types were signed or 
+unsigned at the time. Now that we've got a policy on what size-types are, and that 
+<a href="https://wg21.link/p1522">P1522</a> and <a href="https://wg21.link/p1523">P1523</a> 
+have been adopted, it makes sense for there to be a <tt>range_size_t</tt>.
+<p/>
+Proposed change:
+<p/>
+Add to [ranges.syn]:
+</p>
+<blockquote><pre>
+template&lt;range R&gt;
+  using range_difference_t = iter_difference_t&lt;iterator_t&lt;R&gt;&gt;;
+<ins>template&lt;sized_range R&gt;
+  using range_size_t = decltype(ranges::size(declval&lt;R&amp;&gt;()));</ins>
+</pre></blockquote>
+<p>
+<b>David Olsen:</b>
+<p/>
+The proposed wording has been approved by LEWG and LWG in Belfast.
+</p>
+
+<p><i>[2019-11-23 Issue Prioritization]</i></p>
+
+<p>Priority to 1 after reflector discussion.</p>
+
+<p><i>[2020-02-10 Move to Immediate Monday afternoon in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Change 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;initializer_list&gt;
+#include &lt;iterator&gt;
+
+namespace std::ranges {
+  [&hellip;]
+  <i>// 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a>, ranges</i>
+  template&lt;class T&gt;
+  concept range = <i>see below</i>;
+  [&hellip;]
+  template&lt;range R&gt;
+    using range_difference_t = iter_difference_t&lt;iterator_t&lt;R&gt;&gt;;
+  <ins>template&lt;sized_range R&gt;
+    using range_size_t = decltype(ranges::size(declval&lt;R&amp;&gt;()));</ins>
+  template&lt;range R&gt;
+    using range_value_t = iter_value_t&lt;iterator_t&lt;R&gt;&gt;;
+  [&hellip;]
+  <i>// 24.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.ref.view">[range.ref.view]</a>, all view</i>
+  namespace views { <del>inline constexpr <i>unspecified</i> all = <i>unspecified</i>; }</del>
+    <ins>inline constexpr <i>unspecified</i> all = <i>unspecified</i>;</ins>
+
+    template&lt;viewable_range R&gt;
+      using all_<ins>t</ins><del>view</del> = decltype(<del>views::</del>all(declval&lt;R&gt;()));
+  <ins>}</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Globally replace all occurrences of <tt>all_view</tt> with <tt>views::all_t</tt>. There are 36 
+occurrences in addition to the definition in the <tt>&lt;ranges&gt;</tt> synopsis that was changed above.</p>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3347" href="3347">3347.</a> <tt>std::pair&lt;T, U&gt;</tt> now requires <tt>T</tt> and <tt>U</tt> to be less-than-comparable</h3>
+<p><b>Section:</b> 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a>, 22.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2019-12-03 <b>Last modified:</b> 2020-02-10 19:48:51 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#pairs.spec">active issues</a> in [pairs.spec].</p>
+<p><b>View all other</b> <a href="lwg-index.html#pairs.spec">issues</a> in [pairs.spec].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p1614r2">P1614R2</a> added <tt>operator&lt;=&gt;</tt> as a hidden friend to 
+<tt>std::pair</tt>:
+</p>
+<blockquote>
+<pre>
+friend constexpr common_comparison_category_t&lt;<i>synth-three-way-result</i>&lt;T1&gt;, 
+                                              <i>synth-three-way-result</i>&lt;T2&gt;&gt;
+  operator&lt;=&gt;(const pair&amp; x, const pair&amp; y) { <i>see below</i> }
+</pre>
+</blockquote>
+<p>
+That is not a function template, so is not a SFINAE context. If one or both of 
+<tt><i>synth-three-way-result</i>&lt;T1&gt;</tt> or <tt><i>synth-three-way-result</i>&lt;T2&gt;</tt> is an 
+invalid type then the declaration of <tt>operator&lt;=&gt;</tt> is ill-formed, and so the specialization 
+<tt>std::pair&lt;T1, T2&gt;</tt> is ill-formed.
+<p/>
+A similar problem exists for <tt>std::array</tt>.
+<p/>
+There are at least two ways to fix this:
+</p>
+<ol>
+<li><p>Constrain the function and delay the use of synth-three-way-result until we know it's valid.</p></li>
+<li><p>Replace the hidden friend with a namespace-scope function template, so invalid 
+<tt><i>synth-three-way-result</i></tt> types cause substitution failure.</p></li>
+</ol>
+<p>
+The first option is somewhat hard to specify, because current policy is to avoid the use of requires-clauses 
+in most of the library clauses. Even with a requires-clause, the potentially-invalid 
+<tt><i>synth-three-way-result</i></tt> types cannot be used in the function declarator. Furthermore, the 
+<tt>operator&lt;=&gt;</tt> for <tt>std::array</tt> is currently specified in Table [tab:container.opt] and 
+so there's nowhere to add a <i>Constraints:</i> element.
+<p/>
+The second option would partially revert the <a href="https://wg21.link/p1614r2">P1614R2</a> changes for 
+<tt>std::pair</tt> and <tt>std::array</tt> and bring them closer to what was in C++17. The main motivation 
+for making <tt>operator==</tt> a hidden friend was to allow it to be defaulted, so that <tt>std::pair</tt> 
+and <tt>std::array</tt> would be usable as non-type template parameters. Following the acceptance of 
+<a href="https://wg21.link/p1907">P1907</a> in Belfast it isn't necessary to default it, so we can go back 
+to what was in C++17.
+</p>
+
+<p><i>[2019-12-12 Issue Prioritization]</i></p>
+
+<p>Priority to 1 after reflector discussion.</p>
+
+<p><i>[2020-02-10 Move to Immediate Monday afternoon in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 20.2.1 <a href="https://timsong-cpp.github.io/cppwp/utility.syn">[utility.syn]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This restores the pre-<a href="https://wg21.link/p1614r2">P1614R2</a> 
+<tt>operator==</tt> and uses <tt>operator&lt;=&gt;</tt> as replacement for
+<tt>operator&lt;</tt>, <tt>operator&lt;=</tt>, <tt>operator&gt;</tt>, <tt>operator&gt;=</tt>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+[&hellip;]
+
+// 20.4 <a href="https://timsong-cpp.github.io/cppwp/pairs">[pairs]</a>, class template pair
+template&lt;class T1, class T2&gt;
+struct pair;
+
+<i>// 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a>, pair specialized algorithms</i>
+<ins>template&lt;class T1, class T2&gt;
+  constexpr bool operator==(const pair&lt;T1, T2&gt;&amp;, const pair&lt;T1, T2&gt;&amp;);
+template&lt;class T1, class T2&gt;
+  constexpr common_comparison_category_t&lt;<i>synth-three-way-result</i>&lt;T1&gt;, 
+                                         <i>synth-three-way-result</i>&lt;T2&gt;&gt;
+  operator&lt;=&gt;(const pair&lt;T1, T2&gt;&amp;, const pair&lt;T1, T2&gt;&amp;);</ins>
+  
+template&lt;class T1, class T2&gt;
+constexpr void swap(pair&lt;T1, T2&gt;&amp; x, pair&lt;T1, T2&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  constexpr void swap(pair&amp; p) noexcept(<i>see below</i>);
+  
+  <del><i>// 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a>, pair specialized algorithms</i>
+  friend constexpr bool operator==(const pair&amp;, const pair&amp;) = default;
+  friend constexpr bool operator==(const pair&amp; x, const pair&amp; y)
+    requires (is_reference_v&lt;T1&gt; || is_reference_v&lt;T2&gt;)
+    { return x.first == y.first &amp;&amp; x.second == y.second; }
+  friend constexpr common_comparison_category_t&lt;<i>synth-three-way-result</i>&lt;T1&gt;,
+                                                <i>synth-three-way-result</i>&lt;T2&gt;&gt;
+    operator&lt;=&gt;(const pair&amp; x, const pair&amp; y) { <i>see below</i> }</del>
+};
+
+template&lt;class T1, class T2&gt;
+pair(T1, T2) -&gt; pair&lt;T1, T2&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/pairs.spec">[pairs.spec]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<b>20.4.3 Specialized algorithms [pairs.spec]</b>
+</p>
+<pre>
+<ins>template&lt;class T1, class T2&gt;
+  constexpr bool operator==(const pair&lt;T1, T2&gt;&amp; x, const pair&lt;T1, T2&gt;&amp; y);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns:</i> <tt>x.first == y.first &amp;&amp; x.second == y.second</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class T1, class T2&gt;</ins>
+<del>friend</del> constexpr
+  common_comparison_category_t&lt;<i>synth-three-way-result</i>&lt;T1&gt;, <i>synth-three-way-result</i>&lt;T2&gt;&gt;
+    operator&lt;=&gt;(const pair<ins>&lt;T1, T2&gt;</ins>&amp; x, const pair<ins>&lt;T1, T2&gt;</ins>&amp; y);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+if (auto c = <i>synth-three-way</i>(x.first, y.first); c != 0) return c;
+return <i>synth-three-way</i>(x.second, y.second);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 22.3.2 <a href="https://timsong-cpp.github.io/cppwp/array.syn">[array.syn]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This restores the pre-<a href="https://wg21.link/p1614r2">P1614R2</a> 
+<tt>operator==</tt> and uses <tt>operator&lt;=&gt;</tt> as replacement for
+<tt>operator&lt;</tt>, <tt>operator&lt;=</tt>, <tt>operator&gt;</tt>, <tt>operator&gt;=</tt>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std {
+
+// 22.3.7 <a href="https://timsong-cpp.github.io/cppwp/array">[array]</a>, class template array
+template&lt;class T, size_t N&gt; struct array;
+
+<ins>template&lt;class T, size_t N&gt;
+  constexpr bool operator==(const array&lt;T, N&gt;&amp; x, const array&lt;T, N&gt;&amp; y);
+template&lt;class T, size_t N&gt;
+  constexpr <i>synth-three-way-result</i>&lt;T&gt;
+    operator&lt;=&gt;(const array&lt;T, N&gt;&amp; x, const array&lt;T, N&gt;&amp; y);</ins>
+
+template&lt;class T, size_t N&gt;
+constexpr void swap(array&lt;T, N&gt;&amp; x, array&lt;T, N&gt;&amp; y) noexcept(noexcept(x.swap(y)));
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> there is no need to add definitions of <tt>operator==</tt> and 
+<tt>operator&lt;=&gt;</tt> to  [array.spec] because they are defined by Table 71: 
+Container requirements [tab:container.req] and Table 73: Optional container operations 
+[tab:container.opt] respectively.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  constexpr T * data() noexcept;
+  constexpr const T * data() const noexcept;
+  
+  <del>friend constexpr bool operator==(const array&amp;, const array&amp;) = default;
+  friend constexpr <i>synth-three-way-result</i>&lt;value_type&gt;
+    operator&lt;=&gt;(const array&amp;, const array&amp;);</del>
+};
+
+template&lt;class T, class... U&gt;
+array(T, U...) -&gt; array&lt;T, 1 + sizeof...(U)&gt;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3381" href="3381">3381.</a> <tt>begin</tt> and <tt>data</tt> must agree for <tt>contiguous_range</tt></h3>
+<p><b>Section:</b> 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-01-25 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.refinements">active issues</a> in [range.refinements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The definition of the <tt>contiguous_range</tt> concept in 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a>/2 
+requires that <tt>ranges::data(r)</tt> be valid for a <tt>contiguous_range r</tt>, but fails to 
+impose the obvious semantic requirement that <tt>to_address(ranges::begin(r)) == ranges::data(r)</tt>. 
+In other words, <tt>data</tt> and <tt>begin</tt> must agree so that <tt>[begin(r), end(r))</tt> and 
+the counted range <tt>data(r) + [0, size(r))</tt> (this is the new "counted range" specification 
+syntax per <a href="https://github.com/cplusplus/draft/issues/2932">working draft issue 2932</a>) denote 
+the same sequence of elements.
+</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- <tt>contiguous_range</tt> additionally requires that the <tt>ranges::data</tt> customization point 
+(24.3.11 <a href="https://timsong-cpp.github.io/cppwp/range.prim.data">[range.prim.data]</a>) is usable with the range.
+</p>
+<pre>
+template&lt;class T&gt;
+  concept contiguous_range =
+    random_access_range&lt;T&gt; &amp;&amp; contiguous_iterator&lt;iterator_t&lt;T&gt;&gt; &amp;&amp;
+    requires(T&amp; t) {
+      { ranges::data(t) } -&gt; same_as&lt;add_pointer_t&lt;range_reference_t&lt;T&gt;&gt;&gt;;
+    };
+</pre>
+<p>
+<ins>-?- Given an expression <tt>t</tt> such that <tt>decltype((t))</tt> is <tt>T&amp;</tt>, <tt>T</tt> 
+models <tt>contiguous_range</tt> only if <tt>(to_address(ranges::begin(t)) == ranges::data(t))</tt>.</ins>
+<p/>
+-3- The <tt>common_range</tt> concept [&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3384" href="3384">3384.</a> <tt>transform_view::<i>sentinel</i></tt> has an incorrect <tt>operator-</tt></h3>
+<p><b>Section:</b> 24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-01-31 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<ol>
+<li><p><tt>transform_view::<i>iterator</i></tt> has an exposition-only member <tt><i>current_</i></tt> 
+(24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>)</p></li>
+<li><p><tt>transform_view::<i>sentinel</i></tt> has an exposition-only member <tt><i>end_</i></tt>
+(24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a>)</p></li>
+<li><p>at 24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a>/6 we have:</p></li>
+</ol>
+<pre>
+friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+  operator-(const <i>sentinel</i>&amp; y, const <i>iterator</i>&lt;Const&gt;&amp; x)
+    requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+<blockquote><p>
+<i>Effects:</i> Equivalent to: <tt>return x.<i>end_</i> - y.<i>current_</i>;</tt>
+</p></blockquote>
+<p>
+<tt>x</tt> is an <tt><i>iterator</i></tt>, so it has <tt><i>current_</i></tt>, not <tt><i>end_</i></tt>. 
+<tt>y</tt> is a <tt><i>sentinel</i></tt>, so it has <tt><i>end_</i></tt>, not <tt><i>current_</i></tt>.</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+  operator-(const <i>sentinel</i>&amp; y, const <i>iterator</i>&lt;Const&gt;&amp; x)
+    requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return <del>x</del><ins>y</ins>.<i>end_</i> - <del>y</del><ins>x</ins>.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3385" href="3385">3385.</a> <tt>common_iterator</tt> is not sufficiently constrained for non-copyable iterators</h3>
+<p><b>Section:</b> 23.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Corentin Jabot <b>Opened:</b> 2020-01-31 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+We don't actually specify anywhere that non-copyable iterators do not have a <tt>common_iterator</tt> 
+(and it would make little sense for them to as algorithms dealing with C++17 iterators are not expecting 
+non-copyable things) As it stands <tt>common_iterator</tt> can be created from move only iterator but 
+are then non-copyable themselves. <a href="https://wg21.link/p1862">P1862</a> already constrains 
+<tt>common_view</tt> in a similar fashion</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 23.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 23.5.4 <a href="https://timsong-cpp.github.io/cppwp/iterators.common">[iterators.common]</a>, common iterators</i>
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; <ins>&amp;&amp; copyable&lt;I&gt;</ins>)
+      class common_iterator;
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, class template <tt>common_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; <ins>&amp;&amp; copyable&lt;I&gt;</ins>)
+  class common_iterator {
+  public:
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3387" href="3387">3387.</a> &sect;[range.reverse.view] <tt>reverse_view&lt;V&gt;</tt> unintentionally requires <tt>range&lt;const V&gt;</tt></h3>
+<p><b>Section:</b> 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-04 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>reverse_view&lt;V&gt;</tt> requires <tt>bidirectional_range&lt;V&gt;</tt>, but not <tt>range&lt;const V&gt;</tt>, 
+which means that <tt>iterator_t&lt;const V&gt;</tt> might be an invalid type. The return types of the 
+<tt>begin() const</tt> and <tt>end() const</tt> overloads make use of <tt>iterator_t&lt;const V&gt;</tt> 
+in a non-SFINAE context, which means that instantiating <tt>reverse_view&lt;X&gt;</tt> is ill-formed unless 
+<tt>range&lt;const X&gt;</tt> is satisfied.
+<p/>
+Code like <tt>x | views::filter(p) | views::reverse</tt> fails to compile because 
+<tt>const filter_view&lt;&hellip;&gt;</tt> does not model <tt>range</tt>, so 
+<tt>iterator_t&lt;const filter_view&lt;&hellip;&gt;&gt;</tt> is invalid.
+<p/>
+Either <tt>range&lt;const V&gt;</tt> needs to be in the class' <tt>requires</tt>-clause, or the return types 
+of the <tt>const</tt>-qualified <tt>begin()</tt> and <tt>end()</tt> need to delay use of 
+<tt>iterator_t&lt;const V&gt;</tt> until <tt>range&lt;const V&gt;</tt> is known to be satisfied.
+<p/>
+Giving these overloads an <tt>auto</tt> return type means the type is determined when the member is called. 
+The constraint <tt>common_range&lt;const V&gt;</tt> appropriately restricts the selection of these overloads, 
+so they can only be called when the type is valid. This is what <tt>cmcstl2</tt> does. <tt>range-v3</tt> 
+makes the <tt>begin() const</tt> and <tt>end() const</tt> members into function templates, so that they 
+are SFINAE contexts.
+</p>
+
+This is related to <a href="3347">3347</a>.
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires bidirectional_range&lt;V&gt;
+  class reverse_view : public view_interface&lt;reverse_view&lt;V&gt;&gt; {
+    [&hellip;]
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin();
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;
+    constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> begin() const
+      requires common_range&lt;const V&gt;;  
+    
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end();
+    constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> end() const
+      requires common_range&lt;const V&gt;;  
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;
+constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> begin() const
+  requires common_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return make_reverse_iterator(ranges::end(base_));</tt>
+</p>
+</blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end();
+constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> end() const
+  requires common_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return make_reverse_iterator(ranges::begin(base_));</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3388" href="3388">3388.</a> <tt>view</tt> iterator types have ill-formed <tt>&lt;=&gt;</tt> operators</h3>
+<p><b>Section:</b> 24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a>, 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iota.iterator">active issues</a> in [range.iota.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.iterator">issues</a> in [range.iota.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> and 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> and 
+24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> all declare <tt>operator&lt;=&gt;</tt> similar to this:
+</p>
+<blockquote><pre>
+friend constexpr compare_three_way_result_t&lt;W&gt; operator&lt;=&gt;(
+    const iterator&amp; x, const iterator&amp; y)
+  requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+</pre></blockquote>
+<p>
+Similar to issue <a href="3347">3347</a> and issue <a href="3387">3387</a>, this is ill-formed if 
+<tt>three_way_comparable&lt;W&gt;</tt> is not satisfied, because <tt>compare_three_way_result_t&lt;W&gt;</tt> 
+is invalid. This declaration is instantiated when the enclosing iterator type is instantiated, making 
+any use of <tt>iota_view&lt;W, B&gt;::iterator</tt> ill-formed when <tt>three_way_comparable&lt;W&gt;</tt> 
+is not satisfied.
+<p/>
+We can either add an exposition-only <tt><i>safe-compare-three-way-result-t</i></tt> alias that denotes 
+<tt>void</tt> or <tt>std::nonesuch</tt> for spaceship-less types, so the declaration is valid (and then 
+disabled by the constraints), or simply make them return <tt>auto</tt>.
+</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class W, class Bound&gt;
+  struct iota_view&lt;W, Bound&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;W&gt;</del><ins>auto</ins> operator&lt;=&gt;(
+        const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;W&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects:</i> Equivalent to: <tt>return x.value_ &lt;=&gt; y.value_;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, class F&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del><ins>auto</ins> 
+      operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+        requires random_access_range&lt;<i>Base</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires random_access_range&lt;<i>Base</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> &lt;=&gt; y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, size_t N&gt;
+  template&lt;bool Const&gt;
+  class elements_view&lt;V, N&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;</del><ins>auto</ins> 
+      operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+        requires random_access_range&lt;<i>base-t</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires random_access_range&lt;<i>base-t</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-18- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> &lt;=&gt; y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3389" href="3389">3389.</a> A move-only iterator still does not have a <tt>counted_iterator</tt></h3>
+<p><b>Section:</b> 23.5.6.2 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.const">[counted.iter.const]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p1207r4">P1207R4</a> ("Movability of single-pass iterators") 
+introduces the notion of a move-only non-forward iterator and makes some changes to 
+the iterator adaptor <tt>counted_iterator</tt> in order to support move-only iterators.
+<p/>
+The problem is that the constructor of <tt>counted_iterator</tt> (23.5.6.2 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.const">[counted.iter.const]</a> p2) 
+accepting such an iterator is specified as "Initializes <tt>current</tt> with <tt>i</tt>" 
+which would attempt copy-constructing <tt>current</tt> from <tt>i</tt> instead of move-constructing it.
+</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 23.5.6.2 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.const">[counted.iter.const]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr counted_iterator(I i, iter_difference_t&lt;I&gt; n);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> <tt>n &gt;= 0</tt>.
+<p/>
+-2- <i>Effects:</i> Initializes <tt>current</tt> with <tt><ins>std::move(</ins>i<ins>)</ins></tt> 
+and <tt>length</tt> with <tt>n</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3390" href="3390">3390.</a> <tt>make_move_iterator()</tt> cannot be used to construct a <tt>move_iterator</tt> for a
+move-only iterator</h3>
+<p><b>Section:</b> 23.5.3.8 <a href="https://timsong-cpp.github.io/cppwp/move.iter.nonmember">[move.iter.nonmember]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2020-02-10 19:13:13 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#move.iter.nonmember">active issues</a> in [move.iter.nonmember].</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iter.nonmember">issues</a> in [move.iter.nonmember].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p1207r4">P1207R4</a> ("Movability of single-pass iterators") 
+introduces the notion of a move-only non-forward iterator and makes some changes to 
+the existing specification to realize that support.
+<p/>
+The problem is that the specification of <tt>make_move_iterator()</tt> provided in 
+23.5.3.8 <a href="https://timsong-cpp.github.io/cppwp/move.iter.nonmember">[move.iter.nonmember]</a> p6 does attempt to construct a
+<tt>move_iterator&lt;Iterator&gt;</tt> with an lvalue of <tt>i</tt> instead
+of an rvalue, having the effect of copying it instead of moving it, thus preventing
+to accept move-only iterators.
+</p>
+
+<p><i>[2020-02 Prioritized as IMMEDIATE Monday morning in Prague]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 23.5.3.8 <a href="https://timsong-cpp.github.io/cppwp/move.iter.nonmember">[move.iter.nonmember]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Iterator&gt;
+constexpr move_iterator&lt;Iterator&gt; make_move_iterator(Iterator i);
+</pre>
+<blockquote>
+<p>
+-6- <i>Returns:</i> <tt>move_iterator&lt;Iterator&gt;(<ins>std::move(</ins>i<ins>)</ins>)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
 </body>
 </html>
