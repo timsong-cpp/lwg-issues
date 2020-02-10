@@ -1,0 +1,114 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3387: &sect;[range.reverse.view] reverse_view&lt;V&gt; unintentionally requires range&lt;const V&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3387" href="lwg-active.html#3387">3387.</a> &sect;[range.reverse.view] <tt>reverse_view&lt;V&gt;</tt> unintentionally requires <tt>range&lt;const V&gt;</tt></h3>
+<p><b>Section:</b> 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-04 <b>Last modified:</b> 2020-02-08 12:40:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>reverse_view&lt;V&gt;</tt> requires <tt>bidirectional_range&lt;V&gt;</tt>, but not <tt>range&lt;const V&gt;</tt>, 
+which means that <tt>iterator_t&lt;const V&gt;</tt> might be an invalid type. The return types of the 
+<tt>begin() const</tt> and <tt>end() const</tt> overloads make use of <tt>iterator_t&lt;const V&gt;</tt> 
+in a non-SFINAE context, which means that instantiating <tt>reverse_view&lt;X&gt;</tt> is ill-formed unless 
+<tt>range&lt;const X&gt;</tt> is satisfied.
+<p/>
+Code like <tt>x | views::filter(p) | views::reverse</tt> fails to compile because 
+<tt>const filter_view&lt;&hellip;&gt;</tt> does not model <tt>range</tt>, so 
+<tt>iterator_t&lt;const filter_view&lt;&hellip;&gt;&gt;</tt> is invalid.
+<p/>
+Either <tt>range&lt;const V&gt;</tt> needs to be in the class' <tt>requires</tt>-clause, or the return types 
+of the <tt>const</tt>-qualified <tt>begin()</tt> and <tt>end()</tt> need to delay use of 
+<tt>iterator_t&lt;const V&gt;</tt> until <tt>range&lt;const V&gt;</tt> is known to be satisfied.
+<p/>
+Giving these overloads an <tt>auto</tt> return type means the type is determined when the member is called. 
+The constraint <tt>common_range&lt;const V&gt;</tt> appropriately restricts the selection of these overloads, 
+so they can only be called when the type is valid. This is what <tt>cmcstl2</tt> does. <tt>range-v3</tt> 
+makes the <tt>begin() const</tt> and <tt>end() const</tt> members into function templates, so that they 
+are SFINAE contexts.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires bidirectional_range&lt;V&gt;
+  class reverse_view : public view_interface&lt;reverse_view&lt;V&gt;&gt; {
+    [&hellip;]
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin();
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;
+    constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> begin() const
+      requires common_range&lt;const V&gt;;  
+    
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end();
+    constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> end() const
+      requires common_range&lt;const V&gt;;  
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;
+constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> begin() const
+  requires common_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return make_reverse_iterator(ranges::end(base_));</tt>
+</p>
+</blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end();
+constexpr <del>reverse_iterator&lt;iterator_t&lt;const V&gt;&gt;</del><ins>auto</ins> end() const
+  requires common_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return make_reverse_iterator(ranges::begin(base_));</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

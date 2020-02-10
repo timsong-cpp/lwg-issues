@@ -1,0 +1,94 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3386: elements_view needs its own sentinel type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3386" href="lwg-active.html#3386">3386.</a> <tt>elements_view</tt> needs its own <tt>sentinel</tt> type</h3>
+<p><b>Section:</b> 24.7.15 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2020-02-08 00:40:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>elements_view</tt> is effectively a specialized version of <tt>transform_view</tt>.
+The latter has a custom <tt>sentinel</tt> type, and so should <tt>elements_view</tt>.
+<p/>
+In particular, it should not use the underlying range's sentinel directly, for that sentinel
+could encode a generic predicate that is equally meaningful for the adapted range. Consider a
+range <tt>[i, s)</tt> whose <tt>value_type</tt> is <tt>pair&lt;array&lt;int, 2&gt;, long&gt;</tt>,
+where <tt>s</tt> is a generic sentinel that checks if the second element (for this range in particular,
+the <tt>long</tt>) is zero:
+</p>
+<blockquote>
+<pre>
+struct S {
+  friend bool operator==(input_iterator auto const&amp; i, S) /* additional constraints */
+  { return get&lt;1&gt;(*i) == 0; }
+};
+</pre>
+</blockquote>
+<p>
+If we adapt <tt>[i, s)</tt> with <tt>views::keys</tt>, then the resulting adapted range would have
+surprising behavior when used with <tt>S{}</tt>: even though it's nominally a range of
+<tt>array&lt;int, 2&gt;</tt>, when its iterator is used with the sentinel <tt>S{}</tt> 
+it doesn't actually check the second element of the array, but the <tt>long</tt> that's not even
+part of the <tt>value_type</tt>:
+</p>
+<blockquote>
+<pre>
+void algo(input_range auto&amp;&amp; r) /* constraints */{
+  // We want to stop at the first element of the range r whose second element is zero.
+  for (auto&amp;&amp; x : subrange{ranges::begin(r), S{}})
+  {
+    std::cout &lt;&lt; get&lt;0&gt;(x);
+  }
+}
+
+using P = pair&lt;array&lt;int, 2&gt;, long&gt;;
+vector&lt;P&gt; vec =  {
+    { {0, 1}, 1L },
+    { {1, 0}, 1L },
+    { {2, 2}, 0L }
+};
+   
+subrange r{vec.begin(), S{}};              // range with two elements: {0, 1}, {1, 0}
+
+algo(r | views::keys);                     // checks the long, prints '01'
+algo(r | views::transform(&amp;P::first));     // checks the second element of the array, prints '0'
+</pre>
+</blockquote>
+<p>
+This is an API break since it changes the return type of <tt>end()</tt>, so it should be
+fixed before we ship C++20.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>The proposed wording is contained in <a href="https://wg21.link/p1994r0">P1994R0</a>.</p>
+
+
+
+
+
+</body>
+</html>

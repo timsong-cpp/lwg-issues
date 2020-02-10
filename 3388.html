@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3388: view iterator types have ill-formed &lt;=&gt; operators</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3388" href="lwg-active.html#3388">3388.</a> <tt>view</tt> iterator types have ill-formed <tt>&lt;=&gt;</tt> operators</h3>
+<p><b>Section:</b> 24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a>, 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2020-02-08 13:14:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iota.iterator">active issues</a> in [range.iota.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.iterator">issues</a> in [range.iota.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> and 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> and 
+24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> all declare <tt>operator&lt;=&gt;</tt> similar to this:
+</p>
+<blockquote><pre>
+friend constexpr compare_three_way_result_t&lt;W&gt; operator&lt;=&gt;(
+    const iterator&amp; x, const iterator&amp; y)
+  requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+</pre></blockquote>
+<p>
+Similar to issue <a href="3347">3347</a> and issue <a href="3387">3387</a>, this is ill-formed if 
+<tt>three_way_comparable&lt;W&gt;</tt> is not satisfied, because <tt>compare_three_way_result_t&lt;W&gt;</tt> 
+is invalid. This declaration is instantiated when the enclosing iterator type is instantiated, making 
+any use of <tt>iota_view&lt;W, B&gt;::iterator</tt> ill-formed when <tt>three_way_comparable&lt;W&gt;</tt> 
+is not satisfied.
+<p/>
+We can either add an exposition-only <tt><i>safe-compare-three-way-result-t</i></tt> alias that denotes 
+<tt>void</tt> or <tt>std::nonesuch</tt> for spaceship-less types, so the declaration is valid (and then 
+disabled by the constraints), or simply make them return <tt>auto</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 24.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class W, class Bound&gt;
+  struct iota_view&lt;W, Bound&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;W&gt;</del><ins>auto</ins> operator&lt;=&gt;(
+        const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;W&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires totally_ordered&lt;W&gt; &amp;&amp; three_way_comparable&lt;W&gt;;
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects:</i> Equivalent to: <tt>return x.value_ &lt;=&gt; y.value_;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, class F&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del><ins>auto</ins> 
+      operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+        requires random_access_range&lt;<i>Base</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires random_access_range&lt;<i>Base</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> &lt;=&gt; y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class V, size_t N&gt;
+  template&lt;bool Const&gt;
+  class elements_view&lt;V, N&gt;::<i>iterator</i> {
+    [&hellip;]
+    friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;</del><ins>auto</ins> 
+      operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+        requires random_access_range&lt;<i>base-t</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+[&hellip;]
+</blockquote>
+<blockquote>
+<pre>
+friend constexpr <del>compare_three_way_result_t&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;</del><ins>auto</ins>
+  operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+    requires random_access_range&lt;<i>base-t</i>&gt; &amp;&amp; three_way_comparable&lt;iterator_t&lt;<i>base-t</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-18- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> &lt;=&gt; y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
