@@ -29,7 +29,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2020-02-14 at 10:54:21 UTC</p>
+<td align="left"><p>Revised 2020-02-14 at 11:39:45 UTC</p>
 </td>
 </tr>
 <tr>
@@ -42,6 +42,301 @@
 </tr>
 </table>
 <h2>Immediate Issues</h2>
+<hr>
+<h3><a name="1203" href="1203">1203.</a> More useful rvalue stream insertion</h3>
+<p><b>Section:</b> 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.rvalue">[ostream.rvalue]</a>, 29.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2009-09-06 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#ostream.rvalue">issues</a> in [ostream.rvalue].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.rvalue">[ostream.rvalue]</a> was created to preserve the ability to insert
+into (and extract from 29.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a>) rvalue streams:
+</p>
+
+<blockquote><pre>
+template &lt;class charT, class traits, class T&gt;
+  basic_ostream&lt;charT, traits&gt;&amp;
+  operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp;&amp; os, const T&amp; x);
+</pre>
+<blockquote>
+<p>
+1 <i>Effects:</i> <tt>os &lt;&lt; x</tt>
+</p>
+<p>
+2 <i>Returns:</i> <tt>os</tt>
+</p>
+</blockquote>
+</blockquote>
+
+<p>
+This is good as it allows code that wants to (for example) open, write to, and
+close an <tt>ofstream</tt> all in one statement:
+</p>
+
+<blockquote><pre>
+std::ofstream("log file") &lt;&lt; "Some message\n";
+</pre></blockquote>
+
+<p>
+However, I think we can easily make this "rvalue stream helper" even easier to
+use.  Consider trying to quickly create a formatted string.  With the current
+spec you have to write:
+</p>
+
+<blockquote><pre>
+std::string s = static_cast&lt;std::ostringstream&amp;&gt;(std::ostringstream() &lt;&lt; "i = " &lt;&lt; i).str();
+</pre></blockquote>
+
+<p>
+This will store "<tt>i = 10</tt>" (for example) in the string <tt>s</tt>.  Note
+the need to cast the stream back to <tt>ostringstream&amp;</tt> prior to using
+the member <tt>.str()</tt>.  This is necessary because the inserter has cast
+the <tt>ostringstream</tt> down to a more generic <tt>ostream</tt> during the
+insertion process.
+</p>
+
+<p>
+I believe we can re-specify the rvalue-inserter so that this cast is unnecessary.
+Thus our customer now has to only type:
+</p>
+
+<blockquote><pre>
+std::string s = (std::ostringstream() &lt;&lt; "i = " &lt;&lt; i).str();
+</pre></blockquote>
+
+<p>
+This is accomplished by having the rvalue stream inserter return an rvalue of
+the same type, instead of casting it down to the base class.  This is done by
+making the stream generic, and constraining it to be an rvalue of a type derived
+from <tt>ios_base</tt>.
+</p>
+
+<p>
+The same argument and solution also applies to the inserter.  This code has been
+implemented and tested.
+</p>
+
+<p><i>[
+2009 Santa Cruz:
+]</i></p>
+
+<blockquote><p>
+NAD Future. No concensus for change.
+</p></blockquote>
+
+<p><i>[LEWG Kona 2017]</i></p>
+
+<p>Recommend Open: Design looks right.</p>
+
+<p><i>[
+2018-05-25, Billy O'Neal requests this issue be reopened and provides P/R
+rebased against N4750
+]</i></p>
+
+
+<p>Billy O'Neal requests this issue be reopened, as changing operator&gt;&gt;
+and operator&lt;&lt; to use perfect forwarding as described here is necessary to
+implement LWG <a href="2534">2534</a> which was accepted. Moreover, this P/R also resolves
+LWG <a href="2498">2498</a>.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+Change 29.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a>:
+</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Istream</ins>, class T&gt;
+  <del>basic_istream&lt;charT, traits&gt;&amp;</del> <ins>Istream&amp;&amp;</ins>
+  operator&gt;&gt;(<del>basic_istream&lt;charT, traits&gt;</del> <ins>Istream</ins>&amp;&amp; is, T&amp; x);
+</pre>
+<blockquote>
+<p>
+1 <i>Effects:</i> <tt>is &gt;&gt; x</tt>
+</p>
+<p>
+2 <i>Returns:</i> <tt><ins>std::move(</ins>is<ins>)</ins></tt>
+</p>
+<p><ins>
+3 <i>Remarks:</i> This signature shall participate in overload resolution if
+and only if <tt>Istream</tt> is not an lvalue reference type and is derived from
+<tt>ios_base</tt>.
+</ins></p>
+</blockquote>
+</blockquote>
+
+<p>
+Change 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.rvalue">[ostream.rvalue]</a>:
+</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Ostream</ins>, class T&gt;
+  <del>basic_ostream&lt;charT, traits&gt;&amp;</del> <ins>Ostream&amp;&amp;</ins>
+  operator&lt;&lt;(<del>basic_ostream&lt;charT, traits&gt;</del> <ins>Ostream</ins>&amp;&amp; os, const T&amp; x);
+</pre>
+<blockquote>
+<p>
+1 <i>Effects:</i> <tt>os &lt;&lt; x</tt>
+</p>
+<p>
+2 <i>Returns:</i> <tt><ins>std::move(</ins>os<ins>)</ins></tt>
+</p>
+<p><ins>
+3 <i>Remarks:</i> This signature shall participate in overload resolution if
+and only if <tt>Ostream</tt> is not an lvalue reference type and is derived from
+<tt>ios_base</tt>.
+</ins></p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+<p><i>[2018-12-03, Ville comments]</i></p>
+
+<p>
+The implementation in libstdc++ doesn't require derivation from <tt>ios_base</tt>, it 
+requires convertibility to <tt>basic_istream/basic_ostream</tt>. This has been found to be 
+important to avoid regressions with existing stream wrappers.
+<p/>
+In libstdc++, the inserter/extractor also don't return a reference to the template parameter, 
+they return a reference to the <tt>basic_istream/basic_ostream</tt> <em>specialization</em>
+the template parameter converts to. This was done in order to try and be closer to the earlier 
+specification's return type, which specified <tt>basic_ostream&lt;charT, traits&gt;&amp;</tt>
+and <tt>basic_istream&lt;charT, traits&gt;&amp;</tt>. So we detected convertibility to
+(a type convertible to) those, and returned the result of that conversion. That doesn't seem to 
+be necessary, and probably bothers certain chaining cases. Based on recent experiments, it seems
+that this return-type dance (as opposed to just returning what the p/r suggests) is unnecessary, 
+and doesn't trigger any regressions.
+</p>
+<p><i>[2019-01-20 Reflector prioritization]</i></p>
+
+<p>Set Priority to 2</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This resolution is relative to N4750.</p>
+<p>
+Change 29.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> as follows:
+</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Istream</ins>, class T&gt;
+  <del>basic_istream&lt;charT, traits&gt;&amp;</del> <ins>Istream&amp;&amp;</ins>
+  operator&gt;&gt;(<del>basic_istream&lt;charT, traits&gt;</del> <ins>Istream</ins>&amp;&amp; is, T&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to:
+</p>
+<pre>
+<tt>is &gt;&gt; std::forward&lt;T&gt;(x)</tt>
+return <ins>std::move(</ins>is<ins>)</ins>;
+</pre>
+<p>-2- <i>Remarks:</i> This function shall not participate in overload
+resolution unless the expression <tt>is &gt;&gt; std::forward&lt;T&gt;(x)</tt> is
+well-formed<ins>, <tt>Istream</tt> is not an lvalue reference type, and
+<tt>Istream</tt> is derived from <tt>ios_base</tt></ins>.</p>
+</blockquote>
+</blockquote>
+
+<p>
+Change 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.rvalue">[ostream.rvalue]</a>:
+</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Ostream</ins>, class T&gt;
+  <del>basic_ostream&lt;charT, traits&gt;&amp;</del> <ins>Ostream&amp;&amp;</ins>
+  operator&lt;&lt;(<del>basic_ostream&lt;charT, traits&gt;</del> <ins>Ostream</ins>&amp;&amp; os, const T&amp; x);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> As if by: <tt>os &lt;&lt; x;</tt>
+</p>
+<p>
+-2- <i>Returns:</i> <tt><ins>std::move(</ins>os<ins>)</ins></tt>
+</p>
+<p>
+-3- <i>Remarks:</i> This signature shall not participate in overload resolution
+unless the expression <tt>os &lt;&lt; x</tt> is well-formed<ins>,
+<tt>Ostream</tt> is not an lvalue reference type, and <tt>Ostream</tt> is
+derived from <tt>ios_base</tt></ins>.</p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+<p><i>[2019-03-17; Daniel comments and provides updated wording]</i></p>
+
+<p>
+After discussion with Ville it turns out that the "derived from <tt>ios_base</tt>" approach works fine and
+no breakages were found in regression tests. As result of that discussion the wording was rebased to the 
+most recent working draft and the "overload resolution participation" wording was replaced by a 
+corresponding <i>Constraints:</i> element.
+</p>
+<p><i>[2020-02 Status to Immediate on Friday morning in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4810">N4810</a>.</p>
+
+<ol>
+<li><p>Change 29.7.4.5 <a href="https://timsong-cpp.github.io/cppwp/istream.rvalue">[istream.rvalue]</a> as follows:</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Istream</ins>, class T&gt;
+  <del>basic_istream&lt;charT, traits&gt;&amp;</del> <ins>Istream&amp;&amp;</ins>
+  operator&gt;&gt;(<del>basic_istream&lt;charT, traits&gt;</del> <ins>Istream</ins>&amp;&amp; is, T&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The expression <tt>is &gt;&gt; std::forward&lt;T&gt;(x)</tt> is
+well-formed and <tt>Istream</tt> is publicly and unambiguously derived from <tt>ios_base</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+<tt>is &gt;&gt; std::forward&lt;T&gt;(x)</tt>;
+return <ins>std::move(</ins>is<ins>)</ins>;
+</pre></blockquote>
+<p><del>-2- <i>Remarks:</i> This function shall not participate in overload resolution 
+unless the expression <tt>is &gt;&gt; std::forward&lt;T&gt;(x)</tt> is well-formed.</del></p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>
+Change 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.rvalue">[ostream.rvalue]</a>:
+</p>
+
+<blockquote><pre>
+template &lt;class <del>charT, class traits</del> <ins>Ostream</ins>, class T&gt;
+  <del>basic_ostream&lt;charT, traits&gt;&amp;</del> <ins>Ostream&amp;&amp;</ins>
+  operator&lt;&lt;(<del>basic_ostream&lt;charT, traits&gt;</del> <ins>Ostream</ins>&amp;&amp; os, const T&amp; x);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The expression <tt>os &lt;&lt; x</tt> is well-formed and <tt>Ostream</tt> 
+is publicly and unambiguously derived from <tt>ios_base</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> As if by: <tt>os &lt;&lt; x;</tt>
+<p/>
+-2- <i>Returns:</i> <tt><ins>std::move(</ins>os<ins>)</ins></tt>.
+<p/>
+<del>-3- <i>Remarks:</i> This signature shall not participate in overload resolution
+unless the expression <tt>os &lt;&lt; x</tt> is well-formed.</del></p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
 <hr>
 <h3><a name="2859" href="2859">2859.</a> Definition of <em>reachable</em> in [ptr.launder] misses pointer arithmetic from pointer-interconvertible object</h3>
 <p><b>Section:</b> 17.6.4 <a href="https://timsong-cpp.github.io/cppwp/ptr.launder">[ptr.launder]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
@@ -927,6 +1222,66 @@ int main() {
 
 
 <hr>
+<h3><a name="3200" href="3200">3200.</a> <tt>midpoint</tt> should not constrain <tt>T</tt> is complete</h3>
+<p><b>Section:</b> 25.9.15 <a href="https://timsong-cpp.github.io/cppwp/numeric.ops.midpoint">[numeric.ops.midpoint]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Paolo Torres <b>Opened:</b> 2019-04-10 <b>Last modified:</b> 2020-02-14 11:00:18 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The constraint of the <tt>midpoint</tt> overload in 25.9.15 <a href="https://timsong-cpp.github.io/cppwp/numeric.ops.midpoint">[numeric.ops.midpoint]</a>:
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+constexpr T* midpoint(T* a, T* b);
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i> <tt>T</tt> is a complete object type.
+</p>
+</blockquote>
+</blockquote>
+<p>
+is incorrect. Paragraph 4 states <tt>T</tt> is constrained to be a complete object type, however it does not seem to 
+be possible to implement <tt>T</tt> is complete. This means behavior is conditioned dependent on whether a type is 
+complete, and this seems inconsistent with the library precedent.
+</p>
+
+<p><i>[2019-06-12 Priority set to 2 after reflector discussion]</i></p>
+
+<p><i>[2020-02 Status to Immediate on Thursday night in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4810">N4810</a>.</p>
+
+<ol>
+<li><p>Modify 25.9.15 <a href="https://timsong-cpp.github.io/cppwp/numeric.ops.midpoint">[numeric.ops.midpoint]</a> as indicated:</p>
+
+<blockquote><pre>
+template&lt;class T&gt;
+  constexpr T* midpoint(T* a, T* b);
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i> <tt>T</tt> is a<ins>n</ins> <del>complete</del> object type.
+<p/>
+<ins>-?- <i>Mandates:</i> <tt>T</tt> is a complete type.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3201" href="3201">3201.</a> <tt>lerp</tt> should be marked as <tt>noexcept</tt></h3>
 <p><b>Section:</b> 26.8.4 <a href="https://timsong-cpp.github.io/cppwp/c.math.lerp">[c.math.lerp]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
  <b>Submitter:</b> Paolo Torres <b>Opened:</b> 2019-04-10 <b>Last modified:</b> 2020-02-14 06:55:06 UTC</p>
@@ -1307,6 +1662,166 @@ based on the content of the field.
 
 
 <hr>
+<h3><a name="3243" href="3243">3243.</a> <tt>std::format</tt> and negative zeroes</h3>
+<p><b>Section:</b> 20.20.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2019-07-31 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string">active issues</a> in [format.string].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string">issues</a> in [format.string].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+What are these:
+</p>
+<blockquote><pre>
+std::format("{}", -0.0);
+std::format("{:+}", -0.0);
+std::format("{:-}", -0.0);
+std::format("{: }", -0.0);
+</pre></blockquote>
+<p>
+with
+</p>
+<blockquote><pre>
+"{:{}} {}"
+</pre></blockquote>
+<p>
+A negative zero is not a negative number, so I <em>think</em> the answer for an implementation that supports 
+signed zeroes is <tt>"0"</tt>, <tt>"-0"</tt>, <tt>"0"</tt>, <tt>" 0"</tt>. Is that the intent? (Note 
+that this doesn't satisfy <tt>to_chars</tt>' round-trip guarantee.)
+<p/>
+Or should the behavior actually be that <tt>"+"</tt> means "insert a leading <tt>+</tt> if <tt>to_chars</tt>' 
+output does not start with <tt>-"</tt> and <tt>" "</tt> actually means "insert a leading space if 
+<tt>to_chars</tt>' output does not start with <tt>-"</tt> (that is, the same as <tt>"%+f"</tt> and <tt>"% f"</tt>) 
+&mdash; so that the result of all four calls is <tt>"-0"</tt>?
+<p/>
+<b>Victor Zverovich:</b>
+<p/>
+The latter. <tt>std::format</tt> is specified in terms of <tt>to_chars</tt> and the intent is to have similar 
+round trip guarantee here, so the result should be <tt>"-0"</tt>, <tt>"-0"</tt>, <tt>"-0"</tt>, <tt>"-0"</tt>. 
+This has also been extensively discussed in LEWG and the outcome of that discussion was to print <tt>'-'</tt> 
+for negative zeros.
+<p/>
+So I think it should be clarified that <tt>'-'</tt> and space apply to negative numbers and negative zero.
+</p>
+
+<p><i>[2019-08-17 Priority set to 2 based on reflector discussion]</i></p>
+
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify the <i>sign</i> options Table [tab:format.sign] in 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 59: Meaning of <i>sign</i> options [tab:format.sign]</caption>
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used only for negative numbers <ins>and negative zero</ins> 
+(this is the default behavior).
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers <ins>other than negative 
+zero</ins>, and a minus sign for negative numbers <ins>and negative zero</ins>.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2020-02-13, Prague]</i></p>
+
+<p>
+Rebased and some wording finetuning by LWG.
+</p>
+<p><i>[2020-02 Status to Immediate on Thursday night in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify the <i>sign</i> options Table [tab:format.sign] in 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 58: Meaning of <i>sign</i> options [tab:format.sign]</caption>
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used <del>only</del> for negative numbers <ins>and negative zero only</ins> 
+(this is the default behavior).
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers <ins>other than negative 
+zero</ins>, and a minus sign for negative numbers <ins>and negative zero</ins>.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3247" href="3247">3247.</a> <tt>ranges::iter_move</tt> should perform ADL-only lookup of <tt>iter_move</tt></h3>
 <p><b>Section:</b> 23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-07-29 <b>Last modified:</b> 2020-02-13 12:32:11 UTC</p>
@@ -1363,6 +1878,283 @@ performed in a context that does not include a declaration of <tt>ranges::iter_m
 </ol>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3248" href="3248">3248.</a> <tt>std::format</tt> <tt>#b</tt>, <tt>#B</tt>, <tt>#o</tt>, <tt>#x</tt>, and <tt>#X</tt> 
+presentation types misformat negative numbers</h3>
+<p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2019-08-01 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+According to both the specification for <tt>'#'</tt> and the presentation types <tt>b</tt>, <tt>B</tt>, 
+<tt>o</tt>, <tt>x</tt>, and <tt>X</tt> (which redundantly duplicate the rule for the relevant prefixes), 
+the string <tt>0b</tt>, <tt>0B</tt>, <tt>0</tt>, <tt>0x</tt>, or <tt>0X</tt> is prefixed to the result 
+of <tt>to_chars</tt>. That means:
+</p>
+<blockquote><pre>
+std::format("{0:#b} {0:#B} {0:#o} {0:#x} {0:#X}", -1)
+</pre></blockquote>
+<p>
+produces
+</p>
+<blockquote><pre>
+"0b-1 0B-1 0-1 0x-1 0X-1"
+</pre></blockquote>
+<p>
+I assume that's a bug?
+<p/>
+(Additionally, if the <tt>+</tt> specifier is used, there appears to be no specification of where 
+the sign is inserted into the output.)
+<p/>
+<b>Victor Zverovich:</b>
+<p/>
+Yes. I suggest replacing
+</p>
+<blockquote><p>
+adds the respective prefix <tt>"0b"</tt> (<tt>"0B"</tt>), <tt>"0"</tt>, or <tt>"0x"</tt> (<tt>"0X"</tt>) 
+to the output value
+</p></blockquote>
+<p>
+with something like 
+</p>
+<blockquote><p>
+inserts the respective prefix <tt>"0b"</tt> (<tt>"0B"</tt>), <tt>"0"</tt>, or <tt>"0x"</tt> (<tt>"0X"</tt>) 
+to the output value after the sign, if any,
+</p></blockquote>
+<p>
+I think the duplicate wording in the presentation types <tt>b</tt>, <tt>B</tt>, <tt>o</tt>, <tt>x</tt>, and 
+<tt>X</tt> can be dropped.
+<p/>
+Regarding the <tt>+</tt> specifier problem: How about adding
+</p>
+<blockquote><p>
+The sign is inserted before the output of <tt>to_chars</tt>.
+</p></blockquote>
+<p>
+?
+</p>
+
+<p><i>[2019-08-21 Priority set to 2 based on reflector discussion]</i></p>
+
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify the <i>sign</i> options Table [tab:format.sign] in 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 59: Meaning of <i>sign</i> options [tab:format.sign]</caption>
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers. <ins>The sign is 
+inserted before the output of <tt>to_chars</tt>.</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used only for negative numbers (this is the default behavior).
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers, and a minus
+sign for negative numbers.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify [format.string] as indicated:</p>
+
+<blockquote>
+<p>
+-6 The <tt>#</tt> option causes the <i>alternate form</i> to be used for the conversion. This option 
+is only valid for arithmetic types other than <tt>charT</tt> and <tt>bool</tt> or when an integer 
+presentation type is specified. For integral types, the alternate form <del>adds</del><ins>inserts</ins> 
+the base prefix (if any) specified in Table [tab:format.type.int] to the output value <ins>after the 
+sign, if any</ins>. [&hellip;]
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2019-08-21; Victor Zverovich provides improved wording]</i></p>
+
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<ol>
+<li><p>Modify the <i>sign</i> options Table [tab:format.sign] in 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 59: Meaning of <i>sign</i> options [tab:format.sign]</caption>
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers. <ins>The <tt>+</tt> 
+sign is inserted before the output of <tt>to_chars</tt> for non-negative numbers other than 
+the negative zero. [<i>Note:</i> For negative numbers and the negative zero the output of 
+<tt>to_chars</tt> will already contain the sign so no additional transformation is performed. &mdash; 
+<i>end note</i>]</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used only for negative numbers (this is the default behavior).
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers, and a minus
+sign for negative numbers.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify [format.string] as indicated:</p>
+
+<blockquote>
+<p>
+-6- The <tt>#</tt> option causes the <i>alternate form</i> to be used for the conversion. This option 
+is only valid for arithmetic types other than <tt>charT</tt> and <tt>bool</tt> or when an integer 
+presentation type is specified. For integral types, the alternate form <del>adds</del><ins>inserts</ins> 
+the base prefix (if any) specified in Table [tab:format.type.int] to the output value <ins>after the 
+sign character (possibly space) if there is one, or before the output of <tt>to_chars</tt> otherwise</ins>. 
+[&hellip;]
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2020-02-13, Prague]</i></p>
+
+<p>
+LWG made some improvements to the wording.
+</p>
+<p><i>[2020-02 Status to Immediate on Thursday night in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify the <i>sign</i> options Table [tab:format.sign] in 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 58: Meaning of <i>sign</i> options [tab:format.sign]</caption>
+<tr align="center">
+<th>Option</th>
+<th>Meaning</th>
+</tr> 
+
+<tr>
+<td>
+<tt>'+'</tt>
+</td>
+<td>
+Indicates that a sign should be used for both non-negative and negative numbers. <ins>The <tt>+</tt> 
+sign is inserted before the output of <tt>to_chars</tt> for non-negative numbers other than 
+negative zero. [<i>Note:</i> For negative numbers and negative zero the output of 
+<tt>to_chars</tt> will already contain the sign so no additional transformation is performed. &mdash; 
+<i>end note</i>]</ins>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>'-'</tt>
+</td>
+<td>
+Indicates that a sign should be used only for negative numbers (this is the default behavior).
+</td>
+</tr>
+
+<tr>
+<td>
+space
+</td>
+<td>
+Indicates that a leading space should be used for non-negative numbers, and a minus
+sign for negative numbers.
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify [format.string] as indicated:</p>
+
+<blockquote>
+<p>
+-6- The <tt>#</tt> option causes the <i>alternate form</i> to be used for the conversion. This option 
+is <del>only</del> valid for arithmetic types other than <tt>charT</tt> and <tt>bool</tt> or when an integer 
+presentation type is specified<ins>, and not otherwise</ins>. For integral types, the alternate form 
+<del>adds</del><ins>inserts</ins> the base prefix (if any) specified in Table [tab:format.type.int] 
+<del>to</del><ins>into</ins> the output <del>value</del> <ins>after the sign character (possibly space) 
+if there is one, or before the output of <tt>to_chars</tt> otherwise</ins>. 
+[&hellip;]
+</p>
+</blockquote>
+</li>
+
 </ol>
 
 
@@ -1911,6 +2703,877 @@ template&lt;<ins>class T,</ins> size_t N&gt;
 
 
 <hr>
+<h3><a name="3260" href="3260">3260.</a> <tt>year_month*</tt> arithmetic rejects durations convertible to years</h3>
+<p><b>Section:</b> 27.8 <a href="https://timsong-cpp.github.io/cppwp/time.cal">[time.cal]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-08-15 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the <tt>year_month*</tt> types (<tt>year_month</tt>,
+<tt>year_month_day</tt>) provide separate arithmetic operators with
+duration type of <tt>years</tt> or <tt>months</tt>. This is an intentional
+optimization that avoids performing modulo arithmetic in the former case.
+<p/>
+However, these make the arithmetic of <code>year_month*</code> types
+with durations that are convertible to <code>years</code> (and by
+consequence to <code>months</code>) ambiguous. For example, the following
+code is ambiguous:
+</p>
+<blockquote>
+<pre>
+using decades = duration&lt;int, ratio_multiply&lt;ratio&lt;10&gt;, years::period&gt;&gt;;
+auto ymd = 2001y/January/1d;
+ymd += decades(1); // <span style="color:#C80000;font-weight:bold">error, ambiguous</span>
+</pre>
+</blockquote>
+<p>
+while less usual durations that are only convertible to <tt>months</tt> work correctly:
+</p>
+<blockquote>
+<pre>
+using decamonths = duration&lt;int, ratio_multiply&lt;ratio&lt;10&gt;, months::period&gt;&gt;;
+auto ymd = 2001y/January/1d;
+ymd += decamonths(1);
+</pre>
+</blockquote>
+<p>
+The example implementation resolves the issues by making sure that the
+<tt>years</tt> overload will be preferred in case of ambiguity, by declaring the
+<tt>months</tt> overload a function template with a default argument for its parameter
+(suggested by Tim Song):
+</p>
+<blockquote>
+<pre>
+<ins>template&lt;class = <em>unspecified</em>&gt;</ins>
+constexpr year_month_weekday&amp; operator+=(const months&amp; m) noexcept;
+constexpr year_month_weekday&amp; operator+=(const years&amp; m) noexcept;
+</pre>
+</blockquote>
+
+<p><i>[2019-09-14 Priority set to 2 based on reflector discussion]</i></p>
+
+
+<p><i>[2019-09-14; Tomasz and Howard provide concrete wording]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Suggested wording below assumes that we can add a <i>Constraints:</i> to a 
+signature where the constraint does not apply to a deduced template. We have examples of such 
+constraints in other parts of the WD (e.g. 20.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a>/p15, 
+20.11.1.2.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a>/p1). And we have the old form "does not participate &hellip;" 
+being used for non-deduced templates in several places as well (e.g. 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>/p5).
+<p/>
+There are several ways of implementing such a constraint, such as adding a gratuitous template 
+parameter.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 27.8.13.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ym.members">[time.cal.ym.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month&amp; operator+=(const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this + dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month&amp; operator-=(const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-6- <i>Effects:</i> <tt>*this = *this - dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.13.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ym.nonmembers">[time.cal.ym.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month operator+(const year_month&amp; ym, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> A <tt>year_month</tt> value <tt>z</tt> such that <tt>z - ym == dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month operator+(const months&amp; dm, const year_month&amp; ym) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ym + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month operator-(const year_month&amp; ym, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-6- <i>Returns:</i> <tt>ym + -dm</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.14.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymd.members">[time.cal.ymd.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-7- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-9- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.14.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymd.nonmembers">[time.cal.ymd.nonmembers]</a> as indicated:</p>
+<blockquote>
+<pre>
+constexpr year_month_day operator+(const year_month_day&amp; ymd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> <tt>(ymd.year() / ymd.month() + dm) / ymd.day()</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day operator+(const months&amp; dm, const year_month_day&amp; ymd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ymd + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day operator+(const months&amp; dm, const year_month_day&amp; ymd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-6- <i>Returns:</i> <tt>ymd + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.15.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymdlast.members">[time.cal.ymdlast.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day_last&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-2- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.15.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymdlast.nonmembers">[time.cal.ymdlast.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day_last
+  operator+(const year_month_day_last&amp; ymdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> <tt>(ymdl.year() / ymdl.month() + dm) / last</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last
+  operator+(const months&amp; dm, const year_month_day_last&amp; ymdl) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymdl + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last
+  operator-(const year_month_day_last&amp; ymdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ymdl + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.16.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwd.members">[time.cal.ymwd.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-6- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-8- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.16.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwd.nonmembers">[time.cal.ymwd.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday operator+(const year_month_weekday&amp; ymwd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-2- <i>Returns:</i> <tt>(ymwd.year() / ymwd.month() + dm) / ymwd.weekday_indexed()</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday operator+(const months&amp; dm, const year_month_weekday&amp; ymwd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> <tt>ymwd + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday operator-(const year_month_weekday&amp; ymwd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymwd + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.17.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwdlast.members">[time.cal.ymwdlast.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday_last&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-2- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.17.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwdlast.nonmembers">[time.cal.ymwdlast.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator+(const year_month_weekday_last&amp; ymwdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-2- <i>Returns:</i> <tt>(ymwdl.year() / ymwdl.month() + dm) / ymwdl.weekday_last()</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator+(const months&amp; dm, const year_month_weekday_last&amp; ymwdl) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-3- <i>Returns:</i> <tt>ymwdl + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator-(const year_month_weekday_last&amp; ymwdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> The argument supplied by the caller for the <tt>months</tt> 
+parameter is not implicitly convertible to <tt>years</tt>.</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymwdl + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-02-13, Prague]</i></p>
+
+<p>
+Tim Song found a wording problem that we would like to resolve:
+<p/>
+Given a class like
+</p>
+<blockquote><pre>
+struct C : months {
+  operator years();
+};
+</pre></blockquote>
+<p>
+The previous wording requires calls with a <tt>C</tt> argument to use the <tt>years</tt> overload, which 
+would require implementation heroics since its conversion sequence to <tt>months</tt> is better than <tt>years</tt>.
+</p>
+
+<p><i>[2020-02 Status to Immediate on Friday morning in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4849">N4849</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Suggested wording below assumes that we can add a <i>Constraints:</i> to a 
+signature where the constraint does not apply to a deduced template. We have examples of such 
+constraints in other parts of the WD (e.g. 20.11.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a>/p15, 
+20.11.1.2.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a>/p1). And we have the old form "does not participate &hellip;" 
+being used for non-deduced templates in several places as well (e.g. 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>/p5).
+<p/>
+There are several ways of implementing such a constraint, such as adding a gratuitous template 
+parameter.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 27.8.13.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ym.members">[time.cal.ym.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month&amp; operator+=(const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this + dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month&amp; operator-=(const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-6- <i>Effects:</i> <tt>*this = *this - dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.13.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ym.nonmembers">[time.cal.ym.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month operator+(const year_month&amp; ym, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-3- <i>Returns:</i> A <tt>year_month</tt> value <tt>z</tt> such that <tt>z - ym == dm</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month operator+(const months&amp; dm, const year_month&amp; ym) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ym + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month operator-(const year_month&amp; ym, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-6- <i>Returns:</i> <tt>ym + -dm</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.14.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymd.members">[time.cal.ymd.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-7- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-9- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.14.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymd.nonmembers">[time.cal.ymd.nonmembers]</a> as indicated:</p>
+<blockquote>
+<pre>
+constexpr year_month_day operator+(const year_month_day&amp; ymd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-3- <i>Returns:</i> <tt>(ymd.year() / ymd.month() + dm) / ymd.day()</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day operator+(const months&amp; dm, const year_month_day&amp; ymd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ymd + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day operator+(const months&amp; dm, const year_month_day&amp; ymd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-6- <i>Returns:</i> <tt>ymd + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.15.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymdlast.members">[time.cal.ymdlast.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day_last&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-2- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.15.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymdlast.nonmembers">[time.cal.ymdlast.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_day_last
+  operator+(const year_month_day_last&amp; ymdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-3- <i>Returns:</i> <tt>(ymdl.year() / ymdl.month() + dm) / last</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last
+  operator+(const months&amp; dm, const year_month_day_last&amp; ymdl) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymdl + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_day_last
+  operator-(const year_month_day_last&amp; ymdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-5- <i>Returns:</i> <tt>ymdl + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.16.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwd.members">[time.cal.ymwd.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-6- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-8- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.16.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwd.nonmembers">[time.cal.ymwd.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday operator+(const year_month_weekday&amp; ymwd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-2- <i>Returns:</i> <tt>(ymwd.year() / ymwd.month() + dm) / ymwd.weekday_indexed()</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday operator+(const months&amp; dm, const year_month_weekday&amp; ymwd) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-3- <i>Returns:</i> <tt>ymwd + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday operator-(const year_month_weekday&amp; ymwd, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymwd + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.17.2 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwdlast.members">[time.cal.ymwdlast.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday_last&amp; operator+=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-2- <i>Effects:</i> <tt>*this = *this + m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last&amp; operator-=(const months&amp; m) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Effects:</i> <tt>*this = *this - m</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.8.17.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.ymwdlast.nonmembers">[time.cal.ymwdlast.nonmembers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator+(const year_month_weekday_last&amp; ymwdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-2- <i>Returns:</i> <tt>(ymwdl.year() / ymwdl.month() + dm) / ymwdl.weekday_last()</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator+(const months&amp; dm, const year_month_weekday_last&amp; ymwdl) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-3- <i>Returns:</i> <tt>ymwdl + dm</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr year_month_weekday_last
+  operator-(const year_month_weekday_last&amp; ymwdl, const months&amp; dm) noexcept;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> If the argument supplied by the caller for the <tt>months</tt> 
+parameter is convertible to <tt>years</tt>, its implicit conversion sequence to <tt>years</tt> is 
+worse than its implicit conversion sequence to <tt>months</tt> (12.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/over.ics.rank">[over.ics.rank]</a>).</ins>
+<p/>
+-4- <i>Returns:</i> <tt>ymwdl + (-dm)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3262" href="3262">3262.</a> Formatting of negative durations is not specified</h3>
 <p><b>Section:</b> 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
  <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-08-18 <b>Last modified:</b> 2020-02-13 18:06:22 UTC</p>
@@ -2078,6 +3741,268 @@ return os &lt;&lt; format(os.getloc(),
 </blockquote>
 </li>
 </ol>
+
+
+
+<hr>
+<h3><a name="3269" href="3269">3269.</a> Parse manipulators do not specify the result of the extraction from stream</h3>
+<p><b>Section:</b> 27.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2019-09-01 <b>Last modified:</b> 2020-02-14 11:00:18 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.parse">active issues</a> in [time.parse].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.parse">issues</a> in [time.parse].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+None of the <tt>parse</tt> manipulators for the <tt>chrono</tt> types
+specifies the result of the extraction from the stream, as consequence 
+they cannot be chained with the other read operations (at least portably). 
+For example the following code is not required to work:
+</p>
+<blockquote>
+<pre>
+std::chrono::sys_stime s; 
+int x;
+std::cin &gt;&gt; std::chrono::parse("%X", s) &gt;&gt; x;
+</pre>
+</blockquote>
+
+<p><i>[2019-10 Priority set to 2 after reflector discussion]</i></p>
+
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="http://wg21.link/n4830">N4830</a>.</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> As a drive-by fix the <i>Remarks</i> element is also 
+converted to a <i>Constraints</i> element. The wording integrates the resolution for 
+LWG <a href="3235">3235</a>.
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 27.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Each parse overload specified in this subclause calls <tt>from_stream</tt> unqualified, 
+so as to enable argument dependent lookup (6.5.2 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.argdep">[basic.lookup.argdep]</a>). 
+<ins>In the following paragraphs, let <tt>is</tt> denote an object of type 
+<tt>basic_istream&lt;charT, traits&gt;</tt> and let <tt>I</tt> be
+<tt>basic_istream&lt;charT, traits&gt;&amp;</tt>, where <tt>charT</tt> and
+<tt>traits</tt> are template parameters in that context.</ins>
+</p>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp);
+</pre>
+<blockquote>
+<p>
+-2- <i><del>Remarks</del><ins>Constraints</ins>:</i> <del>This function shall not participate in 
+overload resolution unless</del><ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), fmt.c_str(), tp)
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-3- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression
+<tt>is &gt;&gt; parse(fmt, tp)</tt> has type <tt>I</tt>, value <tt>is</tt>, 
+and</ins> calls <tt>from_stream(is, fmt.c_str(), tp)</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          basic_string&lt;charT, traits, Alloc&gt;&amp; abbrev);
+</pre>
+<blockquote>
+<p>
+-4- <i><del>Remarks</del><ins>Constraints</ins>:</i> <del>This function shall not participate 
+in overload resolution unless</del><ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), fmt.c_str(), tp, addressof(abbrev))
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-5- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, abbrev)</tt> has type <tt>I</tt>, value <tt>is</tt>, and</ins> calls 
+<tt>from_stream(is, fmt.c_str(), tp, addressof(abbrev))</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          minutes&amp; offset);
+</pre>
+<blockquote>
+<p>
+-6- <i><del>Remarks</del><ins>Constraints</ins>:</i> <del>This function shall not participate 
+in overload resolution unless</del><ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), fmt.c_str(), tp, 
+            <ins>declval&lt;basic_string&lt;charT, traits, Alloc&gt;*&gt;()</ins><del>nullptr</del>, &amp;offset)
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-7- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, offset)</tt> has type <tt>I</tt>, value <tt>is</tt>, and</ins> 
+calls <tt>from_stream(is, fmt.c_str(), tp, <ins>static_cast&lt;basic_string&lt;charT, 
+traits, Alloc&gt;*&gt;(</ins>nullptr<ins>)</ins>, &amp;offset)</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable>
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          basic_string&lt;charT, traits, Alloc&gt;&amp; abbrev, minutes&amp; offset);
+</pre>
+<blockquote>
+<p>
+-8- <i><del>Remarks</del><ins>Constraints</ins>:</i> <del>This function shall not participate 
+in overload resolution unless</del><ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(),
+            fmt.c_str(), tp, addressof(abbrev), &amp;offset)
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-9- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, abbrev, offset)</tt> has type <tt>I</tt>, value <tt>is</tt>, 
+and</ins> calls <tt>from_stream(is, fmt.c_str(), tp, addressof(abbrev), &amp;offset)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-02-13, Prague]</i></p>
+
+<p>
+Issue wording has been rebased.
+</p>
+<p><i>[2020-02 Status to Immediate on Friday morning in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="http://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 27.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Each <tt>parse</tt> overload specified in this subclause calls <tt>from_stream</tt> unqualified, 
+so as to enable argument dependent lookup (6.5.2 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.argdep">[basic.lookup.argdep]</a>). In the following paragraphs, 
+let <tt>is</tt> denote an object of type <tt>basic_istream&lt;charT, traits&gt;</tt> <ins>and let <tt>I</tt> be 
+<tt>basic_istream&lt;charT, traits&gt;&amp;</tt></ins>, where <tt>charT</tt> and <tt>traits</tt> are 
+template parameters in that context.
+</p>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp);
+</pre>
+<blockquote>
+<p>
+-2- <i>Constraints:</i> <ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), fmt.c_str(), tp)
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-3- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression
+<tt>is &gt;&gt; parse(fmt, tp)</tt> has type <tt>I</tt>, value <tt>is</tt>, 
+and</ins> calls <tt>from_stream(is, fmt.c_str(), tp)</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          basic_string&lt;charT, traits, Alloc&gt;&amp; abbrev);
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i> <ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), fmt.c_str(), tp, addressof(abbrev))
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-5- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, abbrev)</tt> has type <tt>I</tt>, value <tt>is</tt>, and</ins> calls 
+<tt>from_stream(is, fmt.c_str(), tp, addressof(abbrev))</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable&gt;
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          minutes&amp; offset);
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> The expression
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(), 
+            fmt.c_str(), tp, 
+            declval&lt;basic_string&lt;charT, traits, Alloc&gt;*&gt;(), 
+            &amp;offset)
+</pre></blockquote>
+is well-formed when treated as an unevaluated operand.
+<p/>
+-7- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, offset)</tt> has type <tt>I</tt>, value <tt>is</tt>, and</ins> 
+calls
+</p>
+<blockquote><pre>
+from_stream(is, 
+            fmt.c_str(), tp, 
+            static_cast&lt;basic_string&lt;charT, traits, Alloc&gt;*&gt;(nullptr), 
+            &amp;offset)
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class charT, class traits, class Alloc, class Parsable>
+  <i>unspecified</i>
+    parse(const basic_string&lt;charT, traits, Alloc&gt;&amp; fmt, Parsable&amp; tp,
+          basic_string&lt;charT, traits, Alloc&gt;&amp; abbrev, minutes&amp; offset);
+</pre>
+<blockquote>
+<p>
+-8- <i>Constraints:</i> <ins>The expression</ins>
+<blockquote><pre>
+from_stream(declval&lt;basic_istream&lt;charT, traits&gt;&amp;&gt;(),
+            fmt.c_str(), tp, addressof(abbrev), &amp;offset)
+</pre></blockquote>
+is <del>a valid expression</del><ins>well-formed when treated as an unevaluated operand</ins>.
+<p/>
+-9- <i>Returns:</i> A manipulator <ins>such</ins> that<del>, when extracted from a 
+<tt>basic_istream&lt;charT, traits&gt; is</tt>,</del><ins>the expression <tt>is &gt;&gt; 
+parse(fmt, tp, abbrev, offset)</tt> has type <tt>I</tt>, value <tt>is</tt>, 
+and</ins> calls <tt>from_stream(is, fmt.c_str(), tp, addressof(abbrev), &amp;offset)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
 
 
 
@@ -4131,6 +6056,142 @@ unknown bound.</del>
 
 
 <hr>
+<h3><a name="3355" href="3355">3355.</a> The memory algorithms should support move-only input iterators introduced by P1207</h3>
+<p><b>Section:</b> 20.10.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a>, 20.10.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Corentin Jabot <b>Opened:</b> 2019-11-12 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#uninitialized.copy">issues</a> in [uninitialized.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p1207">P1207</a> introduced move-only input iterators but did not modify the 
+specialized memory algorithms to support them.
+</p>
+
+<p><i>[2020-01 Priority set to 2 after review on the reflector.]</i></p>
+
+<p><i>[2020-02 Status to Immediate on Friday morning in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 20.10.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, sentinel_for&lt;I&gt; S1,
+           <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S2&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_reference_t&lt;I&gt;&gt;
+    uninitialized_copy_result&lt;I, O&gt;
+      uninitialized_copy(I ifirst, S1 ilast, O ofirst, S2 olast);
+  template&lt;input_range IR, <i>no-throw-forward-range</i> OR&gt;
+      requires constructible_from&lt;range_value_t&lt;OR&gt;, range_reference_t&lt;IR&gt;&gt;
+    uninitialized_copy_result&lt;safe_iterator_t&lt;IR&gt;, safe_iterator_t&lt;OR&gt;&gt;
+      uninitialized_copy(IR&amp;&amp; in_range, OR&amp;&amp; out_range);
+}
+</pre>
+<blockquote>
+<p>
+-4- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, ilast)</tt>.
+<p/>
+-5- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+for (; ifirst != ilast &amp;&amp; ofirst != olast; ++ofirst, (void)++ifirst) {
+  ::new (<i>voidify</i>(*ofirst)) remove_reference_t&lt;iter_reference_t&lt;O&gt;&gt;(*ifirst);
+}
+return {<ins>std::move(</ins>ifirst<ins>)</ins>, ofirst};
+</pre></blockquote>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_reference_t&lt;I&gt;&gt;
+    uninitialized_copy_n_result&lt;I, O&gt;
+      uninitialized_copy_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-9- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, n)</tt>.
+<p/>
+-10- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+auto t = uninitialized_copy(counted_iterator(ifirst, n),
+                            default_sentinel, ofirst, olast);
+return {<ins>std::move(</ins>t.in<ins>)</ins>.base(), t.out};
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.10.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, sentinel_for&lt;I&gt; S1,
+           <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S2&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_rvalue_reference_t&lt;I&gt;&gt;
+    uninitialized_move_result&lt;I, O&gt;
+      uninitialized_move(I ifirst, S1 ilast, O ofirst, S2 olast);
+  template&lt;input_range IR, <i>no-throw-forward-range</i> OR&gt;
+      requires constructible_from&lt;range_value_t&lt;OR&gt;, range_rvalue_reference_t&lt;IR&gt;&gt;
+    uninitialized_move_result&lt;safe_iterator_t&lt;IR&gt;, safe_iterator_t&lt;OR&gt;&gt;
+      uninitialized_move(IR&amp;&amp; in_range, OR&amp;&amp; out_range);
+}
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, ilast)</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+for (; ifirst != ilast &amp;&amp; ofirst != olast; ++ofirst, (void)++ifirst) {
+  ::new (<i>voidify</i>(*ofirst)) 
+    remove_reference_t&lt;iter_reference_t&lt;O&gt;&gt;(ranges::iter_move(*ifirst));
+}
+return {<ins>std::move(</ins>ifirst<ins>)</ins>, ofirst};
+</pre></blockquote>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>no-throw-forward-iterator</i> O, <i>no-throw-sentinel</i>&lt;O&gt; S&gt;
+      requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_rvalue_reference_t&lt;I&gt;&gt;
+    uninitialized_move_n_result&lt;I, O&gt;
+      uninitialized_move_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-8- <i>Preconditions:</i> <tt>[ofirst, olast)</tt> shall not overlap with <tt>[ifirst, n)</tt>.
+<p/>
+-9- <i>Effects:</i> Equivalent to:
+<blockquote><pre>
+auto t = uninitialized_move(counted_iterator(ifirst, n),
+                            default_sentinel, ofirst, olast);
+return {<ins>std::move(</ins>t.in<ins>)</ins>.base(), t.out};
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3358" href="3358">3358.</a> &sect;[span.cons] is mistaken that <tt>to_address</tt> can throw</h3>
 <p><b>Section:</b> 22.7.3.2 <a href="https://timsong-cpp.github.io/cppwp/span.cons">[span.cons]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-12-10 <b>Last modified:</b> 2020-02-14 06:37:09 UTC</p>
@@ -5317,6 +7378,185 @@ template&lt;class T&gt;
 models <tt>contiguous_range</tt> only if <tt>(to_address(ranges::begin(t)) == ranges::data(t))</tt>.</ins>
 <p/>
 -3- The <tt>common_range</tt> concept [&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3382" href="3382">3382.</a> NTTP for <tt>pair</tt> and <tt>array</tt></h3>
+<p><b>Section:</b> 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a>, 22.3.7 <a href="https://timsong-cpp.github.io/cppwp/array">[array]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-01-27 <b>Last modified:</b> 2020-02-14 11:24:43 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#pairs.pair">active issues</a> in [pairs.pair].</p>
+<p><b>View all other</b> <a href="lwg-index.html#pairs.pair">issues</a> in [pairs.pair].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+We had <a href="https://github.com/cplusplus/nbballot/issues/235">this NB ballot issue</a>, to ensure that 
+<tt>std::array</tt> could be a NTTP. But after <a href="https://wg21.link/p1907">P1907</a>, we still need 
+some kind of wording to ensure that <tt>std::array</tt> (and also <tt>std::pair</tt>) have no extra 
+private members or base classes.
+<p/>
+This is similar to LWG <a href="3373">3373</a> &mdash; maybe we just need to add:
+</p>
+<blockquote><p>
+The class template <tt>pair</tt>/<tt>array</tt> has the data members specified above. It has no base 
+classes or data members other than those specified.
+</p></blockquote>
+
+<p><i>[2020-02 Prioritized as P2 Monday morning in Prague]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Constructors and member functions of <tt>pair</tt> do not throw exceptions unless one of the element-wise 
+operations specified to be called for that operation throws an exception.
+<p/>
+-2- The defaulted move and copy constructor, respectively, of <tt>pair</tt> is a constexpr function if and 
+only if all required element-wise initializations for copy and move, respectively, would satisfy the 
+requirements for a constexpr function.
+<p/>
+-3- If <tt>(is_trivially_destructible_v&lt;T1&gt; &amp;&amp; is_trivially_destructible_v&lt;T2&gt;)</tt> 
+is <tt>true</tt>, then the destructor of <tt>pair</tt> is trivial.
+<p/>
+<ins>-?- The class template <tt>pair</tt> has the data members specified above. It has no base classes or 
+data members other than those specified.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 22.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The header <tt>&lt;array&gt;</tt> defines a class template for storing fixed-size sequences of objects. 
+An <tt>array</tt> is a contiguous container (22.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). An instance of 
+<tt>array&lt;T, N&gt;</tt> stores <tt>N</tt> elements of type <tt>T</tt>, so that <tt>size() == N</tt> is 
+an invariant.
+<p/>
+-2- An <tt>array</tt> is an aggregate (9.4.1 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.aggr">[dcl.init.aggr]</a>) that can be list-initialized with up 
+to <tt>N</tt> elements whose types are convertible to <tt>T</tt>.
+<p/>
+-3- An <tt>array</tt> meets all of the requirements of a container and of a reversible container 
+(22.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements">[container.requirements]</a>), except that a default constructed <tt>array</tt> object is not empty 
+and that <tt>swap</tt> does not have constant complexity. An <tt>array</tt> meets some of the requirements 
+of a sequence container (22.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>). Descriptions are provided here only for
+operations on <tt>array</tt> that are not described in one of these tables and for operations where there 
+is additional semantic information.
+<p/>
+<ins>-?- The class template <tt>array</tt> has the data members specified in subclauses 
+22.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> and 22.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/array.zero">[array.zero]</a>. It has no base classes or 
+data members other than those specified.</ins>
+<p/>
+-4- [&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-02-13, Prague]</i></p>
+
+<p>
+Tim Song and Tomasz were trying to come up with general wording that could be reused for both <tt>pair</tt> and 
+<tt>array</tt> (and other types). They suggest that if it should be in scope for C++20, it would be better to 
+provide non-general wording for <tt>pair</tt> and <tt>array</tt> (that is easier to get right).
+<p/>
+For completeness (and future wording) the generalized wording is included. The definition of <i>structurally compatible with</i>:
+</p>
+<blockquote><p>
+The type <code>T</code> is <em>structurally compatible with</em> <code><i>subs</i></code>, if for the values 
+<code>t1</code> and <code>t2</code> of type <code>T</code>:
+</p>
+<ul>
+ <li><p><code>T</code> is a structural type (13.2 <a href="https://timsong-cpp.github.io/cppwp/temp.param">[temp.param]</a>) if the types of subobjects of <code>t1</code> 
+ designated by <code><i>subs</i></code> are all structural types.</p></li>
+ <li><p><code>t1</code> is template-argument-equivalent (13.6 <a href="https://timsong-cpp.github.io/cppwp/temp.type">[temp.type]</a>) to <code>t2</code>, 
+ if and only if, for each subject designed by  <code><i>subs</i></code>, the value of subobject 
+ of <code>t1</code> is template-argument-equivalent to the value of the correponding subobject of 
+ <code>t2</code>.</p></li>
+</ul>
+</blockquote>
+<p>
+Then changes for <code>array</code>/<code>pair</code> would then look like:
+</p>
+<blockquote>
+<p>
+<code>pair&lt;T, U&gt;</code> is structurally compatible (&lt;some-reference&gt;) with <code>first</code> and <code>second</code>.
+<p/>
+<code>array&lt;T, N&gt;</code> is structurally compatible with its elements (if any).
+</p>
+</blockquote>
+
+<p><i>[2020-02 Status to Immediate on Friday morning in Prague.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 20.4.2 <a href="https://timsong-cpp.github.io/cppwp/pairs.pair">[pairs.pair]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Constructors and member functions of <tt>pair</tt> do not throw exceptions unless one of the element-wise 
+operations specified to be called for that operation throws an exception.
+<p/>
+-2- The defaulted move and copy constructor, respectively, of <tt>pair</tt> is a constexpr function if and 
+only if all required element-wise initializations for copy and move, respectively, would satisfy the 
+requirements for a constexpr function.
+<p/>
+-3- If <tt>(is_trivially_destructible_v&lt;T1&gt; &amp;&amp; is_trivially_destructible_v&lt;T2&gt;)</tt> 
+is <tt>true</tt>, then the destructor of <tt>pair</tt> is trivial.
+<p/>
+<ins>-?- <code>pair&lt;T, U&gt;</code> is a structural type (13.2 <a href="https://timsong-cpp.github.io/cppwp/temp.param">[temp.param]</a>) if <code>T</code> 
+and <code>U</code> are both structural types. Two values <code>p1</code> and <code>p2</code> of type 
+<code>pair&lt;T, U&gt;</code> are template-argument-equivalent (13.6 <a href="https://timsong-cpp.github.io/cppwp/temp.type">[temp.type]</a>) if and only if 
+<code>p1.first</code> and <code>p2.first</code> are template-argument-equivalent and <code>p1.second</code> 
+and <code>p2.second</code> are template-argument-equivalent.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 22.3.7.1 <a href="https://timsong-cpp.github.io/cppwp/array.overview">[array.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The header <tt>&lt;array&gt;</tt> defines a class template for storing fixed-size sequences of objects. 
+An <tt>array</tt> is a contiguous container (22.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). An instance of 
+<tt>array&lt;T, N&gt;</tt> stores <tt>N</tt> elements of type <tt>T</tt>, so that <tt>size() == N</tt> is 
+an invariant.
+<p/>
+-2- An <tt>array</tt> is an aggregate (9.4.1 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.aggr">[dcl.init.aggr]</a>) that can be list-initialized with up 
+to <tt>N</tt> elements whose types are convertible to <tt>T</tt>.
+<p/>
+-3- An <tt>array</tt> meets all of the requirements of a container and of a reversible container 
+(22.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements">[container.requirements]</a>), except that a default constructed <tt>array</tt> object is not empty 
+and that <tt>swap</tt> does not have constant complexity. An <tt>array</tt> meets some of the requirements 
+of a sequence container (22.2.3 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>). Descriptions are provided here only for
+operations on <tt>array</tt> that are not described in one of these tables and for operations where there 
+is additional semantic information.
+<p/>
+<ins>-?- <code>array&lt;T, N&gt;</code> is a structural type (13.2 <a href="https://timsong-cpp.github.io/cppwp/temp.param">[temp.param]</a>) if <code>T</code> 
+is a structural type. Two values <code>a1</code> and <code>a2</code> of type <code>array&lt;T, N&gt;</code> 
+are template-argument-equivalent (13.6 <a href="https://timsong-cpp.github.io/cppwp/temp.type">[temp.type]</a>) if and only if each pair of corresponding 
+elements in <code>a1</code> and <code>a2</code> are template-argument-equivalent.</ins>
+<p/>
+-4- [&hellip;]
 </p>
 </blockquote>
 </li>
