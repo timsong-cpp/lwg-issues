@@ -1,0 +1,105 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3407: Some problems with the wording changes of P1739R4</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3407" href="lwg-active.html#3407">3407.</a> Some problems with the wording changes of <a href="http://wg21.link/p1739r4">P1739R4</a></h3>
+<p><b>Section:</b> 24.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a>, 24.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota">[range.iota]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-21 <b>Last modified:</b> 2020-02-24 20:38:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Section 6.1 of <a href="http://wg21.link/p1739r4">P1739R4</a> changes the specification of 
+<tt>views::take</tt> as follows:
+</p>
+<blockquote>
+<p>
+-2- The name <tt>views::take</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+<del>Given subexpressions <tt>E</tt> and <tt>F</tt>, the expression <tt>views::take(E, F)</tt> is 
+expression-equivalent to <tt>take_view{E, F}</tt>.</del>
+<ins>Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
+and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
+If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt> 
+is ill-formed. Otherwise, the expression <tt>views::take(E, F)</tt> is expression-equivalent to:</ins>
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>&mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.1.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>), 
+then <tt>((void) F, <i>decay-copy</i>(E))</tt>;</ins>
+</p></li>
+<li><p><ins>&mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt> and 
+is</ins>
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>&mdash; a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where 
+<tt>T::extent == dynamic_extent</tt>,</ins></p></li>
+<li><p><ins>&mdash; a specialization of <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>),</ins></p></li>
+<li><p><ins>&mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</ins></p></li>
+<li><p><ins>&mdash; a specialization of <tt>ranges::subrange</tt> (24.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>),</ins></p></li>
+</ol>
+<p><ins>then <tt>T{ranges::begin(E), ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F)}</tt>,
+except that <tt>E</tt> is evaluated only once;</ins>
+</p></li>
+<li><p>
+<ins>&mdash; otherwise, <tt>ranges::take_view{E, F}</tt>.</ins>
+</p></li>
+</ol>
+</blockquote>
+<p>
+Consider the case when <tt>T = subrange&lt;counted_iterator&lt;int&gt;, default_sentinel_t&gt;</tt>.
+Then according to the above wording, <tt>views::take(E, F)</tt> is expression-equivalent to
+</p>
+<blockquote><pre>
+T{ranges::begin(E), ranges:begin(E) + min&lt;D&gt;(ranges::size(E), F)};   <i>(*)</i>
+</pre></blockquote>
+<p>
+But this expression is ill-formed for the <tt>T</tt> we chose because
+<tt>subrange&lt;counted_iterator&lt;int&gt;, default_sentinel_t&gt;</tt> has no matching
+constructor that takes an <tt>iterator-iterator</tt> pair.
+<p/>
+More generally the above issue applies anytime <tt>T</tt> is a specialization of
+<tt>subrange</tt> that does not model <tt>common_range</tt>. But a similar issue also
+exists when <tt>T</tt> is a specialization of <tt>iota_view</tt> whose value type differs
+from its bound type. In this case yet another issue arises: In order for the expression 
+<tt><i>(*)</i></tt> to be well-formed when <tt>T</tt> is a specialization of <tt>iota_view</tt>, 
+we need to be able to construct an <tt>iota_view</tt> out of an <tt>iterator-iterator</tt> pair, 
+and for that it seems we need to add another constructor to <tt>iota_view</tt>.
+</p>
+
+<p><i>[2020-02-24, Casey comments]</i></p>
+
+<p>
+Furthermore, the pertinent subrange constructor is only available when <tt>subrange::StoreSize</tt> is 
+<tt>false</tt> (i.e., when either the <tt>subrange</tt> specialization's third template argument is 
+not <tt>subrange_kind::sized</tt> or its iterator and sentinel types <tt>I</tt> and <tt>S</tt> model 
+<tt>sized_sentinel_for&lt;S, I&gt;</tt>).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+</body>
+</html>
