@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-02-24 at 20:38:25 UTC</p>
+<p><p>Revised 2020-03-01 at 13:23:26 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -32481,6 +32481,7 @@ if <tt>V</tt> models <tt>forward_range</tt>, and <tt><i>parent_-&gt;current_</i>
  <b>Submitter:</b> Tom Honermann <b>Opened:</b> 2019-09-08 <b>Last modified:</b> 2020-02-13 13:56:59 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
 <p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -35772,6 +35773,299 @@ not <tt>subrange_kind::sized</tt> or its iterator and sentinel types <tt>I</tt> 
 
 
 <p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3408" href="3408">3408.</a> LWG 3291 reveals deficiencies in <tt>counted_iterator</tt></h3>
+<p><b>Section:</b> 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-25 <b>Last modified:</b> 2020-02-29 13:38:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3291">3291</a> makes changes to <tt>iota_view</tt> so that it no longer falsely claims
+it's a C++17 forward iterator. A side effect of this change is that the <tt>counted_iterator</tt> 
+of an <tt>iota_view</tt> can no longer model <tt>forward_iterator</tt>, no matter what the 
+properties of the underlying <tt>weakly_incrementable</tt> type are. For example, the following 
+snippet is ill-formed after LWG 3291:
+</p>
+<blockquote><pre>
+auto v = views::iota(0);
+auto i = counted_iterator{v.begin(), 5};
+static_assert(random_access_iterator&lt;decltype(i)&gt;); // fails after LWG 3291
+</pre></blockquote>
+<p>
+The problem seems to be that <tt>counted_iterator</tt> populates its <tt>iterator_traits</tt> 
+but it does not specify its <tt>iterator_concept</tt>, so we fall back to looking at its 
+<tt>iterator_category</tt> to determine its C++20 iterator-ness. It seems 
+<tt>counted_iterator</tt> should specify its <tt>iterator_concept</tt> appropriately based on 
+the <tt>iterator_concept</tt> of the iterator it wraps.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3409" href="3409">3409.</a> Too lax description of <tt>atomic_ref&lt;T&gt;::required_alignment</tt></h3>
+<p><b>Section:</b> 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Andrey Semashev <b>Opened:</b> 2020-02-27 <b>Last modified:</b> 2020-03-01 13:23:01 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="http://wg21.link/n4849">N4849</a> 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a>/1 
+describes <tt>atomic_ref&lt;T&gt;::required_alignment</tt> constant as follows:
+</p>
+<blockquote><p>
+The alignment required for an object to be referenced by an atomic
+reference, which is at least <tt>alignof(T)</tt>.
+</p></blockquote>
+<p>
+This wording allows for an implementation to always define <tt>required_alignment</tt> 
+to be equal to <tt>alignof(T)</tt> and implement atomic operations using locking, 
+even if a lock-free implementation is possible at a higher alignment. For example, 
+on x86-64, <tt>atomic_ref&lt;complex&lt;double&gt;&gt;</tt> could be lock-free 
+only when the referred object is aligned to 16 bytes, but the above definition 
+allows an implementation to define <tt>required_alignment</tt> to 8 and use locking.
+<p/>
+The note in 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a>/2 does mention that lock-free operations
+may require higher alignment, but it does not provide guidance to the implementations 
+so that <tt>required_alignment</tt> reflects alignment required for lock-free 
+operations, if possible, and not just minimum alignment required for any kind of 
+implementation.
+<p/>
+The suggested resolution is to change the wording so that it is clear
+that <tt>required_alignment</tt> indicates the alignment required for lock-free
+implementation, if one is possible, or <tt>alignof(T)</tt> otherwise.
+<p/>
+Further, the note in 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a>/2 contains this sentence:
+</p>
+<blockquote><p>
+Further, whether operations on an <tt>atomic_ref</tt> are lock-free could
+depend on the alignment of the referenced object.
+</p></blockquote>
+<p>
+This sentence is misleading, because according to <tt>is_lock_free()</tt>
+definition in 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a>/4, the lock-free property is not 
+allowed to depend on the alignment of a particular referenced object
+(<tt>is_lock_free()</tt> must return <tt>true</tt> or <tt>false</tt> if 
+operations on <em>all</em> objects of the given type <tt>T</tt> are lock-free or 
+not). In other words, <tt>atomic_ref</tt> can only refer to an object aligned at 
+least to <tt>required_alignment</tt> and its lock-free capability cannot depend 
+on the actual runtime alignment of the object.
+<p/>
+To avoid the confusion, I propose to remove the sentence. The rest of
+the note can stay intact. However, this second edit is less important
+than the first one and can be omitted in case of disagreement.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4849">N4849</a>.
+</p>
+
+<ol>
+<li><p>Modify 31.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+static constexpr size_t required_alignment;
+</pre>
+<blockquote>
+<p>
+-1- <ins>Let <tt>A</tt> be t</ins><del>T</del>he alignment required for an object to be referenced by 
+an atomic reference, <del>which is at least <tt>alignof(T)</tt></del><ins>so that 
+<tt>is_always_lock_free</tt> is <tt>true</tt>. If there is no such alignment or <tt>A</tt> is less 
+than <tt>alignof(T)</tt>, <tt>required_alignment</tt> equals <tt>alignof(T)</tt>. Otherwise, 
+<tt>required_alignment</tt> equals <tt>A</tt></ins>.
+<p/>
+-2- [<i>Note:</i> Hardware could require an object referenced by an <tt>atomic_ref</tt> to have 
+stricter alignment (6.7.6 <a href="https://timsong-cpp.github.io/cppwp/basic.align">[basic.align]</a>) than other objects of type <tt>T</tt>. <del>Further, 
+whether operations on an <tt>atomic_ref</tt> are lock-free could depend on the alignment of the 
+referenced object.</del> For example, lock-free operations on <tt>std::complex&lt;double&gt;</tt>
+could be supported only if aligned to <tt>2*alignof(double)</tt>. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3410" href="3410">3410.</a> <tt>lexicographical_compare_three_way</tt> is overspecified</h3>
+<p><b>Section:</b> 25.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.three.way">[alg.three.way]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-02-27 <b>Last modified:</b> 2020-02-29 17:43:28 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.three.way">issues</a> in [alg.three.way].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+25.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.three.way">[alg.three.way]</a>/2 specifies the effects of the <tt>lexicographical_compare_three_way</tt> 
+algorithm via a large "equivalent to" codeblock. This codeblock specifies one more iterator comparison 
+than necessary when the first input sequence is greater than the second, and two more than necessary
+in other cases. Requiring unnecessary work is the antithesis of C++.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3411" href="3411">3411.</a> [fund.ts.v3] Contradictory namespace rules in the Library Fundamentals TS</h3>
+<p><b>Section:</b> 99 [fund.ts.v3::memory.resource.syn] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2020-02-28 <b>Last modified:</b> 2020-02-29 17:49:37 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v3</b></p>
+<p>
+The Library Fundamentals TS, <a href="http://wg21.link/n4840">N4840</a>, 
+contains <a href="http://wg21.link/n4840#general.namespaces">a rule about 
+the use of namespaces (paragraph 1)</a>, with the consequence:
+</p>
+<blockquote><p>
+"This TS does not define <tt>std::experimental::fundamentals_v3::pmr</tt>"
+</p></blockquote>
+<p>
+However, the TS then <a href="http://wg21.link/n4840#memory.resource.syn">goes on to 
+define exactly that namespace</a>.
+<p/>
+At the time when the subclause memory.resource.syn was added, the IS didn't use to contain 
+a namespace <tt>pmr</tt>. When the IS adopted that namespace and the TS was rebased, the 
+namespace rule started conflicting with the material in the TS.
+<p/>
+I do not have a workable proposed resolution at this point.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3412" href="3412">3412.</a> &sect;[format.string.std] references to "Unicode encoding" unclear</h3>
+<p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hubert Tong <b>Opened:</b> 2020-02-29 <b>Last modified:</b> 2020-02-29 17:57:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a>, the meaning of "Unicode encoding" in the text added by 
+<a href="http://wg21.link/p1868r2">P1868R2</a> (the "Unicorn width" paper) is unclear.
+<p/>
+One interpretation of what is meant by "Unicode encoding" is "UCS encoding scheme" 
+(as defined by ISO/IEC 10646). Another interpretation is an encoding scheme capable of 
+encoding all UCS code points that have been assigned to characters. Yet another interpretation 
+is an encoding scheme capable of encoding all UCS scalar values.
+<p/>
+SG16 reflector discussion (with the LWG reflector on CC) indicates that the third option 
+above is the closest to the intent of the study group. The situation of the current wording, 
+which readers can easily read as indicating the first option above, is undesirable.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+<hr>
+<h3><a name="3413" href="3413">3413.</a> [fund.ts.v3] <tt>propagate_const</tt>'s <tt>swap</tt>'s <tt>noexcept</tt> specification needs to use a trait</h3>
+<p><b>Section:</b> 3.2.2.7 [fund.ts.v3::propagate_const.modifiers], 3.2.2.9 [fund.ts.v3::propagate_const.algorithms] <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2020-02-29 <b>Last modified:</b> 2020-03-01 13:23:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v3</b></p>
+<p>
+In the Fundamentals TS, the <tt>noexcept</tt> specifications of both the member and non-member <tt>swap</tt> 
+functions for <tt>propagate_const</tt> are using the old, ill-formed pattern of attempting to use 
+"<tt>noexcept(swap(...))</tt>" as the boolean predicate. According to LWG <a href="2456">2456</a>, this is 
+ill-formed, and a resolution such as in <a href="http://wg21.link/p0185r1">P0185R1</a> is required.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4840">N4840</a>.
+</p>
+
+<ol>
+<li><p>Modify  [fund.ts.v3::propagate_const.syn], header <tt>&lt;experimental/propagate_const&gt;</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+<i>// 3.2.2.9 [fund.ts.v3::propagate_const.algorithms], propagate_const specialized algorithms</i>
+template &lt;class T&gt;
+  constexpr void swap(propagate_const&lt;T&gt;&amp; pt, propagate_const&lt;T&gt;&amp; pt2) noexcept(<del><i>see below</i></del><ins>is_nothrow_swappable_v&lt;T&gt;</ins>);
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 3.2.2.1 [fund.ts.v3::propagate_const.overview], class template <tt>propagate_const</tt> synopsis, 
+as indicated:</p>
+
+<blockquote>
+<pre>
+<i>// 3.2.2.7 [fund.ts.v3::propagate_const.modifiers], propagate_const modifiers</i>
+constexpr void swap(propagate_const&amp; pt) noexcept(<del><i>see below</i></del><ins>is_nothrow_swappable_v&lt;T&gt;</ins>);
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 3.2.2.7 [fund.ts.v3::propagate_const.modifiers] as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr void swap(propagate_const&amp; pt) noexcept(<del><i>see below</i></del><ins>is_nothrow_swappable_v&lt;T&gt;</ins>);
+</pre>
+<blockquote>
+<p>
+<del>-2- The constant-expression in the exception-specification is <tt>noexcept(swap(t_, pt.t_))</tt>.</del>
+<p/>
+-3- <i>Effects:</i> <tt>swap(t_, pt.t_)</tt>. 
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 3.2.2.9 [fund.ts.v3::propagate_const.algorithms] as indicated:</p>
+
+<blockquote>
+<pre>
+template &lt;class T&gt;
+  constexpr void swap(propagate_const&lt;T&gt;&amp; pt1, propagate_const&lt;T&gt;&amp; pt2) noexcept(<del><i>see below</i></del><ins>is_nothrow_swappable_v&lt;T&gt;</ins>);
+</pre>
+<blockquote>
+<p>
+<del>-2- The constant-expression in the exception-specification is <tt>noexcept(pt1.swap(pt2))</tt>.</del>
+<p/>
+-3- <i>Effects:</i> <tt>pt1.swap(pt2)</tt>. 
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
