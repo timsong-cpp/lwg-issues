@@ -53,7 +53,7 @@ static std::string build_timestamp;
 
 static std::string const maintainer_email{"lwgchair@gmail.com"};
 
-static std::string const maintainer_name{"Marshall Clow"};
+static std::string const maintainer_name{"Jonathan Wakely"};
 
 
 struct order_by_first_tag {
