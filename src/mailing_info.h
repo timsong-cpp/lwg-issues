@@ -19,6 +19,8 @@ struct mailing_info {
    auto get_revision() const -> std::string;
    auto get_revisions(std::vector<issue> const & issues, std::string const & diff_report) const -> std::string;
    auto get_statuses() const -> std::string;
+   auto get_date() const -> std::string;
+   auto get_title() const -> std::string;
 
 private:
    auto get_attribute(std::string const & attribute_name) const -> std::string;

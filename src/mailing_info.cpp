@@ -39,7 +39,7 @@ void replace_all_irefs(std::vector<lwg::issue> const & issues, std::string & s) 
       }
 
       auto n = std::lower_bound(issues.begin(), issues.end(), num, lwg::order_by_issue_number{});
-      if (n->num != num) {
+      if (n == issues.end() || n->num != num) {
          std::ostringstream er;
          er << "couldn't find number " << num << " in iref";
          throw std::runtime_error{er.str()};
@@ -202,6 +202,13 @@ auto mailing_info::get_statuses() const -> std::string {
    return m_data.substr(i, j-i);
 }
 
+auto mailing_info::get_date() const -> std::string {
+   return get_attribute("date");
+}
+
+auto mailing_info::get_title() const -> std::string {
+   return get_attribute("title");
+}
 
 auto mailing_info::get_attribute(std::string const & attribute_name) const -> std::string {
     std::string search_string{attribute_name + "=\""};

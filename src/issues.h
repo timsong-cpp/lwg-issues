@@ -10,6 +10,7 @@
 // solution specific headers
 #include "date.h"
 #include "sections.h"
+#include "status.h"
 
 namespace lwg
 {
@@ -41,36 +42,11 @@ struct order_by_issue_number {
 auto parse_issue_from_file(std::string file_contents, std::string const & filename, lwg::section_map & section_db) -> issue;
   // Seems appropriate constructor behavior.
   //
-  // Note that 'section_db' is modifiable as new (unkonwn) sections may be inserted,
+  // Note that 'section_db' is modifiable as new (unknown) sections may be inserted,
   // typically for issues reported against older documents with sections that have
   // since been removed, replaced or merged.
   //
   // The filename is passed only to improve diagnostics.
-
-
-// status string utilities - should probably factor into yet another file.
-
-auto filename_for_status(std::string stat) -> std::string;
-
-auto get_status_priority(std::string const & stat) noexcept -> std::ptrdiff_t;
-
-// this predicate API should probably switch to 'std::experimental::string_view'
-auto is_active(std::string const & stat) -> bool;
-auto is_active_not_ready(std::string const & stat) -> bool;
-auto is_defect(std::string const & stat) -> bool;
-auto is_closed(std::string const & stat) -> bool;
-auto is_tentative(std::string const & stat) -> bool;
-auto is_not_resolved(std::string const & stat) -> bool;
-auto is_assigned_to_another_group(std::string const & stat) -> bool;
-auto is_votable(std::string stat) -> bool;
-auto is_ready(std::string stat) -> bool;
-
-// Functions to "normalize" a status string
-// Might profitable switch to 'experimental/string_view'
-auto remove_pending(std::string stat) -> std::string;
-auto remove_tentatively(std::string stat) -> std::string;
-auto remove_qualifier(std::string const & stat) -> std::string;
-
 
 } // close namespace lwg
 

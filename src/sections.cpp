@@ -1,30 +1,10 @@
 #include "sections.h"
 
 #include <cassert>
-#include <istream>
-#include <ostream>
 #include <sstream>
 #include <iostream>
 #include <cctype>
-
-#if !defined(CPP14_LIBRARY_IS_NEEDED_FOR_STD_EXCHANGE)
-// This should be part of <utility> in C++14 lib
-// Should also be more efficient than using ostringstream!
-// Will be available soon when assuming libc++ with Clang 3.4, or gcc 4.9 and later
-namespace {
-
-  template <typename TYPE, typename V_TYPE>
-  auto exchange(TYPE & object, V_TYPE && value) -> TYPE {
-    auto result = object;
-    object = std::forward<V_TYPE>(value);
-    return result;
-  }
-
-} // close unnamed namespace
-#else
 #include <utility>
-using std::exchange;
-#endif
 
 auto lwg::operator<(section_tag const & x, section_tag const & y) noexcept -> bool {
    return (x.prefix < y.prefix) ?  true
@@ -118,7 +98,7 @@ auto lwg::operator << (std::ostream& os, section_num const & sn) -> std::ostream
 
    bool use_period{false};
    for (auto sub : sn.num ) {
-      if (exchange(use_period, true)) {
+      if (std::exchange(use_period, true)) {
          os << '.';
       }
 

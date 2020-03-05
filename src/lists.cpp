@@ -2,38 +2,10 @@
 // If all documents are successfully parsed, it will generate the standard LWG Issues List documents
 // for an ISO SC22 WG21 mailing.
 
-// Based on code originally donated by Howard Hinnant
-// Since modified by Alisdair Meredith
+// Based on code originally donated by Howard Hinnant.
+// Since modified by Alisdair Meredith and modernised by Jonathan Wakely.
 
-// Note that this program requires a reasonably conformant C++11 compiler, supporting at least:
-//    auto
-//    lambda expressions
-//    brace-initialization
-//    range-based for loops
-//    raw string literals
-//    constexpr
-//    new function syntax (late specified return type)
-//    noexcept
-//    new type-alias syntax (using my_name = type)
-
-// Likewise, the following C++11 library facilities are used:
-//    to_string
-//    consistent overloading of 'char const *' and 'std::string'
-
-// Following the planned removal of (deprecated) bool post-increment operator, we now
-// require the following C++14 library facilities:
-//    exchange
-
-// The following C++14 features are being considered for future cleanup/refactoring:
-//    polymorphic lambdas
-//    string UDLs
-
-// The following TS features are also desirable
-//    filesystem
-//    string_view
-
-// Its coding style assumes a standard library optimized with move-semantics
-// The only known compiler to support all of this today is the experimental gcc trunk (4.6)
+// Note that this program requires a C++17 compiler supporting std::filesystem.
 
 // TODO
 // .  Grouping of issues in "Clause X" by TR/TS
@@ -47,7 +19,6 @@
 
 // Missing standard facilities that we work around
 // . Date
-// . Filesystem navigation
 
 // Missing standard library facilities that would probably not change this program
 // . XML parser
@@ -70,12 +41,8 @@
 #include <tuple>
 #include <vector>
 
-// platform headers - requires a Posix compatible platform
-// The hope is to replace all of this with the filesystem TS
-#include <dirent.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 // solution specific headers
 #include "date.h"
@@ -85,31 +52,13 @@
 #include "sections.h"
 
 
-#if 0
-// Revisit this after AJM works out linker issues on his Mac
-#if 1
-// workaround until <experimental/filesystem> is widely available:
-##include <boost/filesystem.hpp>
-namespace std {
-namespace experimental {
-namespace filesystem {
-using namespace boost::filesystem;
-}
-}
-}
-#else
-#include <experimental/filesystem>
-#endif
-#endif
-
-
-auto read_file_into_string(std::string const & filename) -> std::string {
+auto read_file_into_string(fs::path const & filename) -> std::string {
    // read a text file completely into memory, and return its contents as
    // a 'string' for further manipulation.
 
-   std::ifstream infile{filename.c_str()};
+   std::ifstream infile{filename};
    if (!infile.is_open()) {
-      throw std::runtime_error{"Unable to open file " + filename};
+      throw std::runtime_error{"Unable to open file " + filename.string()};
    }
 
    std::istreambuf_iterator<char> first{infile}, last{};
@@ -119,26 +68,24 @@ auto read_file_into_string(std::string const & filename) -> std::string {
 // Issue-list specific functionality for the rest of this file
 // ===========================================================
 
-auto read_issues(std::string const & issues_path, lwg::section_map & section_db) -> std::vector<lwg::issue> {
+auto is_issue_xml_file(fs::directory_entry const & e) {
+   if (e.is_regular_file()) {
+      fs::path f = e.path().filename();
+      return f.string().compare(0, 5, "issue") == 0 && f.extension() == ".xml";
+   }
+   return false;
+}
+
+auto read_issues(fs::path const & issues_path, lwg::section_map & section_db) -> std::vector<lwg::issue> {
    // Open the specified directory, 'issues_path', and iterate all the '.xml' files
    // it contains, parsing each such file as an LWG issue document.  Return the set
    // of issues as a vector.
-   //
-   // The current implementation relies directly on POSIX headers, but the preferred
-   // direction for the future is to switch over to the filesystem TS using directory
-   // iterators.
-
-   std::unique_ptr<DIR, int(&)(DIR*)> dir{opendir(issues_path.c_str()), closedir};
-   if (!dir) {
-      throw std::runtime_error{"Unable to open issues dir"};
-   }
 
    std::vector<lwg::issue> issues{};
-   while ( dirent* entry = readdir(dir.get()) ) {
-      std::string const issue_file{ entry->d_name };
-      if (0 == issue_file.find("issue") ) {
-         auto const filename = issues_path + issue_file;
-         issues.emplace_back(parse_issue_from_file(read_file_into_string(filename), filename, section_db));
+   for (auto ent : fs::directory_iterator(issues_path)) {
+      if (is_issue_xml_file(ent)) {
+         fs::path const issue_file = ent.path();
+         issues.emplace_back(parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), section_db));
       }
    }
 
@@ -688,40 +635,38 @@ void print_current_revisions( std::ostream & out
 
 // ============================================================================================================
 
-void check_is_directory(std::string const & directory) {
-  struct stat sb;
-  if (stat(directory.c_str(), &sb) != 0 || !S_ISDIR(sb.st_mode))
-    throw std::runtime_error(directory + " is not an existing directory");
+void check_is_directory(fs::path const & directory) {
+   if (!is_directory(directory)) {
+      throw std::runtime_error(directory.string() + " is not an existing directory");
+   }
 }
 
 int main(int argc, char* argv[]) {
    try {
-      std::string path;
+      fs::path path;
+      bool revhist = false;
       std::cout << "Preparing new LWG issues lists..." << std::endl;
       if (argc == 2) {
          path = argv[1];
       }
       else {
-         char cwd[1024];
-         if (getcwd(cwd, sizeof(cwd)) == 0) {
-            std::cout << "unable to getcwd\n";
-            return 1;
-         }
-         path = cwd;
+         path = fs::current_path();
+
+         if (argc == 3 && std::string(argv[1]) == "revision" && std::string(argv[2]) == "history")
+            revhist = true;
       }
 
-      if (path.back() != '/') { path += '/'; }
       check_is_directory(path);
 	  
-      const std::string target_path{path + "mailing/"};
+      const fs::path target_path{path / "mailing/"};
       check_is_directory(target_path);
 	  
 
       lwg::section_map section_db =[&path]() {
-         auto filename = path + "meta-data/section.data";
+         auto filename = path / "meta-data/section.data";
          std::ifstream infile{filename};
          if (!infile.is_open()) {
-            throw std::runtime_error{"Can't open section.data at " + path + "meta-data"};
+            throw std::runtime_error{"Can't open section.data at " + path.string() + "meta-data"};
          }
          std::cout << "Reading section-tag index from: " << filename << std::endl;
 
@@ -737,15 +682,15 @@ int main(int argc, char* argv[]) {
       }
 #endif
  
-      auto const old_issues = read_issues_from_toc(read_file_into_string(path + "meta-data/lwg-toc.old.html"));
+      auto const old_issues = read_issues_from_toc(read_file_into_string(path / "meta-data/lwg-toc.old.html"));
 
-      auto const issues_path = path + "xml/";
+      auto const issues_path = path / "xml/";
 
       lwg::mailing_info lwg_issues_xml = [&issues_path](){
-         std::string filename{issues_path + "lwg-issues.xml"};
+         fs::path filename{issues_path / "lwg-issues.xml"};
          std::ifstream infile{filename};
          if (!infile.is_open()) {
-            throw std::runtime_error{"Unable to open " + filename};
+            throw std::runtime_error{"Unable to open " + filename.string()};
          }
 
          return lwg::mailing_info{infile};
@@ -769,6 +714,14 @@ int main(int argc, char* argv[]) {
       // Collect a report on all issues that have changed status
       // This will be added to the revision history of the 3 standard documents
       auto const new_issues = prepare_issues_for_diff_report(issues);
+
+      if (revhist) {
+         std::cout << "\n<revision tag=\"" << lwg_issues_xml.get_revision() << "\">\n"
+            << lwg_issues_xml.get_title() << '\n';
+         print_current_revisions(std::cout, old_issues, new_issues);
+         std::cout << "</revision>\n";
+         return 0;
+      }
 
       std::ostringstream os_diff_report;
       print_current_revisions(os_diff_report, old_issues, new_issues );
@@ -804,32 +757,32 @@ int main(int argc, char* argv[]) {
 
       // Now we have a parsed and formatted set of issues, we can write the standard set of HTML documents
       // Note that each of these functions is going to re-sort the 'issues' vector for its own purposes
-      generator.make_sort_by_num            (issues, {target_path + "lwg-toc.html"});
-      generator.make_sort_by_status         (issues, {target_path + "lwg-status.html"});
-      generator.make_sort_by_status_mod_date(issues, {target_path + "lwg-status-date.html"});  // this report is useless, as git checkouts touch filestamps
-      generator.make_sort_by_section        (issues, {target_path + "lwg-index.html"});
+      generator.make_sort_by_num            (issues, {target_path / "lwg-toc.html"});
+      generator.make_sort_by_status         (issues, {target_path / "lwg-status.html"});
+      generator.make_sort_by_status_mod_date(issues, {target_path / "lwg-status-date.html"});  // this report is useless, as git checkouts touch filestamps
+      generator.make_sort_by_section        (issues, {target_path / "lwg-index.html"});
 
       // Note that this additional document is very similar to unresolved-index.html below
-      generator.make_sort_by_section        (issues, {target_path + "lwg-index-open.html"}, true);
+      generator.make_sort_by_section        (issues, {target_path / "lwg-index-open.html"}, true);
 
       // Make a similar set of index documents for the issues that are 'live' during a meeting
       // Note that these documents want to reference each other, rather than lwg- equivalents,
       // although it may not be worth attempting fix-ups as the per-issue level
       // During meetings, it would be good to list newly-Ready issues here
-      generator.make_sort_by_num            (unresolved_issues, {target_path + "unresolved-toc.html"});
-      generator.make_sort_by_status         (unresolved_issues, {target_path + "unresolved-status.html"});
-      generator.make_sort_by_status_mod_date(unresolved_issues, {target_path + "unresolved-status-date.html"});
-      generator.make_sort_by_section        (unresolved_issues, {target_path + "unresolved-index.html"});
-      generator.make_sort_by_priority       (unresolved_issues, {target_path + "unresolved-prioritized.html"});
+      generator.make_sort_by_num            (unresolved_issues, {target_path / "unresolved-toc.html"});
+      generator.make_sort_by_status         (unresolved_issues, {target_path / "unresolved-status.html"});
+      generator.make_sort_by_status_mod_date(unresolved_issues, {target_path / "unresolved-status-date.html"});
+      generator.make_sort_by_section        (unresolved_issues, {target_path / "unresolved-index.html"});
+      generator.make_sort_by_priority       (unresolved_issues, {target_path / "unresolved-prioritized.html"});
 
       // Make another set of index documents for the issues that are up for a vote during a meeting
       // Note that these documents want to reference each other, rather than lwg- equivalents,
       // although it may not be worth attempting fix-ups as the per-issue level
       // Between meetings, it would be good to list Ready issues here
-      generator.make_sort_by_num            (votable_issues, {target_path + "votable-toc.html"});
-      generator.make_sort_by_status         (votable_issues, {target_path + "votable-status.html"});
-      generator.make_sort_by_status_mod_date(votable_issues, {target_path + "votable-status-date.html"});
-      generator.make_sort_by_section        (votable_issues, {target_path + "votable-index.html"});
+      generator.make_sort_by_num            (votable_issues, {target_path / "votable-toc.html"});
+      generator.make_sort_by_status         (votable_issues, {target_path / "votable-status.html"});
+      generator.make_sort_by_status_mod_date(votable_issues, {target_path / "votable-status-date.html"});
+      generator.make_sort_by_section        (votable_issues, {target_path / "votable-index.html"});
 
       std::cout << "Made all documents\n";
    }

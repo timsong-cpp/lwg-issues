@@ -13,51 +13,31 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <ctime>
 
-// platform headers - requires a Posix compatible platform
-// The hope is to replace all of this with the filesystem TS
-#include <dirent.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 // solution specific headers
 //#include "issues.h"
 //#include "sections.h"
-
-
-#if 0
-// Revisit this after AJM works out linker issues on his Mac
-#if 1
-// workaround until <experimental/filesystem> is widely available:
-##include <boost/filesystem.hpp>
-namespace std {
-namespace experimental {
-namespace filesystem {
-using namespace boost::filesystem;
-}
-}
-}
-#else
-#include <experimental/filesystem>
-#endif
-#endif
+#include "status.h"
 
 struct bad_issue_file : std::runtime_error {
-   bad_issue_file(std::string const & filename, std::string const & error_message)
-      : runtime_error{"Error parsing issue file " + filename + ": " + error_message}
+   bad_issue_file(fs::path const & filename, std::string const & error_message)
+      : runtime_error{"Error parsing issue file " + filename.string() + ": " + error_message}
       {
    }
 };
 
 
-auto read_file_into_string(std::string const & filename) -> std::string {
+auto read_file_into_string(fs::path const & filename) -> std::string {
    // read a text file completely into memory, and return its contents as
    // a 'string' for further manipulation.
 
-   std::ifstream infile{filename.c_str()};
+   std::ifstream infile{filename};
    if (!infile.is_open()) {
-      throw std::runtime_error{"Unable to open file " + filename};
+      throw std::runtime_error{"Unable to open file " + filename.string()};
    }
 
    std::istreambuf_iterator<char> first{infile}, last{};
@@ -66,10 +46,9 @@ auto read_file_into_string(std::string const & filename) -> std::string {
 
 // ============================================================================================================
 
-void check_is_directory(std::string const & directory) {
-   struct stat sb;
-   if (stat(directory.c_str(), &sb) != 0 or !S_ISDIR(sb.st_mode)) {
-      throw std::runtime_error(directory + " is not an existing directory");
+void check_is_directory(fs::path const & directory) {
+   if (!is_directory(directory)) {
+      throw std::runtime_error(directory.string() + " is not an existing directory");
    }
 }
 
@@ -77,8 +56,8 @@ int main(int argc, char const * argv[]) {
    try {
 //       bool trace_on{false};  // Will pick this up from the command line later
 
-      if (argc != 3) {
-         std::cerr << "Must specify exactly one issue, followed by its new status\n";
+      if (argc != 3 && argc != 4) {
+         std::cerr << "Must specify exactly one issue, followed by its new status, followed by an optional comment.\n";
 //         for (auto arg : argv) {
          for (int i{0}; argc != i;  ++i) {
             char const * arg = argv[i];
@@ -91,20 +70,15 @@ int main(int argc, char const * argv[]) {
 
       std::string new_status{argv[2]};
       std::replace(new_status.begin(), new_status.end(), '_', ' ');  // simplifies unix shell scripting
-  
-      std::string path;
-      char cwd[1024];
-      if (getcwd(cwd, sizeof(cwd)) == 0) {
-         std::cerr << "unable to getcwd\n";
-         return -3;
-      }
-      path = cwd;
-      if (path.back() != '/') { path.push_back('/'); }
+
+      std::string const comment = argc == 4 ? argv[3] : std::string{};
+
+      fs::path path = fs::current_path();
 
       check_is_directory(path);
 
       std::string issue_file = std::string{"issue"} + argv[1] + ".xml";
-      auto const filename = path + "xml/" + issue_file;
+      auto const filename = path / "xml" / issue_file;
 
       auto issue_data = read_file_into_string(filename);
 
@@ -131,11 +105,31 @@ int main(int argc, char const * argv[]) {
       if (l == std::string::npos) {
          throw bad_issue_file{filename, "Corrupt status attribute"};
       }
+      auto old_status = issue_data.substr(k, l-k);
       issue_data.replace(k, l-k, new_status);
+
+      if(lwg::filename_for_status(new_status) != lwg::filename_for_status(old_status)) {
+         // when performing a major status change, record the date and change as a note
+         auto eod = issue_data.find("</discussion>");
+         if(eod == std::string::npos) {
+             throw bad_issue_file{filename, "Unable to find end of discussion"};
+         }
+         std::time_t t{ std::time(nullptr) };
+         std::tm utc = *std::gmtime(&t);
+         char date[11]; // YYYY-mm-dd + null
+         if(std::strftime(&date[0], sizeof date, "%Y-%m-%d", &utc) != (sizeof date - 1))
+            throw std::logic_error("Datestamp size is borked");
+         std::ostringstream note;
+         note << "<note>" << date;
+         if (comment.size())
+            note << ' ' << comment << '.';
+         note << " Status changed: " + old_status + " &rarr; " + new_status + ".</note>\n";
+         issue_data.insert(eod, note.str());
+      }
 
       std::ofstream out_file{filename};
       if (!out_file.is_open()) {
-         throw std::runtime_error{"Unable to re-open file " + filename};
+         throw std::runtime_error{"Unable to re-open file " + filename.string()};
       }
 
       out_file << issue_data;
