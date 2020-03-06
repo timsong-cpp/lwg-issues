@@ -3,8 +3,11 @@
 
 #include <string>
 #include <vector>
+#include <filesystem>
 
 #include "issues.h"  // cannot forward declare the 'section_map' alias, nor the 'LwgIssuesXml' alias
+
+namespace fs = std::filesystem;
 
 namespace lwg
 {
@@ -24,39 +27,39 @@ struct report_generator {
    // A precondition for calling any of these functions is that the list of issues is sorted in numerical order, by issue number.
    // While nothing disasterous will happen if this precondition is violated, the published issues list will list items
    // in the wrong order.
-   void make_active(std::vector<issue> const & issues, std::string const & path, std::string const & diff_report);
+   void make_active(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report);
 
-   void make_defect(std::vector<issue> const & issues, std::string const & path, std::string const & diff_report);
+   void make_defect(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report);
 
-   void make_closed(std::vector<issue> const & issues, std::string const & path, std::string const & diff_report);
+   void make_closed(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report);
 
    // Additional non-standard documents, useful for running LWG meetings
-   void make_tentative(std::vector<issue> const & issues, std::string const & path);
+   void make_tentative(std::vector<issue> const & issues, fs::path const & path);
       // publish a document listing all tentative issues that may be acted on during a meeting.
 
 
-   void make_unresolved(std::vector<issue> const & issues, std::string const & path);
+   void make_unresolved(std::vector<issue> const & issues, fs::path const & path);
       // publish a document listing all non-tentative, non-ready issues that must be reviewed during a meeting.
 
-   void make_immediate(std::vector<issue> const & issues, std::string const & path);
+   void make_immediate(std::vector<issue> const & issues, fs::path const & path);
       // publish a document listing all non-tentative, non-ready issues that must be reviewed during a meeting.
 
-   void make_ready(std::vector<issue> const & issues, std::string const & path);
+   void make_ready(std::vector<issue> const & issues, fs::path const & path);
       // publish a document listing all ready issues for a formal vote
 
-   void make_sort_by_num(std::vector<issue>& issues, std::string const & filename);
+   void make_sort_by_num(std::vector<issue>& issues, fs::path const & filename);
 
-   void make_sort_by_priority(std::vector<issue>& issues, std::string const & filename);
+   void make_sort_by_priority(std::vector<issue>& issues, fs::path const & filename);
 
-   void make_sort_by_status(std::vector<issue>& issues, std::string const & filename);
+   void make_sort_by_status(std::vector<issue>& issues, fs::path const & filename);
 
-   void make_sort_by_status_mod_date(std::vector<issue> & issues, std::string const & filename);
+   void make_sort_by_status_mod_date(std::vector<issue> & issues, fs::path const & filename);
 
-   void make_sort_by_section(std::vector<issue>& issues, std::string const & filename, bool active_only = false);
+   void make_sort_by_section(std::vector<issue>& issues, fs::path const & filename, bool active_only = false);
 
-   void make_editors_issues(std::vector<issue> const & issues, std::string const & path);
+   void make_editors_issues(std::vector<issue> const & issues, fs::path const & path);
 
-   void make_individual_issues(std::vector<issue> const & issues, std::string const & path);
+   void make_individual_issues(std::vector<issue> const & issues, fs::path const & path);
 
    static void set_timestamp_from_issues(std::vector<issue> const & issues);
 

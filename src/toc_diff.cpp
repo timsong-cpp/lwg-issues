@@ -9,9 +9,9 @@
 #include <map>
 #include <algorithm>
 #include <string>
+#include <filesystem>
 
-// platform headers
-#include <unistd.h>
+namespace fs = std::filesystem;
 
 // DEBUG VISUALIZATION TOOL ONLY
 void display_issues(std::vector<std::pair<int, std::string> > const & issues) {
@@ -93,7 +93,7 @@ auto read_issues(std::istream& is) -> std::vector<std::pair<int, std::string> > 
    //    First we read the whole stream into a single 'string'
    //    Then we search the string for the first <tr> marker
    //       The first row is the title row and does not contain an issue.
-   //       If cannt find the first row, we flag an error and exit
+   //       If we cannot find the first row, we flag an error and exit
    //    Next we loop through the string, searching for <tr> markers to indicate the start of each issue
    //       We parse the issue number and status from each row, and append a record to the result vector
    //       If any parse fails, throw a runtime_error
@@ -329,10 +329,10 @@ void print_current_revisions( std::ostream & out
 }
 
 
-auto read_issues(std::string const & filename) -> std::vector<std::pair<int, std::string> > {
-   std::ifstream new_html{filename.c_str()};
+auto read_issues(fs::path const & filename) -> std::vector<std::pair<int, std::string> > {
+   std::ifstream new_html{filename};
    if(!new_html.is_open()) {
-      throw std::runtime_error{"Unable to open toc file: " + filename};
+      throw std::runtime_error{"Unable to open toc file: " + filename.string()};
    }
    return read_issues(new_html);
 }
@@ -340,23 +340,16 @@ auto read_issues(std::string const & filename) -> std::vector<std::pair<int, std
 
 int main (int argc, char* const argv[]) {
    try {
-      std::string path;
-      if(2 == argc) {
+      fs::path path;
+      if (2 == argc) {
          path = argv[1];
       }
       else {
-         char cwd[1024];
-         if (getcwd(cwd, sizeof(cwd)) == 0) {
-            std::cout << "unable to getcwd\n";
-            return 1;
-         }
-         path = cwd;
+         path = fs::current_path();
       }
 
-      if (path.back() != '/') { path += '/'; }
-
-      auto const old_issues = read_issues(path + "meta-data/lwg-toc.old.html");
-      auto const new_issues = read_issues(path + "lwg-toc.html");
+      auto const old_issues = read_issues(path / "meta-data" / "lwg-toc.old.html");
+      auto const new_issues = read_issues(path / "lwg-toc.html");
 
       print_current_revisions(std::cout, old_issues, new_issues );
    }

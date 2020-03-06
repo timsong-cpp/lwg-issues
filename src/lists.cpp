@@ -102,7 +102,7 @@ auto read_issues_from_toc(std::string const & s) -> std::vector<std::tuple<int, 
    //    First we read the whole stream into a single 'string'
    //    Then we search the string for the first <tr> marker
    //       The first row is the title row and does not contain an issue.
-   //       If cannt find the first row, we flag an error and exit
+   //       If we cannot find the first row, we flag an error and exit
    //    Next we loop through the string, searching for <tr> markers to indicate the start of each issue
    //       We parse the issue number and status from each row, and append a record to the result vector
    //       If any parse fails, throw a runtime_error
@@ -153,7 +153,7 @@ void format_issue_as_html(lwg::issue & is,
                           std::vector<lwg::issue>::iterator first_issue,
                           std::vector<lwg::issue>::iterator last_issue,
                           lwg::section_map & section_db) {
-   // Reformt the issue text for the specified 'is' as valid HTML, replacing all the issue-list
+   // Reformat the issue text for the specified 'is' as valid HTML, replacing all the issue-list
    // specific XML markup as appropriate:
    //   tag             replacement
    //   ---             ----------- 
@@ -453,7 +453,7 @@ auto operator<<( std::ostream & out, list_issues const & x) -> std::ostream & {
 
 
 struct find_num {
-   // Predidate functor useful to find issue 'y' in a mapping of issue-number -> some string.
+   // Predicate functor useful to find issue 'y' in a mapping of issue-number -> some string.
     bool operator()(std::tuple<int, std::string> const & x, int y) const noexcept {
       return std::get<0>(x) < y;
    }
@@ -658,12 +658,12 @@ int main(int argc, char* argv[]) {
 
       check_is_directory(path);
 	  
-      const fs::path target_path{path / "mailing/"};
+      const fs::path target_path{path / "mailing"};
       check_is_directory(target_path);
 	  
 
       lwg::section_map section_db =[&path]() {
-         auto filename = path / "meta-data/section.data";
+         auto filename = path / "meta-data" / "section.data";
          std::ifstream infile{filename};
          if (!infile.is_open()) {
             throw std::runtime_error{"Can't open section.data at " + path.string() + "meta-data"};
@@ -682,9 +682,9 @@ int main(int argc, char* argv[]) {
       }
 #endif
  
-      auto const old_issues = read_issues_from_toc(read_file_into_string(path / "meta-data/lwg-toc.old.html"));
+      auto const old_issues = read_issues_from_toc(read_file_into_string(path / "meta-data" / "lwg-toc.old.html"));
 
-      auto const issues_path = path / "xml/";
+      auto const issues_path = path / "xml";
 
       lwg::mailing_info lwg_issues_xml = [&issues_path](){
          fs::path filename{issues_path / "lwg-issues.xml"};
