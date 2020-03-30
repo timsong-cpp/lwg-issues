@@ -1,0 +1,96 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3420: cpp17-iterator should check that the type looks like an iterator first</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3420" href="lwg-active.html#3420">3420.</a> <tt><i>cpp17-iterator</i></tt> should check that the type looks like an iterator first</h3>
+<p><b>Section:</b> 23.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-02-29 <b>Last modified:</b> 2020-03-30 15:43:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.traits">active issues</a> in [iterator.traits].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.traits">issues</a> in [iterator.traits].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It is common in pre-C++20 code to rely on SFINAE-friendly <tt>iterator_traits</tt> 
+to rule out non-iterators in template constraints (<tt>std::filesystem::path</tt> 
+is one example in the standard library).
+<p/>
+C++20 changed <tt>iterator_traits</tt> to automatically detect its members in
+some cases, and this detection can cause constraint recursion. LWG <a href="3244">3244</a> 
+tries to fix this for <tt>path</tt> by short-circuiting the check when the source type is 
+<tt>path</tt> itself, but this isn't sufficient:
+</p>
+<blockquote><pre>
+struct Foo 
+{
+  Foo(const std::filesystem::path&amp;);
+};
+
+static_assert(std::copyable&lt;Foo&gt;);
+</pre></blockquote>
+<p>
+Here the copyability determination will ask whether a <tt>path</tt> can be
+constructed from a <tt>Foo</tt>, which asks whether <tt>Foo</tt> is an iterator, which
+checks whether <tt>Foo</tt> is <tt>copyable</tt> [&hellip;].
+<p/>
+To reduce the risk of constraint recursion, we should change <tt><i>cpp17-iterator</i></tt> 
+so that it does not ask about copyability until the type is known to resemble an iterator.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wiki.edg.com/pub/Wg21summer2020/Documents/post-prague-wd.pdf">the 
+post-Prague working draft preview</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/iterator.traits">[iterator.traits]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The definitions in this subclause make use of the following exposition-only concepts:
+</p>
+<blockquote>
+<pre>
+template&lt;class I&gt;
+concept <i>cpp17-iterator</i> =
+  <del>copyable&lt;I&gt; &amp;&amp;</del> requires(I i) {
+    { *i } -&gt; <i>can-reference</i>;
+    { ++i } -&gt; same_as&lt;I&amp;&gt;;
+    { *i++ } -&gt; <i>can-reference</i>;
+  } <ins>&amp;&amp; copyable&lt;I&gt;</ins>;
+  
+[&hellip;]
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
