@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3422: Issues of seed_seq's constructors</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3422" href="lwg-active.html#3422">3422.</a> Issues of <tt>seed_seq</tt>'s constructors</h3>
+<p><b>Section:</b> 26.6.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2020-03-25 <b>Last modified:</b> 2020-04-04 19:55:09 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#rand.util.seedseq">active issues</a> in [rand.util.seedseq].</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.util.seedseq">issues</a> in [rand.util.seedseq].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+26.6.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a> says that <tt>std::seed_seq</tt> has following 3 constructors:
+<p/>
+<ol style="list-style-type: none">
+<li><p>#1: <tt>seed_seq()</tt></p></li>
+<li><p>#2: <tt>template&lt;class T&gt; seed_seq(initializer_list&lt;T&gt; il)</tt></p></li>
+<li><p>#3: <tt>template&lt;class InputIterator&gt; seed_seq(InputIterator begin, InputIterator end)</tt></p></li>
+</ol>
+<p/>
+The default constructor (#1) has no precondition and does not throw, and <tt>vector&lt;result_type&gt;</tt>'s default 
+constructor is already <tt>noexcept</tt> since C++17, so #1 should also be <tt>noexcept</tt>.
+<p/>
+Despite that the <tt>vector&lt;result_type&gt;</tt> member is exposition-only, current implementations (at least 
+<a href="https://github.com/llvm-mirror/libcxx/blob/master/include/random#L3523">libc++</a>, 
+<a href="https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/include/bits/random.h#L6090">libstdc++</a> and 
+<a href="https://github.com/microsoft/STL/blob/master/stl/inc/random#L259">MSVC STL</a>) all hold it as the only 
+data member of <tt>seed_seq</tt>, even with different names. And #1 is already <tt>noexcept</tt> in libc++ and libstdc++.
+<p/>
+These constructors are not constrained, so #3 would never be matched in list-initialization. Consider following code:
+</p>
+<blockquote><pre>
+#include &lt;random&gt;
+#include &lt;vector&gt;
+
+int main()
+{
+  std::vector&lt;int&gt; v(32);
+  std::seed_seq{std::begin(v), std::end(v)}; // error: #2 matched and T is not an integer type
+  std::seed_seq(std::begin(v), std::end(v)); // OK
+}
+</pre></blockquote>
+<p>
+#3 should be made available in list-initialization by changing <i>Mandates</i> in 
+26.6.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a>/3 to <i>Constraints</i> IMO.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wiki.edg.com/pub/Wg21summer2020/Documents/post-prague-wd.pdf">the 
+post-Prague working draft preview</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.7.1 <a href="https://timsong-cpp.github.io/cppwp/rand.util.seedseq">[rand.util.seedseq]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+class seed_seq {
+public:
+  <i>// types</i>
+  using result_type = uint_least32_t;
+
+  <i>// constructors</i>
+  seed_seq() <ins>noexcept</ins>;
+  [&hellip;]
+};
+</pre>
+</blockquote>
+<blockquote>
+<pre>
+seed_seq() <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Postconditions:</i> <tt>v.empty()</tt> is <tt>true</tt>.
+<p/>
+<del>-2- <i>Throws:</i> Nothing.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  seed_seq(initializer_list&lt;T&gt; il);
+</pre>
+<blockquote>
+<p>
+-3- <i><ins>Constraints</ins><del>Mandates</del>:</i> <tt>T</tt> is an integer type.
+<p/>
+-4- <i>Effects:</i> Same as <tt>seed_seq(il.begin(), il.end())</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
