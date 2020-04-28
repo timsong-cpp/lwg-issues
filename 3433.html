@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3433: subrange::advance(n) has UB when n &lt; 0</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3433" href="lwg-active.html#3433">3433.</a> <tt>subrange::advance(n)</tt> has UB when <tt>n &lt; 0</tt></h3>
+<p><b>Section:</b> 24.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-21 <b>Last modified:</b> 2020-04-25 11:55:10 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>subrange::advance(n)</tt> is specified to call <tt>ranges::advance(<i>begin_</i>, n, <i>end_</i>)</tt> 
+in both <tt><i>StoreSize</i></tt> and <tt>!<i>StoreSize</i></tt> cases (24.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a>/9). 
+Unfortunately, <tt>ranges::advance(<i>begin_</i>, n, <i>end_</i>)</tt> has undefined behavior when 
+<tt>n &lt; 0</tt> unless <tt>[<i>end_</i>, <i>begin_</i>)</tt> denotes a valid range 
+(23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>/5). This would all be perfectly fine &mdash; the UB is exposed to 
+the caller via effects-equivalent-to &mdash; were it not the design intent that <tt>subrange::advance(-n)</tt> 
+be usable to reverse the effects of <tt>subrange::advance(n)</tt> when the <tt>subrange</tt> has a 
+bidirectional iterator type. That is, however, clearly the design intent: <tt>subrange::prev()</tt>, 
+for example, is equivalent to <tt>subrange::advance(-1)</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr subrange&amp; advance(iter_difference_t&lt;I&gt; n);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to:
+<ol style="list-style-type: none">
+<li><p><del>(9.1) &mdash; If <tt><i>StoreSize</i></tt> is <tt>true</tt>,</del></p>
+<blockquote><pre>
+<del>auto d = n - ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+if (d &gt;= 0)
+  <i>size_</i> -= <i>to-unsigned-like</i>(d);
+else
+  <i>size_</i> += <i>to-unsigned-like</i>(-d);
+return *this;</del>
+</pre></blockquote>
+</li>
+<li><p><del>(9.2) &mdash; Otherwise,</del></p>
+<blockquote><pre>
+<del>ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+return *this;</del>
+</pre></blockquote>
+</li>
+</ol>
+<blockquote><pre>
+<ins>if constexpr (bidirectional_iterator&lt;I&gt;) {
+  if (n &lt; 0) {
+    ranges::advance(<i>begin_</i>, n);
+    if constexpr (<i>StoreSize</i>)
+      <i>size_</i> += <i>to-unsigned-like</i>(-n);
+    return *this;
+  }
+}
+
+auto d = n - ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+if constexpr (<i>StoreSize</i>)
+  <i>size_</i> -= <i>to-unsigned-like</i>(d);
+return *this;</ins>
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

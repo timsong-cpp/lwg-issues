@@ -1,0 +1,81 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3430: std::fstream &amp; co. should be constructible from string_view</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3430" href="lwg-active.html#3430">3430.</a> <tt>std::fstream</tt> &amp; co. should be constructible from <tt>string_view</tt></h3>
+<p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-04-18 14:20:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+We have:
+</p>
+<blockquote><pre>
+basic_fstream(const char*, openmode);
+basic_fstream(const filesystem::path::value_type*, openmode); // wide systems only
+basic_fstream(const string&amp;, openmode);
+basic_fstream(const filesystem::path&amp;, openmode);
+</pre></blockquote>
+<p>
+I think the omission of a <tt>string_view</tt> overload was intentional, because the underlying OS call 
+(such as <tt>fopen</tt>) needs a NTBS. We wanted the allocation required to turn a <tt>string_view</tt> 
+into an NTBS to be explicitly requested by the user. But then we added the <tt>path</tt> overload, 
+which is callable with a <tt>string_view</tt>. Converting to a <tt>path</tt> is more expensive than 
+converting to <tt>std::string</tt>, because a path has to <em>at least</em> construct a <tt>basic_string</tt>, 
+and potentially also does an encoding conversion, parses the path, and potentially allocates a sequence 
+of <tt>path</tt> objects for the path components.
+<p/>
+This means the simpler, more obvious code is slower and uses more memory:
+</p>
+<blockquote><pre>
+string_view sv = "foo.txt";
+fstream f1(sv); // bad
+fstream f2(string(sv)); // good
+</pre></blockquote>
+<p>
+We should just allow passing a <tt>string_view</tt> directly, since it already compiles but 
+doesn't do what anybody expects or wants.
+<p/>
+Even with a <tt>string_view</tt> overload, passing types like <tt>const char16_t*</tt> or <tt>u32string_view</tt> 
+will still implicitly convert to <tt>filesystem::path</tt>, but that seems reasonable. In those cases the 
+encoding conversion is necessary. For Windows we support construction from <tt>const wchar_t*</tt> but not 
+from <tt>wstring</tt> or <tt>wstring_view</tt>, which means those types will convert to <tt>filesystem::path</tt>. 
+That seems suboptimal, so we might also want to add <tt>wstring</tt> and <tt>wstring_view</tt> overloads for 
+"wide systems only", as per 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> p3.
+<p/>
+Daniel:
+<p/>
+LWG <a href="2883">2883</a> has a more general view on that but does not consider potential cost differences 
+in the presence of <tt>path</tt> overloads (Which didn't exist at this point yet).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+</body>
+</html>

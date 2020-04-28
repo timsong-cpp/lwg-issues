@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3431: &lt;=&gt; for containers should require three_way_comparable&lt;T&gt; instead of &lt;=&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3431" href="lwg-active.html#3431">3431.</a> <tt>&lt;=&gt;</tt> for containers should require <tt>three_way_comparable&lt;T&gt;</tt> instead of <tt>&lt;=&gt;</tt></h3>
+<p><b>Section:</b> 22.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-17 <b>Last modified:</b> 2020-04-25 11:24:40 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#container.requirements.general">active issues</a> in [container.requirements.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#container.requirements.general">issues</a> in [container.requirements.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The precondition for <tt>&lt;=&gt;</tt> on containers is:
+<p/>
+"Either <tt>&lt;=&gt;</tt> is defined for values of type (possibly <tt>const</tt>) <tt>T</tt>, 
+or <tt>&lt;</tt> is defined for values of type (possibly <tt>const</tt>) <tt>T</tt> and 
+<tt>&lt;</tt> is a total ordering relationship."
+<p/>
+I don't think <tt>&lt;=&gt;</tt> is sufficient, because <tt><i>synth-three-way</i></tt> won't 
+use <tt>&lt;=&gt;</tt> unless <tt>three_way_comparable&lt;T&gt;</tt> is satisfied, which requires
+<tt><i>weakly-equality-comparable-with</i>&lt;T, T&gt;</tt> as well as <tt>&lt;=&gt;</tt>.
+<p/>
+So to use <tt>&lt;=&gt;</tt> I think the type also requires <tt>==</tt>, or more precisely, it
+must satisfy <tt>three_way_comparable</tt>.
+<p/>
+The problem becomes clearer with the following example:
+</p>
+<blockquote><pre>
+#include &lt;compare&gt;
+#include &lt;vector&gt;
+
+struct X
+{
+  friend std::strong_ordering operator&lt;=&gt;(X, X) { return std::strong_ordering::equal; }
+};
+
+std::vector&lt;X&gt; v(1);
+std::strong_ordering c = v &lt;=&gt; v;
+</pre></blockquote>
+<p>
+This doesn't compile, because despite <tt>X</tt> meeting the preconditions for <tt>&lt;=&gt;</tt> in 
+[tab:container.opt], <tt><i>synth-three-way</i></tt> will return <tt>std::weak_ordering</tt>.
+<p/>
+Here is another example:
+</p>
+<blockquote><pre>
+#include &lt;compare&gt;
+#include &lt;vector&gt;
+
+struct X
+{
+  friend bool operator&lt;(X, X) { return true; } // <i>The return value is intentional, see below</i>
+  friend std::strong_ordering operator&lt;=&gt;(X, X) { return std::strong_ordering::equal; }
+};
+
+std::vector&lt;X&gt; v(1);
+std::weak_ordering c = v &lt;=&gt; v;
+</pre></blockquote>
+<p>
+This meets the precondition because it defines <tt>&lt;=&gt;</tt>, but the result of <tt>&lt;=&gt;</tt> 
+on <tt>vector&lt;X&gt;</tt> will be nonsense, because <tt><i>synth-three-way</i></tt> will use 
+<tt>operator&lt;</tt> not <tt>operator&lt;=&gt;</tt> and that defines a broken ordering.
+<p/>
+So we're stating a precondition which implies "if you do this, you don't get garbage results" and 
+then we give garbage results anyway.
+<p/>
+The proposed resolution is one way to fix that, by tightening the precondition so that it matches 
+what <tt><i>synth-three-way</i></tt> actually does.
+</p>
+
+<p><i>[2020-04-25 Issue Prioritization]</i></p>
+
+<p>Priority to 2 after reflector discussion.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>, Table [tab:container.opt], as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 75: Optional container operations [tab:container.opt]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Operational<br/>semantics</th>
+<th align="center">Assertion/note<br/>pre-/post-condition</th>
+<th align="center">Complexity</th>
+</tr>
+
+<tr>
+<td colspan="5" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt;=&gt; b</tt>
+</td>
+<td>
+<tt><i>synth-three-way-result</i>&lt;value_type&gt;</tt>
+</td>
+<td>
+<tt>lexicographical_compare_three_way(<br/>
+a.begin(), a.end(), b.begin(), b.end(),<br/>
+<i>synth-three-way</i>)</tt>
+</td>
+<td>
+<i>Preconditions:</i> Either
+<del><tt>&lt;=&gt;</tt> is defined for<br/>
+values of type (possibly <tt>const</tt>)</del><br/>
+<tt>T</tt> <ins>satisfies <tt>three_way_comparable</tt></ins>,<br/>
+or <tt>&lt;</tt> is defined for values of type<br/>
+(possibly <tt>const</tt>) <tt>T</tt> and<br/> 
+<tt>&lt;</tt> is a total ordering relationship.
+</td>
+<td>
+linear
+</td>
+</tr>
+
+<tr>
+<td colspan="5" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

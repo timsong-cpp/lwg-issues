@@ -1,0 +1,94 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3435: three_way_comparable_with&lt;reverse_iterator&lt;int*&gt;, reverse_iterator&lt;const int*&gt;&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3435" href="lwg-active.html#3435">3435.</a> <tt>three_way_comparable_with&lt;reverse_iterator&lt;int*&gt;, reverse_iterator&lt;const int*&gt;&gt;</tt></h3>
+<p><b>Section:</b> 23.5.1.3 <a href="https://timsong-cpp.github.io/cppwp/reverse.iter.cons">[reverse.iter.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-26 <b>Last modified:</b> 2020-04-27 16:11:51 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#reverse.iter.cons">issues</a> in [reverse.iter.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Despite that <tt>reverse_iterator&lt;int*&gt;</tt> and <tt>reverse_iterator&lt;const int*&gt;</tt> are comparable with 
+<tt>&lt;=&gt;</tt>, <tt>three_way_comparable_with&lt;reverse_iterator&lt;int*&gt;, reverse_iterator&lt;const int*&gt;&gt;</tt> 
+is <tt>false</tt>. This unfortunate state of affairs results from the absence of constraints on <tt>reverse_iterator</tt>'s 
+converting constructor: both <tt>convertible_to&lt;reverse_iterator&lt;int*&gt;, reverse_iterator&lt;const int*&gt;&gt;</tt>
+and <tt>convertible_to&lt;reverse_iterator&lt;const int*&gt;, reverse_iterator&lt;int*&gt;&gt;</tt> evaluate to <tt>true</tt>, 
+despite that <tt>reverse_iterator&lt;int*&gt;</tt>'s converting constructor template is ill-formed when instantiated 
+for <tt>reverse_iterator&lt;const int*&gt;</tt>. This apparent bi-convertibility results in ambiguity when trying to 
+determine <tt>common_reference_t&lt;const reverse_iterator&lt;int*&gt;&amp;, const reverse_iterator&lt;const int*&gt;&amp;&gt;</tt>, 
+causing the <tt>common_reference</tt> requirement in <tt>three_way_comparable_with</tt> to fail.
+<p/>
+I think we should correct this by constraining <tt>reverse_iterator</tt>'s conversion constructor (and converting 
+assignment operator, while we're here) correctly so we can use the concept to determine when it's ok to compare 
+specializations of <tt>reverse_iterator</tt> with <tt>&lt;=&gt;</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.1.3 <a href="https://timsong-cpp.github.io/cppwp/reverse.iter.cons">[reverse.iter.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U&gt; constexpr reverse_iterator(const reverse_iterator&lt;U&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;U, Iterator&gt;</tt> is <tt>false</tt> and 
+<tt>const U&amp;</tt> models <tt>convertible_to&lt;Iterator&gt;</tt>.</ins>
+<p/>
+-3- <i>Effects:</i> Initializes <tt>current</tt> with <tt>u.current</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class U&gt;
+  constexpr reverse_iterator&amp;
+    operator=(const reverse_iterator&lt;U&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;U, Iterator&gt;</tt> is <tt>false</tt>, 
+<tt>const U&amp;</tt> models <tt>convertible_to&lt;Iterator&gt;</tt>, and 
+<tt>assignable_from&lt;Iterator&amp;, const U&amp;&gt;</tt> is modeled.</ins>
+<p/>
+-4- <i>Effects:</i> Assigns <tt>u.<ins>current</ins><del>base()</del></tt> to <tt>current</tt>.
+<p/>
+-5- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
