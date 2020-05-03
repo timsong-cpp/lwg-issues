@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-05-01 at 20:07:01 UTC</p>
+<p><p>Revised 2020-05-02 at 19:54:33 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="2155" href="2155">2155.</a> Macro <tt>__bool_true_false_are_defined</tt> should be removed</h3>
@@ -1253,119 +1253,6 @@ template&lt;class From, class To&gt;
 
 <p><b>Proposed resolution:</b></p>
 <p>This issue is resolved by the resolution of issue <a href="3194">3194</a>.</p>
-
-
-
-
-
-<hr>
-<h3><a name="3178" href="3178">3178.</a> <tt>std::mismatch</tt> is missing an upper bound</h3>
-<p><b>Section:</b> 25.6.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Tentatively Resolved</a>
- <b>Submitter:</b> Geoffrey Romer <b>Opened:</b> 2018-12-20 <b>Last modified:</b> 2019-03-24 16:07:34 UTC</p>
-<p><b>Priority: </b>0
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#mismatch">issues</a> in [mismatch].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Resolved">Tentatively Resolved</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Consider the following code:
-</p>
-<blockquote><pre>
-std::vector&lt;int&gt; v1 = {1, 2, 3, 4};
-std::vector&lt;int&gt; v2 = {1, 2, 3, 5};
-auto result = std::mismatch(v1.begin(), v1.begin() + 2, v2.begin(), v2.begin() + 2);
-</pre></blockquote>
-<p>
-The current wording of [mismatch] seems to require <tt>result</tt> to be <tt>{v1.begin() + 3, v2.begin() + 3}</tt>, because 3
-is the smallest integer <tt>n</tt> such that <tt>*(v1.begin() + n) != *(v2.begin + n)</tt>. In other words, if there's a
-mismatch that's reachable from <tt>first1</tt> and <tt>first2</tt>, then <tt>std::mismatch</tt> must find and return it,
-even if it's beyond the end iterators passed by the user.
-<p/>
-This is doubly unimplementable: the library has no way of knowing that it's safe to keep going past the end of the user-supplied
-range, and even if it could, doing so would violate the complexity requirements. More importantly, it would violate the
-fundamental convention that STL algorithms operate on user-supplied ranges, not on the underlying containers.
-</p>
-
-<p><i>[2019-01-26 Priority to 0 and Status to Tentatively Ready after discussions on the reflector]</i></p>
-
-<p>
-During that reflector discussion several contributers argued in favour for changing the current wording in
-25.6.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> p3 from "smallest integer" to "smallest <ins>nonnegative</ins> integer". This minor 
-wording delta has also been added to the original proposed wording.
-</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to <a href="https://wg21.link/n4791">N4791</a>.</p>
-
-<ol>
-<li><p>Change 25.6.10 <a href="https://timsong-cpp.github.io/cppwp/mismatch">[mismatch]</a> as indicated:</p>
-<blockquote>
-<pre>
-template&lt;class InputIterator1, class InputIterator2&gt;
-  constexpr pair&lt;InputIterator1, InputIterator2&gt;
-    mismatch(InputIterator1 first1, InputIterator1 last1,
-             InputIterator2 first2);
-[&hellip;]
-namespace ranges {
-  template&lt;InputIterator I1, Sentinel&lt;I1&gt; S1, InputIterator I2, Sentinel&lt;I2&gt; S2,
-           class Proj1 = identity, class Proj2 = identity,
-           IndirectRelation&lt;projected&lt;I1, Proj1&gt;,
-           projected&lt;I2, Proj2&gt;&gt; Pred = ranges::equal_to&lt;&gt;&gt;
-    constexpr mismatch_result&lt;I1, I2>
-      mismatch(I1 first1, S1 last1, I2 first2, S2 last2, Pred pred = {},
-               Proj1 proj1 = {}, Proj2 proj2 = {});
-  template&lt;InputRange R1, InputRange R2,
-           class Proj1 = identity, class Proj2 = identity,
-           IndirectRelation&lt;projected&lt;iterator_t&lt;R1&gt;, Proj1&gt;,
-           projected&lt;iterator_t&lt;R2&gt;, Proj2&gt;&gt; Pred = ranges::equal_to&lt;&gt;&gt;
-    constexpr mismatch_result&lt;safe_iterator_t&lt;R1&gt;, safe_iterator_t&lt;R2&gt;&gt;
-      mismatch(R1&amp;&amp; r1, R2&amp;&amp; r2, Pred pred = {},
-               Proj1 proj1 = {}, Proj2 proj2 = {});
-}
-</pre>
-<blockquote>
-<p>
--1- Let <tt>last2</tt> be <tt>first2 + (last1 - first1)</tt> for the overloads with no parameter <tt>last2</tt> or <tt>r2</tt>.
-<p/>
--2- Let <tt><i>E</i></tt> be:
-<ol style="list-style-type: none">
-<li><p>(2.1) &mdash; <tt>!(*(first1 + n) == *(first2 + n))</tt> for the overloads with no parameter <tt>pred</tt>,</p></li>
-<li><p>(2.2) &mdash; <tt>pred(*(first1 + n), *(first2 + n)) == false</tt> for the overloads with a parameter <tt>pred</tt> and
-no parameter <tt>proj1</tt>,</p></li>
-<li><p>(2.3) &mdash; <tt>!invoke(pred, invoke(proj1, *(first1 + n)), invoke(proj2, *(first2 + n)))</tt> for the overloads with
-both parameters <tt>pred</tt> and <tt>proj1</tt>.</p></li>
-</ol>
-<ins>-?- Let <tt><i>N</i></tt> be <tt>min(last1 - first1, last2 - first2)</tt>.</ins>
-<p/>
--3- <i>Returns:</i> <tt>{ first1 + n, first2 + n }</tt>, where <tt>n</tt> is the smallest <ins>nonnegative</ins> integer such 
-that <tt><i>E</i></tt> holds, or <tt><del>min(last1 - first1, last2 - first2)</del><ins><i>N</i></ins></tt> if no such integer 
-<ins>less than <tt><i>N</i></tt></ins> exists.
-<p/>
--4- <i>Complexity:</i> At most <tt><del>min(last1 - first1, last2 - first2)</del><ins><i>N</i></ins></tt> applications of the
-corresponding predicate and any projections.
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-</blockquote>
-
-<p><i>[2019-03-15; Daniel comments]</i></p>
-
-<p>
-The <a href="https://github.com/cplusplus/draft/issues/2611">editorial issue #2611</a> had been
-resolved via this <a href="https://github.com/cplusplus/draft/pull/2613">pull request #2613</a>.
-The editorial changes should make the suggested wording changes obsolete and I recommend to close
-this issue as <b>Resolved</b>.
-</p>
-
-
-<p><b>Rationale:</b></p>
-Resolved by editorial <a href="https://github.com/cplusplus/draft/pull/2613">pull request #2613</a>.
-
-
-<p><b>Proposed resolution:</b></p>
 
 
 
