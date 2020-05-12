@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-05-03 at 20:22:17 UTC</p>
+<p><p>Revised 2020-05-12 at 20:44:32 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -654,6 +654,151 @@ standard containers.
 
 
 <p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="1102" href="1102">1102.</a> <tt>std::vector</tt>'s reallocation policy still unclear</h3>
+<p><b>Section:</b> 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Daniel Kr&uuml;gler <b>Opened:</b> 2009-04-20 <b>Last modified:</b> 2020-05-08 17:28:22 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#vector.capacity">active issues</a> in [vector.capacity].</p>
+<p><b>View all other</b> <a href="lwg-index.html#vector.capacity">issues</a> in [vector.capacity].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I have the impression that even the wording of current draft
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2009/n2857.pdf">N2857</a>
+does insufficiently express the intent of <tt>vector</tt>'s
+reallocation strategy. This has produced not too old library
+implementations which release memory in the <tt>clear()</tt> function
+and even modern articles about C++ programming cultivate
+the belief that <tt>clear</tt> is allowed to do exactly this. A typical
+example is something like this:
+</p>
+
+<blockquote><pre>
+const int buf_size = ...;
+std::vector&lt;T&gt; buf(buf_size);
+for (int i = 0; i &lt; some_condition; ++i) {
+  buf.resize(buf_size);
+  write_or_read_data(buf.data());
+  buf.clear(); // Ensure that the next round get's 'zeroed' elements
+}
+</pre></blockquote>
+<p>
+where still the myth is ubiquitous that <tt>buf</tt> might be
+allowed to reallocate it's memory <b>inside</b> the <tt>for</tt> loop.
+</p>
+<p>
+IMO the problem is due to the fact, that
+</p>
+
+<ol style="list-style-type:lower-alpha">
+<li>
+the actual memory-reallocation stability of <tt>std::vector</tt>
+is explained in 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/3 and /6 which
+are describing just the effects of the <tt>reserve</tt>
+function, but in many examples (like above) there
+is no explicit call to <tt>reserve</tt> involved. Further-more
+22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/6 does only mention <em>insertions</em>
+and never mentions the consequences of erasing elements.
+</li>
+<li>
+<p>
+the effects clause of <tt>std::vector</tt>'s <tt>erase</tt> overloads in
+22.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/4 is silent about capacity changes. This
+easily causes a misunderstanding, because the counter
+parting insert functions described in 22.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/2
+explicitly say, that
+</p>
+<blockquote><p>
+Causes reallocation if the new size is greater than the
+old capacity. If no reallocation happens, all the iterators
+and references before the insertion point remain valid.
+</p></blockquote>
+<p>
+It requires a complex argumentation chain about four
+different places in the standard to provide the &mdash; possibly
+weak &mdash; proof that calling <tt>clear()</tt> also does <em>never</em> change
+the capacity of the <tt>std::vector</tt> container. Since <tt>std::vector</tt>
+is the de-facto replacement of C99's dynamic arrays this
+type is near to a built-in type and it's specification should
+be clear enough that usual programmers can trust their
+own reading.
+</p>
+</li>
+</ol>
+
+<p><i>[
+Batavia (2009-05):
+]</i></p>
+
+<blockquote>
+<p>
+Bill believes paragraph 1 of the proposed resolution is unnecessary
+because it is already implied (even if tortuously) by the current wording.
+</p>
+<p>
+Move to Review.
+</p>
+</blockquote>
+
+<p><i>[
+2009-10 Santa Cruz:
+]</i></p>
+
+
+<blockquote><p>
+Mark as NAD. Rationale: there is no consensus to clarify the standard,
+general consensus that the standard is correct as written.
+</p></blockquote>
+
+<p><i>[2020-05-08; Reopen after reflector discussions]</i></p>
+
+<p>
+"correct as written" has been disputed.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p><i>[
+This is a minimum version. I also
+suggest that the wording explaining the allocation strategy
+of <tt>std::vector</tt> in 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/3 and /6 is moved into
+a separate sub paragraph of 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <em>before</em>
+any of the prototype's are discussed, but I cannot provide
+reasonable wording changes now.
+]</i></p>
+
+
+<ol>
+<li>
+<p>
+Change 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>/6 as follows:
+</p>
+<blockquote><p>
+It is guaranteed that no reallocation takes place during
+insertions <ins>or erasures</ins> that happen after a call
+to <tt>reserve()</tt> until the time when an insertion would make
+the size of the vector greater than the value of <tt>capacity()</tt>.
+</p></blockquote>
+</li>
+<li>
+<p>
+Change 22.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>/4 as follows:
+</p>
+<blockquote><p>
+<i>Effects:</i> <ins>The capacity shall remain unchanged and no reallocation shall
+happen.</ins>
+Invalidates iterators and references at or after the point
+of the erase.
+</p></blockquote>
+</li>
+</ol>
 
 
 
@@ -5979,6 +6124,7 @@ When <tt>a</tt> and <tt>b</tt> are distinct objects of the same zero-sized <tt>a
  <b>Submitter:</b> Nikolay Ivchenkov <b>Opened:</b> 2012-05-08 <b>Last modified:</b> 2018-08-24 13:31:33 UTC</p>
 <p><b>Priority: </b>3
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#vector.capacity">active issues</a> in [vector.capacity].</p>
 <p><b>View all other</b> <a href="lwg-index.html#vector.capacity">issues</a> in [vector.capacity].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -17070,7 +17216,7 @@ be defined to nonsense values for integer types.
 <hr>
 <h3><a name="2731" href="2731">2731.</a> Existence of <tt>lock_guard&lt;MutexTypes...&gt;::mutex_type</tt> typedef unclear</h3>
 <p><b>Section:</b> 32.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.guard">[thread.lock.guard]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2016-06-13 <b>Last modified:</b> 2018-03-19 00:12:24 UTC</p>
+ <b>Submitter:</b> Eric Fiselier <b>Opened:</b> 2016-06-13 <b>Last modified:</b> 2020-05-11 18:19:50 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#thread.lock.guard">issues</a> in [thread.lock.guard].</p>
@@ -17133,8 +17279,8 @@ public:
 </ol>
 </blockquote>
 
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution: [SUPERSEDED]</strong>
+<blockquote class="note">
 <p>This wording is relative to N4727.</p>
 <ol>
 <li><p>Edit 32.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.guard">[thread.lock.guard]</a>/1, class template <tt>lock_guard</tt> synopsis, as indicated:</p>
@@ -17148,6 +17294,48 @@ public:
   [&hellip;]
 };
 </pre>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-05-11; Daniel provides improved wording]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Edit 32.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/thread.lock.scoped">[thread.lock.scoped]</a>, class template <tt>scoped_lock</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+template &lt;class... MutexTypes&gt;
+class scoped_lock {
+public:
+  <del>using mutex_type = Mutex; <i>// If</i> MutexTypes... <i>consists of the single type</i> Mutex</del>
+  <ins>using mutex_type = <i>see below</i>; <i>// Only if </i> sizeof...(MutexTypes) == 1</ins>
+  [&hellip;]
+};
+</pre>
+</blockquote>
+<p>
+-1- An object of type <tt>scoped_lock</tt> controls the ownership of lockable objects within a scope. A 
+<tt>scoped_lock</tt> object maintains ownership of lockable objects throughout the <tt>scoped_lock</tt> 
+object's lifetime (6.7.3 <a href="https://timsong-cpp.github.io/cppwp/basic.life">[basic.life]</a>). The behavior of a program is undefined if the lockable 
+objects referenced by <tt>pm</tt> do not exist for the entire lifetime of the <tt>scoped_lock</tt> object.
+</p>
+<ul>
+<li><p><del>When</del><ins>If</ins> <tt>sizeof...(MutexTypes)</tt> is <del><tt>1</tt></del><ins>one, let <tt>Mutex</tt> 
+denote the sole type constituting the pack <tt>MutexTypes</tt>.</ins><del>, the supplied</del> <tt>Mutex</tt> 
+<del>type</del> shall meet the <i>Cpp17BasicLockable</i> requirements (32.2.5.2 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable.basic">[thread.req.lockable.basic]</a>).
+<ins>The member <i>typedef-name</i> <tt>mutex_type</tt> denotes the same type as <tt>Mutex</tt>.</ins></p></li>
+<li><p>Otherwise, <del>each of the mutex types</del><ins>all types in the template parameter pack <tt>MutexTypes</tt></ins> 
+shall meet the <i>Cpp17Lockable</i> requirements (32.2.5.3 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable.req">[thread.req.lockable.req]</a>) <ins>and there is 
+no member <tt>mutex_type</tt></ins>.</p></li>
+</ul> 
 </blockquote>
 </li>
 </ol>
@@ -17193,116 +17381,6 @@ argument to operator <tt>new[](std::size_t)</tt> to obtain space to store supple
 
 
 <p><b>Proposed resolution:</b></p>
-
-
-
-
-
-<hr>
-<h3><a name="2741" href="2741">2741.</a> <tt>is_partitioned</tt> requirements need updating</h3>
-<p><b>Section:</b> 25.8.4 <a href="https://timsong-cpp.github.io/cppwp/alg.partitions">[alg.partitions]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2016-07-06 <b>Last modified:</b> 2019-03-17 18:41:40 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#alg.partitions">issues</a> in [alg.partitions].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
-<p><b>Discussion:</b></p>
-<blockquote class="note">
-<p>
-<i>Requires:</i> <tt>InputIterator</tt>'s value type shall be convertible to <tt>Predicate</tt>'s argument type.
-</p>
-</blockquote>
-<p>
-This seems to date from the days of adaptable function objects with an <tt>argument_type</tt> typedef, but in 
-modern C++ the predicate might not have an argument type. It could have a function template that accepts various 
-arguments, so it doesn't make sense to state requirements in terms of a type that isn't well defined.
-</p>
-
-<p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
-
-<p>The proposed resolution needs to be updated because the underlying wording has changed. 
-Also, since the sequence is homogeneous, we shouldn't have to say that the expression is well-formed
-for all elements in the range; that implies that it need not be well-formed if the range is empty.</p>
-<p>Marshall and JW to reword. Status to Open</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to N4594.</p>
-
-<ol>
-<li><p>Edit 25.8.4 <a href="https://timsong-cpp.github.io/cppwp/alg.partitions">[alg.partitions]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template &lt;class InputIterator, class Predicate&gt;
-bool is_partitioned(InputIterator first, InputIterator last, Predicate pred);
-</pre>
-<blockquote>
-<p>
--1- <i>Requires:</i> <del><tt>InputIterator</tt>'s value type shall be convertible to <tt>Predicate</tt>'s argument 
-type</del><ins>The expression <tt>pred(*i)</tt> shall be well-formed for all <tt>i</tt> in <tt>[first, last)</tt></ins>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-template &lt;class InputIterator, class OutputIterator1,
-          class OutputIterator2, class Predicate&gt;
-  pair&lt;OutputIterator1, OutputIterator2&gt;
-  partition_copy(InputIterator first, InputIterator last,
-                 OutputIterator1 out_true, OutputIterator2 out_false,
-                 Predicate pred);
-</pre>
-<blockquote>
-<p>
--12- <i>Requires:</i> <tt>InputIterator</tt>'s value type shall be <tt>CopyAssignable</tt>, and shall be writable 
-(23.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.requirements.general">[iterator.requirements.general]</a>) to the <tt>out_true</tt> and <tt>out_false</tt> 
-<tt>OutputIterator</tt>s, and <del>shall be convertible to <tt>Predicate</tt>'s argument type</del><ins>the
-expression <tt>pred(*i)</tt> shall be well-formed for all <tt>i</tt> in <tt>[first, last)</tt></ins>. 
-The input range shall not overlap with either of the output ranges.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-template&lt;class ForwardIterator, class Predicate&gt;
-  ForwardIterator partition_point(ForwardIterator first,
-                                  ForwardIterator last,
-                                  Predicate pred);
-</pre>
-<blockquote>
-<p>
--16- <i>Requires:</i> <del><tt>ForwardIterator</tt>'s value type shall be convertible to <tt>Predicate</tt>'s argument 
-type</del><ins>The expression <tt>pred(*i)</tt> shall be well-formed for all <tt>i</tt> in <tt>[first, last)</tt></ins>. 
-<tt>[first, last)</tt> shall be partitioned by <tt>pred</tt>, i.e. all elements that satisfy <tt>pred</tt> shall appear 
-before those that do not.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-</blockquote>
-
-<p><i>[2019-03-17; Daniel comments and removes previous wording]</i></p>
-
-<p>
-In the recent working draft <a href="https://wg21.link/n4810">N4810</a> all the "shall be convertible to <tt>Predicate</tt>'s 
-argument type" are gone - they were cleaned up when "The One Range" proposal <a href="https://wg21.link/p0896r4">P0896R4</a> 
-had been accepted in San Diego 2018.
-<p/>
-I also believe that we don't need the extra wording that was suggested in the previous P/R (effectively the need to say 
-that the expression <tt>pred(*i)</tt> is well-formed), because this follows (in a more general way) by the expression 
-<tt>invoke(pred, invoke(proj, e))</tt> that is applied to the elements <tt>e</tt> of <tt>[first, last)</tt>.
-<p/>
-Therefore I'm suggesting that the resolution for this issue should be: Resolved by <a href="https://wg21.link/p0896r4">P0896R4</a>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-</p>
 
 
 
@@ -17383,12 +17461,10 @@ public:
 
 <hr>
 <h3><a name="2746" href="2746">2746.</a> Inconsistency between requirements for <tt>emplace</tt> between <tt>optional</tt> and <tt>variant</tt></h3>
-<p><b>Section:</b> 20.6.3 <a href="https://timsong-cpp.github.io/cppwp/optional.optional">[optional.optional]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Richard Smith <b>Opened:</b> 2016-07-13 <b>Last modified:</b> 2016-11-26 14:34:13 UTC</p>
+<p><b>Section:</b> 20.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/optional.assign">[optional.assign]</a>, 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.mod">[variant.mod]</a>, 20.8.3.3 <a href="https://timsong-cpp.github.io/cppwp/any.modifiers">[any.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2016-07-13 <b>Last modified:</b> 2020-05-10 14:32:32 UTC</p>
 <p><b>Priority: </b>3
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#optional.optional">active issues</a> in [optional.optional].</p>
-<p><b>View all other</b> <a href="lwg-index.html#optional.optional">issues</a> in [optional.optional].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
@@ -17488,9 +17564,108 @@ Add SFINAE requirements to <tt>optional::emplace(Args&amp;&amp;... args)</tt> an
 <p>During issue prioritization, people suggested that this might apply to <tt>any</tt> as well.</p>
 <p>Ville notes that <a href="2746">2746</a>, <a href="2754">2754</a> and <a href="2756">2756</a> all go together.</p>
 
+<p><i>[2020-05-10; Daniel comments and provides wording]</i></p>
+
+<p>
+The inconsistency between the two <tt>any::emplace</tt> overloads have been removed by resolving LWG
+<a href="2754">2754</a> to use <i>Constraints:</i> elements. The last Mandating paper 
+(<a href="https://wg21.link/p1460r1">P1460R1</a>), adopted in Prague, changed the <i>Requires:</i> elements
+for <tt>variant::emplace</tt>, "<tt>I &lt; sizeof...(Types)</tt>" to <i>Mandates:</i>, but that paper
+was focused on fixing inappropriate preconditions, not searching for consistency here. Given that the
+<tt>in_place_index_t</tt> constructors of <tt>variant</tt> uses SFINAE-conditions for this form of static
+precondition violation, I recommend that its <tt>emplace</tt> functions use the same style, which would bring 
+them also in consistency with their corresponding type-based <tt>emplace</tt> forms that are 
+<i>Mandates:</i>-free but delegate to the index-based forms.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
 
+<ol>
+<li><p>Modify 20.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/optional.assign">[optional.assign]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class... Args&gt; T&amp; emplace(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-29- <i><del>Mandates</del><ins>Constraints</ins>:</i> <tt>is_constructible_v&lt;T, Args...&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U, class... Args&gt; T&amp; emplace(initializer_list&lt;U&gt; il, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-35- <i>Constraints:</i> <tt>is_constructible_v&lt;T, initializer_list&lt;U&gt;&amp;, Args...&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.mod">[variant.mod]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class... Args&gt; T&amp; emplace(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints:</i> <tt>is_constructible_v&lt;T, Args...&gt;</tt> is <tt>true</tt>, and <tt>T</tt> 
+occurs exactly once in <tt>Types</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class U, class... Args&gt; T&amp; emplace(initializer_list&lt;U&gt; il, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i> <tt>is_constructible_v&lt;T, initializer_list&lt;U&gt;&amp;, Args...&gt;</tt> is <tt>true</tt>, 
+and <tt>T</tt> occurs exactly once in <tt>Types</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;size_t I, class... Args&gt;
+  variant_alternative_t&lt;I, variant&lt;Types...&gt;&gt;&amp; emplace(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+<del>-5- <i>Mandates:</i> <tt>I &lt; sizeof...(Types)</tt>.</del>
+<p/>
+-6- <i>Constraints:</i> <tt>is_constructible_v&lt;T<sub><i>I</i></sub>, Args...&gt;</tt> is <tt>true</tt> 
+<ins>and <tt>I &lt; sizeof...(Types)</tt> is <tt>true</tt></ins>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;size_t I, class U, class... Args&gt;
+  variant_alternative_t&lt;I, variant&lt;Types...&gt;&gt;&amp; emplace(initializer_list&lt;U&gt; il, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+<del>-12- <i>Mandates:</i> <tt>I &lt; sizeof...(Types)</tt>.</del>
+<p/>
+-13- <i>Constraints:</i> <tt>is_constructible_v&lt;T<sub><i>I</i></sub>, initializer_list&lt;U&gt;&amp;, Args...&gt;</tt> is 
+<tt>true</tt> <ins>and <tt>I &lt; sizeof...(Types)</tt> is <tt>true</tt></ins>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
 
 
 
@@ -18292,99 +18467,6 @@ reference-related to <tt>U</tt></ins>.</p></li>
 
 
 <hr>
-<h3><a name="2814" href="2814">2814.</a> [fund.ts.v2] <tt>to_array</tt> should take rvalue reference as well</h3>
-<p><b>Section:</b> 4.2.1 [fund.ts.v2::func.wrap.func.con] <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Zhihao Yuan <b>Opened:</b> 2016-11-07 <b>Last modified:</b> 2017-06-05 20:39:07 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#fund.ts.v2::func.wrap.func.con">issues</a> in [fund.ts.v2::func.wrap.func.con].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
-<p><b>Discussion:</b></p>
-<p><b>Addresses: fund.ts.v2</b></p>
-<p>
-C++ doesn't have a prvalue expression of array type, but
-rvalue arrays can still come from different kinds of sources:
-</p>
-<ol>
-<li><p>C99 compound literals <tt>(int[]) {2, 4}</tt>,</p></li>
-<li><p><tt>std::move(arr)</tt>,</p></li>
-<li><p>Deduction <tt>to_array&lt;int const&gt;({ 2, 4 })</tt>.</p>
-<blockquote class="note">
-<p>
-See also <a href="http://wg21.link/cwg1591">CWG 1591</a>: Deducing array bound and element type from initializer list.
-</p>
-</blockquote>
-</li>
-</ol>
-<p>
-For 3), users are "abusing" <tt>to_array</tt> to get access to uniform
-initialization to benefit from initializing elements through
-braced-init-list and/or better narrowing conversion support.
-<p/>
-We should just add rvalue reference support to <tt>to_array</tt>.
-</p>
-
-<p><i>[Issues Telecon 16-Dec-2016]</i></p>
-
-<p>Status to LEWG</p>
-
-<p><i>[2017-02 in Kona, LEWG responds]</i></p>
-
-<p>Would like a small paper; see examples before and after. How does this affect overload resolution?</p>
-
-<p><i>[2017-06-02 Issues Telecon]</i></p>
-
-<p>Leave status as LEWG; priority 3</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="http://wg21.link/n4600">N4600</a>.</p>
-
-<ol>
-<li>
-<p>Add the following signature to 9.2.1 [fund.ts.v2::header.array.synop]:</p>
-
-<blockquote>
-<pre>
-// 9.2.2, Array creation functions
-template &lt;class D = void, class... Types&gt;
-  constexpr array&lt;VT, sizeof...(Types)&gt; make_array(Types&amp;&amp;... t);
-template &lt;class T, size_t N&gt;
-  constexpr array&lt;remove_cv_t&lt;T&gt;, N&gt; to_array(T (&amp;a)[N]);
-<ins>template &lt;class T, size_t N&gt;
-  constexpr array&lt;remove_cv_t&lt;T&gt;, N&gt; to_array(T (&amp;&amp;a)[N]);</ins>
-</pre>
-</blockquote>
-</li>
-
-<li>
-<p>Modify 9.2.2 [fund.ts.v2::container.array.creation] as follows:</p>
-
-<blockquote>
-<pre>
-template &lt;class T, size_t N&gt;
-  constexpr array&lt;remove_cv_t&lt;T&gt;, N&gt; to_array(T (&amp;a)[N]);
-<ins>template &lt;class T, size_t N&gt;
-  constexpr array&lt;remove_cv_t&lt;T&gt;, N&gt; to_array(T (&amp;&amp;a)[N]);</ins>
-</pre>
-<blockquote>
-<p>
--6- <i>Returns:</i> <ins>For all <tt><i>i</i></tt>, <tt>0 &le; <i>i</i> &lt; N</tt>, a</ins><del>A</del>n 
-<tt>array&lt;remove_cv_t&lt;T&gt;, N&gt;</tt> <del>such that each element is copy-initialized 
-with the corresponding element of <tt>a</tt></del><ins>initialized with <tt>{ a[<i>i</i>]... }</tt> for 
-the first form, or <tt>{ std::move(a[<i>i</i>])... }</tt> for the second form.</ins>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-
-<hr>
 <h3><a name="2815" href="2815">2815.</a> <tt>quick_exit</tt> can deadlock</h3>
 <p><b>Section:</b> 17.5 <a href="https://timsong-cpp.github.io/cppwp/support.start.term">[support.start.term]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Jean-Fran&ccedil;ois Bastien <b>Opened:</b> 2016-11-07 <b>Last modified:</b> 2017-03-21 22:54:52 UTC</p>
@@ -18606,7 +18688,7 @@ is to be used, the function <tt>::std::G</tt> is intended. &mdash; <i>end exampl
 <hr>
 <h3><a name="2819" href="2819">2819.</a> Unspecified <i>Return type:</i> elements</h3>
 <p><b>Section:</b> 32.2.5 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable">[thread.req.lockable]</a>, 32.5.3 <a href="https://timsong-cpp.github.io/cppwp/thread.mutex.requirements">[thread.mutex.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2016-11-12 <b>Last modified:</b> 2017-02-02 00:41:18 UTC</p>
+ <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2016-11-12 <b>Last modified:</b> 2020-05-12 20:44:32 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -18621,8 +18703,221 @@ This was reported as editorial request <a href="https://github.com/cplusplus/dra
 
 <p>Priority 3; Jonathan to provide wording.</p>
 
+<p><i>[12-May-2020, Jonathan provides wording to correct the <b>13</b> occurences.]</i></p>
+
+
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4681</a>.</p>
+
+<ol>
+<li>
+<p>Modify 32.2.5.3 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable.req">[thread.req.lockable.req]</a> as indicated:</p>
+<blockquote>
+<p>-1- A type <code>L</code> meets the <i>Cpp17Lockable</i> requirements
+if it meets the <i>Cpp17BasicLockable</i> requirements
+and the following expressions are
+well-formed<ins>, have type <code>bool</code>,</ins>
+and have the specified semantics
+(<code>m</code> denotes a value of type <code>L</code>).
+</p>
+<p><code>m.try_lock()</code></p>
+<blockquote>
+<p>-2- <i>Effects:</i> [...]</p>
+<p><del>-3- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-4- <i>Returns:</i> <code>true</code> if the lock was acquired, <code>false</code> otherwise.</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.2.5.4 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable.timed">[thread.req.lockable.timed]</a> as indicated:</p>
+<blockquote>
+<p>-1- A type <code>L</code> meets the <i>Cpp17TimedLockable</i> requirements
+if it meets the <i>Cpp17BasicLockable</i> requirements
+and the following expressions are
+well-formed<ins>, have type <code>bool</code>,</ins>
+and have the specified semantics
+(<code>m</code> denotes a value of type <code>L</code>,
+<code>rel_time</code> denotes a value of an instantiation of
+<code>duration</code> (27.5 <a href="https://timsong-cpp.github.io/cppwp/time.duration">[time.duration]</a>),
+and <code>abs_time</code> denotes a value of an instantiation of
+<code>time_point</code> (27.6 <a href="https://timsong-cpp.github.io/cppwp/time.point">[time.point]</a>)).
+</p>
+<p><code>m.try_lock_for(rel_time)</code></p>
+<blockquote>
+<p>-2- <i>Effects:</i> [...]</p>
+<p><del>-3- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-4- <i>Returns:</i> <code>true</code> if the lock was acquired, <code>false</code> otherwise.</p>
+</blockquote>
+<p><code>m.try_lock_until(abs_time)</code></p>
+<blockquote>
+<p>-2- <i>Effects:</i> [...]</p>
+<p><del>-3- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-4- <i>Returns:</i> <code>true</code> if the lock was acquired, <code>false</code> otherwise.</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/thread.mutex.requirements.mutex">[thread.mutex.requirements.mutex]</a> as indicated:</p>
+<blockquote>
+<p>-6- The expression <code>m.lock()</code> is
+well-formed<ins>, has type <code>void</code>,</ins>
+and has the following semantics:</p>
+<blockquote>
+<p>-7- <i>Preconditions:</i> [...]</p>
+<p>-8- <i>Effects:</i> [...]</p>
+<p>-9- <i>Postconditions:</i> [...]</p>
+<p><del>-10- <i>Return type:</i> <code>void</code>.</del></p>
+<p>-11- <i>Synchronization:</i> [...]</p>
+<p>-12- <i>Throws:</i> [...]</p>
+<p>-13- <i>Error conditions:</i> [...]</p>
+</blockquote>
+<p>-14- The expression <code>m.try_lock()</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:</p>
+<blockquote>
+<p>-15- <i>Preconditions:</i> [...]</p>
+<p>-16- <i>Effects:</i> [...]</p>
+<p><del>-17- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-18- <i>Returns:</i> <code>true</code> if ownership of the mutex was
+obtained for the calling thread, otherwise <code>false</code>.</p>
+<p>-19- <i>Synchronization:</i> [...]</p>
+<p>-20- <i>Throws:</i> Nothing.</p>
+</blockquote>
+<p>-21- The expression <code>m.unlock()</code> is
+well-formed<ins>, has type <code>void</code>,</ins>
+and has the following semantics:</p>
+<blockquote>
+<p>-22- <i>Preconditions:</i> [...]</p>
+<p>-23- <i>Effects:</i> [...]</p>
+<p><del>-24- <i>Return type:</i> <code>void</code>.</del></p>
+<p>-25- <i>Synchronization:</i> [...]</p>
+<p>-26- <i>Throws:</i> Nothing.</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.timedmutex.requirements">[thread.timedmutex.requirements]</a> as indicated:</p>
+<blockquote>
+<p>-1- The <i>timed mutex types</i> are the standard library types [...] </p>
+<p>-2- The timed mutex types meet the <i>Cpp17TimedLockable</i> requirements
+(32.2.5.4 <a href="https://timsong-cpp.github.io/cppwp/thread.req.lockable.timed">[thread.req.lockable.timed]</a>).</p>
+<p>-3- The expression <code>m.try_lock_for(rel_time)</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-4- <i>Preconditions:</i> [...]</p>
+<p>-5- <i>Effects:</i> [...]</p>
+<p><del>-6- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-7- <i>Returns:</i> <code>true</code> if the shared lock was acquired,
+<code>false</code> otherwise.</p>
+<p>-8- <i>Synchronization:</i> [...]</p>
+<p>-9- <i>Throws:</i> [...]</p>
+</blockquote>
+<p>-10- The expression <code>m.try_lock_until(abs_time)</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-11- <i>Preconditions:</i> [...]</p>
+<p>-12- <i>Effects:</i> [...]</p>
+<p><del>-13- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-14- <i>Returns:</i> <code>true</code> if ownership was obtained,
+otherwise <code>false</code>.</p>
+<p>-15- <i>Synchronization:</i> [...]</p>
+<p>-16- <i>Throws:</i> [...]</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/thread.sharedmutex.requirements">[thread.sharedmutex.requirements]</a> as indicated:</p>
+<blockquote>
+<p>-1- The standard library types <code>shared_mutex</code>
+and  <code>shared_timed_mutex</code>
+are <i>shared mutex types</i>. [...]
+</p>
+<p>-2- In addition to the exclusive lock ownership mode [...]</p>
+<p>-3- The expression <code>m.lock_shared()</code> is
+well-formed<ins>, has type <code>void</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-4- <i>Preconditions:</i> [...]</p>
+<p>-5- <i>Effects:</i> [...]</p>
+<p>-6- <i>Postconditions:</i> [...]</p>
+<p><del>-7- <i>Return type:</i> <code>void</code>.</del></p>
+<p>-8- <i>Synchronization:</i> [...]</p>
+<p>-9- <i>Throws:</i> [...]</p>
+<p>-10- <i>Error conditions:</i> [...]</p>
+</blockquote>
+<p>-11- The expression <code>m.unlock_shared()</code> is
+well-formed<ins>, has type <code>void</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-12- <i>Preconditions:</i> [...]</p>
+<p>-13- <i>Effects:</i> [...]</p>
+<p><del>-14- <i>Return type:</i> <code>void</code>.</del></p>
+<p>-15- <i>Synchronization:</i> [...]</p>
+<p>-16- <i>Throws:</i> [...]</p>
+</blockquote>
+<p>-17- The expression <code>m.try_lock_shared()</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-18- <i>Preconditions:</i> [...]</p>
+<p>-19- <i>Effects:</i> [...]</p>
+<p><del>-20- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-21- <i>Returns:</i> <code>true</code> if the shared ownership lock was acquired,
+<code>false</code> otherwise.</p>
+<p>-22- <i>Synchronization:</i> [...]</p>
+<p>-23- <i>Throws:</i> [...]</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/thread.sharedtimedmutex.requirements">[thread.sharedtimedmutex.requirements]</a> as indicated:</p>
+<blockquote>
+<p>-1- The standard library type <code>shared_timed_mutex</code>
+is a <i>shared timed mutex type</i>. [...]
+</p>
+<p>-2- The expression <code>m.try_lock_shared_for(rel_time)</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-3- <i>Preconditions:</i> [...]</p>
+<p>-4- <i>Effects:</i> [...]</p>
+<p><del>-5- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-6- <i>Returns:</i> <code>true</code> if the shared lock was acquired,
+<code>false</code> otherwise.</p>
+<p>-7- <i>Synchronization:</i> [...]</p>
+<p>-8- <i>Throws:</i> [...]</p>
+</blockquote>
+<p>-9- The expression <code>m.try_lock_shared_until(abs_time)</code> is
+well-formed<ins>, has type <code>bool</code>,</ins>
+and has the following semantics:
+</p>
+<blockquote>
+<p>-10- <i>Preconditions:</i> [...]</p>
+<p>-11- <i>Effects:</i> [...]</p>
+<p><del>-12- <i>Return type:</i> <code>bool</code>.</del></p>
+<p>-13- <i>Returns:</i> <code>true</code> if the shared lock was acquired,
+<code>false</code> otherwise.</p>
+<p>-14- <i>Synchronization:</i> [...]</p>
+<p>-15- <i>Throws:</i> [...]</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 
@@ -21863,7 +22158,7 @@ if the request cannot otherwise be satisfied</ins>.
 <hr>
 <h3><a name="3028" href="3028">3028.</a> Container requirements tables should distinguish <tt>const</tt> and non-<tt>const</tt> variables</h3>
 <p><b>Section:</b> 22.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-10-17 <b>Last modified:</b> 2020-05-03 19:54:48 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-10-17 <b>Last modified:</b> 2020-05-04 18:39:45 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#container.requirements.general">active issues</a> in [container.requirements.general].</p>
@@ -22170,6 +22465,45 @@ linear
 </tr>
 <tr>
 <td>
+<tt><del>a</del><ins>c</ins> == b</tt>
+</td>
+<td>
+convertible to <tt>bool</tt>
+</td>
+<td>
+<tt>==</tt> is an equivalence relation.<br/>
+<tt>equal(<del>a</del><ins>c</ins>.begin(),<br/>
+<del>a</del><ins>c</ins>.end(),<br/>
+b.begin(),<br/>
+b.end())</tt>
+</td>
+<td>
+<i>Preconditions:</i> <tt>T</tt> meets the<br/> 
+<i>Cpp17EqualityComparable</i> requirements
+</td>
+<td>
+Constant if <tt><del>a</del><ins>c</ins>.size() != b.size()</tt>,<br/>
+linear otherwise
+</td>
+</tr>
+<tr>
+<td>
+<tt><del>a</del><ins>c</ins> != b</tt>
+</td>
+<td>
+convertible to <tt>bool</tt>
+</td>
+<td>
+Equivalent to <tt>!(<del>a</del><ins>c</ins> == b)</tt>
+</td>
+<td>
+</td>
+<td>
+linear
+</td>
+</tr>
+<tr>
+<td>
 <tt><del>a</del><ins>t</ins>.swap(<del>b</del><ins>s</ins>)</tt>
 </td>
 <td>
@@ -22218,8 +22552,52 @@ contents of <tt><del>a</del><ins>t</ins></tt> and <tt><del>b</del><ins>s</ins></
 </td>
 </tr>
 <tr>
-<td colspan="5" align="center">
-<tt>[&hellip;]</tt>
+<td>
+<tt><del>a</del><ins>c</ins>.size()</tt>
+</td>
+<td>
+<tt>size_type</tt>
+</td>
+<td>
+<tt>distance(<del>a</del><ins>c</ins>.begin(), <del>a</del><ins>c</ins>.end())</tt>
+</td>
+<td>
+</td>
+<td>
+constant
+</td>
+</tr>
+<tr>
+<td>
+<tt><del>a</del><ins>c</ins>.max_size()</tt>
+</td>
+<td>
+<tt>size_type</tt>
+</td>
+<td>
+<tt>distance(begin(), end())</tt> for the largest<br/>
+possible container
+</td>
+<td>
+</td>
+<td>
+constant
+</td>
+</tr>
+<tr>
+<td>
+<tt><del>a</del><ins>c</ins>.empty()</tt>
+</td>
+<td>
+convertible to <tt>bool</tt>
+</td>
+<td>
+<tt><del>a</del><ins>c</ins>.begin() == <del>a</del><ins>c</ins>.end()</tt>
+</td>
+<td>
+</td>
+<td>
+constant
 </td>
 </tr>
 </table>
@@ -26338,7 +26716,6 @@ asynchronous operation is invoked.
  <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-06-04 <b>Last modified:</b> 2018-06-25 00:47:25 UTC</p>
 <p><b>Priority: </b>4
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#fpos.operations">active issues</a> in [fpos.operations].</p>
 <p><b>View all other</b> <a href="lwg-index.html#fpos.operations">issues</a> in [fpos.operations].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -27821,8 +28198,8 @@ instantiated. We could also rephrase it in terms of <tt>is_invocable_v&lt;D, uni
 <hr>
 <h3><a name="3161" href="3161">3161.</a> Container adapters mandate use of <tt>emplace_back</tt> but don't require it</h3>
 <p><b>Section:</b> 22.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a>, 22.6.4 <a href="https://timsong-cpp.github.io/cppwp/queue">[queue]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2018-10-02 <b>Last modified:</b> 2019-02-21 17:23:36 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2018-10-02 <b>Last modified:</b> 2020-05-09 19:18:02 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#stack">issues</a> in [stack].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
@@ -27831,8 +28208,8 @@ instantiated. We could also rephrase it in terms of <tt>is_invocable_v&lt;D, uni
 22.6.6 <a href="https://timsong-cpp.github.io/cppwp/stack">[stack]</a> p1 says:
 </p>
 <blockquote>
-Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt> and <tt>pop_back()</tt> can be used to 
-instantiate <tt>stack</tt>. 
+Any sequence container supporting operations <tt>back()</tt>, <tt>push_back()</tt> and <tt>pop_back()</tt> can be used to
+instantiate <tt>stack</tt>.
 </blockquote>
 
 <p>but then in 22.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a> we have the following code:</p>
@@ -27855,7 +28232,8 @@ template&lt;class... Args&gt;
 <p>Polls were: NAD - 5-1-3; "Option B" - 2-5-2 and "Probe the container" - 7-2-0</p>
 
 
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
 
 <blockquote class="note">
@@ -27890,6 +28268,52 @@ template&lt;class... Args&gt;
 template&lt;class... Args&gt;
   decltype(auto) emplace(Args&amp;&amp;... args)
     { return c.emplace<del>_back</del>(<ins>c.end(), </ins>std::forward&lt;Args&gt;(args)...); }
+</pre></blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-05 Casey provides new wording]</i></p>
+
+<p>
+This is the "probe for <tt>emplace_back</tt> with fallback to <tt>emplace</tt>" approach that LWG
+wanted to see wording for in Kona.
+</p>
+
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Edit 22.6.6.1 <a href="https://timsong-cpp.github.io/cppwp/stack.defn">[stack.defn]</a>, class template <tt>stack</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args) {
+    <ins>if constexpr (requires { c.emplace_back(std::forward&lt;Args&gt;(args)...); }) {</ins>
+      return c.emplace_back(std::forward&lt;Args&gt;(args)...);
+    <ins>} else {</ins>
+      <ins>return c.emplace(c.end(), std::forward&lt;Args&gt;(args)...);</ins>
+    <ins>}</ins>
+  }
+</pre></blockquote>
+</li>
+
+<li><p>Edit 22.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/queue.defn">[queue.defn]</a>, class template <tt>queue</tt> definition, as indicated:</p>
+<blockquote><pre>
+template&lt;class... Args&gt;
+  decltype(auto) emplace(Args&amp;&amp;... args) {
+    <ins>if constexpr (requires { c.emplace_back(std::forward&lt;Args&gt;(args)...); }) {</ins>
+      return c.emplace_back(std::forward&lt;Args&gt;(args)...);
+    <ins>} else {</ins>
+      <ins>return c.emplace(c.end(), std::forward&lt;Args&gt;(args)...);</ins>
+    <ins>}</ins>
+  }
 </pre></blockquote>
 </li>
 </ol>
@@ -28755,6 +29179,7 @@ or <i>cv</i> <tt>void</tt> <del>types</del>.
  <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2018-12-11 <b>Last modified:</b> 2018-12-21 15:26:00 UTC</p>
 <p><b>Priority: </b>3
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#namespace.std">active issues</a> in [namespace.std].</p>
 <p><b>View all other</b> <a href="lwg-index.html#namespace.std">issues</a> in [namespace.std].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -31309,6 +31734,8 @@ unblocked, and</ins> there exist side effects <tt>X</tt> and <tt>Y</tt> on <tt>M
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-08-23 <b>Last modified:</b> 2020-02-14 15:15:22 UTC</p>
 <p><b>Priority: </b>2
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#move.iter.cons">active issues</a> in [move.iter.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iter.cons">issues</a> in [move.iter.cons].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
@@ -35665,8 +36092,8 @@ determination above is also modeled</ins>.</p></li>
 <hr>
 <h3><a name="3430" href="3430">3430.</a> <tt>std::fstream</tt> &amp; co. should be constructible from <tt>string_view</tt></h3>
 <p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-04-18 14:20:08 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-05-09 19:18:02 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -35710,6 +36137,12 @@ Daniel:
 <p/>
 LWG <a href="2883">2883</a> has a more general view on that but does not consider potential cost differences 
 in the presence of <tt>path</tt> overloads (Which didn't exist at this point yet).
+</p>
+
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions.
 </p>
 
 
@@ -35915,8 +36348,8 @@ is <tt>weak_ordering</tt>.</p>
 <hr>
 <h3><a name="3433" href="3433">3433.</a> <tt>subrange::advance(n)</tt> has UB when <tt>n &lt; 0</tt></h3>
 <p><b>Section:</b> 24.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-21 <b>Last modified:</b> 2020-04-25 11:55:10 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-21 <b>Last modified:</b> 2020-05-11 15:19:14 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -35930,6 +36363,12 @@ the caller via effects-equivalent-to &mdash; were it not the design intent that 
 be usable to reverse the effects of <tt>subrange::advance(n)</tt> when the <tt>subrange</tt> has a 
 bidirectional iterator type. That is, however, clearly the design intent: <tt>subrange::prev()</tt>, 
 for example, is equivalent to <tt>subrange::advance(-1)</tt>.
+</p>
+
+<p><i>[2020-05-11; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
 </p>
 
 
@@ -36042,11 +36481,12 @@ at such time that any <tt>ios_base</tt> member function called from within
 
 <hr>
 <h3><a name="3435" href="3435">3435.</a> <tt>three_way_comparable_with&lt;reverse_iterator&lt;int*&gt;, reverse_iterator&lt;const int*&gt;&gt;</tt></h3>
-<p><b>Section:</b> 23.5.1.3 <a href="https://timsong-cpp.github.io/cppwp/reverse.iter.cons">[reverse.iter.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-26 <b>Last modified:</b> 2020-04-27 16:11:51 UTC</p>
+<p><b>Section:</b> 23.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/move.iter.cons">[move.iter.cons]</a>, 23.5.1.3 <a href="https://timsong-cpp.github.io/cppwp/reverse.iter.cons">[reverse.iter.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-26 <b>Last modified:</b> 2020-05-04 18:38:43 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
-<p><b>View all other</b> <a href="lwg-index.html#reverse.iter.cons">issues</a> in [reverse.iter.cons].</p>
+<p><b>View other</b> <a href="lwg-index-open.html#move.iter.cons">active issues</a> in [move.iter.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iter.cons">issues</a> in [move.iter.cons].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
@@ -36063,6 +36503,8 @@ causing the <tt>common_reference</tt> requirement in <tt>three_way_comparable_wi
 I think we should correct this by constraining <tt>reverse_iterator</tt>'s conversion constructor (and converting 
 assignment operator, while we're here) correctly so we can use the concept to determine when it's ok to compare 
 specializations of <tt>reverse_iterator</tt> with <tt>&lt;=&gt;</tt>.
+<p/>
+<tt>move_iterator</tt> has similar issues due to its similarly unconstrained conversions. We should fix both similarly.
 </p>
 
 
@@ -36072,6 +36514,63 @@ This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
+<li><p>Modify 23.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/move.iter.cons">[move.iter.cons]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> this incorporates and supercedes the P/R of LWG <a href="3265">3265</a>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+constexpr move_iterator();
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> <del>Constructs a <tt>move_iterator</tt>, v</del><ins>V</ins>alue-initializ<ins>es</ins><del>ing</del> 
+<tt>current</tt>. <del>Iterator operations applied to the resulting iterator have defined behavior if and only if 
+the corresponding operations are defined on a value-initialized iterator of type <tt>Iterator</tt>.</del>
+</p>
+</blockquote>
+<pre>
+constexpr explicit move_iterator(Iterator i);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects:</i> <del>Constructs a <tt>move_iterator</tt>, i</del><ins>I</ins>nitializ<ins>es</ins><del>ing</del> 
+<tt>current</tt> with <tt>std::move(i)</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class U&gt; constexpr move_iterator(const move_iterator&lt;U&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+-3- <del><i>Mandates:</i> <tt>U</tt> is convertible to <tt>Iterator</tt></del><ins><i>Constraints:</i> 
+<tt>is_same_v&lt;U, Iterator&gt;</tt> is <tt>false</tt> and <tt>const U&amp;</tt> models 
+<tt>convertible_to&lt;Iterator&gt;</tt></ins>.
+<p/>
+-4- <i>Effects:</i> <del>Constructs a <tt>move_iterator</tt>, i</del><ins>I</ins>nitializ<ins>es</ins><del>ing</del> 
+<tt>current</tt> with <tt>u.<ins>current</ins><del>base()</del></tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class U&gt; constexpr move_iterator&amp; operator=(const move_iterator&lt;U&gt;&amp; u);
+</pre>
+<blockquote>
+<p>
+-5- <del><i>Mandates:</i> <tt>U</tt> is convertible to <tt>Iterator</tt></del><ins><i>Constraints:</i> 
+<tt>is_same_v&lt;U, Iterator&gt;</tt> is <tt>false</tt>, <tt>const U&amp;</tt> models 
+<tt>convertible_to&lt;Iterator&gt;</tt>, and <tt>assignable_from&lt;Iterator&amp;, const U&amp;&gt;</tt> 
+is modeled</ins>.
+<p/>
+-6- <i>Effects:</i> Assigns <tt>u.<ins>current</ins><del>base()</del></tt> to <tt>current</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
 <li><p>Modify 23.5.1.3 <a href="https://timsong-cpp.github.io/cppwp/reverse.iter.cons">[reverse.iter.cons]</a> as indicated:</p>
 
 <blockquote>
@@ -36112,8 +36611,8 @@ template&lt;class U&gt;
 <hr>
 <h3><a name="3436" href="3436">3436.</a> <tt>std::construct_at</tt> should support arrays</h3>
 <p><b>Section:</b> 25.11.7 <a href="https://timsong-cpp.github.io/cppwp/specialized.construct">[specialized.construct]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-29 <b>Last modified:</b> 2020-04-29 16:36:45 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-29 <b>Last modified:</b> 2020-05-09 19:39:43 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -36135,47 +36634,14 @@ support to the case where <tt>sizeof...(Args) == 0</tt>, if supporting parenthes
 is not desirable in <tt>std::construct_at</tt>.
 </p>
 
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
 
-<p><b>Proposed resolution:</b></p>
-
-
-
-
-<hr>
-<h3><a name="3437" href="3437">3437.</a> <tt>__cpp_lib_polymorphic_allocator</tt> is in the wrong header</h3>
-<p><b>Section:</b> 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-29 <b>Last modified:</b> 2020-04-29 16:51:09 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#version.syn">issues</a> in [version.syn].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
 <p>
-17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> says that <tt>__cpp_lib_polymorphic_allocator</tt> is also defined in <tt>&lt;memory&gt;</tt>, 
-but <tt>std::polymorphic_allocator</tt> is defined in <tt>&lt;memory_resource&gt;</tt>. This seems like an error in 
-<a href="http://wg21.link/p1902r1">P1902R1</a>. The macro should be in the same header as the feature it relates to.
+Set priority to 2 after reflector discussions.
 </p>
 
 
 <p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
-</p>
-
-<ol>
-<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-#define __cpp_lib_parallel_algorithm    201603L <i>// also in &lt;algorithm&gt;, &lt;numeric&gt;</i>
-#define __cpp_lib_polymorphic_allocator 201902L <i>// also in &lt;<del>memory</del><ins>memory_resource</ins>&gt;</i>
-#define __cpp_lib_quoted_string_io      201304L <i>// also in &lt;iomanip&gt;</i>
-[&hellip;]
-</pre>
-</blockquote>
-</li>
-</ol>
 
 
 
@@ -36183,8 +36649,8 @@ This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
 <hr>
 <h3><a name="3438" href="3438">3438.</a> &sect;[container.node.overview] missing <tt>multiset</tt>/<tt>map</tt> cases</h3>
 <p><b>Section:</b> 22.2.4.1 <a href="https://timsong-cpp.github.io/cppwp/container.node.overview">[container.node.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2020-04-30 <b>Last modified:</b> 2020-05-01 12:02:12 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2020-04-30 <b>Last modified:</b> 2020-05-09 19:23:21 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#container.node.overview">active issues</a> in [container.node.overview].</p>
 <p><b>View all other</b> <a href="lwg-index.html#container.node.overview">issues</a> in [container.node.overview].</p>
@@ -36220,6 +36686,12 @@ with compatible nodes have the same node handle type. Elements may be transferre
 between container types in the same row of Table 79 [tab:container.node.compat].
 </p></blockquote>
 
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -36229,8 +36701,8 @@ between container types in the same row of Table 79 [tab:container.node.compat].
 <hr>
 <h3><a name="3439" href="3439">3439.</a> "<tt>Distance</tt>" template parameter is underspecified</h3>
 <p><b>Section:</b> 23.4.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.operations">[iterator.operations]</a>, 25.7.12 <a href="https://timsong-cpp.github.io/cppwp/alg.random.sample">[alg.random.sample]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2020-05-01 <b>Last modified:</b> 2020-05-01 12:13:36 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2020-05-01 <b>Last modified:</b> 2020-05-09 19:23:21 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#iterator.operations">active issues</a> in [iterator.operations].</p>
 <p><b>View all other</b> <a href="lwg-index.html#iterator.operations">issues</a> in [iterator.operations].</p>
@@ -36248,6 +36720,12 @@ could possibly be removed.
 See the related issue <a href="3213">3213</a> for the <tt>Size</tt> template parameter.
 </p>
 
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -36257,8 +36735,8 @@ See the related issue <a href="3213">3213</a> for the <tt>Size</tt> template par
 <hr>
 <h3><a name="3440" href="3440">3440.</a> Aggregate-paren-init breaks direct-initializing a <tt>tuple</tt> or <tt>optional</tt> from <tt>{<i>aggregate-member-value</i>}</tt></h3>
 <p><b>Section:</b> 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a>, 20.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.ctor">[optional.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-05-01 <b>Last modified:</b> 2020-05-03 16:40:24 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-05-01 <b>Last modified:</b> 2020-05-09 19:39:43 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
 <p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
@@ -36288,6 +36766,12 @@ as an extension, enable such initializations so that <tt>tuple</tt>/<tt>optional
 mirrors what <tt>c</tt> can do in C++20.
 <p/>
 The proposed wording below has been implemented and tested.
+</p>
+
+<p><i>[2020-05-09; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
 </p>
 
 
@@ -36330,6 +36814,157 @@ remove_reference_t&lt;U&gt;&gt;&gt;&gt;</tt> is <tt>false</tt></ins>.
 </blockquote>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3441" href="3441">3441.</a> Misleading note about calls to customization points</h3>
+<p><b>Section:</b> 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Michael Park <b>Opened:</b> 2020-05-08 <b>Last modified:</b> 2020-05-09 19:58:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#namespace.std">active issues</a> in [namespace.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#namespace.std">issues</a> in [namespace.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p0551">P0551</a> (Thou Shalt Not Specialize <tt>std</tt> Function Templates!) 
+added a clause in [namespace.std]/7:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Other than in namespace <tt>std</tt> or in a namespace within namespace <tt>std</tt>, a program may provide 
+an overload for any library function template designated as a customization point, provided that 
+(a) the overload's declaration depends on at least one user-defined type and (b) the overload meets 
+the standard library requirements for the customization point. (footnote 174) [<i>Note:</i> This permits a (qualified 
+or unqualified) call to the customization point to invoke the most appropriate overload for 
+the given arguments. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<p>
+Given that <tt>std::swap</tt> is a designated customization point, the note seems to suggest the following:
+</p>
+<blockquote><pre>
+namespace N {
+  struct X {};
+  void swap(X&amp;, X&amp;) {}
+}
+
+N::X a, b;
+std::swap(a, b); // <span style="color:#C80000;font-weight:bold">qualified call to customization point finds N::swap?</span>
+</pre></blockquote>
+<p>
+This is not what happens, as the call to <tt>std::swap</tt> does not find <tt>N::swap</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-7- Other than in namespace <tt>std</tt> or in a namespace within namespace <tt>std</tt>, a program 
+may provide an overload for any library function template designated as a customization point, 
+provided that (a) the overload's declaration depends on at least one user-defined type and (b) the 
+overload meets the standard library requirements for the customization point. (footnote 173) 
+<del>[<i>Note:</i> This permits a (qualified or unqualified) call to the customization point
+to invoke the most appropriate overload for the given arguments. &mdash; <i>end note</i>]</del>
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3442" href="3442">3442.</a> Unsatisfiable suggested implementation of customization points</h3>
+<p><b>Section:</b> 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Michael Park <b>Opened:</b> 2020-05-08 <b>Last modified:</b> 2020-05-09 20:16:07 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#namespace.std">active issues</a> in [namespace.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#namespace.std">issues</a> in [namespace.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Footnote 173 under [namespace.std]/7 reads (emphasis mine):
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Any library customization point must be prepared to work adequately with any user-defined 
+overload that meets the minimum requirements of this document. <b>Therefore an implementation 
+may elect, under the as-if rule (6.9.1 <a href="https://timsong-cpp.github.io/cppwp/intro.execution">[intro.execution]</a>), to provide any customization 
+point in the form of an instantiated function object (20.14 <a href="https://timsong-cpp.github.io/cppwp/function.objects">[function.objects]</a>) even 
+though the customization point's specification is in the form of a function template.</b> 
+The template parameters of each such function object and the function parameters and return 
+type of the object's <tt>operator()</tt> must match those of the corresponding customization 
+point's specification.
+</p>
+</blockquote>
+<p>
+This implementation suggestion doesn't seem to be satisfiable with the as-if rule.
+</p>
+<ol>
+<li><p>In order to maintain as-if rule for qualified calls to <tt>std::swap</tt>, <tt>std::swap</tt> 
+cannot perform ADL look-up like <tt>std::ranges::swap</tt> does.</p></li>
+<li><p>But then we cannot maintain as-if rule for two-step calls to <tt>std::swap</tt>, since ADL 
+is turned off when function objects are involved.</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+
+namespace S {
+#ifdef CPO
+  static constexpr auto swap = [](auto&amp;, auto&amp;) { std::cout &lt;&lt; "std"; };
+#else
+  template&lt;typename T&gt; swap(T&amp;, T&amp;) { std::cout &lt;&lt; "std"; }
+#endif
+}
+
+namespace N {
+  struct X {};
+  void swap(X&amp;, X&amp;) { std::cout &lt;&lt; "mine"; }
+}
+
+int main() {
+  N::X a, b;
+  S::swap(a, b);  // (1) prints `std` in both cases
+  using S::swap;
+  swap(a, b);     // (2) prints `std` with `-DCPO`, and `mine` without.
+}
+</pre></blockquote>
+</li>
+<li><p>We can try to satisfy the as-if rule for (2) by having <tt>std::swap</tt> perform ADL like 
+<tt>std::ranges::swap</tt>, but then that would break (1) since qualified calls to <tt>std::swap</tt> 
+would also ADL when it did not do so before.</p></li>
+</ol>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a>, footnote 173, as indicated:</p>
+
+<blockquote>
+<p>
+footnote 173) Any library customization point must be prepared to work adequately with any user-defined overload 
+that meets the minimum requirements of this document. <del>Therefore an implementation may elect, under the 
+as-if rule (6.9.1 <a href="https://timsong-cpp.github.io/cppwp/intro.execution">[intro.execution]</a>), to provide any customization point in the form of an 
+instantiated function object (20.14 <a href="https://timsong-cpp.github.io/cppwp/function.objects">[function.objects]</a>) even though the customization point's 
+specification is in the form of a function template. The template parameters of each such function 
+object and the function parameters and return type of the object's <tt>operator()</tt> must match those 
+of the corresponding customization point's specification.</del>
+</p>
+</blockquote>
+</li>
+
 </ol>
 
 
