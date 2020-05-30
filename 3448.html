@@ -1,0 +1,215 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3448: transform_view's sentinel&lt;false&gt; not comparable with iterator&lt;true&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3448" href="lwg-active.html#3448">3448.</a> <tt>transform_view</tt>'s <tt><i>sentinel</i>&lt;false&gt;</tt> not comparable with <tt><i>iterator</i>&lt;true&gt;</tt></h3>
+<p><b>Section:</b> 24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a>, 24.7.10.4 <a href="https://timsong-cpp.github.io/cppwp/range.join.sentinel">[range.join.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-05-26 <b>Last modified:</b> 2020-05-28 18:45:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.transform.sentinel">issues</a> in [range.transform.sentinel].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A user reported that this doesn't compile:
+</p>
+<blockquote><pre>
+#include &lt;list&gt;
+#include &lt;ranges&gt;
+
+std::list v{1, 2}; // works if std::vector
+auto view1 = v | std::views::take(2);
+auto view2 = view1 | std::views::transform([] (int i) { return i; });
+bool b = std::ranges::cbegin(view2) == std::ranges::end(view2);
+</pre></blockquote>
+<p>
+The comparison is supposed to use <tt>operator==(<i>iterator</i>&lt;Const&gt;, <i>sentinel</i>&lt;Const&gt;)</tt> 
+after converting <tt><i>sentinel</i>&lt;false&gt;</tt> to <tt><i>sentinel</i>&lt;true&gt;</tt>. However, the 
+<tt>operator==</tt> is a hidden friend so is not a candidate when comparing <tt><i>iterator</i>&lt;true&gt;</tt> 
+with <tt><i>sentinel</i>&lt;false&gt;</tt>. The required conversion would only happen if we'd found the operator, 
+but we can't find the operator until after the conversion happens.
+<p/>
+As Patrick noted, the <tt>join_view</tt> sentinel has a similar problem.
+<p/>
+The proposed wording shown below has been suggested by Casey and has been implemented and tested in GCC's libstdc++.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The project editor is kindly asked to consider replacing editorially all of the
+<p/>
+"<tt>using <i>Base</i> = conditional_t&lt;Const, const V, V&gt;;</tt>"
+<p/> 
+occurrences by
+<p/>
+"<tt>using <i>Base</i> = <i>maybe-const</i>&lt;Const, V&gt;;</tt>"
+<p/>
+]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std::ranges {
+[&hellip;]
+  namespace views { inline constexpr <i>unspecified</i> filter = <i>unspecified</i>; }
+  
+  <ins>template&lt;bool Const, class T&gt;</ins>
+    <ins>using <i>maybe-const</i> = conditional_t&lt;Const, const T, T&gt;; <i>// exposition-only</i></ins>
+  
+  <i>// 24.7.5 <a href="https://timsong-cpp.github.io/cppwp/range.transform">[range.transform]</a>, transform view</i>
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt;
+  class transform_view;
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.transform.sentinel">[range.transform.sentinel]</a>, class template <tt>transform_view::<i>sentinel</i></tt> 
+synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>sentinel</i> {
+    [&hellip;]
+    constexpr sentinel_t&lt;<i>Base</i>&gt; base() const;
+    
+    <ins>template&lt;bool OtherConst&gt;</ins>
+      <ins>requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+    friend constexpr bool operator==(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y);
+    
+    <ins>template&lt;bool OtherConst&gt;</ins>
+      <ins>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+    friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+      operator-(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y)
+        <del>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+
+    <ins>template&lt;bool OtherConst&gt;</ins>
+      <ins>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+    friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+      operator-(const <i>sentinel</i>&amp; y, const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x)
+        <del>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+<ins>template&lt;bool OtherConst&gt;</ins>
+  <ins>requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+friend constexpr bool operator==(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y);
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> == y.<i>end_</i>;</tt>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;bool OtherConst&gt;</ins>
+  <ins>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+  operator-(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y)
+    <del>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> - y.<i>end_</i>;</tt>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;bool OtherConst&gt;</ins>
+  <ins>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins> 
+friend constexpr range_difference_t&lt;<i>Base</i>&gt;
+  operator-(const <i>sentinel</i>&amp; y, const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x)
+    <del>requires sized_sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return y.<i>end_</i> - x.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+
+<li><p>Modify 24.7.10.4 <a href="https://timsong-cpp.github.io/cppwp/range.join.sentinel">[range.join.sentinel]</a>, class template <tt>join_view::<i>sentinel</i></tt> 
+synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             (is_reference_v&lt;range_reference_t&lt;V&gt;&gt; ||
+             view&lt;range_value_t&lt;V&gt;&gt;)
+  template&lt;bool Const&gt;
+  class join_view&lt;V&gt;::<i>sentinel</i> {
+    [&hellip;]
+
+    <ins>template&lt;bool OtherConst&gt;</ins>
+      <ins>requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins>
+    friend constexpr bool operator==(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y);  
+};
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+<ins>template&lt;bool OtherConst&gt;</ins>
+  <ins>requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;</ins>
+friend constexpr bool operator==(const <i>iterator</i>&lt;<ins>Other</ins>Const&gt;&amp; x, const <i>sentinel</i>&amp; y);  
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return x.<i>outer_</i> == y.<i>end_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
