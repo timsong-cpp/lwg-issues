@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3449: take_view and take_while_view's sentinel&lt;false&gt; not comparable with their const iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3449" href="lwg-active.html#3449">3449.</a> <tt>take_view</tt> and <tt>take_while_view</tt>'s <tt><i>sentinel</i>&lt;false&gt;</tt> not comparable with their const iterator</h3>
+<p><b>Section:</b> 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.sentinel">[range.take.sentinel]</a>, 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.sentinel">[range.take.while.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-06-06 <b>Last modified:</b> 2020-06-06 13:45:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+During reflector discussion it was noted that the issue observed in
+LWG <a href="3448">3448</a> applies to <tt>take_view::<i>sentinel</i></tt>
+and <tt>take_while_view::<i>sentinel</i></tt> as well.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>. It assumes
+the <tt><i>maybe-const</i></tt> helper introduced by the P/R of LWG <a href="3448">3448</a>.</p>
+
+<ol>
+<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.sentinel">[range.take.sentinel]</a> as indicated:</p>
+
+<blockquote class="note">
+<i>Drafting note</i>: Unlike LWG 3448, these operators can't be easily templatized,
+so the approach taken here is to add an overload for the opposite constness instead.
+However, because <tt>const V</tt> may not even be a range (and therefore
+<tt>iterator_t&lt;const V&gt;</tt> may not be well-formed), we need to defer
+instantiating the signature of the new overload until the point of use.
+</blockquote>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+  template&lt;bool Const&gt;
+  class take_view&lt;V&gt;::<i>sentinel</i> {
+  private:
+    using <i>Base</i> = conditional_t&lt;Const, const V, V&gt;;  // exposition only
+    <ins>template&lt;bool OtherConst&gt;</ins>
+    using <i>CI</i> = counted_iterator&lt;iterator_t&lt;<del><i>Base</i></del><ins><i>maybe-const</i>&lt;Const, V&gt;</ins>&gt;&gt;;  // exposition only
+
+    [&hellip;]
+
+    constexpr sentinel_t&lt;<i>Base</i>&gt; base() const;
+
+    friend constexpr bool operator==(const <i>CI</i><ins>&lt;Const&gt;</ins>&amp; y, const <i>sentinel</i>&amp; x);
+    <ins>
+    template&lt;bool OtherConst = !Const&gt;
+        requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;
+    friend constexpr bool operator==(const <i>CI</i>&lt;OtherConst&gt;&amp; y, const <i>sentinel</i>&amp; x);
+    </ins>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+friend constexpr bool operator==(const <i>CI</i><ins>&lt;Const&gt;</ins>&amp; y, const <i>sentinel</i>&amp; x);
+<ins>
+template&lt;bool OtherConst = !Const&gt;
+    requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;
+friend constexpr bool operator==(const <i>CI</i>&lt;OtherConst&gt;&amp; y, const <i>sentinel</i>&amp; x);
+</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return y.count() == 0 || y.base() == x.<i>end_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Modify 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.sentinel">[range.take.while.sentinel]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+    template&lt;view V, class Pred&gt;
+    requires input_range&lt;V&gt; &amp;&amp; is_object_v&lt;Pred&gt; &amp;&amp;
+                indirect_unary_predicate&lt;const Pred, iterator_t&lt;V&gt;&gt;
+    template&lt;bool Const&gt;
+    class take_while_view&lt;V&gt;::<i>sentinel</i> {
+    [&hellip;]
+
+    constexpr sentinel_t&lt;<i>Base</i>&gt; base() const;
+
+    friend constexpr bool operator==(const iterator_t&lt;Base&gt;&amp; x, const <i>sentinel</i>&amp; y);
+    <ins>
+    template&lt;bool OtherConst = !Const&gt;
+        requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;
+    friend constexpr bool operator==(const iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&amp; x, const <i>sentinel</i>&amp; y);
+    </ins>
+    };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+friend constexpr bool operator==(const iterator_t&lt;Base&gt;&amp; x, const <i>sentinel</i>&amp; y);
+<ins>
+template&lt;bool OtherConst = !Const&gt;
+    requires sentinel_for&lt;sentinel_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&gt;
+friend constexpr bool operator==(const iterator_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&gt;&amp; x, const <i>sentinel</i>&amp; y);
+</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return y.<i>end_</i>> == x || !invoke(*y.<i>pred_</i>, *x);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

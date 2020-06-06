@@ -1,0 +1,94 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3450: The const overloads of take_while_view::begin/end are underconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3450" href="lwg-active.html#3450">3450.</a> The <tt>const</tt> overloads of <tt>take_while_view::begin/end</tt> are underconstrained</h3>
+<p><b>Section:</b> 24.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.view">[range.take.while.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-06-06 <b>Last modified:</b> 2020-06-06 13:46:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.take.while.view">issues</a> in [range.take.while.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>const</tt> overloads of <tt>take_while_view::begin</tt>
+and <tt>take_while_view::end</tt> are underconstrained: they should require
+the predicate to model <tt>indirect_unary_predicate&lt;iterator_t&lt;const V&gt;&gt;</tt>.
+A simple example is
+</p>
+<blockquote><pre>
+    #include &lt;ranges&gt;
+
+    auto v = std::views::single(1) | std::views::take_while([](int&amp; x) { return true;});
+    static_assert(std::ranges::range&lt;decltype(v)&gt;);
+    static_assert(std::ranges::range&lt;decltype(v) const&gt;);
+    bool b = std::ranges::cbegin(v) == std::ranges::cend(v);
+</pre></blockquote>
+<p>
+Here, the <tt>static_assert</tt>s pass but the comparison fails to compile. The other
+views using <tt>indirect_unary_predicate</tt> (<tt>filter_view</tt> and
+<tt>drop_while_view</tt>) do not have this problem because they do not support
+const-iteration.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li>
+<p>Modify 24.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.view">[range.take.while.view]</a>, class template <tt>take_while_view</tt> synopsis, as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+    template&lt;view V, class Pred&gt;
+      requires input_range&lt;V&gt; &amp;&amp; is_object_v&lt;Pred&gt; &amp;&amp;
+               indirect_unary_predicate&lt;const Pred, iterator_t&lt;V&gt;&gt;
+    class take_while_view : public view_interface&lt;take_while_view&lt;V, Pred&gt;&gt; {
+    [&hellip;]
+
+    constexpr auto begin() requires (!<i>simple-view</i>&lt;V&gt;)
+    { return ranges::begin(<i>base_</i>); }
+
+    constexpr auto begin() const requires range&lt;const V&gt; <ins>&amp;&amp; indirect_unary_predicate&lt;const Pred, iterator_t&lt;const V&gt;&gt;</ins>
+    { return ranges::begin(<i>base_</i>); }
+
+    constexpr auto end() requires (!<i>simple-view</i>&lt;V&gt;)
+    { return sentinel&lt;false&gt;(ranges::end(<i>base_</i>), addressof(*<i>pred_</i>)); }
+
+    constexpr auto end() const requires range&lt;const V&gt; <ins>&amp;&amp; indirect_unary_predicate&lt;const Pred, iterator_t&lt;const V&gt;&gt;</ins>
+    { return sentinel&lt;true&gt;(ranges::end(<i>base_</i>), addressof(*<i>pred_</i>)); }
+    };
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
