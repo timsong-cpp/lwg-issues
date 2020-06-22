@@ -1,0 +1,142 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3453: Generic code cannot call ranges::advance(i, s)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3453" href="lwg-active.html#3453">3453.</a> Generic code cannot call <tt>ranges::advance(i, s)</tt></h3>
+<p><b>Section:</b> 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>, 23.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-06-18 <b>Last modified:</b> 2020-06-21 12:46:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iter.op.advance">active issues</a> in [range.iter.op.advance].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iter.op.advance">issues</a> in [range.iter.op.advance].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of the iterator &amp; sentinel overload of <tt>ranges::advance</tt> in 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> reads:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<p>
+-3- <i>Preconditions:</i> <tt>[i, bound)</tt> denotes a range.
+<p/>
+-4- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt>assignable_from&lt;I&amp;, S&gt;</tt>, equivalent to 
+<tt>i = std::move(bound)</tt>.</p></li>
+<li><p>(4.2) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+
+<p>
+The assignment optimization in bullet 4.1 is just fine for callers with concrete types who can decide whether 
+or not to call <tt>advance</tt> depending on the semantics of the assignment performed. However, since this assignment 
+operation isn't part of the <tt>input_or_output_iterator</tt> or <tt>sentinel_for</tt> requirements its semantics 
+are unknown for arbitrary types. Effectively, generic code is forbidden to call this overload of <tt>advance</tt> when 
+<tt>assignable_from&lt;I&amp;, S&gt;</tt> is satisfied and non-generic code must tread lightly. This seems to 
+make the library dangerously unusable.
+
+We can correct this problem by either:
+</p>
+<ol style="list-style-type: upper-alpha">
+<li><p>Making the assignment operation in question an optional part of the <tt>sentinel_for</tt> concept with well-defined 
+semantics. This concept change should be relatively safe given that <tt>assignable_from&lt;I&amp;, S&gt;</tt> 
+requires <tt>common_reference_with&lt;const I&amp;, const S&amp;&gt;</tt>, which is very rarely satisfied 
+inadvertently.</p></li>
+<li><p>Requiring instead <tt>same_as&lt;I, S&gt;</tt> to trigger the assignment optimization in bullet 4.1 above. 
+<tt>S</tt> is <tt>semiregular</tt>, so <tt>i = std::move(s)</tt> is certainly well-formed (and has well-defined 
+semantics thanks to <tt>semiregular</tt>) when <tt>I</tt> and <tt>S</tt> are the same type. The optimization will 
+not apply in as many cases, but we don't need to make a scary concept change, either.</p></li>
+</ol>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+<p/>
+Wording for both <b>Option A</b> and <b>Option B</b> are provided.
+</p>
+
+<p><b>Option A</b>:</p>
+
+<ol>
+<li><p>Modify 23.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class S, class I&gt;
+  concept sentinel_for =
+    semiregular&lt;S&gt; &amp;&amp;
+    input_or_output_iterator&lt;I&gt; &amp;&amp;
+    <i>weakly-equality-comparable-with</i>&lt;S, I&gt;; <i>// See 18.5.3 <a href="https://timsong-cpp.github.io/cppwp/concept.equalitycomparable">[concept.equalitycomparable]</a></i>
+</pre>
+<blockquote>
+<p>
+-2- Let <tt>s</tt> and <tt>i</tt> be values of type <tt>S</tt> and <tt>I</tt> such that <tt>[i, s)</tt> denotes a range. 
+Types <tt>S</tt> and <tt>I</tt> model <tt>sentinel_for&lt;S, I&gt;</tt> only if
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>i == s</tt> is well-defined.</p></li>
+<li><p>(2.2) &mdash; If <tt>bool(i != s)</tt> then <tt>i</tt> is dereferenceable and <tt>[++i, s)</tt> denotes a range.</p></li>
+<li><p><ins>(2.?) &mdash; <tt>assignable_from&lt;I&amp;, S&gt;</tt> is either modeled or not satisfied.</ins></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+<p><b>Option B</b>:</p>
+
+<ol>
+<li><p>Modify 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> <tt>[i, bound)</tt> denotes a range.
+<p/>
+-4- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt><del>assignable_from&lt;I&amp;, 
+S&gt;</del><ins>same_as&lt;I, S&gt;</ins></tt>, equivalent to <tt>i = std::move(bound)</tt>.</p></li>
+<li><p>(4.2) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
