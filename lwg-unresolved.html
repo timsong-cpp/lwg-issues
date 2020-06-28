@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-06-26 at 19:10:07 UTC</p>
+<p><p>Revised 2020-06-28 at 12:53:26 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -37447,100 +37447,6 @@ Set priority to 3 after reflector discussions.
 
 
 <hr>
-<h3><a name="3440" href="3440">3440.</a> Aggregate-paren-init breaks direct-initializing a <tt>tuple</tt> or <tt>optional</tt> from <tt>{<i>aggregate-member-value</i>}</tt></h3>
-<p><b>Section:</b> 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a>, 20.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.ctor">[optional.ctor]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-05-01 <b>Last modified:</b> 2020-06-11 16:13:14 UTC</p>
-<p><b>Priority: </b>2
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
-<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-For reference, see <a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94890">this gcc bug report</a>.
-<p/>
-Constructing a <tt>tuple</tt> or <tt>optional</tt> from an element value of an aggregate
-is broken in C++20. <tt>tuple&lt;c&gt; t({val});</tt> and <tt>optional&lt;c&gt; t({val});</tt>
-invoked a non-forwarding constructor before, but now the perfect-forwarding converting
-constructors are a match, because the element is constructible from <tt>{val}</tt>. But
-it's not convertible, so overload resolution chooses the explicit constructor, and the
-initialization fails.
-<p/>
-Tim Song explains the overload resolution in <a href="https://lists.isocpp.org/lib/2020/05/16131.php">
-this reflector discussion</a>.
-<p/>
-Now that we understand that C++17 called the non-forwarding conversion constructor,
-and C++20 tries to use the forwarding conversion constructor, we have the solution.
-SFINAE away the forwarding conversion constructor when it would convert an aggregate.
-<p/>
-This also means that <tt>tuple&lt;c&gt; t(0);</tt> won't work, which is unfortunate
-because <tt>tuple&lt;c&gt;/optional&lt;c&gt;</tt> no longer mirrors what <tt>c</tt> can do.
-That's okay; in this LWG issue, we first restore feature parity with C++17, and later,
-as an extension, enable such initializations so that <tt>tuple</tt>/<tt>optional</tt>
-mirrors what <tt>c</tt> can do in C++20.
-<p/>
-The proposed wording below has been implemented and tested.
-</p>
-
-<p><i>[2020-05-09; Reflector prioritization]</i></p>
-
-<p>
-Set priority to 2 after reflector discussions.
-</p>
-
-<p><i>[2020-06-11; LWG Telecon: Status changed: New &rarr; LEWG.]</i></p>
-
-<p>
-Ask LEWG if it's desirable to make <tt>({val})</tt> work again.
-Tomasz would prefer it to be explicit e.g. via <tt>std::in_place</tt>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
-
-<ol>
-<li><p>Modify 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class... UTypes&gt; constexpr explicit(<i>see below</i>) tuple(UTypes&amp;&amp;... u);
-</pre>
-<blockquote>
-<p>
--11- <i>Constraints:</i> <tt>sizeof...(Types)</tt> equals <tt>sizeof...(UTypes)</tt> and
-<tt>sizeof...(Types) &ge; 1</tt> and <tt>is_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&gt;</tt>
-is <tt>true</tt> for all <tt><i>i</i></tt> <ins>and <tt>conjunction_v&lt;is_aggregate&lt;remove_reference_t&lt;T<sub><i>i</i></sub>&gt;&gt;,
-negation&lt;is_same&lt;remove_reference_t&lt;T<sub><i>i</i></sub>&gt;, remove_reference_t&lt;U<sub><i>i</i></sub>&gt;&gt;&gt;&gt;</tt> is
-<tt>false</tt> for all <tt><i>i</i></tt></ins>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 20.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.ctor">[optional.ctor]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class U = T&gt; constexpr explicit(<i>see below</i>) optional(U&amp;&amp; v);
-</pre>
-<blockquote>
-<p>
--22- <i>Constraints:</i> <tt>is_constructible_v&lt;T, U&gt;</tt> is <tt>true</tt>,
-<tt>is_same_v&lt;remove_cvref_t&lt;U&gt;, in_place_t&gt;</tt> is <tt>false</tt>, <del>and</del>
-<tt>is_same_v&lt;remove_cvref_t&lt;U&gt;, optional&gt;</tt> is <tt>false</tt><ins>, and
-<tt>conjunction_v&lt;is_aggregate&lt;T&gt;, negation&lt;is_same&lt;T,
-remove_reference_t&lt;U&gt;&gt;&gt;&gt;</tt> is <tt>false</tt></ins>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3441" href="3441">3441.</a> Misleading note about calls to customization points</h3>
 <p><b>Section:</b> 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Michael Park <b>Opened:</b> 2020-05-08 <b>Last modified:</b> 2020-05-09 19:58:13 UTC</p>
@@ -38891,6 +38797,82 @@ This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
 -2- For a <tt>basic_string_view str</tt>, any operation that invalidates a pointer in the range <tt>[str.data(),
 str.data() + str.size())</tt> invalidates pointers, iterators, and references <ins>to the elements in that range 
 and its past-the-end iterator</ins> returned from <tt>str</tt>'s member functions.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="3458" href="3458">3458.</a> Is <tt>shared_future</tt> intended to work with arrays or function types?</h3>
+<p><b>Section:</b> 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a>, 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2020-06-28 <b>Last modified:</b> 2020-06-28 12:53:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently there is no prohibition of creating <code>shared_future&lt;T&gt;</code> where <code>T</code> is 
+either an array type or a function type. However such objects cannot be constructed, as the corresponding 
+<code>future&lt;T&gt;</code>, is ill-formed due the signature <code>get()</code> method being ill-formed &mdash; 
+it will be declared as function returning an array or function type, respectively. [<i>Note:</i> For 
+<code>shared_future</code> <tt>get</tt> always returns an reference, so it is well-formed for array or function 
+types.]
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>is_array_v&lt;R&gt;</tt> is <tt>false</tt> and <tt>is_function_v&lt;R&gt;</tt> is <tt>false</tt>.</ins>
+<p/>
+-4- The implementation provides the template <tt>future</tt> and two specializations, <tt>future&lt;R&amp;&gt;</tt> and 
+<tt>future&lt;void&gt;</tt>. These differ only in the return type and return value of the member function <tt>get</tt>, 
+as set out in its description, below.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class shared_future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> <tt>is_array_v&lt;R&gt;</tt> is <tt>false</tt> and <tt>is_function_v&lt;R&gt;</tt> is <tt>false</tt>.</ins>
+<p/>
+-4- The implementation provides the template <tt>shared_future</tt> and two specializations, 
+<tt>shared_future&lt;R&amp;&gt;</tt> and <tt>shared_future&lt;void&gt;</tt>. These differ only in the return type 
+and return value of the member function <tt>get</tt>, as set out in its description, below.
 </p>
 </blockquote>
 </li>
