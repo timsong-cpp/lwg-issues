@@ -24,7 +24,7 @@
 <hr>
 <h3><a name="3456" href="lwg-active.html#3456">3456.</a> Pattern used by <tt>std::from_chars</tt> is underspecified</h3>
 <p><b>Section:</b> 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-06-23 <b>Last modified:</b> 2020-06-26 13:10:02 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-06-23 <b>Last modified:</b> 2020-06-29 17:07:58 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#charconv.from.chars">active issues</a> in [charconv.from.chars].</p>
@@ -47,6 +47,9 @@ format except scientific, <tt>"0x123"</tt> produces <tt>0.0</tt> (it's invalid w
 when <tt>hex</tt> is used the string has an assumed <tt>"0x"</tt> prefix, so is interpreted as a hexadecimal 
 float, it doesn't say that when <tt>fmt != hex</tt> that the string is <em>not</em> interpreted as a 
 hexadecimal float.
+<p/>
+Two alternative resolutions are provided, one is a minimal fix and the other attempts to make it clearer by 
+not referring to a modified version of the C rules.
 </p>
 
 
@@ -55,6 +58,7 @@ hexadecimal float.
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
 </p>
 
+<b>Option A:</b>
 <ol>
 <li><p>Modify 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> as indicated:</p>
 
@@ -81,7 +85,7 @@ the <del>otherwise optional exponent part shall appear</del><ins>exponent part i
 <li><p>(7.3) &mdash; if <tt>fmt</tt> has <tt>chars_format::fixed</tt> set but not <tt>chars_format::scientific</tt>, 
 <del>the optional exponent part shall not appear; and</del><ins>there is no exponent part;</ins></p></li>
 <li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is not <tt>chars_format::hex</tt>, only decimal digits and an 
-optional <tt>'.'</tt> shall appear before the exponent part (if any); and</ins></p></li>
+optional <tt>'.'</tt> appear before the exponent part (if any); and</ins></p></li>
 <li><p>(7.4) &mdash; if <tt>fmt</tt> is <tt>chars_format::hex</tt>, the prefix <tt>"0x"</tt> or <tt>"0X"</tt> is 
 assumed. [<i>Example:</i> The string <tt>0x123</tt> is parsed to have the value <tt>0</tt> with remaining characters 
 <tt>x123</tt>. &mdash; <i>end example</i>]</p></li>
@@ -95,6 +99,84 @@ string matching the pattern.
 </li>
 </ol>
 
+<b>Option B:</b>
+<ol>
+<li><p>Modify 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+from_chars_result from_chars(const char* first, const char* last, float&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, double&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, long double&amp; value,
+                             chars_format fmt = chars_format::general);
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions:</i> <tt>fmt</tt> has the value of one of the enumerators of <tt>chars_format</tt>.
+<p/>
+-7- <i>Effects:</i> <del>The pattern is the expected form of the subject sequence in the "C" locale, as described for
+<tt>strtod</tt>, except that</del><ins>The pattern is an optional <tt>'-'</tt> sign followed by one of:</ins>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; <del>the sign <tt>'+'</tt> may only appear in the exponent part</del><ins><tt>INF</tt> or 
+<tt>INFINITY</tt>, ignoring case</ins>;</p></li>
+<li><p>(7.2) &mdash; <del>if <tt>fmt</tt> has <tt>chars_format::scientific</tt> set but not <tt>chars_format::fixed</tt>, 
+the otherwise optional exponent part shall appear</del><ins>if <tt>numeric_limits&lt;T&gt;::has_quiet_NaN</tt> is 
+<tt>true</tt>, <tt>NAN</tt> or <tt>NAN(</tt><i>n-char-sequence<sub>opt</sub></i><tt>)</tt>, ignoring case in the 
+<tt>NAN</tt> part, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>n-char-sequence:</i>
+       <i>digit</i>
+       <i>nondigit</i>
+       <i>n-char-sequence digit</i>
+       <i>n-char-sequence nondigit</i></ins>
+</pre>
+</blockquote>
+<p>;</p></li>
+<li><p>(7.3) &mdash; <del>if <tt>fmt</tt> has <tt>chars_format::fixed</tt> set but not <tt>chars_format::scientific</tt>, 
+the optional exponent part shall not appear; and</del><ins>if <tt>fmt</tt> is equal to <tt>chars_format::scientific</tt>, 
+a sequence of characters matching <i>chars-format-dec exponent-part</i>, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>chars-format-dec:</i>
+         <i>fractional-constant</i>
+         <i>digit-sequence</i></ins>
+</pre>
+</blockquote>
+<p><ins>;</ins></p></li>
+<li><p>(7.4) &mdash; <del>if <tt>fmt</tt> is <tt>chars_format::hex</tt>, the prefix <tt>"0x"</tt> or <tt>"0X"</tt> is 
+assumed. [<i>Example:</i> The string <tt>0x123</tt> is parsed to have the value <tt>0</tt> with remaining characters 
+<tt>x123</tt>. &mdash; <i>end example</i>]</del><ins>if <tt>fmt</tt> is equal to <tt>chars_format::fixed</tt>, a 
+sequence of characters matching <i>chars-format-dec</i>;</ins></p></li>
+<li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is equal to <tt>chars_format::general</tt>, a sequence of characters matching 
+<i>chars-format-dec exponent-part<sub>opt</sub></i>; or</ins></p></li>
+<li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is equal to <tt>chars_format::hex</tt>, a sequence of characters matching 
+<i>chars-format-hex binary-exponent-part<sub>opt</sub></i>, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>chars-format-hex:</i>
+         <i>hexadecimal-fractional-constant</i>
+         <i>hexadecimal-digit-sequence</i></ins>
+</pre>
+</blockquote>
+<p><ins>[<i>Note:</i> The pattern is derived from the subject sequence in the <tt>"C"</tt> locale for <tt>strtod</tt>, 
+with the value of <tt>fmt</tt> limiting which forms of the subject sequence are recognized, and with no <tt>0x</tt> 
+or <tt>0X</tt> prefix recognized. &mdash; <i>end note</i>]</ins></p></li>
+</ol>
+<p>
+<ins>For a character sequence <tt>INF</tt>, <tt>INFINITY</tt>, <tt>NAN</tt>, or 
+<tt>NAN(</tt><i>n-char-sequence<sub>opt</sub></i><tt>)</tt> the resulting value is obtained as if by evaluating 
+<tt>strtod(first, nullptr)</tt> in the <tt>"C"</tt> locale. In all other cases</ins><del>In any case</del>, 
+the resulting <tt>value</tt> is one of at most two floating-point values closest to the value of the
+string matching the pattern.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 

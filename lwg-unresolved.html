@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-06-28 at 12:53:26 UTC</p>
+<p><p>Revised 2020-07-05 at 17:40:47 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -38686,7 +38686,7 @@ otherwise, it is <tt>element_type&amp;</tt>.
 <hr>
 <h3><a name="3456" href="3456">3456.</a> Pattern used by <tt>std::from_chars</tt> is underspecified</h3>
 <p><b>Section:</b> 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-06-23 <b>Last modified:</b> 2020-06-26 13:10:02 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-06-23 <b>Last modified:</b> 2020-06-29 17:07:58 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#charconv.from.chars">active issues</a> in [charconv.from.chars].</p>
@@ -38709,6 +38709,9 @@ format except scientific, <tt>"0x123"</tt> produces <tt>0.0</tt> (it's invalid w
 when <tt>hex</tt> is used the string has an assumed <tt>"0x"</tt> prefix, so is interpreted as a hexadecimal 
 float, it doesn't say that when <tt>fmt != hex</tt> that the string is <em>not</em> interpreted as a 
 hexadecimal float.
+<p/>
+Two alternative resolutions are provided, one is a minimal fix and the other attempts to make it clearer by 
+not referring to a modified version of the C rules.
 </p>
 
 
@@ -38717,6 +38720,7 @@ hexadecimal float.
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
 </p>
 
+<b>Option A:</b>
 <ol>
 <li><p>Modify 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> as indicated:</p>
 
@@ -38743,7 +38747,7 @@ the <del>otherwise optional exponent part shall appear</del><ins>exponent part i
 <li><p>(7.3) &mdash; if <tt>fmt</tt> has <tt>chars_format::fixed</tt> set but not <tt>chars_format::scientific</tt>, 
 <del>the optional exponent part shall not appear; and</del><ins>there is no exponent part;</ins></p></li>
 <li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is not <tt>chars_format::hex</tt>, only decimal digits and an 
-optional <tt>'.'</tt> shall appear before the exponent part (if any); and</ins></p></li>
+optional <tt>'.'</tt> appear before the exponent part (if any); and</ins></p></li>
 <li><p>(7.4) &mdash; if <tt>fmt</tt> is <tt>chars_format::hex</tt>, the prefix <tt>"0x"</tt> or <tt>"0X"</tt> is 
 assumed. [<i>Example:</i> The string <tt>0x123</tt> is parsed to have the value <tt>0</tt> with remaining characters 
 <tt>x123</tt>. &mdash; <i>end example</i>]</p></li>
@@ -38757,6 +38761,84 @@ string matching the pattern.
 </li>
 </ol>
 
+<b>Option B:</b>
+<ol>
+<li><p>Modify 20.19.3 <a href="https://timsong-cpp.github.io/cppwp/charconv.from.chars">[charconv.from.chars]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+from_chars_result from_chars(const char* first, const char* last, float&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, double&amp; value,
+                             chars_format fmt = chars_format::general);
+from_chars_result from_chars(const char* first, const char* last, long double&amp; value,
+                             chars_format fmt = chars_format::general);
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions:</i> <tt>fmt</tt> has the value of one of the enumerators of <tt>chars_format</tt>.
+<p/>
+-7- <i>Effects:</i> <del>The pattern is the expected form of the subject sequence in the "C" locale, as described for
+<tt>strtod</tt>, except that</del><ins>The pattern is an optional <tt>'-'</tt> sign followed by one of:</ins>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; <del>the sign <tt>'+'</tt> may only appear in the exponent part</del><ins><tt>INF</tt> or 
+<tt>INFINITY</tt>, ignoring case</ins>;</p></li>
+<li><p>(7.2) &mdash; <del>if <tt>fmt</tt> has <tt>chars_format::scientific</tt> set but not <tt>chars_format::fixed</tt>, 
+the otherwise optional exponent part shall appear</del><ins>if <tt>numeric_limits&lt;T&gt;::has_quiet_NaN</tt> is 
+<tt>true</tt>, <tt>NAN</tt> or <tt>NAN(</tt><i>n-char-sequence<sub>opt</sub></i><tt>)</tt>, ignoring case in the 
+<tt>NAN</tt> part, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>n-char-sequence:</i>
+       <i>digit</i>
+       <i>nondigit</i>
+       <i>n-char-sequence digit</i>
+       <i>n-char-sequence nondigit</i></ins>
+</pre>
+</blockquote>
+<p>;</p></li>
+<li><p>(7.3) &mdash; <del>if <tt>fmt</tt> has <tt>chars_format::fixed</tt> set but not <tt>chars_format::scientific</tt>, 
+the optional exponent part shall not appear; and</del><ins>if <tt>fmt</tt> is equal to <tt>chars_format::scientific</tt>, 
+a sequence of characters matching <i>chars-format-dec exponent-part</i>, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>chars-format-dec:</i>
+         <i>fractional-constant</i>
+         <i>digit-sequence</i></ins>
+</pre>
+</blockquote>
+<p><ins>;</ins></p></li>
+<li><p>(7.4) &mdash; <del>if <tt>fmt</tt> is <tt>chars_format::hex</tt>, the prefix <tt>"0x"</tt> or <tt>"0X"</tt> is 
+assumed. [<i>Example:</i> The string <tt>0x123</tt> is parsed to have the value <tt>0</tt> with remaining characters 
+<tt>x123</tt>. &mdash; <i>end example</i>]</del><ins>if <tt>fmt</tt> is equal to <tt>chars_format::fixed</tt>, a 
+sequence of characters matching <i>chars-format-dec</i>;</ins></p></li>
+<li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is equal to <tt>chars_format::general</tt>, a sequence of characters matching 
+<i>chars-format-dec exponent-part<sub>opt</sub></i>; or</ins></p></li>
+<li><p><ins>(?.?) &mdash; if <tt>fmt</tt> is equal to <tt>chars_format::hex</tt>, a sequence of characters matching 
+<i>chars-format-hex binary-exponent-part<sub>opt</sub></i>, where:</ins></p>
+<blockquote>
+<pre>
+<ins><i>chars-format-hex:</i>
+         <i>hexadecimal-fractional-constant</i>
+         <i>hexadecimal-digit-sequence</i></ins>
+</pre>
+</blockquote>
+<p><ins>[<i>Note:</i> The pattern is derived from the subject sequence in the <tt>"C"</tt> locale for <tt>strtod</tt>, 
+with the value of <tt>fmt</tt> limiting which forms of the subject sequence are recognized, and with no <tt>0x</tt> 
+or <tt>0X</tt> prefix recognized. &mdash; <i>end note</i>]</ins></p></li>
+</ol>
+<p>
+<ins>For a character sequence <tt>INF</tt>, <tt>INFINITY</tt>, <tt>NAN</tt>, or 
+<tt>NAN(</tt><i>n-char-sequence<sub>opt</sub></i><tt>)</tt> the resulting value is obtained as if by evaluating 
+<tt>strtod(first, nullptr)</tt> in the <tt>"C"</tt> locale. In all other cases</ins><del>In any case</del>, 
+the resulting <tt>value</tt> is one of at most two floating-point values closest to the value of the
+string matching the pattern.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -38765,8 +38847,8 @@ string matching the pattern.
 <hr>
 <h3><a name="3457" href="3457">3457.</a> <tt>*this</tt> is not invalidated</h3>
 <p><b>Section:</b> 21.4.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.template">[string.view.template]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2020-06-26 <b>Last modified:</b> 2020-06-26 19:10:07 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2020-06-26 <b>Last modified:</b> 2020-07-05 16:20:03 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#string.view.template">active issues</a> in [string.view.template].</p>
 <p><b>View all other</b> <a href="lwg-index.html#string.view.template">issues</a> in [string.view.template].</p>
@@ -38783,8 +38865,8 @@ str.data() + str.size())</tt> invalidates pointers, iterators, and references re
 The assignment operators return a reference to <tt>*this</tt>, but <tt>*this</tt> is not invalidated.
 </p>
 
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
 </p>
@@ -38801,7 +38883,41 @@ and its past-the-end iterator</ins> returned from <tt>str</tt>'s member function
 </blockquote>
 </li>
 </ol>
+</blockquote>
 
+<p><i>[2020-06-29; Casey comments and provides alternative proposed wording]</i></p>
+
+<p>
+I think we should additionally strike "returned from <tt>str</tt>'s member functions" from the end of the sentence. 
+Provenance shouldn't affect invalidation; <tt>ranges::next(some_string_view.begin(), 42)</tt>, for example, 
+returns an iterator that denotes an element of <tt><i>some_</i>string_view</tt>, but is not a member function 
+of <tt>basic_string_view</tt>.
+</p>
+
+<p><i>[2020-07-05; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 21.4.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.template">[string.view.template]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- For a <tt>basic_string_view str</tt>, any operation that invalidates a pointer in the range <tt>[str.data(),
+str.data() + str.size())</tt> invalidates pointers, iterators, and references <ins>to the elements in that range 
+and its past-the-end iterator</ins><del>returned from <tt>str</tt>'s member functions</del>.
+</p>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -38810,7 +38926,7 @@ and its past-the-end iterator</ins> returned from <tt>str</tt>'s member function
 <hr>
 <h3><a name="3458" href="3458">3458.</a> Is <tt>shared_future</tt> intended to work with arrays or function types?</h3>
 <p><b>Section:</b> 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a>, 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2020-06-28 <b>Last modified:</b> 2020-06-28 12:53:26 UTC</p>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2020-06-28 <b>Last modified:</b> 2020-07-01 17:24:03 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -38830,6 +38946,14 @@ types.]
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
 </p>
 
+<blockquote class="note">
+<p>
+Ideally the wording below would use a <i>Mandates:</i> element, but due to the still open
+issue LWG <a href="3193">3193</a> the wording below uses instead the more general "ill-formed"
+vocabulary.
+</p>
+</blockquote>
+
 <ol>
 <li><p>Modify 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a> as indicated:</p>
 
@@ -38845,7 +38969,8 @@ namespace std {
 </pre>
 </blockquote>
 <p>
-<ins>-?- <i>Mandates:</i> <tt>is_array_v&lt;R&gt;</tt> is <tt>false</tt> and <tt>is_function_v&lt;R&gt;</tt> is <tt>false</tt>.</ins>
+<ins>-?- If <tt>is_array_v&lt;R&gt;</tt> is <tt>true</tt> or <tt>is_function_v&lt;R&gt;</tt> is <tt>true</tt>, 
+the program is ill-formed.</ins>
 <p/>
 -4- The implementation provides the template <tt>future</tt> and two specializations, <tt>future&lt;R&amp;&gt;</tt> and 
 <tt>future&lt;void&gt;</tt>. These differ only in the return type and return value of the member function <tt>get</tt>, 
@@ -38868,7 +38993,8 @@ namespace std {
 </pre>
 </blockquote>
 <p>
-<ins>-?- <i>Mandates:</i> <tt>is_array_v&lt;R&gt;</tt> is <tt>false</tt> and <tt>is_function_v&lt;R&gt;</tt> is <tt>false</tt>.</ins>
+<ins>-?- If <tt>is_array_v&lt;R&gt;</tt> is <tt>true</tt> or <tt>is_function_v&lt;R&gt;</tt> is <tt>true</tt>, 
+the program is ill-formed.</ins>
 <p/>
 -4- The implementation provides the template <tt>shared_future</tt> and two specializations, 
 <tt>shared_future&lt;R&amp;&gt;</tt> and <tt>shared_future&lt;void&gt;</tt>. These differ only in the return type 
@@ -38878,6 +39004,245 @@ and return value of the member function <tt>get</tt>, as set out in its descript
 </li>
 </ol>
 
+
+
+
+
+
+<hr>
+<h3><a name="3459" href="3459">3459.</a> Why doesn't <tt>std::convertible_to</tt> have semantic requirement when <tt>To</tt> is reference-to-function type?</h3>
+<p><b>Section:</b> 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2020-06-30 <b>Last modified:</b> 2020-07-05 15:31:06 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#concept.convertible">active issues</a> in [concept.convertible].</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.convertible">issues</a> in [concept.convertible].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> p2:
+</p>
+<blockquote>
+<p>
+Types <tt>From</tt> and <tt>To</tt> model <tt>convertible_to&lt;From, To&gt;</tt> only if:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>To</tt> is not an object or reference-to-object type, or <tt>static_cast&lt;To&gt;(f())</tt> is 
+equal to <tt>test(f)</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+<p>
+This requires the implicit and explicit conversions to produce equal results.
+<p/>
+However, it seems that when <tt>To</tt> is a reference-to-function type, this restriction does not apply. 
+This makes it possible to create a class that models <tt>convertible_to</tt>, but produces different 
+results depending on the kind of conversion:
+</p>
+<blockquote><pre>
+#include &lt;concepts&gt;
+
+int foo() { return 0; }
+int bar() { return 42; }
+
+using FT = int();
+struct A 
+{
+  operator FT&amp;() const { return foo; }
+  explicit operator FT&amp;() { return bar; }
+};
+
+static_assert(std::convertible_to&lt;A, FT&amp;&gt;);
+
+A a;
+FT&amp; x = a;                    // x == foo
+auto y = static_cast&lt;FT&amp;&gt;(a); // y == bar
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3460" href="3460">3460.</a> Unimplementable <tt>noop_coroutine_handle</tt> guarantees</h3>
+<p><b>Section:</b> 17.12.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.resumption">[coroutine.handle.noop.resumption]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-07-01 <b>Last modified:</b> 2020-07-05 17:40:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+17.12.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.resumption">[coroutine.handle.noop.resumption]</a>/2 states "<i>Remarks:</i> If <tt>noop_coroutine_handle</tt> 
+is converted to <tt>coroutine_handle&lt;&gt;</tt>, calls to <tt>operator()</tt>, <tt>resume</tt> and 
+<tt>destroy</tt> on that handle will also have no observable effects." This suggests that e.g. in this function:
+</p>
+<blockquote><pre>
+void f(coroutine_handle&lt;&gt; meow) 
+{
+  auto woof = noop_coroutine();
+  static_cast&lt;coroutine_handle&lt;&gt;&amp;&gt;(woof) = meow;
+  static_cast&lt;coroutine_handle&lt;&gt;&amp;&gt;(woof).resume();
+}
+</pre></blockquote>
+<p>
+the final call to <tt>coroutine_handle&lt;&gt;::resume</tt> must have no effect regardless of what 
+coroutine (if any) <tt>meow</tt> refers to, contradicting the specification of 
+<tt>coroutine_handle&lt;&gt;::resume</tt>. Even absent this contradiction, implementing the specification 
+requires <tt>coroutine_handle&lt;&gt;::resume</tt> to determine if <tt>*this</tt> is a base subobject of a 
+<tt>noop_coroutine_handle</tt>, which seems pointlessly expensive to implement.
+<p/>
+17.12.4.2.4 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.address">[coroutine.handle.noop.address]</a>/2 states "<i>Remarks:</i> A <tt>noop_coroutine_handle</tt>'s 
+<tt>ptr</tt> is always a non-null pointer value." Similar to the above case, a slicing assignment of a 
+default-initialized <tt>coroutine_handle&lt;&gt;</tt> to a <tt>noop_coroutine_handle</tt> must result in 
+<tt>ptr</tt> having a null pointer value &mdash; another contradiction between the requirements of 
+<tt>noop_coroutine_handle</tt> and <tt>coroutine_handle&lt;&gt;</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3461" href="3461">3461.</a> <tt>convertible_to</tt>'s description mishandles <i>cv</i>-qualified <tt>void</tt></h3>
+<p><b>Section:</b> 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-07-03 <b>Last modified:</b> 2020-07-05 16:20:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#concept.convertible">active issues</a> in [concept.convertible].</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.convertible">issues</a> in [concept.convertible].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There are no expressions of type <i>cv</i>-qualified <tt>void</tt> because any such
+expression must be prvalues and 7.2.2 <a href="https://timsong-cpp.github.io/cppwp/expr.type">[expr.type]</a>/2 states:
+</p>
+<blockquote><p>
+If a prvalue initially has the type "<i>cv</i> <tt>T</tt>", where <tt>T</tt> is a
+<i>cv</i>-unqualified non-class, non-array type, the type of the expression is adjusted 
+to <tt>T</tt> prior to any further analysis.
+</p></blockquote>
+<p>
+However, 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> p1 states:
+</p>
+<blockquote><p>
+Given types <tt>From</tt> and <tt>To</tt> and an expression <tt>E</tt> such that 
+<tt>decltype((E))</tt> is <tt>add_rvalue_reference_t&lt;From&gt;</tt>, 
+<tt>convertible_to&lt;From, To&gt;</tt> requires <tt>E</tt> to be both implicitly and 
+explicitly convertible to type <tt>To</tt>.
+</p></blockquote>
+<p>
+When <tt>From</tt> is <i>cv</i>-qualified <tt>void</tt>, <tt>E</tt> does not exist, yet we do want
+<tt>convertible_to&lt;const void, void&gt;</tt> to be modeled.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Given types <tt>From</tt> and <tt>To</tt> and an expression <tt>E</tt> <del>such that <tt>decltype((E))</tt> 
+is <tt>add_rvalue_reference_t&lt;From&gt;</tt></del><ins>whose type and value category are the same as those of 
+<tt>declval&lt;From&gt;()</tt></ins>, <tt>convertible_to&lt;From, To&gt;</tt> requires <tt>E</tt> 
+to be both implicitly and explicitly convertible to type <tt>To</tt>. The implicit and explicit conversions 
+are required to produce equal results.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3462" href="3462">3462.</a> &sect;[formatter.requirements]: Formatter requirements forbid use of <tt>fc.arg()</tt></h3>
+<p><b>Section:</b> 20.20.5.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Alberto Barbati <b>Opened:</b> 2020-06-30 <b>Last modified:</b> 2020-07-05 17:03:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The requirements on the expression <tt>f.format(t, fc)</tt> in [tab:formatter] say
+</p>
+<blockquote><p>
+Formats <tt>t</tt> according to the specifiers stored in <tt>*this</tt>, writes the output to <tt>fc.out()</tt> 
+and returns an iterator past the end of the output range. The output shall only depend on <tt>t</tt>, 
+<tt>fc.locale()</tt>, and the range <tt>[pc.begin(), pc.end())</tt> from the last call to <tt>f.parse(pc)</tt>.
+</p></blockquote>
+<p>
+Strictly speaking, this wording effectively forbids <tt>f.format(t, fc)</tt> from calling <tt>fc.arg(n)</tt>, 
+whose motivation is precisely to allow a formatter to rely on arguments different from <tt>t</tt>. According to this 
+interpretation, there's no conforming way to implement the <tt>"{ <i>arg-id</i> }"</tt> form of the <i>width</i> and 
+<i>precision</i> fields of standard format specifiers. Moreover, the formatter described in the example if paragraph 
+20.20.5.4 <a href="https://timsong-cpp.github.io/cppwp/format.context">[format.context]</a>/8 would also be non-conforming.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 18.4.4 <a href="https://timsong-cpp.github.io/cppwp/concept.convertible">[concept.convertible]</a>, Table [tab:formatter], as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 67: <i>Formatter</i> requirements [tab:formatter]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>f.format(t, fc)</tt>
+</td>
+<td>
+<tt>FC::iterator</tt>
+</td>
+<td>
+Formats <tt>t</tt> according to the specifiers stored in
+<tt>*this</tt>, writes the output to <tt>fc.out()</tt> and returns
+an iterator past the end of the output range. The
+output shall only depend on <tt>t</tt>, <tt>fc.locale()</tt>,
+<del>and</del> the range <tt>[pc.begin(), pc.end())</tt> from
+the last call to <tt>f.parse(pc)</tt><ins>, and <tt>fc.arg(n)</tt>, 
+where <tt>n</tt> is a <tt>size_t</tt> index value that has been 
+validated with a call to <tt>pc.check_arg_id(n)</tt> in the last 
+call to <tt>f.parse(pc)</tt></ins>.
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+</table>
+</blockquote>
+</li>
+</ol>
 
 
 
