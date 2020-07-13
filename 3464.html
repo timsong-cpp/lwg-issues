@@ -1,0 +1,117 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3464: istream::gcount() can overflow</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3464" href="lwg-active.html#3464">3464.</a> <tt>istream::gcount()</tt> can overflow</h3>
+<p><b>Section:</b> 29.7.4.3 <a href="https://timsong-cpp.github.io/cppwp/istream.unformatted">[istream.unformatted]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-07-10 <b>Last modified:</b> 2020-07-12 17:21:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream.unformatted">issues</a> in [istream.unformatted].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard doesn't say what <tt>gcount()</tt> should return if the last unformatted input 
+operation extracted more than <tt>numeric_limits&lt;streamsize&gt;::max()</tt> characters. 
+This is possible when using <tt>istream::ignore(numeric_limits&lt;streamsize&gt;::max(), delim)</tt>, 
+which will keep extracting characters until the delimiter is found. On a 32-bit platform files 
+larger than 2GB can overflow the counter, so can a streambuf reading from a network socket, 
+or producing random characters.
+<p/>
+Libstdc++ saturates the counter in <tt>istream::ignore</tt>, so that <tt>gcount()</tt> returns 
+<tt>numeric_limits&lt;streamsize&gt;::max()</tt>. Libc++ results in an integer overflow.
+<p/>
+As far as I'm aware, only <tt>istream::ignore</tt> can extract more than 
+<tt>numeric_limits&lt;streamsize&gt;::max()</tt> characters at once. We could either fix it 
+in the specification of <tt>ignore</tt>, or in <tt>gcount</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+
+<b>Option A:</b>
+<ol>
+<li><p>Modify 29.7.4.3 <a href="https://timsong-cpp.github.io/cppwp/istream.unformatted">[istream.unformatted]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+streamsize gcount() const;
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects:</i> None. This member function does not behave as an unformatted input function (as described
+above).
+<p/>
+-3- <i>Returns:</i> The number of characters extracted by the last unformatted input member function called for
+the object. <ins>If the number cannot be represented, returns <tt>numeric_limits&lt;streamsize&gt;::max()</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+<b>Option B:</b>
+<ol>
+<li><p>Modify 29.7.4.3 <a href="https://timsong-cpp.github.io/cppwp/istream.unformatted">[istream.unformatted]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+basic_istream&lt;charT, traits&gt;&amp; ignore(streamsize n = 1, int_type delim = traits::eof());
+</pre>
+<blockquote>
+<p>
+-25- <i>Effects:</i> Behaves as an unformatted input function (as described above). After constructing a sentry
+object, extracts characters and discards them. Characters are extracted until any of the following
+occurs:
+</p>
+<ol style="list-style-type: none">
+<li><p>(25.1) &mdash; <tt>n != numeric_limits&lt;streamsize&gt;::max()</tt> (17.3.5 <a href="https://timsong-cpp.github.io/cppwp/numeric.limits">[numeric.limits]</a>) 
+and <tt>n</tt> characters have been extracted so far</p></li>
+<li><p>(25.2) &mdash; end-of-file occurs on the input sequence (in which case the function calls <tt>setstate(eofbit)</tt>,
+which may throw <tt>ios_base::failure</tt> (29.5.5.4 <a href="https://timsong-cpp.github.io/cppwp/iostate.flags">[iostate.flags]</a>));</p></li>
+<li><p>(25.3) &mdash; <tt>traits::eq_int_type(traits::to_int_type(c), delim)</tt> for the next available input 
+character <tt>c</tt> (in which case <tt>c</tt> is extracted).</p></li>
+</ol>
+<p>
+<ins>-?- If the number of characters extracted is greater than <tt>numeric_limits&lt;streamsize&gt;::max()</tt> 
+then for the purposes of <tt>gcount()</tt> the number is treated as <tt>numeric_limits&lt;streamsize&gt;::max()</tt>.</ins>
+<p/>
+-26- <i>Remarks:</i> The last condition will never occur if <tt>traits::eq_int_type(delim, traits::eof())</tt>.
+<p/>
+-27- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

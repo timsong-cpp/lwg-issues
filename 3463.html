@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3463: Incorrect requirements for transform_inclusive_scan without initial value</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3463" href="lwg-active.html#3463">3463.</a> Incorrect requirements for <tt>transform_inclusive_scan</tt> without initial value</h3>
+<p><b>Section:</b> 25.10.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2020-07-07 <b>Last modified:</b> 2020-07-12 17:35:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The requirements for the overloads of <tt>std::transform_inclusive_scan</tt>
+without an initial value incorrectly assume that the internal accumulator uses 
+the iterator's value type, as it does for <tt>std::inclusive_scan</tt>, rather 
+than the transformed type of the iterator's value type, as it was intended.
+<p/>
+According to the standard, the following program is ill-formed as it
+requires <tt>std::string</tt> to be convertible to <tt>int</tt>:
+</p>
+<blockquote><pre>
+auto vs = {0, 1, 2};
+std::transform_inclusive_scan(
+   vs.begin(), vs.end(),
+   std::ostream_iterator&lt;std::string&gt;(std::cout, ";"),
+   [](std::string x, std::string y) { return x + y; },
+   [](int x) { return std::to_string(x); });
+</pre></blockquote>
+<p>
+libstdc++ and Microsoft's STL accept the snippet, producing <tt>0;01;012;</tt>
+as expected, libc++ strictly conforms to the standard and rejects it.
+<p/>
+These constrains were introduced by <a href="http://wg21.link/p0574r1">P0574R1</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Current implementations that accept the code, do some form of <tt>auto acc =
+unary_op(*first);</tt>, therefore the following proposed wording uses <tt>decay_t</tt>
+instead of e.g. <tt>remove_cvref_t</tt>.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 25.10.10 <a href="https://timsong-cpp.github.io/cppwp/transform.inclusive.scan">[transform.inclusive.scan]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator, class OutputIterator,
+         class BinaryOperation, class UnaryOperation&gt;
+  constexpr OutputIterator
+    transform_inclusive_scan(InputIterator first, InputIterator last,
+                             OutputIterator result,
+                             BinaryOperation binary_op, UnaryOperation unary_op);
+template&lt;class ExecutionPolicy,
+         class ForwardIterator1, class ForwardIterator2,
+         class BinaryOperation, class UnaryOperation&gt;
+  ForwardIterator2
+    transform_inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                             ForwardIterator1 first, ForwardIterator1 last,
+                             ForwardIterator2 result,
+                             BinaryOperation binary_op, UnaryOperation unary_op);
+template&lt;class InputIterator, class OutputIterator,
+         class BinaryOperation, class UnaryOperation, class T&gt;
+  constexpr OutputIterator
+    transform_inclusive_scan(InputIterator first, InputIterator last,
+                             OutputIterator result,
+                             BinaryOperation binary_op, UnaryOperation unary_op,
+                             T init);
+template&lt;class ExecutionPolicy,
+         class ForwardIterator1, class ForwardIterator2,
+         class BinaryOperation, class UnaryOperation, class T&gt;
+  ForwardIterator2
+    transform_inclusive_scan(ExecutionPolicy&amp;&amp; exec,
+                             ForwardIterator1 first, ForwardIterator1 last,
+                             ForwardIterator2 result,
+                             BinaryOperation binary_op, UnaryOperation unary_op,
+                             T init);
+</pre>
+<blockquote>
+<p>
+-1- Let <tt>U</tt> be <del>the value type of <tt>decltype(first)</tt></del><ins><ins><tt>decay_t&lt;decltype(unary_op(*first))&gt;</tt></ins></ins>.
+<p/>
+-2- [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
