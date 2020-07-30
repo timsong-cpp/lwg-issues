@@ -24,25 +24,25 @@
 <hr>
 <h3><a name="3446" href="lwg-active.html#3446">3446.</a> <tt>indirectly_readable_traits</tt> ambiguity for types with both <tt>value_type</tt> and <tt>element_type</tt></h3>
 <p><b>Section:</b> 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-05-15 <b>Last modified:</b> 2020-07-17 22:37:26 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-05-15 <b>Last modified:</b> 2020-07-23 18:16:51 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Per 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a>, <tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is the same type as 
-<tt>remove_cv_t&lt;T::value_type&gt;</tt> if it denotes an object type, or <tt>remove_cv_t&lt;T::element_type&gt;</tt> 
-if it denotes an object type. If both <tt>T::value_type</tt> and <tt>T::element_type</tt> denote types,  
-<tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is ill-formed. This was perhaps not the best design, 
-given that there are iterators in the wild (Boost's unordered containers) that define both nested types. 
+Per 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a>, <tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is the same type as
+<tt>remove_cv_t&lt;T::value_type&gt;</tt> if it denotes an object type, or <tt>remove_cv_t&lt;T::element_type&gt;</tt>
+if it denotes an object type. If both <tt>T::value_type</tt> and <tt>T::element_type</tt> denote types,
+<tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is ill-formed. This was perhaps not the best design,
+given that there are iterators in the wild (Boost's unordered containers) that define both nested types.
 <tt>indirectly_readable_traits</tt> should tolerate iterators that define both nested types consistently.
 </p>
 
 <p><i>[2020-07-17; Priority set to 2 in telecon]</i></p>
 
 
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
 
 <ol>
@@ -67,12 +67,12 @@ template&lt;class T&gt;
   requires requires { typename T::value_type; }
 struct indirectly_readable_traits&lt;T&gt;
   : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
-  
+
 template&lt;class T&gt;
   requires requires { typename T::element_type; }
 struct indirectly_readable_traits&lt;T&gt;
   : <i>cond-value-type</i>&lt;typename T::element_type&gt; { };
-  
+
 <ins>template&lt;class T&gt;</ins>
   <ins>requires requires {</ins>
     <ins>typename T::element_type;</ins>
@@ -83,7 +83,63 @@ struct indirectly_readable_traits&lt;T&gt;
   <ins>}</ins>
 <ins>struct indirectly_readable_traits&lt;T&gt;</ins>
   <ins>: <i>cond-value-type</i>&lt;typename T::value_type&gt; { };</ins>
-  
+
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2020-07-23; Casey improves wording per reflector discussion]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class&gt; struct <i>cond-value-type</i> { }; <i>// exposition only</i>
+
+template&lt;class T&gt;
+  requires is_object_v&lt;T&gt;
+struct <i>cond-value-type</i>&lt;T&gt; {
+  using value_type = remove_cv_t&lt;T&gt;;
+};
+
+<ins>template&lt;class T&gt;</ins>
+<ins>concept <i>has-member-value-type</i> = requires { typename T::value_type; }; <i>// exposition only</i></ins>
+
+<ins>template&lt;class T&gt;</ins>
+<ins>concept <i>has-member-element-type</i> = requires { typename T::element_type; }; <i>// exposition only</i></ins>
+
+template&lt;class&gt; struct indirectly_readable_traits { };
+
+[&hellip;]
+
+template&lt;<del>class</del><ins><i>has-member-value-type</i></ins> T&gt;
+  <del>requires requires { typename T::value_type; }</del>
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
+
+template&lt;<del>class</del><ins><i>has-member-element-type</i></ins> T&gt;
+  <del>requires requires { typename T::element_type; }</del>
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::element_type&gt; { };
+
+<ins>template&lt;<del>class</del><ins><i>has-member-value-type</i></ins> T&gt;</ins>
+  <ins>requires <i>has-member-element-type</i>&lt;T&gt; &amp;&amp;</ins>
+           <ins>same_as&lt;remove_cv_t&lt;typename T::element_type&gt;, remove_cv_t&lt;typename T::value_type&gt;&gt;</ins>
+<ins>struct indirectly_readable_traits&lt;T&gt;</ins>
+  <ins>: <i>cond-value-type</i>&lt;typename T::value_type&gt; { };</ins>
+
 [&hellip;]
 </pre>
 </blockquote>

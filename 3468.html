@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3468: Transparent lookups in unordered containers are inconsistent</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3468" href="lwg-active.html#3468">3468.</a> Transparent lookups in unordered containers are inconsistent</h3>
+<p><b>Section:</b> 22.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2020-07-23 <b>Last modified:</b> 2020-07-26 14:03:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unord.req">active issues</a> in [unord.req].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unord.req">issues</a> in [unord.req].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In C++14, we added "transparent lookups" into the ordered associative containers. This was sold as an 
+efficiency concern, as removing the need to create temporary objects just to compare against.
+<p/>
+However, people found clever ways to use this. One of them, in fact, was in the <a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2012/n3465.pdf">original paper</a>, and was the subject 
+of a question on <a href="https://stackoverflow.com/questions/40502357/map-or-set-with-transparent-comparator-and-non-unique-elements-in-heterogeneous">Stack Overflow</a>.
+<p/>
+This all works because the elements in the ordered associative containers are, well, ordered.
+<p/>
+For C++20, we added this facility to the unordered containers.
+<p/>
+Consider the following code:
+</p>
+<blockquote><pre>
+#include &lt;unordered_set&gt;
+#include &lt;string&gt;
+#include &lt;iostream&gt;
+
+struct DumbHash // put everything in the same bucket
+{
+  using is_transparent = void;
+
+  template&lt;typename T&gt;
+  size_t operator()(const T&amp;) const { return 0; }
+};
+
+struct CompareEQ 
+{
+  using is_transparent = void;
+
+  bool operator()(const std::string&amp; lhs, const std::string&amp; rhs) const
+  { return lhs == rhs; }
+
+  bool operator()(const std::string&amp; lhs, char rhs) const
+  { return !lhs.empty() &amp;&amp; (lhs[0] == rhs); }
+
+  bool operator()(char lhs, const std::string&amp; rhs) const
+  { return !rhs.empty() &amp;&amp; (lhs == rhs[0]); }
+};
+
+int main () 
+{
+  const char* one[] = {"a", "b",  "c", "d",  "e", "bb"};
+  const char* two[] = {"b", "e",  "d", "bb", "c", "a"};
+  const char* thr[] = {"b", "bb", "a", "c",  "d", "e"};
+
+  typedef std::unordered_set&lt;std::string, DumbHash, CompareEQ&gt; MS;
+  MS m1{std::begin(one), std::end(one)};
+  MS m2{std::begin(two), std::end(two)};
+  MS m3{std::begin(thr), std::end(thr)};
+
+  for (const auto&amp; s: m1) 
+    std::cout &lt;&lt; s &lt;&lt; ' '; 
+  std::cout &lt;&lt; std::endl;
+  for (const auto&amp; s: m2) 
+    std::cout &lt;&lt; s &lt;&lt; ' '; 
+  std::cout &lt;&lt; std::endl;
+  for (const auto&amp; s: m3) 
+    std::cout &lt;&lt; s &lt;&lt; ' '; 
+  std::cout &lt;&lt; std::endl;
+
+  std::cout &lt;&lt; "m1:" &lt;&lt; m1.count('b') &lt;&lt; ' ';
+  std::cout &lt;&lt; "m2:" &lt;&lt; m2.count('b') &lt;&lt; ' ';
+  std::cout &lt;&lt; "m3:" &lt;&lt; m3.count('b');
+}
+</pre></blockquote>
+<p>
+When I run this program on my Mac, I get the following output:
+</p>
+<blockquote><pre>
+bb e d c b a
+a c bb d e b
+e d c a bb b
+m1:1 m2:1 m3:2
+</pre></blockquote>
+<p>
+(This is using unreleased code, but I have confirmed this with VS2019's <tt>unordered_multiset</tt>.)
+<p/>
+This is clearly bad; three containers, containing the same elements, doing the same lookups, giving different 
+results. This also applies to the transparent versions of <tt>find</tt>, <tt>equal_range</tt>, and <tt>contains</tt>.
+<p/>
+The problem is that the elements in the unordered containers are only partially ordered; i.e, all the elements 
+that are equal (according to the non-transparent version of the comparison predicate) are adjacent in the 
+container, but are unordered relative to the other elements in the container.
+<p/>
+My recommendation is to declare this all UB.
+<p/>
+Suggested resolution:
+<p/>
+Add a precondition to all of the transparent lookup functions for the unordered containers forbidding stuff like this. 
+This should probably go in 22.2.7 <a href="https://timsong-cpp.github.io/cppwp/unord.req">[unord.req]</a>, maybe at the end of Table [tab:container.hash.req].
+</p>
+<blockquote><p>
+<i>Precondition:</i> The value being searched matches at most one unique key in the container.
+</p></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
