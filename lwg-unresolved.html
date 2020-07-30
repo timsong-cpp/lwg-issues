@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-07-29 at 00:33:14 UTC</p>
+<p><p>Revised 2020-07-30 at 02:39:26 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -37740,7 +37740,7 @@ Set priority to 3 after reflector discussions.
 <hr>
 <h3><a name="3460" href="3460">3460.</a> Unimplementable <tt>noop_coroutine_handle</tt> guarantees</h3>
 <p><b>Section:</b> 17.12.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.resumption">[coroutine.handle.noop.resumption]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-07-01 <b>Last modified:</b> 2020-07-12 16:33:52 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-07-01 <b>Last modified:</b> 2020-07-30 02:39:26 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -37778,8 +37778,165 @@ default-initialized <tt>coroutine_handle&lt;&gt;</tt> to a <tt>noop_coroutine_ha
 Set priority to 2 after reflector discussions.
 </p>
 
+<p><i>[2020-07-29 Tim adds PR and comments]</i></p>
+
+<p>
+The root cause for this issue as well as issue <a href="3469">3469</a> is the unnecessary 
+public derivation from <tt>coroutine_handle&lt;void&gt;</tt>. The proposed resolution below
+replaces the derivation with a conversion function and adds explicit declarations for
+members that were previously inherited. It also modifies the preconditions
+on <tt>from_address</tt> with goal of making it impossible to obtain a <tt>coroutine_handle&lt;P&gt;</tt>
+to a coroutine whose promise type is not <tt>P</tt> in well-defined code.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a> and also resolves
+LWG issue <a href="3469">3469</a>. 
+</p>
+
+<ol>
+<li><p> Edit 17.12.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle">[coroutine.handle]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+
+  [&hellip;]
+
+  template&lt;class Promise&gt;
+  struct coroutine_handle <del>: coroutine_handle&lt;&gt;</del>
+  {
+    // [coroutine.handle.con], construct/reset
+<del>    using coroutine_handle&lt;&gt;::coroutine_handle;</del>
+<ins>    constexpr coroutine_handle() noexcept;
+    constexpr coroutine_handle(nullptr_t) noexcept;</ins>
+    static coroutine_handle from_promise(Promise&amp;);
+    coroutine_handle&amp; operator=(nullptr_t) noexcept;
+  
+    // [coroutine.handle.export.import], export/import
+<ins>    constexpr void* address() const noexcept;</ins>
+    static constexpr coroutine_handle from_address(void* addr);
+  
+<ins>    // [coroutine.handle.conv], conversion
+    constexpr operator coroutine_handle&lt;&gt;() const noexcept;
+  
+    // [coroutine.handle.observers], observers
+    constexpr explicit operator bool() const noexcept;
+    bool done() const;
+  
+    // [coroutine.handle.resumption], resumption
+    void operator()() const;
+    void resume() const;
+    void destroy() const;</ins>
+  
+    // [coroutine.handle.promise], promise access
+    Promise&amp; promise() const;
+  
+<ins>  private:
+    void* ptr;  // <i>exposition only</i> </ins>
+  };
+}
+</pre>
+
+<p> -1- An object of type <tt>coroutine_­handle&lt;T&gt;</tt> is called a <i>coroutine handle</i>
+and can be used to refer to a suspended or executing coroutine.
+A <del>default-constructed</del> <tt>coroutine_­handle</tt> object <ins>whose member <tt>address()</tt>
+returns a null pointer value</ins> does not refer to any coroutine.
+<ins>Two <tt>coroutine_handle</tt> objects refer to the same coroutine if and only if their
+member <tt>address()</tt> returns the same value.</ins>
+</p>
+</blockquote>
+</li>
+<li>
+<p>Add the following subclause under 17.12.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle">[coroutine.handle]</a>, immediately after 17.12.3.1 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.con">[coroutine.handle.con]</a>:</p>
+<blockquote>
+<p>
+<ins><b>?.?.?.? Conversion [coroutine.handle.conv]</b></ins>
+</p>
+<pre>
+    <ins>constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+</pre>
+<blockquote>
+<p><ins>-1- <i>Effects:</i> Equivalent to: <tt>return coroutine_handle&lt;&gt;::from_address(address());</tt>.</ins></p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p> Edit 17.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.export.import">[coroutine.handle.export.import]</a> as indicated, splitting the two versions:</p>
+<blockquote>
+<pre>
+static constexpr coroutine_handle&lt;&gt; coroutine_handle&lt;&gt;::from_address(void* addr);
+</pre>
+<blockquote>
+<p><ins>-?- <i>Preconditions:</i> <tt>addr</tt> was obtained via a prior call to <tt>address</tt> on
+an object whose type is a specialization of <tt>coroutine_handle</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions:</i> <tt>from_­address(address()) == *this</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+static constexpr coroutine_handle&lt;Promise&gt; coroutine_handle&lt;Promise&gt;::from_address(void* addr);
+</pre>
+<blockquote>
+<p>
+-2- <i>Preconditions:</i> <tt>addr</tt> was obtained via a prior call to <tt>address</tt>
+<ins>on an object of type <i>cv</i> <tt>coroutine_handle&lt;Promise&gt;</tt></ins>.
+<p/>
+-3- <i>Postconditions:</i> <tt>from_­address(address()) == *this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p>Edit 17.12.4.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop">[coroutine.handle.noop]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;&gt;
+  struct coroutine_handle&lt;noop_coroutine_promise&gt; <del>: coroutine_handle&lt;&gt;</del>
+  {
+<ins>    // [coroutine.handle.noop.conv], conversion
+    constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+
+    // [coroutine.handle.noop.observers], observers
+    constexpr explicit operator bool() const noexcept;
+    constexpr bool done() const noexcept;
+
+    // [coroutine.handle.noop.resumption], resumption
+    constexpr void operator()() const noexcept;
+    constexpr void resume() const noexcept;
+    constexpr void destroy() const noexcept;
+
+    // [coroutine.handle.noop.promise], promise access
+    noop_coroutine_promise&amp; promise() const noexcept;
+
+    // [coroutine.handle.noop.address], address
+    constexpr void* address() const noexcept;
+  
+  private:
+    coroutine_handle(unspecified);
+<ins>    void* ptr; // <i>exposition only</i> </ins>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>Add the following subclause under 17.12.4.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop">[coroutine.handle.noop]</a>, immediately before 17.12.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.observers">[coroutine.handle.noop.observers]</a>:</p>
+<blockquote>
+<p>
+<ins><b>?.?.?.?.? Conversion [coroutine.handle.noop.conv]</b></ins>
+</p>
+<pre>
+    <ins>constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+</pre>
+<blockquote>
+<p><ins>-1- <i>Effects:</i> Equivalent to: <tt>return coroutine_handle&lt;&gt;::from_address(address());</tt>.</ins></p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -38211,7 +38368,7 @@ This should probably go in 22.2.7 <a href="https://timsong-cpp.github.io/cppwp/u
 <hr>
 <h3><a name="3469" href="3469">3469.</a> Precondition of <tt>coroutine_handle::promise</tt> may be insufficient</h3>
 <p><b>Section:</b> 17.12.3.5 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.promise">[coroutine.handle.promise]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2020-07-25 <b>Last modified:</b> 2020-07-26 14:33:55 UTC</p>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2020-07-25 <b>Last modified:</b> 2020-07-30 02:39:26 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -38230,8 +38387,8 @@ should be added to 17.12.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/coro
 removed from <tt>coroutine_handle&lt;noop_coroutine_promise&gt;::promise</tt>.
 </p>
 
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
 </p>
@@ -38282,6 +38439,11 @@ noop_coroutine_promise&amp; promise() const <del>noexcept</del>;
 </blockquote>
 </li>
 </ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This issue is resolved by the resolution of issue <a href="3460">3460</a>.</p>
 
 
 
