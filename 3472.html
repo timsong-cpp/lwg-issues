@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3472: counted_iterator is missing preconditions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3472" href="lwg-active.html#3472">3472.</a> <tt>counted_iterator</tt> is missing preconditions</h3>
+<p><b>Section:</b> 23.5.6 <a href="https://timsong-cpp.github.io/cppwp/iterators.counted">[iterators.counted]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2020-07-29 <b>Last modified:</b> 2020-08-02 18:09:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+C++20 introduces a new iterator <tt>counted_iterator</tt> that keeps track of the end of its range via an 
+additional exposition only member <tt>length</tt>.  
+<p/>
+Consequently, there are several preconditions for many member functions of <tt>counted_iterator</tt>, but 
+it seems some are missing:
+</p>
+<ol>
+<li><p><b><tt>operator*</tt></b>
+<p/>
+Here we have no precondition regarding <tt>length</tt>. However, given that <tt>length</tt> denotes the 
+distance to the end of the range it should be invalid to dereference a <tt>counted_iterator</tt> with 
+<tt>length 0</tt>.
+<p/>
+Moreover, <tt>operator[]</tt> has a precondition of "<tt>n &lt; length</tt>". Consider the following code snippet:
+</p>
+<blockquote><pre>
+int some_ints[] = {0,1,2};
+counted_iterator&lt;int*&gt; i{some_ints, 0};
+</pre></blockquote>
+<p>
+Here "<tt>i[0]</tt>" would be invalid due to the precondition "<tt>n &lt; length</tt>". However, "<tt>*i</tt>" 
+would be a valid expression. This violates the definition of <tt>operator[]</tt> which states according to 
+7.6.1.1 <a href="https://timsong-cpp.github.io/cppwp/expr.sub">[expr.sub]</a> p1:
+</p>
+<blockquote><p>
+[&hellip;] The expression <tt>E1[E2]</tt> is identical (by definition) to <tt>*((E1)+(E2))</tt> [&hellip;]
+</p></blockquote>
+<p>
+Substituting <tt>E2-&gt;0</tt> we get  
+</p>
+<blockquote><p>
+[&hellip;] The expression <tt>E1[0]</tt> is identical (by definition) to <tt>*(E1)</tt> [&hellip;]
+</p></blockquote>
+<p>
+With the current wording <tt>counted_iterator</tt> violates that definition and we should add to <tt>operator*</tt>:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+<li><p><b><tt>iter_move</tt></b>
+<p/>
+This is a similar case. We have only the <i>Effects</i> element:
+</p>
+<blockquote><p>
+<i>Effects:</i> Equivalent to: <tt>return ranges::iter_move(i.current);</tt>
+</p></blockquote>
+<p>
+However, looking at the requirements of <tt>ranges::iter_move</tt> we have in 23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a> p2:
+</p>
+<blockquote><p>
+If <tt>ranges::iter_move(E)</tt> is not equal to <tt>*E</tt>, the program is ill-formed, no diagnostic required.
+</p></blockquote>
+<p>
+This clearly requires that for <tt>counted_iterator::iter_move</tt> to be well-formed,  we need 
+<tt>counted_iterator::operator*</tt> to be well formed. Consequently we should also add the same precondition to 
+<tt>counted_iterator::iter_move</tt>:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+<li><p><b><tt>iter_swap</tt></b>
+<p/>
+This is essentially the same arguing as for <tt>counted_iterator::iter_move</tt>. The essential observation is that 
+<tt>ranges::iter_swap</tt> is defined in terms of <tt>ranges::iter_move</tt> (see 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.swap">[iterator.cust.swap]</a>) 
+so it must have the same preconditions and we should add:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+</ol>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.6.4 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.elem">[counted.iter.elem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr decltype(auto) operator*();
+constexpr decltype(auto) operator*() const
+  requires <i>dereferenceable</i>&lt;const I&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return *current;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.7 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.cust">[counted.iter.cust]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr iter_rvalue_reference_t&lt;I&gt;
+  iter_move(const counted_iterator&amp; i)
+    noexcept(noexcept(ranges::iter_move(i.current)))
+    requires input_iterator&lt;I&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>i.length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_move(i.current);</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;indirectly_swappable&lt;I&gt; I2&gt;
+  friend constexpr void
+    iter_swap(const counted_iterator&amp; x, const counted_iterator&lt;I2&gt;&amp; y)
+      noexcept(noexcept(ranges::iter_swap(x.current, y.current)));
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>x.length &gt; 0</tt> and <tt>y.length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_swap(x.current, y.current);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
