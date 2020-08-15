@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-08-03 at 19:47:49 UTC</p>
+<p><p>Revised 2020-08-10 at 09:25:12 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -35957,7 +35957,7 @@ determination above is also modeled</ins>.</p></li>
 <hr>
 <h3><a name="3430" href="3430">3430.</a> <tt>std::fstream</tt> &amp; co. should be constructible from <tt>string_view</tt></h3>
 <p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-05-09 19:18:02 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-08-10 09:25:12 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -36008,6 +36008,16 @@ in the presence of <tt>path</tt> overloads (Which didn't exist at this point yet
 
 <p>
 Set priority to 3 after reflector discussions.
+</p>
+
+<p><i>[2020-08-10; Jonathan comments]</i></p>
+
+<p>
+An alternative fix would be to retain the original design and not allow
+construction from a <tt>string_view</tt>. The <tt>path</tt> parameters
+could be changed to template parameters which are constrained to be exactly
+<tt>path</tt>, and not things like <tt>string_view</tt> which can convert
+to <tt>path</tt>.
 </p>
 
 
@@ -38898,19 +38908,58 @@ template&lt;indirectly_swappable&lt;I&gt; I2&gt;
 
 
 <hr>
-<h3><a name="3473" href="3473">3473.</a> Normative encouragement in non-normative note</h3>
-<p><b>Section:</b> 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-07-31 <b>Last modified:</b> 2020-08-03 16:15:32 UTC</p>
+<h3><a name="3474" href="3474">3474.</a> Nesting <tt>join_view</tt>s is broken because of CTAD</h3>
+<p><b>Section:</b> 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.join">[range.join]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-04 <b>Last modified:</b> 2020-08-09 10:21:26 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The note in the final paragraph of 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> gives encouragement to implementations, which is not allowed in a note.
-<p/>
-It needs to be normative text, possibly using "should", or if left as a note could be phrased as "Implementations can optimize 
-the representation ...". 
+Let's say I had a range of range of ranges and I wanted to recursively flatten it. That would involve 
+repeated invocations of <tt>join</tt>. But this doesn't work:
 </p>
+<blockquote><pre>
+std::vector&lt;std::vector&lt;std::vector&lt;int&gt;&gt;&gt; nested_vectors = {
+  {{1, 2, 3}, {4, 5}, {6}},
+  {{7},       {8, 9}, {10, 11, 12}},
+  {{13}}
+};
+auto joined = nested_vectors | std::views::join | std::views::join;
+</pre></blockquote>
+<p>
+The expectation here is that the <tt>value_type</tt> of joined is <tt>int</tt>, but it's actually 
+<tt>vector&lt;int&gt;</tt> &mdash; because the 2nd invocation of <tt>join</tt> ends up just copying 
+the first. This is because <tt>join</tt> is specified to do:
+</p>
+<blockquote><p>
+The name <tt>views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view{E}</tt>.
+</p></blockquote>
+<p>
+And <tt>join_view{E}</tt> for an <tt>E</tt> that's already a specialization of a <tt>join_view</tt> 
+just gives you the same <tt>join_view</tt> back. Yay CTAD. We need to do the same thing with <tt>join</tt> 
+that we did with <tt>reverse</tt> in <a href="http://wg21.link/p1252">P1252</a>. We can do that either in 
+exposition (<b>Option A</b>) my modifying 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> p2
+</p>
+<blockquote><p>
+The name <tt>views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given 
+a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+</p>
+</blockquote>
+<p>
+Or in code (<b>Option B</b>) add a deduction guide to 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>:
+</p>
+<blockquote><pre>
+  template&lt;class R&gt;
+    explicit join_view(R&amp;&amp;) -&gt; join_view&lt;views::all_t&lt;R&gt;&gt;;
+
+  <ins>template&lt;class V&gt;
+    explicit join_view(join_view&lt;V&gt;) -&gt; join_view&lt;join_view&lt;V&gt;&gt;;</ins>
+
+</pre></blockquote>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -38918,38 +38967,48 @@ the representation ...".
 This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
 </p>
 
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Two mutually exclusive options are prepared, depicted below by <b>Option A</b> and 
+<b>Option B</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b>
+</p>
 <ol>
-<li><p>Modify 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> as indicated:</p>
+<li><p>Modify 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
 
 <blockquote>
 <p>
--1- An instance of <tt>basic_format_args</tt> provides access to formatting arguments. <ins>Implementations 
-should optimize the representation of <tt>basic_format_args</tt> for a small number of formatting arguments. 
-[<i>Note:</i> For example, by storing indices of type alternatives separately from values and packing the 
-former. &mdash; <i>end note</i>]</ins>
-</p>
-<pre>
-basic_format_args() noexcept;
-</pre>
-<blockquote>
-<p>
--2- <i>Effects:</i> Initializes <tt>size_</tt> with <tt>0</tt>.
+-2- <tt>The name views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
 </p>
 </blockquote>
-[&hellip;]
-<pre>
-basic_format_arg&lt;Context&gt; get(size_t i) const noexcept;
-</pre>
+</li>
+
+</ol>
+
+<p>
+<b>Option B:</b>
+</p>
+<ol>
+<li><p>Modify 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> as indicated:</p>
+
 <blockquote>
-<p>
--4- <i>Returns:</i> <tt>i &lt; size_ ? data_[i] : basic_format_arg&lt;Context&gt;()</tt>.
-</p>
-</blockquote>
-<p>
-<del>[<i>Note:</i> Implementations are encouraged to optimize the representation of 
-<tt>basic_format_args</tt> for small number of formatting arguments by storing indices of type 
-alternatives separately from values and packing the former. &mdash; <i>end note</i>]</del>
-</p>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  
+  template&lt;class R&gt;
+    explicit join_view(R&amp;&amp;) -&gt; join_view&lt;views::all_t&lt;R&gt;&gt;;
+  
+  <ins>template&lt;class V&gt;
+    explicit join_view(join_view&lt;V&gt;) -&gt; join_view&lt;join_view&lt;V&gt;&gt;;</ins>
+}
+</pre>
 </blockquote>
 </li>
 
