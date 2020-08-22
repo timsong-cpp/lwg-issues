@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-08-17 at 17:57:40 UTC</p>
+<p><p>Revised 2020-08-21 at 20:59:51 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="1396" href="1396">1396.</a> <tt>regex</tt> should support allocators</h3>
@@ -1462,6 +1462,144 @@ template&lt;class From, class To&gt;
 
 
 <hr>
+<h3><a name="3171" href="3171">3171.</a> LWG 2989 breaks <tt>directory_entry</tt> stream insertion</h3>
+<p><b>Section:</b> 29.11.11 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory.entry">[fs.class.directory.entry]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2018-12-03 <b>Last modified:</b> 2020-08-21 20:56:44 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#fs.class.directory.entry">active issues</a> in [fs.class.directory.entry].</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.class.directory.entry">issues</a> in [fs.class.directory.entry].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>directory_entry</tt> has a conversion function to <tt>const path&amp;</tt> and depends on <tt>path</tt>'s stream insertion 
+operator for stream insertion support, which is now broken after LWG <a href="2989">2989</a> made it a hidden friend.
+<p/>
+This does not appear to be intended.
+</p>
+
+<p><i>[2018-12-21 Reflector prioritization]</i></p>
+
+<p>Set Priority to 2</p>
+<p><i>[2019-02; Kona Wednesday night issue processing]</i></p>
+
+<p>Status to Open; Marshall to move definition inline and re-vote on reflector.</p>
+<p>Jonathan to write a paper about how to specify "hidden friends".</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4778">N4778</a>.</p>
+
+<ol>
+<li><p>Modify  [fs.class.directory_entry], class <tt>directory_entry</tt> synopsis, as follows:</p>
+
+<blockquote>
+<pre>
+namespace std::filesystem {
+  class directory_entry {
+  public:
+    [&hellip;]
+  private:
+    filesystem::path pathobject;     // exposition only
+    friend class directory_iterator; // exposition only
+
+<ins>    template&lt;class charT, class traits&gt;
+      friend basic_ostream&lt;charT, traits&gt;&amp;
+        operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const directory_entry&amp; d);</ins>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>Add a new subclause at the end of  [fs.class.directory_entry], as follows:</p>
+<blockquote>
+<p><strong>28.11.11.4 Inserter [fs.dir.entry.io]</strong></p>
+<blockquote>
+<pre>
+template&lt;class charT, class traits&gt;
+  friend basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const directory_entry&amp; d);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to: <tt> return os &lt;&lt; d.path(); </tt>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-05-02; Daniel resyncs wording with recent working draft and comments]</i></p>
+
+<p>
+We have now the paper <a href="https://wg21.link/p1965r0">P1965R0</a>, which introduced
+a specification of what friend functions in the library specification (see 
+16.5.5.6 <a href="https://timsong-cpp.github.io/cppwp/hidden.friends">[hidden.friends]</a>) are supposed to mean, there is no longer an inline
+definition needed to clarify the meaning. In addition to updating the change of section
+names the provided wording has moved the friend declaration into the public part of the
+class definition as have done in all other cases where we take advantage of "hidden friends"
+declarations.
+</p>
+<p><i>[2020-08-21 Issue processing telecon: moved to Tentatively Ready]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 29.11.11 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory.entry">[fs.class.directory.entry]</a>, class <tt>directory_entry</tt> synopsis, as follows:</p>
+
+<blockquote>
+<pre>
+namespace std::filesystem {
+  class directory_entry {
+  public:
+    [&hellip;]
+    bool operator==(const directory_entry&amp; rhs) const noexcept;
+    strong_ordering operator&lt;=&gt;(const directory_entry&amp; rhs) const noexcept;
+    
+    <ins><i>// 29.11.11.? [fs.dir.entry.io], inserter</i>    
+    template&lt;class charT, class traits&gt;
+      friend basic_ostream&lt;charT, traits&gt;&amp;
+        operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const directory_entry&amp; d);</ins>
+  private:
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li>
+<p>Add a new subclause at the end of 29.11.11 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory.entry">[fs.class.directory.entry]</a>, as indicated:</p>
+
+<blockquote>
+<p><strong><ins>29.11.11.? Inserter [fs.dir.entry.io]</ins></strong></p>
+<blockquote>
+<pre>
+<ins>template&lt;class charT, class traits&gt;
+  friend basic_ostream&lt;charT, traits&gt;&amp;
+    operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp; os, const directory_entry&amp; d);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>return os &lt;&lt; d.path();</tt></ins>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
 <h3><a name="3207" href="3207">3207.</a> <tt>N</tt> in <tt>ssize(const T (&amp;)[N])</tt> should be <tt>size_t</tt></h3>
 <p><b>Section:</b> 23.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
  <b>Submitter:</b> Nevin Liber <b>Opened:</b> 2019-05-23 <b>Last modified:</b> 2019-06-10 05:16:56 UTC</p>
@@ -1679,12 +1817,82 @@ Resolved by <a href="https://wg21.link/p1957r2">P1957R2</a>.
 
 
 <hr>
+<h3><a name="3306" href="3306">3306.</a> <tt>ranges::advance</tt> violates its preconditions</h3>
+<p><b>Section:</b> 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2019-10-27 <b>Last modified:</b> 2020-08-21 20:59:51 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iter.op.advance">active issues</a> in [range.iter.op.advance].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iter.op.advance">issues</a> in [range.iter.op.advance].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>Recall that "<tt>[i, s)</tt> denotes a range" for an iterator <tt>i</tt> and sentinel <tt>s</tt>
+means that either <tt>i == s</tt> holds, or <tt>i</tt> is dereferenceable and <tt>[++i, s)</tt>
+denotes a range ( [iterator.requirements.genera]).
+</p><p>
+The three-argument overload <tt>ranges::advance(i, n, bound)</tt> is specified in
+23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> paragraphs 5 through 7. Para 5 establishes a precondition that
+<tt>[bound, i)</tt> denotes a range when <tt>n &lt; 0</tt> (both <tt>bound</tt> and <tt>i</tt> must
+have the same type in this case). When <tt>sized_sentinel_for&lt;S, I&gt;</tt> holds and
+<tt>n &lt; bound - i</tt>, para 6.1.1 says that <tt>ranges::advance(i, n, bound)</tt> is equivalent
+to <tt>ranges::advance(i, bound)</tt>. Para 3, however, establishes a precondition for
+<tt>ranges::advance(i, bound)</tt> that <tt>[i, bound)</tt> denotes a range. <tt>[bound, i)</tt> and
+<tt>[i, bound)</tt> cannot both denote ranges unless <tt>i == bound</tt>, which is not the case for
+all calls that reach 6.1.1.
+</p><p>
+The call in para 6.1.1 wants the effects of either 4.1 - which really has no preconditions - or 4.2,
+which is well-defined if either <tt>[i, bound)</tt> or <tt>[bound, i)</tt> denotes a range. Para 3's
+stronger precondition is actually only required by Para 4.3, which increments <tt>i</tt> blindly
+looking for <tt>bound</tt>. The straight-forward fix here seems to be to relax para 3's precondition
+to only apply when 4.3 will be reached.
+</p>
+
+<p><i>[2019-11 Priority to 2 during Monday issue prioritization in Belfast]</i></p>
+
+
+<p><i>[2020-08-21 Issue processing telecon: moved to Tentatively Ready]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4835">N4835</a>.</p>
+
+<ol>
+<li><p>Modify 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<p>
+-3- <i>Expects:</i> <ins>Either <tt>assignable_from&lt;I&amp;, S&gt; ||
+sized_sentinel_for&lt;S, I&gt;</tt> is modeled, or</ins> <tt>[i, bound)</tt> denotes a range.
+</p><p>
+-4- <i>Effects:</i>
+</p><p>
+(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt>assignable_from&lt;I&amp;, S&gt;</tt>,
+equivalent to <tt>i = std::move(bound)</tt>.
+</p><p>
+(4.2) &mdash; Otherwise, if <tt>S</tt> and <tt>I</tt> model <tt>sized_sentinel_for&lt;S, I&gt;</tt>,
+equivalent to <tt>ranges::advance(i, bound - i)</tt>.
+</p><p>
+(4.3) &mdash; Otherwise, while <tt>bool(i != bound)</tt> is <tt>true</tt>, increments <tt>i</tt>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
 <h3><a name="3322" href="3322">3322.</a> Add <tt>join_view::base()</tt> member function</h3>
 <p><b>Section:</b> 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Tentatively Resolved</a>
  <b>Submitter:</b> United States <b>Opened:</b> 2019-11-06 <b>Last modified:</b> 2019-12-21 13:59:05 UTC</p>
 <p><b>Priority: </b>0
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#range.join.view">active issues</a> in [range.join.view].</p>
 <p><b>View all other</b> <a href="lwg-index.html#range.join.view">issues</a> in [range.join.view].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Resolved">Tentatively Resolved</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -2143,6 +2351,163 @@ streambuf_type* get_wrapped() const noexcept;
 <li><p>Replace in 29.10.3.3 <a href="https://timsong-cpp.github.io/cppwp/syncstream.osyncstream.members">[syncstream.osyncstream.members]</a> all occurrences of <tt>emit()</tt> by <tt>emit_or_fail()</tt> (six occurrences)</p>
 </li>
 
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3403" href="3403">3403.</a> Domain of <tt>ranges::ssize(E)</tt> doesn't match <tt>ranges::size(E)</tt></h3>
+<p><b>Section:</b> 24.3.10 <a href="https://timsong-cpp.github.io/cppwp/range.prim.ssize">[range.prim.ssize]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-02-19 <b>Last modified:</b> 2020-08-21 20:28:46 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>ranges::size(E)</tt> works with a non-range for which <tt>E.size()</tt> or <tt>size(E)</tt> is valid.
+But <tt>ranges::ssize(E)</tt> requires the type <tt>range_difference_t</tt> which requires
+<tt>ranges::begin(E)</tt> to be valid. This means there are types for which <tt>ranges::size(E)</tt>
+is valid but <tt>ranges::ssize(E)</tt> is not.
+<p/>
+Casey's reaction to this is:
+<p/>
+I believe we want <tt>ranges::ssize</tt> to work with any argument that <tt>ranges::size</tt> accepts.
+That suggest to me that we're going to need <tt><i>make-signed-like-t</i>&lt;T&gt;</tt> after all,
+so we can "Let <tt>E</tt> be an expression, and let <tt>D</tt> be the wider of <tt>ptrdiff_t</tt>
+or <tt>decltype(ranges::size(E))</tt>. Then <tt>ranges::ssize(E)</tt> is expression-equivalent to
+<tt>static_cast&lt;<i>make-signed-like-t</i>&lt;D&gt;&gt;(ranges::size(E))</tt>." Although this wording
+is still slightly icky since <tt>D</tt> isn't a valid type when <tt>ranges::size(E)</tt> isn't a valid
+expression, I think it's an improvement?
+</p>
+
+<p><i>[2020-03-11 Issue Prioritization]</i></p>
+
+<p>Priority to 2 after reflector discussion.</p>
+
+<p><i>[2020-07-22 Casey provides wording]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Add a new paragraph after paragraph 1 in 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>:</p>
+<blockquote>
+<ins>
+-?- Also within this clause,
+<tt><i>make-signed-like-t</i>&lt;X&gt;</tt>
+for an integer-like type <tt>X</tt>
+denotes <tt>make_signed_t&lt;X&gt;</tt>
+if <tt>X</tt> is an integer type;
+otherwise, it denotes a corresponding
+unspecified signed-integer-like type
+of the same width as <tt>X</tt>.
+</ins>
+</blockquote>
+</li>
+
+<li><p>Modify 24.3.10 <a href="https://timsong-cpp.github.io/cppwp/range.prim.ssize">[range.prim.ssize]</a> as indicated:</p>
+
+<blockquote>
+<p>-1- The name <tt>ranges::ssize</tt> denotes
+a customization point object (16.4.2.2.6 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>).
+<del>The expression <tt>ranges::ssize(E)</tt>
+for a subexpression <tt>E</tt> of type <tt>T</tt>
+is expression-equivalent to:</del>
+</p><p>
+<del>(1.1) &mdash; If <tt>range_difference_t&lt;T&gt;</tt> has
+width less than <tt>ptrdiff_t</tt>,
+<tt>static_cast&lt;ptrdiff_t&gt;(ranges::size(E))</tt>.</del>
+</p><p>
+<del>(1.2) &mdash; Otherwise,
+<tt>static_cast&lt;range_difference_t&lt;T&gt;&gt;(ranges::size(E))</tt>.</del>
+</p><p>
+<ins>
+-?- Given a subexpression <tt>E</tt> with type <tt>T</tt>,
+let <tt>t</tt> be an lvalue that denotes the reified object for <tt>E</tt>.
+If <tt>ranges::size(t)</tt> is ill-formed,
+<tt>ranges::ssize(E)</tt> is ill-formed.
+Otherwise, let <tt>D</tt> be the wider of
+<tt>ptrdiff_t</tt> or <tt>decltype(ranges::size(t))</tt>;
+<tt>ranges::ssize(E)</tt> is expression-equivalent to
+<tt>static_cast&lt;<i>make-signed-like-t</i>&lt;D&gt;&gt;(ranges::size(t))</tt>.
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-07-31 Casey provides updated wording]</i></p>
+
+Per discussion on the reflector.
+
+<p><i>[2020-08-21; Issue processing telecon: Tentatively Ready]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Add a new paragraph after paragraph 1 in 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>:</p>
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The following does not define
+an analog <tt><i>to-signed-like</i></tt> for <tt><i>to-unsigned-like</i></tt>
+since we don't need it at this time.]
+</p>
+</blockquote>
+<blockquote>
+<ins>
+-?- Also within this Clause,
+<tt><i>make-signed-like-t</i>&lt;X&gt;</tt>
+for an integer-like type <tt>X</tt>
+denotes <tt>make_signed_t&lt;X&gt;</tt>
+if <tt>X</tt> is an integer type;
+otherwise, it denotes a corresponding
+unspecified signed-integer-like type
+of the same width as <tt>X</tt>.
+</ins>
+</blockquote>
+</li>
+
+<li><p>Modify 24.3.10 <a href="https://timsong-cpp.github.io/cppwp/range.prim.ssize">[range.prim.ssize]</a> as indicated:</p>
+
+<blockquote>
+<p>-1- The name <tt>ranges::ssize</tt> denotes
+a customization point object (16.4.2.2.6 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>).
+<del>The expression <tt>ranges::ssize(E)</tt>
+for a subexpression <tt>E</tt> of type <tt>T</tt>
+is expression-equivalent to:</del>
+</p><p>
+<del>(1.1) &mdash; If <tt>range_difference_t&lt;T&gt;</tt> has
+width less than <tt>ptrdiff_t</tt>,
+<tt>static_cast&lt;ptrdiff_t&gt;(ranges::size(E))</tt>.</del>
+</p><p>
+<del>(1.2) &mdash; Otherwise,
+<tt>static_cast&lt;range_difference_t&lt;T&gt;&gt;(ranges::size(E))</tt>.</del>
+</p><p>
+<ins>
+-?- Given a subexpression <tt>E</tt> with type <tt>T</tt>,
+let <tt>t</tt> be an lvalue that denotes the reified object for <tt>E</tt>.
+If <tt>ranges::size(t)</tt> is ill-formed,
+<tt>ranges::ssize(E)</tt> is ill-formed.
+Otherwise let <tt>D</tt> be
+<tt><i>make-signed-like-t</i>&lt;decltype(ranges::size(t))&gt;</tt>,
+or <tt>ptrdiff_t</tt> if it is wider than that type;
+<tt>ranges::ssize(E)</tt> is expression-equivalent to
+<tt>static_cast&lt;D&gt;(ranges::size(t))</tt>.
+</ins>
+</p>
+</blockquote>
+</li>
 </ol>
 
 
@@ -3415,6 +3780,297 @@ remove_reference_t&lt;U&gt;&gt;&gt;&gt;</tt> is <tt>false</tt></ins>.
 
 
 <hr>
+<h3><a name="3446" href="3446">3446.</a> <tt>indirectly_readable_traits</tt> ambiguity for types with both <tt>value_type</tt> and <tt>element_type</tt></h3>
+<p><b>Section:</b> 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-05-15 <b>Last modified:</b> 2020-08-21 19:55:54 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Per 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a>, <tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is the same type as
+<tt>remove_cv_t&lt;T::value_type&gt;</tt> if it denotes an object type, or <tt>remove_cv_t&lt;T::element_type&gt;</tt>
+if it denotes an object type. If both <tt>T::value_type</tt> and <tt>T::element_type</tt> denote types,
+<tt>indirectly_readable_traits&lt;T&gt;::value_type</tt> is ill-formed. This was perhaps not the best design,
+given that there are iterators in the wild (Boost's unordered containers) that define both nested types.
+<tt>indirectly_readable_traits</tt> should tolerate iterators that define both nested types consistently.
+</p>
+
+<p><i>[2020-07-17; Priority set to 2 in telecon]</i></p>
+
+
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class&gt; struct <i>cond-value-type</i> { }; <i>// exposition only</i>
+
+template&lt;class T&gt;
+  requires is_object_v&lt;T&gt;
+struct <i>cond-value-type</i>&lt;T&gt; {
+  using value_type = remove_cv_t&lt;T&gt;;
+};
+
+template&lt;class&gt; struct indirectly_readable_traits { };
+
+[&hellip;]
+
+template&lt;class T&gt;
+  requires requires { typename T::value_type; }
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
+
+template&lt;class T&gt;
+  requires requires { typename T::element_type; }
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::element_type&gt; { };
+
+<ins>template&lt;class T&gt;</ins>
+  <ins>requires requires {</ins>
+    <ins>typename T::element_type;</ins>
+    <ins>typename T::value_type;</ins>
+    <ins>requires same_as&lt;</ins>
+      <ins>remove_cv_t&lt;typename T::element_type&gt;,</ins>
+      <ins>remove_cv_t&lt;typename T::value_type&gt;&gt;;</ins>
+  <ins>}</ins>
+<ins>struct indirectly_readable_traits&lt;T&gt;</ins>
+  <ins>: <i>cond-value-type</i>&lt;typename T::value_type&gt; { };</ins>
+
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2020-07-23; Casey improves wording per reflector discussion]</i></p>
+
+
+<p><i>[2020-08-21; moved to Tentatively Ready after five votes in favour in reflector poll]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.</p>
+
+<ol>
+<li><p>Modify 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class&gt; struct <i>cond-value-type</i> { }; <i>// exposition only</i>
+
+template&lt;class T&gt;
+  requires is_object_v&lt;T&gt;
+struct <i>cond-value-type</i>&lt;T&gt; {
+  using value_type = remove_cv_t&lt;T&gt;;
+};
+
+<ins>template&lt;class T&gt;</ins>
+<ins>concept <i>has-member-value-type</i> = requires { typename T::value_type; }; <i>// exposition only</i></ins>
+
+<ins>template&lt;class T&gt;</ins>
+<ins>concept <i>has-member-element-type</i> = requires { typename T::element_type; }; <i>// exposition only</i></ins>
+
+template&lt;class&gt; struct indirectly_readable_traits { };
+
+[&hellip;]
+
+template&lt;<del>class</del><ins><i>has-member-value-type</i></ins> T&gt;
+  <del>requires requires { typename T::value_type; }</del>
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
+
+template&lt;<del>class</del><ins><i>has-member-element-type</i></ins> T&gt;
+  <del>requires requires { typename T::element_type; }</del>
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::element_type&gt; { };
+
+<ins>template&lt;<del>class</del><ins><i>has-member-value-type</i></ins> T&gt;</ins>
+  <ins>requires <i>has-member-element-type</i>&lt;T&gt; &amp;&amp;</ins>
+           <ins>same_as&lt;remove_cv_t&lt;typename T::element_type&gt;, remove_cv_t&lt;typename T::value_type&gt;&gt;</ins>
+<ins>struct indirectly_readable_traits&lt;T&gt;</ins>
+  <ins>: <i>cond-value-type</i>&lt;typename T::value_type&gt; { };</ins>
+
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3453" href="3453">3453.</a> Generic code cannot call <tt>ranges::advance(i, s)</tt></h3>
+<p><b>Section:</b> 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>, 23.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-06-18 <b>Last modified:</b> 2020-08-21 20:26:23 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iter.op.advance">active issues</a> in [range.iter.op.advance].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iter.op.advance">issues</a> in [range.iter.op.advance].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of the iterator &amp; sentinel overload of <tt>ranges::advance</tt> in 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> reads:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<p>
+-3- <i>Preconditions:</i> <tt>[i, bound)</tt> denotes a range.
+<p/>
+-4- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt>assignable_from&lt;I&amp;, S&gt;</tt>, equivalent to 
+<tt>i = std::move(bound)</tt>.</p></li>
+<li><p>(4.2) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+
+<p>
+The assignment optimization in bullet 4.1 is just fine for callers with concrete types who can decide whether 
+or not to call <tt>advance</tt> depending on the semantics of the assignment performed. However, since this assignment 
+operation isn't part of the <tt>input_or_output_iterator</tt> or <tt>sentinel_for</tt> requirements its semantics 
+are unknown for arbitrary types. Effectively, generic code is forbidden to call this overload of <tt>advance</tt> when 
+<tt>assignable_from&lt;I&amp;, S&gt;</tt> is satisfied and non-generic code must tread lightly. This seems to 
+make the library dangerously unusable.
+
+We can correct this problem by either:
+</p>
+<ol style="list-style-type: upper-alpha">
+<li><p>Making the assignment operation in question an optional part of the <tt>sentinel_for</tt> concept with well-defined 
+semantics. This concept change should be relatively safe given that <tt>assignable_from&lt;I&amp;, S&gt;</tt> 
+requires <tt>common_reference_with&lt;const I&amp;, const S&amp;&gt;</tt>, which is very rarely satisfied 
+inadvertently.</p></li>
+<li><p>Requiring instead <tt>same_as&lt;I, S&gt;</tt> to trigger the assignment optimization in bullet 4.1 above. 
+<tt>S</tt> is <tt>semiregular</tt>, so <tt>i = std::move(s)</tt> is certainly well-formed (and has well-defined 
+semantics thanks to <tt>semiregular</tt>) when <tt>I</tt> and <tt>S</tt> are the same type. The optimization will 
+not apply in as many cases, but we don't need to make a scary concept change, either.</p></li>
+</ol>
+
+<p><i>[2020-06-26; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
+</p>
+<p><i>[2020-08-21; Issue processing telecon: Option A is Tentatively Ready]</i></p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+<p>
+Wording for both <b>Option A</b> and <b>Option B</b> are provided.
+</p>
+
+<p><b>Option A</b>:</p>
+
+<ol>
+<li><p>Modify 23.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class S, class I&gt;
+  concept sentinel_for =
+    semiregular&lt;S&gt; &amp;&amp;
+    input_or_output_iterator&lt;I&gt; &amp;&amp;
+    <i>weakly-equality-comparable-with</i>&lt;S, I&gt;; <i>// See 18.5.3 <a href="https://timsong-cpp.github.io/cppwp/concept.equalitycomparable">[concept.equalitycomparable]</a></i>
+</pre>
+<blockquote>
+<p>
+-2- Let <tt>s</tt> and <tt>i</tt> be values of type <tt>S</tt> and <tt>I</tt> such that <tt>[i, s)</tt> denotes a range. 
+Types <tt>S</tt> and <tt>I</tt> model <tt>sentinel_for&lt;S, I&gt;</tt> only if
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>i == s</tt> is well-defined.</p></li>
+<li><p>(2.2) &mdash; If <tt>bool(i != s)</tt> then <tt>i</tt> is dereferenceable and <tt>[++i, s)</tt> denotes a range.</p></li>
+<li><p><ins>(2.?) &mdash; <tt>assignable_from&lt;I&amp;, S&gt;</tt> is either modeled or not satisfied.</ins></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+<p><b>Option B</b>:</p>
+
+<ol>
+<li><p>Modify 23.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr void ranges::advance(I&amp; i, S bound);
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> <tt>[i, bound)</tt> denotes a range.
+<p/>
+-4- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; If <tt>I</tt> and <tt>S</tt> model <tt><del>assignable_from&lt;I&amp;, 
+S&gt;</del><ins>same_as&lt;I, S&gt;</ins></tt>, equivalent to <tt>i = std::move(bound)</tt>.</p></li>
+<li><p>(4.2) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 23.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class S, class I&gt;
+  concept sentinel_for =
+    semiregular&lt;S&gt; &amp;&amp;
+    input_or_output_iterator&lt;I&gt; &amp;&amp;
+    <i>weakly-equality-comparable-with</i>&lt;S, I&gt;; <i>// See 18.5.3 <a href="https://timsong-cpp.github.io/cppwp/concept.equalitycomparable">[concept.equalitycomparable]</a></i>
+</pre>
+<blockquote>
+<p>
+-2- Let <tt>s</tt> and <tt>i</tt> be values of type <tt>S</tt> and <tt>I</tt> such that <tt>[i, s)</tt> denotes a range. 
+Types <tt>S</tt> and <tt>I</tt> model <tt>sentinel_for&lt;S, I&gt;</tt> only if
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>i == s</tt> is well-defined.</p></li>
+<li><p>(2.2) &mdash; If <tt>bool(i != s)</tt> then <tt>i</tt> is dereferenceable and <tt>[++i, s)</tt> denotes a range.</p></li>
+<li><p><ins>(2.?) &mdash; <tt>assignable_from&lt;I&amp;, S&gt;</tt> is either modeled or not satisfied.</ins></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
 <h3><a name="3455" href="3455">3455.</a> Incorrect <i>Postconditions</i> on <tt>unique_ptr</tt> move assignment</h3>
 <p><b>Section:</b> 20.11.1.2.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Howard Hinnant <b>Opened:</b> 2020-06-22 <b>Last modified:</b> 2020-06-26 11:49:53 UTC</p>
@@ -3506,6 +4162,318 @@ otherwise <tt>u.get()</tt> is unchanged</ins>.
 </li>
 </ol>
 
+
+
+
+
+
+<hr>
+<h3><a name="3458" href="3458">3458.</a> Is <tt>shared_future</tt> intended to work with arrays or function types?</h3>
+<p><b>Section:</b> 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a>, 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Tentatively Resolved</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2020-06-28 <b>Last modified:</b> 2020-08-21 19:36:02 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Resolved">Tentatively Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently there is no prohibition of creating <code>shared_future&lt;T&gt;</code> where <code>T</code> is 
+either an array type or a function type. However such objects cannot be constructed, as the corresponding 
+<code>future&lt;T&gt;</code>, is ill-formed due the signature <code>get()</code> method being ill-formed &mdash; 
+it will be declared as function returning an array or function type, respectively. [<i>Note:</i> For 
+<code>shared_future</code> <tt>get</tt> always returns an reference, so it is well-formed for array or function 
+types.]
+</p>
+
+<p><i>[2020-07-17; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 0 and status to Tentatively Ready after six votes in favour during reflector discussions.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+Ideally the wording below would use a <i>Mandates:</i> element, but due to the still open
+issue LWG <a href="3193">3193</a> the wording below uses instead the more general "ill-formed"
+vocabulary.
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- If <tt>is_array_v&lt;R&gt;</tt> is <tt>true</tt> or <tt>is_function_v&lt;R&gt;</tt> is <tt>true</tt>, 
+the program is ill-formed.</ins>
+<p/>
+-4- The implementation provides the template <tt>future</tt> and two specializations, <tt>future&lt;R&amp;&gt;</tt> and 
+<tt>future&lt;void&gt;</tt>. These differ only in the return type and return value of the member function <tt>get</tt>, 
+as set out in its description, below.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class shared_future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- If <tt>is_array_v&lt;R&gt;</tt> is <tt>true</tt> or <tt>is_function_v&lt;R&gt;</tt> is <tt>true</tt>, 
+the program is ill-formed.</ins>
+<p/>
+-4- The implementation provides the template <tt>shared_future</tt> and two specializations, 
+<tt>shared_future&lt;R&amp;&gt;</tt> and <tt>shared_future&lt;void&gt;</tt>. These differ only in the return type 
+and return value of the member function <tt>get</tt>, as set out in its description, below.
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote> 
+
+<p><i>[2020-08-02; Daniel comments]</i></p>
+
+<p>
+I'm request to reopen the issue and to follow the recent wording update of LWG <a href="3466">3466</a> instead.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+Resolved by <a href="3466">3466</a>
+</p>
+
+
+
+
+
+<hr>
+<h3><a name="3460" href="3460">3460.</a> Unimplementable <tt>noop_coroutine_handle</tt> guarantees</h3>
+<p><b>Section:</b> 17.12.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.resumption">[coroutine.handle.noop.resumption]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-07-01 <b>Last modified:</b> 2020-08-21 17:55:07 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+17.12.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.resumption">[coroutine.handle.noop.resumption]</a>/2 states "<i>Remarks:</i> If <tt>noop_coroutine_handle</tt> 
+is converted to <tt>coroutine_handle&lt;&gt;</tt>, calls to <tt>operator()</tt>, <tt>resume</tt> and 
+<tt>destroy</tt> on that handle will also have no observable effects." This suggests that e.g. in this function:
+</p>
+<blockquote><pre>
+void f(coroutine_handle&lt;&gt; meow) 
+{
+  auto woof = noop_coroutine();
+  static_cast&lt;coroutine_handle&lt;&gt;&amp;&gt;(woof) = meow;
+  static_cast&lt;coroutine_handle&lt;&gt;&amp;&gt;(woof).resume();
+}
+</pre></blockquote>
+<p>
+the final call to <tt>coroutine_handle&lt;&gt;::resume</tt> must have no effect regardless of what 
+coroutine (if any) <tt>meow</tt> refers to, contradicting the specification of 
+<tt>coroutine_handle&lt;&gt;::resume</tt>. Even absent this contradiction, implementing the specification 
+requires <tt>coroutine_handle&lt;&gt;::resume</tt> to determine if <tt>*this</tt> is a base subobject of a 
+<tt>noop_coroutine_handle</tt>, which seems pointlessly expensive to implement.
+<p/>
+17.12.4.2.4 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.address">[coroutine.handle.noop.address]</a>/2 states "<i>Remarks:</i> A <tt>noop_coroutine_handle</tt>'s 
+<tt>ptr</tt> is always a non-null pointer value." Similar to the above case, a slicing assignment of a 
+default-initialized <tt>coroutine_handle&lt;&gt;</tt> to a <tt>noop_coroutine_handle</tt> must result in 
+<tt>ptr</tt> having a null pointer value &mdash; another contradiction between the requirements of 
+<tt>noop_coroutine_handle</tt> and <tt>coroutine_handle&lt;&gt;</tt>.
+</p>
+
+<p><i>[2020-07-12; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
+</p>
+
+<p><i>[2020-07-29 Tim adds PR and comments]</i></p>
+
+<p>
+The root cause for this issue as well as issue <a href="3469">3469</a> is the unnecessary 
+public derivation from <tt>coroutine_handle&lt;void&gt;</tt>. The proposed resolution below
+replaces the derivation with a conversion function and adds explicit declarations for
+members that were previously inherited. It also modifies the preconditions
+on <tt>from_address</tt> with goal of making it impossible to obtain a <tt>coroutine_handle&lt;P&gt;</tt>
+to a coroutine whose promise type is not <tt>P</tt> in well-defined code.
+</p>
+
+<p><i>[2020-08-21; Issue processing telecon: moved to Tentatively Ready]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a> and also resolves
+LWG issue <a href="3469">3469</a>. 
+</p>
+
+<ol>
+<li><p> Edit 17.12.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle">[coroutine.handle]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+
+  [&hellip;]
+
+  template&lt;class Promise&gt;
+  struct coroutine_handle <del>: coroutine_handle&lt;&gt;</del>
+  {
+    // [coroutine.handle.con], construct/reset
+<del>    using coroutine_handle&lt;&gt;::coroutine_handle;</del>
+<ins>    constexpr coroutine_handle() noexcept;
+    constexpr coroutine_handle(nullptr_t) noexcept;</ins>
+    static coroutine_handle from_promise(Promise&amp;);
+    coroutine_handle&amp; operator=(nullptr_t) noexcept;
+  
+    // [coroutine.handle.export.import], export/import
+<ins>    constexpr void* address() const noexcept;</ins>
+    static constexpr coroutine_handle from_address(void* addr);
+  
+<ins>    // [coroutine.handle.conv], conversion
+    constexpr operator coroutine_handle&lt;&gt;() const noexcept;
+  
+    // [coroutine.handle.observers], observers
+    constexpr explicit operator bool() const noexcept;
+    bool done() const;
+  
+    // [coroutine.handle.resumption], resumption
+    void operator()() const;
+    void resume() const;
+    void destroy() const;</ins>
+  
+    // [coroutine.handle.promise], promise access
+    Promise&amp; promise() const;
+  
+<ins>  private:
+    void* ptr;  // <i>exposition only</i> </ins>
+  };
+}
+</pre>
+
+<p> -1- An object of type <tt>coroutine_­handle&lt;T&gt;</tt> is called a <i>coroutine handle</i>
+and can be used to refer to a suspended or executing coroutine.
+A <del>default-constructed</del> <tt>coroutine_­handle</tt> object <ins>whose member <tt>address()</tt>
+returns a null pointer value</ins> does not refer to any coroutine.
+<ins>Two <tt>coroutine_handle</tt> objects refer to the same coroutine if and only if their
+member <tt>address()</tt> returns the same value.</ins>
+</p>
+</blockquote>
+</li>
+<li>
+<p>Add the following subclause under 17.12.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle">[coroutine.handle]</a>, immediately after 17.12.3.1 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.con">[coroutine.handle.con]</a>:</p>
+<blockquote>
+<p>
+<ins><b>?.?.?.? Conversion [coroutine.handle.conv]</b></ins>
+</p>
+<pre>
+    <ins>constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+</pre>
+<blockquote>
+<p><ins>-1- <i>Effects:</i> Equivalent to: <tt>return coroutine_handle&lt;&gt;::from_address(address());</tt>.</ins></p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p> Edit 17.12.3.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.export.import">[coroutine.handle.export.import]</a> as indicated, splitting the two versions:</p>
+<blockquote>
+<pre>
+static constexpr coroutine_handle&lt;&gt; coroutine_handle&lt;&gt;::from_address(void* addr);
+</pre>
+<blockquote>
+<p><ins>-?- <i>Preconditions:</i> <tt>addr</tt> was obtained via a prior call to <tt>address</tt> on
+an object whose type is a specialization of <tt>coroutine_handle</tt>.</ins>
+<p/>
+<ins>-?- <i>Postconditions:</i> <tt>from_­address(address()) == *this</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+static constexpr coroutine_handle&lt;Promise&gt; coroutine_handle&lt;Promise&gt;::from_address(void* addr);
+</pre>
+<blockquote>
+<p>
+-2- <i>Preconditions:</i> <tt>addr</tt> was obtained via a prior call to <tt>address</tt>
+<ins>on an object of type <i>cv</i> <tt>coroutine_handle&lt;Promise&gt;</tt></ins>.
+<p/>
+-3- <i>Postconditions:</i> <tt>from_­address(address()) == *this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p>Edit 17.12.4.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop">[coroutine.handle.noop]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;&gt;
+  struct coroutine_handle&lt;noop_coroutine_promise&gt; <del>: coroutine_handle&lt;&gt;</del>
+  {
+<ins>    // [coroutine.handle.noop.conv], conversion
+    constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+
+    // [coroutine.handle.noop.observers], observers
+    constexpr explicit operator bool() const noexcept;
+    constexpr bool done() const noexcept;
+
+    // [coroutine.handle.noop.resumption], resumption
+    constexpr void operator()() const noexcept;
+    constexpr void resume() const noexcept;
+    constexpr void destroy() const noexcept;
+
+    // [coroutine.handle.noop.promise], promise access
+    noop_coroutine_promise&amp; promise() const noexcept;
+
+    // [coroutine.handle.noop.address], address
+    constexpr void* address() const noexcept;
+  
+  private:
+    coroutine_handle(unspecified);
+<ins>    void* ptr; // <i>exposition only</i> </ins>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>Add the following subclause under 17.12.4.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop">[coroutine.handle.noop]</a>, immediately before 17.12.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.observers">[coroutine.handle.noop.observers]</a>:</p>
+<blockquote>
+<p>
+<ins><b>?.?.?.?.? Conversion [coroutine.handle.noop.conv]</b></ins>
+</p>
+<pre>
+    <ins>constexpr operator coroutine_handle&lt;&gt;() const noexcept;</ins>
+</pre>
+<blockquote>
+<p><ins>-1- <i>Effects:</i> Equivalent to: <tt>return coroutine_handle&lt;&gt;::from_address(address());</tt>.</ins></p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -3640,6 +4608,178 @@ except that <tt>E</tt> and <tt>F</tt> are evaluated only once.
 
 
 <hr>
+<h3><a name="3466" href="3466">3466.</a> Specify the requirements for <tt>promise</tt>/<tt>future</tt>/<tt>shared_future</tt> consistently</h3>
+<p><b>Section:</b> 32.9.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2020-07-18 <b>Last modified:</b> 2020-08-21 19:36:02 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#futures.promise">active issues</a> in [futures.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.promise">issues</a> in [futures.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The resolution of the LWG <a href="3458">3458</a> clearly specified the requirement that
+<tt>future</tt>/<tt>shared_future</tt> are ill-formed in situations when <tt>T</tt> is native array
+or function type. This requirement was not strictly necessary for <tt>future&lt;T&gt;</tt> 
+as it was already ill-formed due the signature of the <tt>get</tt> function (that would be 
+ill-formed in such case), however it was still added for consistency of specification.
+Similar, requirement should be introduced for the <tt>promise&lt;T&gt;</tt>, for which
+any call to <tt>get_future()</tt> would be ill-formed, if <tt>T</tt> is of array or function type.
+<p/>
+[Note: <tt>promise&lt;int[10]&gt;</tt> is ill-formed for libstdc++ and libc++, see
+<a href="https://godbolt.org/z/ffTW99">this code</a>]
+</p>
+
+<p><i>[2020-07-26; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 after reflector discussions. Tim Song made the suggestion to replace the P/R wording
+by the following alternative wording:
+</p>
+<blockquote><p>
+<ins>For the primary template, <tt>R</tt> shall be an object type that meets the <i>Cpp17Destructible</i> requirements.</ins>
+</p></blockquote>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+Ideally the wording below would use a <i>Mandates:</i> element, but due to the still open
+issue LWG <a href="3193">3193</a> the wording below uses instead the more general "ill-formed"
+vocabulary.
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 32.9.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class promise {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- If <tt>is_array_v&lt;R&gt;</tt> is <tt>true</tt> or <tt>is_function_v&lt;R&gt;</tt> is <tt>true</tt>, 
+the program is ill-formed.</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2020-08-02; Daniel comments and provides alternative wording]</i></p>
+
+<p>
+Following the suggestion of Tim Song a revised wording is provided which is intended to replace the currently agreed on wording
+for LWG <a href="3458">3458</a>.
+</p>
+
+<p><i>[2020-08-21; Issue processing telecon: Tentatively Ready]</i></p>
+
+<p>
+Discussed a note clarifying that <em>Cpp17Destructible</em> disallows
+arrays (as well as types without accessible destructors).
+Can be added editorially.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 32.9.6 <a href="https://timsong-cpp.github.io/cppwp/futures.promise">[futures.promise]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class promise {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- For the primary template, <tt>R</tt> shall be an object type that meets the
+<i>Cpp17Destructible</i> requirements.</ins>
+<p/>
+-1- The implementation provides the template <tt>promise</tt> and two specializations, <tt>promise&lt;R&amp;&gt;</tt> 
+and <tt>promise&lt;void&gt;</tt>. These differ only in the argument type of the member functions 
+<tt>set_value</tt> and <tt>set_value_at_thread_exit</tt>, as set out in their descriptions, below.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 32.9.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- For the primary template, <tt>R</tt> shall be an object type that meets the
+<i>Cpp17Destructible</i> requirements.</ins>
+<p/>
+-4- The implementation provides the template <tt>future</tt> and two specializations, <tt>future&lt;R&amp;&gt;</tt> and 
+<tt>future&lt;void&gt;</tt>. These differ only in the return type and return value of the member function <tt>get</tt>, 
+as set out in its description, below.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 32.9.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class R&gt;
+  class shared_future {
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- For the primary template, <tt>R</tt> shall be an object type that meets the
+<i>Cpp17Destructible</i> requirements.</ins>
+<p/>
+-4- The implementation provides the template <tt>shared_future</tt> and two specializations, 
+<tt>shared_future&lt;R&amp;&gt;</tt> and <tt>shared_future&lt;void&gt;</tt>. These differ only in the return type 
+and return value of the member function <tt>get</tt>, as set out in its description, below.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
 <h3><a name="3467" href="3467">3467.</a> <tt>bool</tt> can't be an integer-like type</h3>
 <p><b>Section:</b> 23.3.4.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.winc">[iterator.concept.winc]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-07-23 <b>Last modified:</b> 2020-08-02 18:23:26 UTC</p>
@@ -3685,6 +4825,240 @@ models <tt>signed_integral&lt;I&gt;</tt> or if it is a signed-integer-class type
 type <tt>I</tt> is <i>unsigned-integer-like</i> if it models <tt>unsigned_integral&lt;I&gt;</tt> or if it is an
 unsigned-integer-class type.
 </p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3469" href="3469">3469.</a> Precondition of <tt>coroutine_handle::promise</tt> may be insufficient</h3>
+<p><b>Section:</b> 17.12.3.5 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.promise">[coroutine.handle.promise]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Tentatively Resolved</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2020-07-25 <b>Last modified:</b> 2020-08-21 17:55:07 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Resolved">Tentatively Resolved</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The issue is related to LWG <a href="3460">3460</a>.
+<p/>
+Because the <tt>coroutine_handle&lt;&gt;</tt> base subobject of a <tt>coroutine_handle&lt;P1&gt;</tt> 
+can be assigned from the one of a <tt>coroutine_handle&lt;P2&gt;</tt>, a <tt>coroutine_handle&lt;P1&gt;</tt> 
+may refer to a coroutine whose promise type is <tt>P2</tt>. If a <tt>coroutine_handle&lt;P&gt;</tt> refers 
+to a coroutine with difference, a call to <tt>promise()</tt> should result in undefined behavior IMO.
+<p/>
+I think that 17.12.3.5 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.promise">[coroutine.handle.promise]</a>/1 should be changed to: "<i>Preconditions:</i> 
+<tt>*this</tt> refers to a coroutine whose promise type is <tt>Promise</tt>.", and the same precondition 
+should be added to 17.12.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.promise">[coroutine.handle.noop.promise]</a>, and hence <tt>noexcept</tt> should be 
+removed from <tt>coroutine_handle&lt;noop_coroutine_promise&gt;::promise</tt>.
+</p>
+
+<p><i>[2020-08-21; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>. 
+</p>
+
+<ol>
+<li><p>Modify 17.12.3.5 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.promise">[coroutine.handle.promise]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+Promise&amp; promise() const;
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> <tt>*this</tt> refers to a coroutine <ins>whose promise type is <tt>Promise</tt></ins>.
+<p/>
+-2- <i>Returns:</i> A reference to the promise of the coroutine.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 17.12.4.2 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop">[coroutine.handle.noop]</a>, class <tt>coroutine_handle&lt;noop_coroutine_promise&gt;</tt> 
+synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 17.12.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.promise">[coroutine.handle.noop.promise]</a>, promise access</i>
+noop_coroutine_promise&amp; promise() const <del>noexcept</del>;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 17.12.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.noop.promise">[coroutine.handle.noop.promise]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+noop_coroutine_promise&amp; promise() const <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>*this</tt> refers to a coroutine whose promise type is <tt>noop_coroutine_promise</tt>.</ins>
+<p/>
+-1- <i>Returns:</i> A reference to the promise object associated with this coroutine handle.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This issue is resolved by the resolution of issue <a href="3460">3460</a>.</p>
+
+
+
+
+
+<hr>
+<h3><a name="3472" href="3472">3472.</a> <tt>counted_iterator</tt> is missing preconditions</h3>
+<p><b>Section:</b> 23.5.6 <a href="https://timsong-cpp.github.io/cppwp/iterators.counted">[iterators.counted]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2020-07-29 <b>Last modified:</b> 2020-08-21 17:46:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+C++20 introduces a new iterator <tt>counted_iterator</tt> that keeps track of the end of its range via an 
+additional exposition only member <tt>length</tt>.  
+<p/>
+Consequently, there are several preconditions for many member functions of <tt>counted_iterator</tt>, but 
+it seems some are missing:
+</p>
+<ol>
+<li><p><b><tt>operator*</tt></b>
+<p/>
+Here we have no precondition regarding <tt>length</tt>. However, given that <tt>length</tt> denotes the 
+distance to the end of the range it should be invalid to dereference a <tt>counted_iterator</tt> with 
+<tt>length 0</tt>.
+<p/>
+Moreover, <tt>operator[]</tt> has a precondition of "<tt>n &lt; length</tt>". Consider the following code snippet:
+</p>
+<blockquote><pre>
+int some_ints[] = {0,1,2};
+counted_iterator&lt;int*&gt; i{some_ints, 0};
+</pre></blockquote>
+<p>
+Here "<tt>i[0]</tt>" would be invalid due to the precondition "<tt>n &lt; length</tt>". However, "<tt>*i</tt>" 
+would be a valid expression. This violates the definition of <tt>operator[]</tt> which states according to 
+7.6.1.1 <a href="https://timsong-cpp.github.io/cppwp/expr.sub">[expr.sub]</a> p1:
+</p>
+<blockquote><p>
+[&hellip;] The expression <tt>E1[E2]</tt> is identical (by definition) to <tt>*((E1)+(E2))</tt> [&hellip;]
+</p></blockquote>
+<p>
+Substituting <tt>E2-&gt;0</tt> we get  
+</p>
+<blockquote><p>
+[&hellip;] The expression <tt>E1[0]</tt> is identical (by definition) to <tt>*(E1)</tt> [&hellip;]
+</p></blockquote>
+<p>
+With the current wording <tt>counted_iterator</tt> violates that definition and we should add to <tt>operator*</tt>:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+<li><p><b><tt>iter_move</tt></b>
+<p/>
+This is a similar case. We have only the <i>Effects</i> element:
+</p>
+<blockquote><p>
+<i>Effects:</i> Equivalent to: <tt>return ranges::iter_move(i.current);</tt>
+</p></blockquote>
+<p>
+However, looking at the requirements of <tt>ranges::iter_move</tt> we have in 23.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.move">[iterator.cust.move]</a> p2:
+</p>
+<blockquote><p>
+If <tt>ranges::iter_move(E)</tt> is not equal to <tt>*E</tt>, the program is ill-formed, no diagnostic required.
+</p></blockquote>
+<p>
+This clearly requires that for <tt>counted_iterator::iter_move</tt> to be well-formed,  we need 
+<tt>counted_iterator::operator*</tt> to be well formed. Consequently we should also add the same precondition to 
+<tt>counted_iterator::iter_move</tt>:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+<li><p><b><tt>iter_swap</tt></b>
+<p/>
+This is essentially the same arguing as for <tt>counted_iterator::iter_move</tt>. The essential observation is that 
+<tt>ranges::iter_swap</tt> is defined in terms of <tt>ranges::iter_move</tt> (see 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.cust.swap">[iterator.cust.swap]</a>) 
+so it must have the same preconditions and we should add:
+</p>
+<blockquote><p>
+<i>Preconditions:</i> <tt>length &gt; 0</tt>.
+</p></blockquote></li>
+</ol>
+<p><i>[2020-08-21 Issue processing telecon: moved to Tentatively Ready.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.6.4 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.elem">[counted.iter.elem]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr decltype(auto) operator*();
+constexpr decltype(auto) operator*() const
+  requires <i>dereferenceable</i>&lt;const I&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return *current;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.7 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.cust">[counted.iter.cust]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr iter_rvalue_reference_t&lt;I&gt;
+  iter_move(const counted_iterator&amp; i)
+    noexcept(noexcept(ranges::iter_move(i.current)))
+    requires input_iterator&lt;I&gt;;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>i.length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_move(i.current);</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;indirectly_swappable&lt;I&gt; I2&gt;
+  friend constexpr void
+    iter_swap(const counted_iterator&amp; x, const counted_iterator&lt;I2&gt;&amp; y)
+      noexcept(noexcept(ranges::iter_swap(x.current, y.current)));
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions:</i> <tt>x.length &gt; 0</tt> and <tt>y.length &gt; 0</tt>.</ins>
+<p/>
+-1- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_swap(x.current, y.current);</tt>
+</p>
+</blockquote>
 </blockquote>
 </li>
 </ol>
@@ -3751,6 +5125,139 @@ basic_format_arg&lt;Context&gt; get(size_t i) const noexcept;
 <del>[<i>Note:</i> Implementations are encouraged to optimize the representation of 
 <tt>basic_format_args</tt> for small number of formatting arguments by storing indices of type 
 alternatives separately from values and packing the former. &mdash; <i>end note</i>]</del>
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3474" href="3474">3474.</a> Nesting <tt>join_view</tt>s is broken because of CTAD</h3>
+<p><b>Section:</b> 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.join">[range.join]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-04 <b>Last modified:</b> 2020-08-21 19:32:16 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Let's say I had a range of range of ranges and I wanted to recursively flatten it. That would involve 
+repeated invocations of <tt>join</tt>. But this doesn't work:
+</p>
+<blockquote><pre>
+std::vector&lt;std::vector&lt;std::vector&lt;int&gt;&gt;&gt; nested_vectors = {
+  {{1, 2, 3}, {4, 5}, {6}},
+  {{7},       {8, 9}, {10, 11, 12}},
+  {{13}}
+};
+auto joined = nested_vectors | std::views::join | std::views::join;
+</pre></blockquote>
+<p>
+The expectation here is that the <tt>value_type</tt> of joined is <tt>int</tt>, but it's actually 
+<tt>vector&lt;int&gt;</tt> &mdash; because the 2nd invocation of <tt>join</tt> ends up just copying 
+the first. This is because <tt>join</tt> is specified to do:
+</p>
+<blockquote><p>
+The name <tt>views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view{E}</tt>.
+</p></blockquote>
+<p>
+And <tt>join_view{E}</tt> for an <tt>E</tt> that's already a specialization of a <tt>join_view</tt> 
+just gives you the same <tt>join_view</tt> back. Yay CTAD. We need to do the same thing with <tt>join</tt> 
+that we did with <tt>reverse</tt> in <a href="http://wg21.link/p1252">P1252</a>. We can do that either in 
+exposition (<b>Option A</b>) my modifying 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> p2
+</p>
+<blockquote><p>
+The name <tt>views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given 
+a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+</p>
+</blockquote>
+<p>
+Or in code (<b>Option B</b>) add a deduction guide to 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>:
+</p>
+<blockquote><pre>
+  template&lt;class R&gt;
+    explicit join_view(R&amp;&amp;) -&gt; join_view&lt;views::all_t&lt;R&gt;&gt;;
+
+  <ins>template&lt;class V&gt;
+    explicit join_view(join_view&lt;V&gt;) -&gt; join_view&lt;join_view&lt;V&gt;&gt;;</ins>
+
+</pre></blockquote>
+
+<p><i>[2020-08-21; Issue processing telecon: Option A is Tentatively Ready]</i></p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Two mutually exclusive options are prepared, depicted below by <b>Option A</b> and 
+<b>Option B</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b>
+</p>
+<ol>
+<li><p>Modify 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- <tt>The name views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+<p>
+<b>Option B:</b>
+</p>
+<ol>
+<li><p>Modify 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  
+  template&lt;class R&gt;
+    explicit join_view(R&amp;&amp;) -&gt; join_view&lt;views::all_t&lt;R&gt;&gt;;
+  
+  <ins>template&lt;class V&gt;
+    explicit join_view(join_view&lt;V&gt;) -&gt; join_view&lt;join_view&lt;V&gt;&gt;;</ins>
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- <tt>The name views::join</tt> denotes a range adaptor object (24.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
+<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
 </p>
 </blockquote>
 </li>
