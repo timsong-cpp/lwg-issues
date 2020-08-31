@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-08-27 at 20:06:17 UTC</p>
+<p><p>Revised 2020-08-29 at 17:05:04 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -37769,9 +37769,11 @@ template&lt;class F, class... Args&gt;
 <hr>
 <h3><a name="3477" href="3477">3477.</a> Simplify constraints for <tt><i>semiregular-box</i></tt></h3>
 <p><b>Section:</b> 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-19 <b>Last modified:</b> 2020-08-23 16:34:59 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-19 <b>Last modified:</b> 2020-08-29 12:06:52 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.semi.wrap">active issues</a> in [range.semi.wrap].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.semi.wrap">issues</a> in [range.semi.wrap].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
@@ -37795,7 +37797,7 @@ This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
-<li><p>Modify 32.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a> as indicated:</p>
+<li><p>Modify 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> as indicated:</p>
 
 <blockquote>
 <p>
@@ -37895,6 +37897,232 @@ Java, Kotlin, Python, Rust, JavaScript), but that's a separate design question.
 
 <p><b>Proposed resolution:</b></p>
 
+
+
+
+
+<hr>
+<h3><a name="3479" href="3479">3479.</a> <tt><i>semiregular-box</i></tt> mishandles self-assignment</h3>
+<p><b>Section:</b> 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-25 <b>Last modified:</b> 2020-08-29 12:31:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.semi.wrap">active issues</a> in [range.semi.wrap].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.semi.wrap">issues</a> in [range.semi.wrap].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The exposition-only wrapper type <tt><i>semiregular-box</i></tt> &mdash; specified in 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> 
+&mdash; layers behaviors onto <tt>std::optional</tt> so <tt><i>semiregular-box</i>&lt;T&gt;</tt> is 
+semiregular even when <tt>T</tt> is only copy constructible. It provides copy and move assignment 
+operators when <tt>optional&lt;T&gt;</tt>'s are deleted:
+</p>
+<blockquote><p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; [&hellip;]</p></li>
+<li><p>(1.2) &mdash; [&hellip;]</p></li>
+<li><p>(1.3) &mdash; If <tt>assignable_from&lt;T&amp;, const T&amp;&gt;</tt> 
+is not modeled, the copy assignment operator is equivalent to:</p>
+<pre>
+<i>semiregular-box</i>&amp; operator=(const <i>semiregular-box</i>&amp; that)
+  noexcept(is_nothrow_copy_constructible_v&lt;T&gt;)
+{
+  if (that) emplace(*that);
+  else reset();
+  return *this;
+}
+</pre>
+</li>
+<li><p>(1.4) &mdash; If <tt>assignable_from&lt;T&amp;, T&gt;</tt> 
+is not modeled, the move assignment operator is equivalent to:</p>
+<pre>
+<i>semiregular-box</i>&amp; operator=(<i>semiregular-box</i>&amp;&amp; that)
+  noexcept(is_nothrow_move_constructible_v&lt;T&gt;)
+{
+  if (that) emplace(std::move(*that));
+  else reset();
+  return *this;
+}
+</pre>
+</li>
+</ol>
+</p></blockquote>
+<p>
+How do these assignment operators handle self-assignment? When <tt>*this</tt> is empty, <tt>that</tt> 
+will test as <tt>false</tt> and <tt>reset()</tt> has no effect, so the result state of the object is 
+the same. No problems so far. When <tt>*this</tt> isn't empty, <tt>that</tt> will test as <tt>true</tt>, 
+and we evaluate <tt>optional::emplace(**this)</tt> (resp. <tt>optional::emplace(std::move(**this)))</tt>. 
+This outcome is not as pretty: <tt>emplace</tt> is specified in 20.6.3.3 <a href="https://timsong-cpp.github.io/cppwp/optional.assign">[optional.assign]</a>/30: 
+"<i>Effects:</i> Calls <tt>*this = nullopt</tt>. Then initializes the contained value as if 
+direct-non-list-initializing an object of type <tt>T</tt> with the arguments 
+<tt>std::forward&lt;Args&gt;(args)...</tt>." When the sole argument is an lvalue (resp. xvalue) of type 
+<tt>T</tt> that denotes the <tt>optional</tt>'s stored value, <tt>emplace</tt> will destroy that 
+stored value and then try to copy/move construct a new object at the same address from the dead object 
+that used to live there resulting in undefined behavior. Mandatory undefined behavior does <em>not</em> 
+meet the semantic requirements for the <tt>copyable</tt> or <tt>movable</tt> concepts, we should do better.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Many types in this subclause are specified in terms of an exposition-only class template 
+<tt><i>semiregular-box</i></tt>. <tt><i>semiregular-box</i>&lt;T&gt;</tt> behaves exactly like 
+<tt>optional&lt;T&gt;</tt> with the following differences:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; [&hellip;]</p></li>
+<li><p>(1.2) &mdash; [&hellip;]</p></li>
+<li><p>(1.3) &mdash; If <tt>assignable_from&lt;T&amp;, const T&amp;&gt;</tt> 
+is not modeled, the copy assignment operator is equivalent to:</p>
+<pre>
+<i>semiregular-box</i>&amp; operator=(const <i>semiregular-box</i>&amp; that)
+  noexcept(is_nothrow_copy_constructible_v&lt;T&gt;)
+{
+  <ins>if (this != addressof(that)) {</ins>
+    if (that) emplace(*that);
+    else reset();
+  <ins>}</ins>
+  return *this;
+}
+</pre>
+</li>
+<li><p>(1.4) &mdash; If <tt>assignable_from&lt;T&amp;, T&gt;</tt> 
+is not modeled, the move assignment operator is equivalent to:</p>
+<pre>
+<i>semiregular-box</i>&amp; operator=(<i>semiregular-box</i>&amp;&amp; that)
+  noexcept(is_nothrow_move_constructible_v&lt;T&gt;)
+{
+  <ins>reset();</ins>
+  if (that) emplace(std::move(*that));
+  <del>else reset();</del>
+  return *this;
+}
+</pre>
+</li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3480" href="3480">3480.</a> <tt>directory_iterator</tt> and <tt>recursive_directory_iterator</tt> are not C++20 ranges</h3>
+<p><b>Section:</b> 29.11.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory.iterator">[fs.class.directory.iterator]</a>, 29.11.13 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-27 <b>Last modified:</b> 2020-08-29 17:04:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>std::filesystem::directory_iterator</tt> and <tt>std::filesystem::recursive_directory_iterator</tt> are 
+intended to be ranges, but both fail to satisfy the concept <tt>std::ranges::range</tt>.
+<p/>
+They both opt in to being a range the same way, via non-member functions:
+</p>
+<blockquote><pre>
+directory_iterator begin(directory_iterator iter) noexcept;
+directory_iterator end(const directory_iterator&amp;) noexcept;
+
+recursive_directory_iterator begin(recursive_directory_iterator iter) noexcept;
+recursive_directory_iterator end(const recursive_directory_iterator&amp;) noexcept;
+</pre></blockquote>
+<p>
+This is good enough for a range-based for statement, but for the <tt>range</tt> concept, non-member 
+<tt>end</tt> is looked up in a context that includes (24.3.2 <a href="https://timsong-cpp.github.io/cppwp/range.access.end">[range.access.end]</a>/2.6) the declarations:
+</p>
+<blockquote><pre>
+void end(auto&amp;) = delete;
+void end(const auto&amp;) = delete;
+</pre></blockquote>
+<p>
+Which means that non-<tt>const</tt> <tt>directory_iterator</tt> and non-<tt>const</tt> 
+<tt>recursive_directory_iterator</tt>, the <tt>void end(auto&amp;)</tt> overload ends up being 
+a better match and thus the CPO <tt>ranges::end</tt> doesn't find a candidate. Which means that 
+<tt>{recursive_,}directory_iterator</tt> is not a range, even though <tt>const {recursive_,}directory_iterator</tt> 
+<em>is</em> a range.
+<p/>
+This could be fixed by having the non-member <tt>end</tt> for both of these types just take by value 
+(as libstdc++ currently does anyway) or by adding member functions <tt>begin() const</tt> and <tt>end() const</tt>. 
+<p/>
+A broader direction would be to consider removing the poison pill overloads. Their motivation from 
+<a href="http://wg21.link/p0970">P0970</a> was to support what are now called borrowed ranges &mdash; but 
+that design now is based on specializing a variable template instead of providing a non-member <tt>begin</tt> 
+that takes an rvalue, so the initial motivation simply no longer exists. And, in this particular case, 
+causes harm. 
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3481" href="3481">3481.</a> <tt>viewable_range</tt> mishandles lvalue move-only views</h3>
+<p><b>Section:</b> 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-29 <b>Last modified:</b> 2020-08-29 17:05:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>viewable_range concept</tt> (24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a>) and the <tt>views:all</tt> 
+range adaptor (24.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.all">[range.all]</a>) are duals: <tt>viewable_range</tt> is intended to admit 
+exactly types <tt>T</tt> for which <tt>views::all(declval&lt;T&gt;())</tt> is well-formed. (Recall 
+that <tt>views::all(<i>meow</i>)</tt> is a prvalue whose type models <tt>view</tt> when it is 
+well-formed.) Before the addition of move-only view types to the design, this relationship was in 
+place (modulo an incredibly pathological case: a <tt>volatile</tt> value of a view type with 
+<tt>volatile</tt>-qualified <tt>begin</tt> and <tt>end</tt> models <tt>viewable_range</tt> but is 
+rejected by <tt>views::all</tt> unless it also has a <tt>volatile</tt>-qualified copy constructor 
+and copy assignment operator). Adding move-only views to the design punches a bigger hole, however: 
+<tt>viewable_range</tt> admits lvalues of move-only view types for which <tt>views::all</tt> is 
+ill-formed because these lvalues cannot be decay-copied.
+<p/>
+It behooves us to restore the correspondence between <tt>viewable_range</tt> and <tt>views::all</tt> 
+so that instantiations of components constrained with <tt>viewable_range</tt> (which often appears 
+indirectly as <tt>views::all_t&lt;R&gt;</tt> in deduction guides) continue to be well-formed when 
+the constraints are satisfied.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-5- The <tt>viewable_range</tt> concept specifies the requirements of a <tt>range</tt> 
+type that can be converted to a <tt>view</tt> safely.
+</p>
+<pre>
+template&lt;class T&gt;
+  concept viewable_range =
+    range&lt;T&gt; &amp;&amp; <del>(borrowed_range&lt;T&gt; || view&lt;remove_cvref_t&lt;T&gt;&gt;);</del>
+    <ins>((view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;) ||</ins>
+    <ins>(!view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; borrowed_range&lt;T&gt;));</ins>
+</pre>
+</blockquote>
+</li>
+
+</ol>
 
 
 
