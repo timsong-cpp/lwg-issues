@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3482: drop_view's const begin should additionally require sized_range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3482" href="lwg-active.html#3482">3482.</a> <tt>drop_view</tt>'s <tt>const begin</tt> should additionally require <tt>sized_range</tt></h3>
+<p><b>Section:</b> 24.7.8.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.view">[range.drop.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-31 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When the underlying range models both <tt>random_access_range</tt> and <tt>sized_range</tt>, a 
+<tt>drop_view</tt> can easily calculate its first iterator in <tt>&#x1d4aa;</tt>(1) as by the 
+underlying range's first iterator  plus the minimum of the number of elements to drop and the 
+size of the underlying range. In this case <tt>drop_view::begin</tt> need not "cache the result 
+within the <tt>drop_view</tt> for use on subsequent calls" "in order to provide the amortized 
+constant-time complexity required by the <tt>range</tt> concept" (24.7.8.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.view">[range.drop.view]</a>/4). 
+However, <tt>drop_view::begin() const</tt> does not require <tt>sized_range</tt>, it requires 
+only <tt>random_access_range</tt>. There's no way to implementing what amounts to a requirement 
+that calls to <tt>begin</tt> after the first must be <tt>&#x1d4aa;</tt>(1) without memoization.
+<p/>
+Performing memoization in a <tt>const</tt> member function in a manner consistent with 
+16.5.5.10 <a href="https://timsong-cpp.github.io/cppwp/res.on.data.races">[res.on.data.races]</a> is impossible without some kind of thread synchronization. It 
+is not the intended design for anything in current Range library to require such implementation 
+heroics, we typically fall back to mutable-only iteration to avoid thread synchronization concerns. 
+(Note that both <tt>range-v3</tt> and <tt>cmcstl2</tt> handle <tt>drop_view::begin() const</tt> 
+incorrectly by performing <tt>&#x1d4aa;</tt>(<tt><i>N</i></tt>) lookup of the first iterator on each call to 
+<tt>begin</tt>, which is consistent with 16.5.5.10 <a href="https://timsong-cpp.github.io/cppwp/res.on.data.races">[res.on.data.races]</a> but fails to meet the 
+complexity requirements imposed by the <tt>range</tt> concept.) We should fall back to mutable-only 
+iteration here as well when the underlying range is not a <tt>sized_range</tt>.
+<p/>
+For <tt>drop_view</tt>, changing the constraints on the <tt>const</tt> overload of <tt>begin</tt> 
+also requires changing the constraints on the non-<tt>const</tt> overload. The non-<tt>const begin</tt> 
+tries to constrain itself out of overload resolution when the <tt>const</tt> overload would be valid 
+if the underlying range models the exposition-only <tt><i>simple-view</i></tt> concept. (Recall that 
+<tt>T</tt> models simple-view iff <tt>T</tt> models <tt>view</tt>, <tt>const T</tt> models <tt>range</tt>, 
+and <tt>T</tt> and <tt>const T</tt> have the same iterator and sentinel types.) Effectively this means 
+the constraints on the non-<tt>const</tt> overload must require either that the underlying range fails 
+to model <tt><i>simple-view</i></tt> or that the constraints on the <tt>const</tt> overload would not 
+be satisfied. So when we add a new <tt>sized_range</tt> requirement to the <tt>const</tt> overload, 
+we must also add its negation to the mutable overload. (The current form of the constraint on the 
+mutable <tt>begin</tt> overload is <tt>!(<i>simple-view</i>&lt;V&gt; &amp;&amp; random_access_range&lt;V&gt;)</tt> 
+instead of <tt>!(<i>simple-view</i>&lt;V&gt; &amp;&amp; random_access_range&lt;const V&gt;)</tt> because 
+of an unstated premise that <tt>V</tt> and <tt>const V</tt> should both have the same category when 
+both are ranges. Avoiding this unstated premise would make it easier for future readers to grasp what's 
+happening here; we should formulate our new constraints in terms of <tt>const V</tt> instead of <tt>V</tt>.)
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.8.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.view">[range.drop.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+  class drop_view : public view_interface&lt;drop_view&lt;V&gt;&gt; {
+  public:
+    [&hellip;]
+    constexpr auto begin()
+      requires (!(<i>simple-view</i>&lt;V&gt; &amp;&amp; 
+        random_access_range&lt;<ins>const</ins> V&gt; <ins>&amp;&amp; sized_range&lt;const V&gt;</ins>));
+    constexpr auto begin() const
+      requires random_access_range&lt;const V&gt; <ins>&amp;&amp; sized_range&lt;const V&gt;</ins>;    
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr auto begin()
+  requires (!(<i>simple-view</i>&lt;V&gt; &amp;&amp; 
+    random_access_range&lt;<ins>const</ins> V&gt; <ins>&amp;&amp; sized_range&lt;const V&gt;</ins>));
+constexpr auto begin() const
+  requires random_access_range&lt;const V&gt; <ins>&amp;&amp; sized_range&lt;const V&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns:</i> <tt>ranges::next(ranges::begin(<i>base</i>_), <i>count</i>_, ranges::end(<i>base</i>_))</tt>.
+<p/>
+-4- <i>Remarks:</i> In order to provide the amortized constant-time complexity required by the 
+<tt>range</tt> concept when <tt>drop_view</tt> models <tt>forward_range</tt>, the first overload 
+caches the result within the <tt>drop_view</tt> for use on subsequent calls. [<i>Note:</i> Without 
+this, applying a <tt>reverse_view</tt> over a <tt>drop_view</tt> would have quadratic iteration 
+complexity. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
