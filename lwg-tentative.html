@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-09-06 at 13:52:31 UTC</p>
+<p><p>Revised 2020-09-13 at 15:23:40 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="1396" href="1396">1396.</a> <tt>regex</tt> should support allocators</h3>
@@ -5477,6 +5477,136 @@ is not modeled, the move assignment operator is equivalent to:</p>
 </blockquote>
 </li>
 
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3483" href="3483">3483.</a> <tt>transform_view::<i>iterator</i></tt>'s difference is overconstrained</h3>
+<p><b>Section:</b> 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-09-04 <b>Last modified:</b> 2020-09-13 15:09:03 UTC</p>
+<p><b>Priority: </b>0
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.transform.iterator">issues</a> in [range.transform.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The difference operation for <tt>transform_view::<i>iterator</i></tt> is specified in 
+24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as:
+</p>
+<blockquote>
+<pre>
+friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  requires random_access_range&lt;<i>Base</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-22- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> - y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+The member <tt><i>current_</i></tt> is an iterator of type <tt>iterator_t&lt;<i>Base</i>&gt;</tt>, where 
+<tt><i>Base</i></tt> is <tt>V</tt> for <tt>transform_view&lt;V, F&gt;::<i>iterator</i>&lt;false&gt;</tt> 
+and <tt>const V</tt> for <tt>transform_view&lt;V, F&gt;::<i>iterator</i>&lt;true&gt;</tt>. The difference 
+of iterators that appears in the above <i>Effects:</i> element is notably well-defined if their type models 
+<tt>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</tt> which 
+<tt>random_access_range&lt;<i>Base</i>&gt;</tt> refines. This overstrong requirement seems to be simply the 
+result of an oversight; it has been present since <a href="https://wg21.link/p0789r0">P0789R0</a>, without 
+&mdash; to my recollection &mdash; ever having been discussed. We should relax this requirement to provide 
+difference capability for <tt>transform_view</tt>'s iterators whenever the underlying iterators do.
+</p>
+
+<p><i>[2020-09-08; Reflector discussion]</i></p>
+
+<p>
+During reflector discussions it was observed that <tt>elements_view::<i>iterator</i></tt> has the same issue
+and the proposed wording has been extended to cover this template as well.
+</p>
+
+<p><i>[2020-09-13; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 0 and status to Tentatively Ready after seven votes in favour during reflector discussions.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;   
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>iterator</i> {
+  public:
+    [&hellip;]
+    friend constexpr <i>iterator</i> operator-(<i>iterator</i> i, difference_type n)
+      requires random_access_range&lt;<i>Base</i>&gt;;
+    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-22- <i>Effects:</i> <tt>return x.<i>current_</i> - y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; <i>has-tuple-element</i>&lt;range_value_t&lt;V&gt;, N&gt; &amp;&amp;
+             <i>has-tuple-element</i>&lt;remove_reference_t&lt;range_reference_t&lt;V&gt;&gt;, N&gt;
+  template&lt;bool Const&gt;
+  class elements_view&lt;V, N&gt;::<i>iterator</i> {  <i>// exposition only</i>
+    [&hellip;]
+    friend constexpr <i>iterator</i> operator-(<i>iterator</i> x, difference_type y)
+      requires random_access_range&lt;<i>Base</i>&gt;;
+    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-21- <i>Effects:</i> <tt>return x.<i>current_</i> - y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
 </ol>
 
 

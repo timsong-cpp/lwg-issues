@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2020-09-06 at 13:52:31 UTC</p>
+<p><p>Revised 2020-09-13 at 15:23:40 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -25549,7 +25549,7 @@ template&lt;class ExecutionPolicy, class ForwardIterator1, class Size, class For
 <hr>
 <h3><a name="3090" href="3090">3090.</a> What is &sect;[time.duration.cons]p4's "no overflow is induced in the conversion" intended to mean?</h3>
 <p><b>Section:</b> 27.5.1 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Richard Smith <b>Opened:</b> 2018-03-22 <b>Last modified:</b> 2018-06-19 05:49:11 UTC</p>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2018-03-22 <b>Last modified:</b> 2020-09-12 11:59:20 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#time.duration.cons">issues</a> in [time.duration.cons].</p>
@@ -25609,8 +25609,69 @@ of <tt>ratio_divide&lt;Period2, Period&gt;</tt> is representable as a <tt>ratio<
 
 <p>Priority set to 3</p>
 
+<p><i>[2020-09-12 Jonathan adds a proposed resolution]</i></p>
+
+<p>
+Since the result of the <tt>ratio_divide</tt> has to be a <tt>ratio</tt>,
+if it's not representable then the result simply isn't a valid type.
+Implementations are not required to make <tt>ratio_divide</tt> SFINAE-friendly
+to implement this constraint. They can perform the equivalent calculations
+to check if they would overflow, without actually using <tt>ratio_divide</tt>.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="http://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.5.1 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Rep2, class Period2&gt;
+  constexpr duration(const duration&lt;Rep2, Period2&gt;&amp; d);
+</pre>
+</blockquote>
+<p>
+-3- <i>Constraints:</i>
+<ins>
+<tt>is_convertible_v&lt;const Rep2&amp;, rep&gt;</tt> is <tt>true</tt>.
+<tt>ratio_divide&lt;typename Period2::type, period&gt;</tt> is
+a valid <tt>ratio</tt> specialization.
+Either:
+</ins>
+</p>
+<ul>
+<li>
+<ins>
+<tt>treat_as_floating_point_v&lt;rep&gt;</tt> is <tt>true</tt>; or
+</ins>
+</li>
+<li>
+<ins>
+<tt>ratio_divide&lt;Period2, period&gt;::den</tt> is <tt>1</tt>
+and <tt>treat_as_floating_point_v&lt;Rep2&gt;</tt> is <tt>false</tt>.
+</ins>
+</li>
+</ul>
+<p>
+<del>
+No overflow is induced in the conversion and
+<tt>treat_as_floating_point_v&lt;rep&gt;</tt> is <tt>true</tt>
+or both <tt>ratio_divide&lt;Period2, period&gt;::den</tt> is <tt>1</tt>
+and <tt>treat_as_floating_point_v&lt;Rep2&gt;</tt> is <tt>false</tt>.
+</del>
+[<i>Note:</i> This requirement prevents implicit truncation error<ins>s</ins>
+when converting between integral-based <tt>duration</tt> types.
+Such a construction could easily lead to confusion about the value of the
+<tt>duration</tt>.
+&mdash; <i>end note</i>]
+</p>
+</li>
+</ol>
 
 
 
@@ -35376,11 +35437,11 @@ determination above is also modeled</ins>.</p></li>
 
 <hr>
 <h3><a name="3430" href="3430">3430.</a> <tt>std::fstream</tt> &amp; co. should be constructible from <tt>string_view</tt></h3>
-<p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-08-21 19:50:27 UTC</p>
+<p><b>Section:</b> 29.9.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2020-09-13 15:02:13 UTC</p>
 <p><b>Priority: </b>3
 </p>
-<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 We have:
@@ -35439,6 +35500,7 @@ could be changed to template parameters which are constrained to be exactly
 <tt>path</tt>, and not things like <tt>string_view</tt> which can convert
 to <tt>path</tt>.
 </p>
+
 <p><i>[2020-08-21; Issue processing telecon: send to LEWG]</i></p>
 
 <p>
@@ -35460,8 +35522,168 @@ and <code>char32_t</code>". Those conversions don't need to be implicit
 for that to be supported.
 </p>
 
+<p><i>[2020-09-11; Tomasz comments and provides wording]</i></p>
+
+<p>
+During the <a href="https://wiki.edg.com/bin/view/Wg21summer2020/LWG3430">LEWG 2020-08-24 telecon</a> 
+the LEWG provided following guidance on the issue:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+We took one poll (exact wording in the notes) to constrain the constructor which takes 
+<tt>filesystem::path</tt> to only take <tt>filesystem::path</tt> and not things convertible to it, 
+but only 9 out of 26 people present actually voted. Our interpretation: LWG should go ahead with 
+making this change. There is still plenty of time for someone who hasn't yet commented on this to 
+bring it up even if it is in a tentatively ready state. It would be nice to see a paper to address 
+the problem of the templated path constructor, but no one has yet volunteered to do so. 
+Note: the issue description is now a misnomer, as adding a <tt>string_view</tt> constructor 
+is no longer being considered at this time.
+</p>
+</blockquote>
+<p>
+The proposed P/R  follows original LWG proposal and makes the <tt>path</tt> constructor of the 
+<tt>basic_*fstreams</tt> "<tt>explicit</tt>". To adhere to current policy, we refrain from use of 
+requires clauses and abbreviated function syntax, and introduce a <i>Constraints</i> element.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 29.9.3 <a href="https://timsong-cpp.github.io/cppwp/ifstream">[ifstream]</a>, class template <tt>basic_ifstream</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+explicit basic_ifstream(const string&amp; s,
+                        ios_base::openmode mode = ios_base::in);
+<ins>template&lt;class T&gt;</ins>
+explicit basic_ifstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
+                        ios_base::openmode mode = ios_base::in);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 29.9.3.1 <a href="https://timsong-cpp.github.io/cppwp/ifstream.cons">[ifstream.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit basic_ifstream(const string&amp; s,
+                        ios_base::openmode mode = ios_base::in);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_ifstream(s.c_str(), mode)</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+explicit basic_ifstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
+                        ios_base::openmode mode = ios_base::in);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>std::is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-3- <i>Effects:</i> Equivalent to: <tt>basic_ifstream(s.c_str(), mode)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 29.9.4 <a href="https://timsong-cpp.github.io/cppwp/ofstream">[ofstream]</a>, class template <tt>basic_ofstream</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+explicit basic_ofstream(const string&amp; s,
+                        ios_base::openmode mode = ios_base::out);
+<ins>template&lt;class T&gt;</ins>
+explicit basic_ofstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
+                        ios_base::openmode mode = ios_base::out);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 29.9.4.1 <a href="https://timsong-cpp.github.io/cppwp/ofstream.cons">[ofstream.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit basic_ofstream(const string&amp; s,
+                        ios_base::openmode mode = ios_base::out);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_ofstream(s.c_str(), mode)</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+explicit basic_ofstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
+                        ios_base::openmode mode = ios_base::out);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>std::is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-3- <i>Effects:</i> Equivalent to: <tt>basic_ofstream(s.c_str(), mode)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 29.9.5 <a href="https://timsong-cpp.github.io/cppwp/fstream">[fstream]</a>, class template <tt>basic_fstream</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+explicit basic_fstream(
+  const string&amp; s,
+  ios_base::openmode mode = ios_base::in | ios_base::out);
+<ins>template&lt;class T&gt;</ins>
+explicit basic_fstream(
+  const <del>filesystem::path</del><ins>T</ins>&amp; s,
+  ios_base::openmode mode = ios_base::in | ios_base::out);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 29.9.5.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.cons">[fstream.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit basic_fstream(
+  const string&amp; s,
+  ios_base::openmode mode = ios_base::in | ios_base::out);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_fstream(s.c_str(), mode)</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;</ins>
+explicit basic_fstream(
+  const <del>filesystem::path</del><ins>T</ins>&amp; s,
+  ios_base::openmode mode = ios_base::in | ios_base::out);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>std::is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<p/>
+-3- <i>Effects:</i> Equivalent to: <tt>basic_fstream(s.c_str(), mode)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
 
 
 
@@ -35816,7 +36038,7 @@ Set priority to 3 after reflector discussions.
 <hr>
 <h3><a name="3441" href="3441">3441.</a> Misleading note about calls to customization points</h3>
 <p><b>Section:</b> 16.5.4.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Michael Park <b>Opened:</b> 2020-05-08 <b>Last modified:</b> 2020-07-17 22:37:26 UTC</p>
+ <b>Submitter:</b> Michael Park <b>Opened:</b> 2020-05-08 <b>Last modified:</b> 2020-09-12 11:45:45 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#namespace.std">active issues</a> in [namespace.std].</p>
@@ -35856,6 +36078,30 @@ This is not what happens, as the call to <tt>std::swap</tt> does not find <tt>N:
 <p><i>[2020-07-17; Priority set to 1 in telecon]</i></p>
 
 <p>Related to <a href="3442">3442</a>.</p>
+
+<p><i>[2020-09-11; discussed during telecon]</i></p>
+
+<p>The note is simply bogus, not backed up by anything normative.
+The normative part of the paragraph is an unacceptable landgrab on those
+identifiers.
+We have no right telling users they can't use the names <tt>data</tt>
+and <tt>size</tt> unless they do exactly what we say <tt>std::data</tt>
+and <tt>std::size</tt> do.
+The library only ever uses <tt>swap</tt> unqualified, so the effect of
+declaring the others as designated customization points is unclear.
+</p>
+<p>
+The rule only needs to apply to such overloads <em>when actually found
+by overload resolution</em> in a context that expects the semantics of
+the customization point.
+</p>
+<p>
+Frank: do we need to designate <tt>operator&lt;&lt;</tt> as a
+customization point?  Users overload that in their own namespaces all the time.
+</p>
+<p>
+Walter: This clearly needs a paper.
+</p>
 
 
 
@@ -37707,8 +37953,8 @@ Set priority to 2 as result of reflector discussions.
 <hr>
 <h3><a name="3479" href="3479">3479.</a> <tt><i>semiregular-box</i></tt> mishandles self-assignment</h3>
 <p><b>Section:</b> 24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.semi.wrap">[range.semi.wrap]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-25 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-25 <b>Last modified:</b> 2020-09-13 15:00:57 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#range.semi.wrap">active issues</a> in [range.semi.wrap].</p>
 <p><b>View all other</b> <a href="lwg-index.html#range.semi.wrap">issues</a> in [range.semi.wrap].</p>
@@ -37763,6 +38009,12 @@ direct-non-list-initializing an object of type <tt>T</tt> with the arguments
 stored value and then try to copy/move construct a new object at the same address from the dead object 
 that used to live there resulting in undefined behavior. Mandatory undefined behavior does <em>not</em> 
 meet the semantic requirements for the <tt>copyable</tt> or <tt>movable</tt> concepts, we should do better.
+</p>
+
+<p><i>[2020-09-13; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 3 during reflector discussions.
 </p>
 
 
@@ -37882,8 +38134,8 @@ Set priority to 3 during reflector discussions.
 <hr>
 <h3><a name="3481" href="3481">3481.</a> <tt>viewable_range</tt> mishandles lvalue move-only views</h3>
 <p><b>Section:</b> 24.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-29 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-29 <b>Last modified:</b> 2020-09-13 15:00:23 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -37905,6 +38157,12 @@ It behooves us to restore the correspondence between <tt>viewable_range</tt> and
 so that instantiations of components constrained with <tt>viewable_range</tt> (which often appears 
 indirectly as <tt>views::all_t&lt;R&gt;</tt> in deduction guides) continue to be well-formed when 
 the constraints are satisfied.
+</p>
+
+<p><i>[2020-09-06; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 during reflector discussions.
 </p>
 
 
@@ -38037,39 +38295,35 @@ complexity. &mdash; <i>end note</i>]
 
 
 <hr>
-<h3><a name="3483" href="3483">3483.</a> <tt>transform_view::<i>iterator</i></tt>'s difference is overconstrained</h3>
-<p><b>Section:</b> 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-09-04 <b>Last modified:</b> 2020-09-06 13:38:49 UTC</p>
+<h3><a name="3484" href="3484">3484.</a> Should <tt>&lt;stddef.h&gt;</tt> declare <tt>::nullptr_t</tt>?</h3>
+<p><b>Section:</b> D.9.6 <a href="https://timsong-cpp.github.io/cppwp/depr.c.headers.other">[depr.c.headers.other]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Thomas K&ouml;ppe <b>Opened:</b> 2020-09-06 <b>Last modified:</b> 2020-09-13 15:23:00 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
-<p><b>View all other</b> <a href="lwg-index.html#range.transform.iterator">issues</a> in [range.transform.iterator].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The difference operation for <tt>transform_view::<i>iterator</i></tt> is specified in 
-24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as:
-</p>
-<blockquote>
-<pre>
-friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
-  requires random_access_range&lt;<i>Base</i>&gt;;
-</pre>
-<blockquote>
-<p>
--22- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> - y.<i>current_</i>;</tt>
-</p>
-</blockquote>
-</blockquote>
-<p>
-The member <tt><i>current_</i></tt> is an iterator of type <tt>iterator_t&lt;<i>Base</i>&gt;</tt>, where 
-<tt><i>Base</i></tt> is <tt>V</tt> for <tt>transform_view&lt;V, F&gt;::<i>iterator</i>&lt;false&gt;</tt> 
-and <tt>const V</tt> for <tt>transform_view&lt;V, F&gt;::<i>iterator</i>&lt;true&gt;</tt>. The difference 
-of iterators that appears in the above <i>Effects:</i> element is notably well-defined if their type models 
-<tt>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</tt> which 
-<tt>random_access_range&lt;<i>Base</i>&gt;</tt> refines. This overstrong requirement seems to be simply the 
-result of an oversight; it has been present since <a href="https://wg21.link/p0789r0">P0789R0</a>, without 
-&mdash; to my recollection &mdash; ever having been discussed. We should relax this requirement to provide 
-difference capability for <tt>transform_view</tt>'s iterators whenever the underlying iterators do.
+From this <a href="https://github.com/cplusplus/draft/issues/4144">editorial issue request</a>: 
+<p/>
+The header <tt>&lt;stddef.h&gt;</tt> is currently specified in D.9.6 <a href="https://timsong-cpp.github.io/cppwp/depr.c.headers.other">[depr.c.headers.other]</a> 
+to not declare a global name corresponding to <tt>std::byte</tt>, but no similar exclusion exists for 
+<tt>std::nullptr_t</tt>.
+<p/>
+Is an oversight or intentional? There does not seem to be an interoperability reason to provide a global 
+namespace name <tt>::nullptr_t</tt>, since this construction would be meaningless in C and thus the name 
+would not be encountered in code that is both valid C and C++.
+<p/>
+For lack of justification, I would like to propose to require normatively that no name 
+<tt>::nullptr_t</tt> be declared by <tt>&lt;stddef.h&gt;</tt>.
+<p/>
+Additional notes: The proposing paper <a href="https://wg21.link/n2431">N2431</a> mentions only an addition 
+of "<tt>nullptr_t</tt>" to <tt>&lt;cstddef&gt;</tt> and does not discuss the impact on <tt>&lt;stddef.h&gt;</tt>. 
+By omission this means the default rules for <tt>&lt;stddef.h&gt;</tt> apply and the global name should exist, 
+but this does not provide us with a positive signal of intention.
+<p/>
+I also realize that this is a rather obscure point, and that vendors are already shipping <tt>::nullptr_t</tt>, 
+so I am also happy to drop this issue as not being worth the churn and the increase in implementation complexity 
+(since removals don't generally simplify implementations). I would welcome a bit of discussion, though.
 </p>
 
 
@@ -38079,43 +38333,117 @@ This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
-<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+<li><p>Modify D.9.6 <a href="https://timsong-cpp.github.io/cppwp/depr.c.headers.other">[depr.c.headers.other]</a> as indicated:</p>
 
 <blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;input_range V, copy_constructible F&gt;
-    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;   
-             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
-             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
-  template&lt;bool Const&gt;
-  class transform_view&lt;V, F&gt;::<i>iterator</i> {
-  public:
-    [&hellip;]
-    friend constexpr <i>iterator</i> operator-(<i>iterator</i> i, difference_type n)
-      requires random_access_range&lt;<i>Base</i>&gt;;
-    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
-      requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
-    [&hellip;]
-  };
-}
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
-  requires <del>random_access_range&lt;<i>Base</i>&gt;</del><ins>sized_sentinel_for&lt;iterator_t&lt;<i>Base</i>&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;</ins>;
-</pre>
-<blockquote>
 <p>
--22- <i>Effects:</i> <tt>return x.<i>current_</i> - y.<i>current_</i>;</tt>
+-1- Every C header other than <tt>&lt;complex.h&gt;</tt> (D.9.1 <a href="https://timsong-cpp.github.io/cppwp/depr.complex.h.syn">[depr.complex.h.syn]</a>), 
+<tt>&lt;iso646.h&gt;</tt> (D.9.2 <a href="https://timsong-cpp.github.io/cppwp/depr.iso646.h.syn">[depr.iso646.h.syn]</a>), <tt>&lt;stdalign.h&gt;</tt> 
+(D.9.3 <a href="https://timsong-cpp.github.io/cppwp/depr.stdalign.h.syn">[depr.stdalign.h.syn]</a>), <tt>&lt;stdbool.h&gt;</tt> (D.9.4 <a href="https://timsong-cpp.github.io/cppwp/depr.stdbool.h.syn">[depr.stdbool.h.syn]</a>), 
+and <tt>&lt;tgmath.h&gt;</tt> (D.9.5 <a href="https://timsong-cpp.github.io/cppwp/depr.tgmath.h.syn">[depr.tgmath.h.syn]</a>), each of which has a name of the form 
+<tt>&lt;<i>name</i>.h&gt;</tt>, behaves as if each name placed in the standard library namespace by the 
+corresponding <tt>&lt;c<i>name</i>&gt;</tt> header is placed within the global namespace scope, except 
+for the functions described in 26.8.6 <a href="https://timsong-cpp.github.io/cppwp/sf.cmath">[sf.cmath]</a>, the declaration of <tt>std::byte</tt> <ins>and
+<tt>std::nullptr_t</tt></ins> (17.2.1 <a href="https://timsong-cpp.github.io/cppwp/cstddef.syn">[cstddef.syn]</a>), and the functions and function templates 
+described in 17.2.5 <a href="https://timsong-cpp.github.io/cppwp/support.types.byteops">[support.types.byteops]</a>. It is unspecified whether these names are first
+declared or defined within namespace scope (6.4.6 <a href="https://timsong-cpp.github.io/cppwp/basic.scope.namespace">[basic.scope.namespace]</a>) of the namespace 
+<tt>std</tt> and are then injected into the global namespace scope by explicit <i>using-declaration</i>s 
+(9.9 <a href="https://timsong-cpp.github.io/cppwp/namespace.udecl">[namespace.udecl]</a>).
 </p>
-</blockquote>
 </blockquote>
 </li>
 
+<li><p>In [diff.cpp??] [Editorial note: new compatibility section to be created for C++20], add a new entry:</p>
+
+<blockquote>
+<p>
+<ins><b>Affected subclause:</b> D.9.6 <a href="https://timsong-cpp.github.io/cppwp/depr.c.headers.other">[depr.c.headers.other]</a><br/>
+<b>Change:</b> Removal of name <tt>::nullptr_t</tt> from header <tt>&lt;stddef.h&gt;</tt>.<br/>
+<b>Rationale:</b> <tt>std::nullptr_t</tt> is a C++-only feature that is not useful for interoperability with ISO C.<br/>
+<b>Effect on original feature:</b> Valid C++20 code may fail to compile in this International Standard. Occurrences 
+of <tt>#include &lt;stddef.h&gt;</tt> and <tt>nullptr_t</tt> should be replaced with 
+<tt>#include &lt;cstddef&gt;</tt> and <tt>std::nullptr_t</tt>.</ins>
+</p>
+</blockquote>
+</li>
 </ol>
+
+
+
+
+
+<hr>
+<h3><a name="3485" href="3485">3485.</a> <tt>atomic_ref</tt> safety should be based on operations that "potentially conflict" rather than lifetime</h3>
+<p><b>Section:</b> 31.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic">[atomics.ref.generic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2020-09-12 <b>Last modified:</b> 2020-09-13 15:23:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.ref.generic">issues</a> in [atomics.ref.generic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following program:
+</p>
+<blockquote><pre>
+#include &lt;atomic&gt;
+#include &lt;iostream&gt;
+#include &lt;thread&gt;
+
+using namespace std;
+
+int main() {
+  int i{500};
+  atomic_ref atom{i};
+  i += 500;
+  thread t1{[&amp;atom] { for (int val{0}, x{0}; x &lt; 70;) {
+    if (atom.compare_exchange_weak(val, val + 10)) { ++x; }}}};
+  thread t2{[&amp;atom] { for (int val{0}, y{0}; y &lt; 29;) {
+    if (atom.compare_exchange_weak(val, val + 1)) { ++y; }}}};
+  t1.join(); t2.join();
+  cout &lt;&lt; i &lt;&lt; endl; // 1729
+}
+</pre></blockquote>
+<p>
+Technically this program has undefined behavior. 31.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic">[atomics.ref.generic]</a> p3 says 
+that, during the lifetime of any <tt>atomic_ref</tt> referring to an object, that the object 
+may only be accessed through the <tt>atomic_ref</tt> instances. However, in this example the 
+<tt>atomic_ref</tt> is constructed before the <tt>i+=500</tt> and is not destroyed before the 
+print, even though we have a happens-before relationship between the atomic and non-atomic 
+'phases' of access of the value.
+<p/>
+The user would instead have to write:
+</p>
+<blockquote><pre>
+#include &lt;atomic&gt;
+#include &lt;iostream&gt;
+#include &lt;thread&gt;
+
+using namespace std;
+
+int main() {
+  int i{500};
+  i += 500;
+  {
+    atomic_ref atom{i};
+    thread t1{[&amp;atom] { for (int val{0}, x{0}; x &lt; 70;) {
+      if (atom.compare_exchange_weak(val, val + 10)) { ++x; }}}};
+    thread t2{[&amp;atom] { for (int val{0}, y{0}; y &lt; 29;) {
+      if (atom.compare_exchange_weak(val, val + 1)) { ++y; }}}};
+    t1.join(); t2.join();
+  } // destroy atom
+  cout &lt;&lt; i &lt;&lt; endl; // 1729
+}
+</pre></blockquote>
+<p>
+We should probably get SG1 on record clarifying whether they intend the first program to be acceptable. 
+I can think of a reason to for <tt>atomic_ref</tt>'s ctor to do something (zeroing out padding), but 
+in our implementation it does nothing. I can't think of any reason for <tt>atomic_ref</tt>'s dtor to 
+do anything.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
 
 
 

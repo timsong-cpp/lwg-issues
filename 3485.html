@@ -1,0 +1,101 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3485: atomic_ref safety should be based on operations that "potentially conflict" rather than lifetime</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3485" href="lwg-active.html#3485">3485.</a> <tt>atomic_ref</tt> safety should be based on operations that "potentially conflict" rather than lifetime</h3>
+<p><b>Section:</b> 31.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic">[atomics.ref.generic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2020-09-12 <b>Last modified:</b> 2020-09-13 15:23:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.ref.generic">issues</a> in [atomics.ref.generic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following program:
+</p>
+<blockquote><pre>
+#include &lt;atomic&gt;
+#include &lt;iostream&gt;
+#include &lt;thread&gt;
+
+using namespace std;
+
+int main() {
+  int i{500};
+  atomic_ref atom{i};
+  i += 500;
+  thread t1{[&amp;atom] { for (int val{0}, x{0}; x &lt; 70;) {
+    if (atom.compare_exchange_weak(val, val + 10)) { ++x; }}}};
+  thread t2{[&amp;atom] { for (int val{0}, y{0}; y &lt; 29;) {
+    if (atom.compare_exchange_weak(val, val + 1)) { ++y; }}}};
+  t1.join(); t2.join();
+  cout &lt;&lt; i &lt;&lt; endl; // 1729
+}
+</pre></blockquote>
+<p>
+Technically this program has undefined behavior. 31.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic">[atomics.ref.generic]</a> p3 says 
+that, during the lifetime of any <tt>atomic_ref</tt> referring to an object, that the object 
+may only be accessed through the <tt>atomic_ref</tt> instances. However, in this example the 
+<tt>atomic_ref</tt> is constructed before the <tt>i+=500</tt> and is not destroyed before the 
+print, even though we have a happens-before relationship between the atomic and non-atomic 
+'phases' of access of the value.
+<p/>
+The user would instead have to write:
+</p>
+<blockquote><pre>
+#include &lt;atomic&gt;
+#include &lt;iostream&gt;
+#include &lt;thread&gt;
+
+using namespace std;
+
+int main() {
+  int i{500};
+  i += 500;
+  {
+    atomic_ref atom{i};
+    thread t1{[&amp;atom] { for (int val{0}, x{0}; x &lt; 70;) {
+      if (atom.compare_exchange_weak(val, val + 10)) { ++x; }}}};
+    thread t2{[&amp;atom] { for (int val{0}, y{0}; y &lt; 29;) {
+      if (atom.compare_exchange_weak(val, val + 1)) { ++y; }}}};
+    t1.join(); t2.join();
+  } // destroy atom
+  cout &lt;&lt; i &lt;&lt; endl; // 1729
+}
+</pre></blockquote>
+<p>
+We should probably get SG1 on record clarifying whether they intend the first program to be acceptable. 
+I can think of a reason to for <tt>atomic_ref</tt>'s ctor to do something (zeroing out padding), but 
+in our implementation it does nothing. I can't think of any reason for <tt>atomic_ref</tt>'s dtor to 
+do anything.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
