@@ -1,0 +1,116 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3486: is_constructible&lt;T[], T...&gt; may be misleading in C++20</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3486" href="lwg-active.html#3486">3486.</a> <tt>is_constructible&lt;T[], T...&gt;</tt> may be misleading in C++20</h3>
+<p><b>Section:</b> 20.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-10-01 <b>Last modified:</b> 2020-10-01 12:52:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+According to the current wording,
+<tt>std::is_constructible&lt;int[], int&gt;</tt>
+should be true, because the preconditions are met
+(all types are complete types or unbounded arrays)
+and the variable definition is well-formed since C++20:
+</p>
+<blockquote><pre>
+using T = int[];
+T t(declval&lt;int&gt;()); <i>// equiv. to</i> int t[] = {1};
+</pre></blockquote>
+
+<p>
+However, this doesn't construct an object of type <tt>int[]</tt>
+because it deduces the array bound from the initializers,
+and so constructs <tt>int[1]</tt>, which is not the type being asked about.
+It seems more logical for the trait to give a false result
+for an unbounded array, because it's an incomplete type,
+and no <tt>int[]</tt> can ever be constructed.
+</p>
+
+<p>
+On the reflector Tim Song noted:
+</p>
+<blockquote>
+On the other hand, the result is something to which an <tt>int(&amp;)[]</tt>
+can be bound directly thanks to another C++20 change,
+so a lot of things might Just Work (for some definition of "Work")
+despite the type difference.
+</blockquote>
+
+<p>
+This seems to me a reasonable rationale for
+<tt>is_constructible&lt;int(&amp;&amp;)[], int&gt;</tt>
+to be true (which it is today),
+but not for <tt>int[]</tt>.
+</p>
+
+<p>
+Peter Dimov replied:
+</p>
+<blockquote>
+Placement new, which is often the way to construct we're interested in,
+is not going to work even for <tt>T[2]</tt>.
+</blockquote>
+
+<p>For example:</p>
+<blockquote><pre>
+using T2 = int[2];
+T2 x;
+new(x) T2(1, 2); <i>// ill-formed</i>
+</pre></blockquote>
+
+<p>
+We need to decide what behaviour we want here.
+Do we just want <tt>is_constructible</tt>
+to reflect the <tt>T(declval&lt;Args...&gt;);</tt> construct
+as currently specified in 20.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> p8,
+or do we want to give a more useful/meaningful answer here?
+</p>
+
+<p>
+Should we revisit 20.15.4.3 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> p8
+in the light of parenthesized aggregate init,
+so that <tt>is_constructible&lt;T[], T&gt;</tt>
+and <tt>is_constructible&lt;T[1], T&gt;</tt> are false?
+</p>
+
+<p>
+There may be some interaction with LWG <a href="3436">3436</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+</p>
+
+
+
+
+
+</body>
+</html>
