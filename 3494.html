@@ -1,0 +1,84 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3494: Allow ranges to be conditionally borrowed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3494" href="lwg-active.html#3494">3494.</a> Allow ranges to be conditionally borrowed</h3>
+<p><b>Section:</b> 24.7.15 <a href="https://timsong-cpp.github.io/cppwp/range.reverse">[range.reverse]</a>, 24.7.7 <a href="https://timsong-cpp.github.io/cppwp/range.take">[range.take]</a>, 24.7.9 <a href="https://timsong-cpp.github.io/cppwp/range.drop">[range.drop]</a>, 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.drop.while">[range.drop.while]</a>, 24.7.14 <a href="https://timsong-cpp.github.io/cppwp/range.common">[range.common]</a>, 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.drop.while">[range.drop.while]</a>, 24.7.16 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-11-01 <b>Last modified:</b> 2020-11-01 19:40:51 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following approach to trimming a <tt>std::string</tt>:
+</p>
+<blockquote><pre>
+auto trim(std::string const&amp; s) {
+  auto isalpha = [](unsigned char c){ return std::isalpha(c); };
+  auto b = ranges::find_if(s, isalpha);
+  auto e = ranges::find_if(s | views::reverse, isalpha).base();
+  return subrange(b, e);
+}
+</pre></blockquote>
+<p>
+This is a fairly nice and, importantly, safe way to implement <tt>trim</tt>. The iterators <tt>b</tt> 
+and <tt>e</tt> returned from <tt>find_if</tt> will not dangle, since they point into the <tt>string s</tt> 
+whose lifetime outlives the function. But the status quo in C++20 is that <tt>s | views::reverse</tt> 
+is not a borrowed range (because <tt>reverse_view&lt;V&gt;</tt> is never a borrowed range for any <tt>V</tt>). 
+As a result, <tt>find_if(s | views::reverse, isalpha)</tt> returns <em>dangling</em> rather than 
+a real iterator.
+<p/>
+Instead, you have to write it this way, introducing a new named variable for the reversed view:
+</p>
+<blockquote><pre>
+auto trim(std::string const&amp; s) {
+  auto isalpha = [](unsigned char c){ return std::isalpha(c); };
+  auto b = ranges::find_if(s, isalpha);
+  auto reversed = s | views::reverse;
+  auto e = ranges::find_if(reversed, isalpha).base();
+  return subrange(b, e);
+}
+</pre></blockquote>
+<p>
+But borrowed range can be a transitive property. <tt>s</tt> itself is a borrowed range (as all 
+lvalue references are) so <tt>s | views::reverse</tt> could be made to be too, which would allow 
+the first example above to work with really no downside. We know such an iterator would not dangle, 
+we just need to teach the library this.
+<p/>
+<a href="https://wg21.link/p2017R1">P2017R1</a> resolves this by making <tt>reverse_view&lt;V&gt;</tt> 
+a borrowed range when <tt>V</tt> is a borrowed range (and likewise several other range adapters).
+</p>
+
+
+<p><b>Rationale:</b></p>
+Resolved by <a href="https://wg21.link/p2017R1">P2017R1</a>.
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
