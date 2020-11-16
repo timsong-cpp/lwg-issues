@@ -1,0 +1,192 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3500: join_view::iterator::operator-&gt;() is bogus</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3500" href="lwg-active.html#3500">3500.</a> <tt>join_view::iterator::operator-&gt;()</tt> is bogus</h3>
+<p><b>Section:</b> 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2020-11-15 <b>Last modified:</b> 2020-11-15 17:20:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.iterator">issues</a> in [range.join.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There seems to be a copy &amp; paste error in the <tt>join_view::iterator::operator-&gt;()</tt> 
+specification. According to 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> p8 it is specified as:
+</p>
+<blockquote>
+<pre>
+constexpr iterator_t&lt;<i>Base</i>&gt; operator-&gt;() const
+ requires <i>has-arrow</i>&lt;iterator_t&lt;Base&gt;&gt; &amp;&amp; copyable&lt;iterator_t&lt;Base&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to <tt>return <i>inner_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+Now <tt><i>inner_</i></tt> is of type <tt>iterator_t&lt;range_reference_t&lt;Base&gt;&gt;</tt>. So it 
+is unclear how that should be converted to <tt>iterator_t&lt;<i>Base</i>&gt;</tt>, or why the 
+constraints concern the outer iterator type <tt>iterator_t&lt;<i>Base</i>&gt;</tt>. On the other hand 
+returning <tt><i>outer_</i></tt> would not make any sense here.
+<p/>
+As far as I can tell we should replace <tt>iterator_t&lt;<i>Base</i>&gt;</tt> with 
+<tt>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</tt> so that the new specification would 
+read
+</p>
+<blockquote>
+<pre>
+constexpr iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt; operator-&gt;() const
+ requires <i>has-arrow</i>&lt;iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;&gt; 
+   &amp;&amp; copyable&lt;iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to <tt>return <i>inner_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+Generally it would help readability of the specification a lot if we would introduce some exposition only aliases:
+</p>
+<blockquote>
+<pre>
+using OuterIter = iterator_t&lt;<i>Base</i>&gt;; <i>//exposition-only</i>
+using InnerIter = iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt; <i>//exposition-only</i>
+</pre>
+</blockquote>
+<p>
+and use them throughout <tt>join_view::<i>iterator</i></tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4868">N4868</a>. 
+</p>
+
+<ol>
+<li>
+<p>
+Modify 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>, class template <tt>join_view::<i>iterator</i></tt> synopsis, 
+as indicated:
+</p>
+
+<blockquote>
+<blockquote>
+<pre>
+template&lt;input_range V&gt;
+  requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt; &amp;&amp;
+           (is_reference_v&lt;range_reference_t&lt;V&gt;&gt; ||
+            view&lt;range_value_t&lt;V&gt;&gt;)
+struct join_view&lt;V&gt;::<i>iterator</i> {
+private:
+  using <i>Parent</i> = <i>// exposition only</i>
+    conditional_t&lt;Const, const join_view, join_view&gt;;
+  using Base = conditional_t&lt;Const, const V, V&gt;; <i>// exposition only</i>
+  <ins>using <i>OuterIter</i> = iterator_t&lt;<i>Base</i>&gt;; <i>//exposition-only</i>
+  using <i>InnerIter</i> = iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt; <i>//exposition-only</i></ins>
+  static constexpr bool <i>ref-is-glvalue</i> = <i>// exposition only</i>
+    is_reference_v&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;;
+  <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del> <i>outer_</i> = <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>(); <i>// exposition only</i>
+  <ins><i>InnerIter</i></ins><del>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</del> <i>inner_</i> = <i>// exposition only</i>
+    <ins><i>InnerIter</i></ins><del>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</del>();
+  <i>Parent</i>* <i>parent_</i> = nullptr; <i>// exposition only</i>
+  constexpr void <i>satisfy</i>(); <i>// exposition only</i>
+public:
+  [&hellip;]
+  <i>iterator</i>() = default;
+  constexpr <i>iterator</i>(<i>Parent</i>&amp; parent, <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del> outer);
+  constexpr <i>iterator</i>(<i>iterator</i>&lt;!Const&gt; i)
+    requires Const &amp;&amp;
+             convertible_to&lt;iterator_t&lt;V&gt;, <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt; &amp;&amp;
+             convertible_to&lt;iterator_t&lt;<i>InnerRng</i>&gt;,
+                            <ins><i>InnerIter</i></ins><del>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</del>&gt;;
+
+  constexpr decltype(auto) operator*() const { return *<i>inner_</i>; }
+  
+  constexpr <ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del> operator-&gt;() const
+    requires <i>has-arrow</i>&lt;<ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt; 
+      &amp;&amp; copyable&lt;<ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt;;
+  
+  constexpr <i>iterator</i>&amp; operator++();
+  [&hellip;]
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr void <i>satisfy</i>(); <i>// exposition only</i>
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+[&hellip;]
+if constexpr (<i>ref-is-glvalue</i>)
+  <i>inner_</i> = <ins><i>InnerIter</i></ins><del>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</del>();
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>(<i>Parent</i>&amp; parent, <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del> outer);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>(<i>iterator</i>&lt;!Const&gt; i)
+  requires Const &amp;&amp;
+           convertible_to&lt;iterator_t&lt;V&gt;, <ins><i>OuterIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt; &amp;&amp;
+           convertible_to&lt;iterator_t&lt;<i>InnerRng</i>&gt;,
+                          <ins><i>InnerIter</i></ins><del>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</del>&gt;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+constexpr <ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del> operator-&gt;() const
+  requires <i>has-arrow</i>&lt;<ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt; 
+    &amp;&amp; copyable&lt;<ins><i>InnerIter</i></ins><del>iterator_t&lt;<i>Base</i>&gt;</del>&gt;;
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to <tt>return <i>inner_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

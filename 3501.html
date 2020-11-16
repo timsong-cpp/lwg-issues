@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3501: basic_syncbuf-related manipulators refer to some Allocator without defining it</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3501" href="lwg-active.html#3501">3501.</a> <tt>basic_syncbuf</tt>-related manipulators refer to some <tt>Allocator</tt> without defining it</h3>
+<p><b>Section:</b> 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.manip">[ostream.manip]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-11-15 <b>Last modified:</b> 2020-11-15 18:51:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#ostream.manip">issues</a> in [ostream.manip].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+From <a href="https://github.com/cplusplus/draft/pull/4300">this editorial issue request</a>: 
+</p>
+<p>
+The three <tt>basic_syncbuf</tt>-related manipulators <tt>emit_on_flush</tt>, <tt>noemit_on_flush</tt>, 
+and <tt>flush_emit</tt> use in their <i>Effects:</i> elements the following wording:
+</p>
+<blockquote><p>
+"If <tt>os.rdbuf()</tt> is a <tt>basic_syncbuf&lt;charT, traits, Allocator&gt;*</tt>, called <tt>buf</tt> 
+for the purpose of exposition, calls [&hellip;]
+</p></blockquote>
+<p>
+There are two problems with that wording (even when considering the helpful note following p8): First, 
+the type <tt>Allocator</tt> is not defined elsewhere (e.g. it is not part of the function signature) 
+and second, <tt>os.rdbuf()</tt> has type <tt>basic_streambuf&lt;charT, traits&gt;*</tt> and not any 
+other type.
+<p/>
+By introducing an expository <tt><i>SYNCBUF</i></tt> to detect <tt>basic_syncbuf</tt> during the work 
+on the above mentioned editorial issue to solve these problems it turned out that the suggested wording 
+fix would introduce an apparently normative change that the <tt>syncbuf</tt> type must not use a 
+program-defined specialization.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4868">N4868</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+This proposed wording is known to be incorrect, but is nonetheless depicted to present the
+overall idea.
+</p>
+</blockquote>
+
+<ol>
+<li>
+<p>
+Modify 29.7.5.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.manip">[ostream.manip]</a> as indicated:
+</p>
+
+<blockquote>
+<p>
+-1- Each instantiation of any of the function templates specified in this subclause is a designated 
+addressable function (16.4.5.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a>).
+<p/>
+<ins>-?- In this subclause, <tt><i>SYNCBUF</i>(p)</tt> for a pointer <tt>p</tt> of type <tt>B*</tt>
+is determined as follows. If <tt>*p</tt> is a base class subobject of an object of type <tt>S</tt>,
+where <tt>S</tt> is a specialization generated from the <tt>basic_syncbuf</tt> primary template,
+and <tt>is_convertible_v&lt;S*, B*&gt;</tt> is <tt>true</tt>, then <tt><i>SYNCBUF</i>(p)</tt> is 
+<tt>dynamic_cast&lt;S*&gt;(p)</tt>. Otherwise, <tt><i>SYNCBUF</i>(p)</tt> is 
+<tt>static_cast&lt;void*&gt;(nullptr)</tt>. [<i>Note ?:</i> To work around the issue that the
+<tt>Allocator</tt> template argument of <tt>S</tt> cannot be deduced, implementations can introduce an 
+intermediate base class to <tt>basic_syncbuf</tt> that manages its <tt>emit_on_sync</tt> flag. &mdash; 
+<i>end note</i>]</ins>
+<p/>
+[&hellip;]
+</p>
+<pre>
+template&lt;class charT, class traits&gt;
+  basic_ostream&lt;charT, traits&gt;&amp; emit_on_flush(basic_ostream&lt;charT, traits&gt;&amp; os);
+</pre>
+<blockquote>
+<p>
+<ins>Let <tt>p</tt> be <tt><i>SYNCBUF</i>(os.rdbuf())</tt>.</ins>
+<p/>
+-8- <i>Effects:</i> If <tt><ins>p</ins><del>os.rdbuf()</del></tt> is <ins>not null</ins><del>a 
+<tt>basic_syncbuf&lt;charT, traits, Allocator&gt;*</tt>, called <tt>buf</tt> for the purpose of exposition</del>, 
+calls <tt><ins>p</ins><del>buf</del>-&gt;set_emit_on_sync(true)</tt>. Otherwise this manipulator has no effect.
+<del>[<i>Note 1:</i> To work around the issue that the Allocator template argument cannot be deduced, 
+implementations can introduce an intermediate base class to <tt>basic_syncbuf</tt> that manages 
+its <tt>emit_on_sync</tt> flag. &mdash; <i>end note</i>]</del>
+<p/>
+-9- <i>Returns:</i> <tt>os</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits&gt;
+  basic_ostream&lt;charT, traits&gt;&amp; noemit_on_flush(basic_ostream&lt;charT, traits&gt;&amp; os);
+</pre>
+<blockquote>
+<p>
+<ins>Let <tt>p</tt> be <tt><i>SYNCBUF</i>(os.rdbuf())</tt>.</ins>
+<p/>
+-10- <i>Effects:</i> If <tt><ins>p</ins><del>os.rdbuf()</del></tt> is <ins>not null</ins><del>a 
+<tt>basic_syncbuf&lt;charT, traits, Allocator&gt;*</tt>, called <tt>buf</tt> for the purpose of exposition</del>, 
+calls <tt><ins>p</ins><del>buf</del>-&gt;set_emit_on_sync(false)</tt>. 
+Otherwise this manipulator has no effect.
+<p/>
+-11- <i>Returns:</i> <tt>os</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits&gt;
+  basic_ostream&lt;charT, traits&gt;&amp; flush_emit(basic_ostream&lt;charT, traits&gt;&amp; os);
+</pre>
+<blockquote>
+<p>
+<ins>Let <tt>p</tt> be <tt><i>SYNCBUF</i>(os.rdbuf())</tt>.</ins>
+<p/>
+-12- <i>Effects:</i> Calls <tt>os.flush()</tt>. Then, if <tt><ins>p</ins><del>os.rdbuf()</del></tt> is 
+<ins>not null</ins><del>a <tt>basic_syncbuf&lt;charT, traits, Allocator&gt;*</tt>, called <tt>buf</tt> 
+for the purpose of exposition</del>, calls <tt><ins>p</ins><del>buf</del>-&gt;emit()</tt>.
+<p/>
+-13- <i>Returns:</i> <tt>os</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

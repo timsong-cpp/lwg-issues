@@ -1,0 +1,119 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3495: constexpr launder makes pointers to inactive members of unions usable</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3495" href="lwg-active.html#3495">3495.</a> <tt>constexpr launder</tt> makes pointers to inactive members of unions usable</h3>
+<p><b>Section:</b> 17.6.5 <a href="https://timsong-cpp.github.io/cppwp/ptr.launder">[ptr.launder]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hubert Tong  <b>Opened:</b> 2020-11-10 <b>Last modified:</b> 2020-11-15 15:15:51 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#ptr.launder">issues</a> in [ptr.launder].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording in 17.6.5 <a href="https://timsong-cpp.github.io/cppwp/ptr.launder">[ptr.launder]</a> paragraph 4:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+An invocation of this function may be used in a core constant expression whenever the value of 
+its argument may be used in a core constant expression.
+</p>
+</blockquote>
+<p>
+can be taken to mean that the invocation may be used only when the value of its argument can be 
+used in place of the invocation itself.
+<p/>
+That interpretation is not particularly obvious, but based on comments on the CWG reflector (see 
+<a href="https://lists.isocpp.org/core/2020/11/10153.php">here</a>), that is the interpretation 
+that matches the design intent.
+<p/>
+Consider:
+</p>
+<blockquote><pre>
+#include &lt;new&gt;
+
+struct A { int x; int y; };
+struct B { float x; int y; };
+
+union U {
+  A a;
+  B b;
+};
+
+constexpr A foo() {
+  U u;
+  int* byp = &amp;u.b.y;
+  static_assert(&amp;u.b.y == static_cast&lt;void*&gt;(&amp;u.a.y));
+  u.a.y = 42;
+  *std::launder(byp) = 13;
+  return u.a;
+}
+
+extern constexpr A globA = foo();
+</pre></blockquote>
+<p>
+If the <tt>static_assert</tt> succeeds, then a possible interpretation is that the source file 
+above compiles because the call to <tt>std::launder</tt> produces a pointer to <tt>u.a.y</tt>.
+That interpretation is apparently not desirable.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4868">N4868</a>. 
+</p>
+
+<ol>
+<li>
+<p>
+Modify 17.6.5 <a href="https://timsong-cpp.github.io/cppwp/ptr.launder">[ptr.launder]</a> as indicated:
+</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; [[nodiscard]] constexpr T* launder(T* p) noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-4- <i>Remarks:</i> An invocation of this function may be used in a core constant expression <del>whenever 
+the</del><ins>if and only if the (converted)</ins> value of its argument may be used in <del>a core 
+constant expression</del><ins>place of the function invocation</ins>. A byte of storage <tt><i>b</i></tt> is 
+reachable through a pointer value that points to an object <tt><i>Y</i></tt> if there is an object <tt><i>Z</i></tt>, 
+pointer-interconvertible with <tt><i>Y</i></tt>, such that <tt><i>b</i></tt> is within the storage occupied 
+by <tt><i>Z</i></tt>, or the immediately-enclosing array object if <tt><i>Z</i></tt> is an array element.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
