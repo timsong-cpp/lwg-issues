@@ -1,0 +1,73 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3504: condition_variable::wait_for is overspecified</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3504" href="lwg-active.html#3504">3504.</a> <tt>condition_variable::wait_for</tt> is overspecified</h3>
+<p><b>Section:</b> 32.6.4 <a href="https://timsong-cpp.github.io/cppwp/thread.condition.condvar">[thread.condition.condvar]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-11-18 <b>Last modified:</b> 2020-11-21 14:47:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#thread.condition.condvar">issues</a> in [thread.condition.condvar].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+32.6.4 <a href="https://timsong-cpp.github.io/cppwp/thread.condition.condvar">[thread.condition.condvar]</a> p24 says:
+</p>
+<blockquote><p>
+<i>Effects:</i> Equivalent to: <tt>return wait_until(lock, chrono::steady_clock::now() + rel_time);</tt>
+</p></blockquote>
+<p>
+This is overspecification, removing implementer freedom to make <tt>cv.wait_for(duration&lt;float&gt;(1))</tt> work accurately.
+<p/>
+The type of <tt>steady_clock::now() + duration&lt;float&gt;(n)</tt> is <tt>time_point&lt;steady_clock, 
+duration&lt;float, steady_clock::period&gt;&gt;</tt>. If the steady clock's period is <tt>std::nano</tt> 
+and its epoch is the time the system booted, then in under a second a 32-bit <tt>float</tt> becomes unable 
+to exactly represent those <tt>time_points</tt>! Every second after boot makes <tt>duration&lt;float, nano&gt;</tt> 
+less precise.
+<p/>
+This means that adding a <tt>duration&lt;float&gt;</tt> to a <tt>time_point</tt> (or <tt>duration</tt>) 
+measured in nanoseconds is unlikely to produce an accurate value. Either it will round down to a value less 
+than <tt>now()</tt>, or round up to one greater than <tt>now() + 1s</tt>. Either way, the <tt>wait_for(rel_time)</tt> 
+doesn't wait for the specified time, and users think the implementation is faulty.
+<p/>
+A possible solution is to use <tt>steady_clock::now() + ceil&lt;steady_clock::duration&gt;(rel_time)</tt> 
+instead. This converts the relative time to a suitably large integer, and then the addition is not affected 
+by floating-point rounding errors due to the limited precision of 32-bit <tt>float</tt>. Libstdc++ has been 
+doing this for nearly three years. Alternatively, the standard could just say that the relative timeout is 
+converted to an absolute timeout measured against the steady clock, and leave the details to the implementation. 
+Some implementations might not be affected by the problem (e.g. if the steady clock measures milliseconds, 
+or processes only run for a few seconds and use the process start as the steady clock's epoch).
+<p/>
+This also affects the other overload of <tt>condition_variable::wait_for</tt>, and both overloads of 
+<tt>condition_variable_any::wait_for</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
