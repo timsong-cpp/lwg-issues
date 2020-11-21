@@ -1,0 +1,78 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3503: chrono::ceil has surprising requirement</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3503" href="lwg-active.html#3503">3503.</a> <tt>chrono::ceil</tt> has surprising requirement</h3>
+<p><b>Section:</b> 27.5.8 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cast">[time.duration.cast]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-11-18 <b>Last modified:</b> 2020-11-21 14:36:23 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.duration.cast">issues</a> in [time.duration.cast].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+27.5.8 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cast">[time.duration.cast]</a> p7 requires that the return value is "The least result <tt>t</tt> 
+representable in <tt>ToDuration</tt> for which <tt>t &gt;= d</tt>".
+<p/>
+This means that <tt>chrono::ceil&lt;chrono::microseconds&gt;(chrono::duration&lt;float, milli&gt;(m)).count()</tt> 
+is required to be the smallest integer <tt>n</tt> such that <tt>(float)n == m*1000.0f</tt>, which might be less 
+than the mathematically correct value of <tt>m x 1000</tt>.
+<p/>
+(The specific values below assume <tt>float</tt> uses the IEEE binary32 format and default rounding, but 
+similar problems will exist for other formats, even if the specific values are different.)
+<p/>
+For example, if <tt>m == 13421772.0f</tt> then the naively expected result is <tt>n == 13421772000</tt>, but 
+the standard requires <tt>n == 13421771265</tt>, a significantly lower value. This surprising result is a 
+consequence of how the <tt>chrono::ceil</tt> spec interacts with floating-point arithmetic, due to the fact that 
+for the integers in the range <tt>[13421770753, 13421772799]</tt>, only one can be exactly represented as 
+32-bit <tt>float</tt>. All but that one will be rounded to a different value when converted to <tt>float</tt>.
+<p/>
+A straightforward implementation of <tt>chrono::ceil</tt> will produce <tt>(long long)(13421772.0f * 1000)</tt> 
+which is <tt>13421771776</tt>, which is less than the expected result, but compares equal using the <tt>t &gt;= d</tt> 
+expression. That expression converts both operands to their <tt>common_type</tt>, which is 
+<tt>chrono::duration&lt;float, micro&gt;</tt>. That means we compare <tt>(float)13421771776 &gt;= (13421772.0f * 1000)</tt> 
+which is <tt>true</tt>. But the spec requires an even worse result. All integers in <tt>[13421771265, 13421771776)</tt> 
+are also rounded to that value when converted to <tt>float</tt>. That means <tt>chrono::microseconds(13421771265)</tt> 
+is "the least result representable in <tt>ToDuration</tt> for which <tt>t &gt;= d</tt>".
+<p/>
+Meeting the "least result" requirement is impractical, and unhelpful. The straightforward result <tt>13421771776</tt> 
+is already lower than the naively expected result (which is surprising for a "ceil" function). To meet the 
+standard's requirements the implementation would have to do extra work, just to produce an even lower (and even 
+more surprising) result.
+<p/>
+It might be impractical to require the naively expected value to be returned (the additional work might have 
+unacceptable performance implications), but the standard  should at least permit the straightforward result 
+instead of requiring an even worse one.
+<p/>
+The same problem almost certainly exists for <tt>chrono::floor</tt> in reverse.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
