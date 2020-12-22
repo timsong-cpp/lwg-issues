@@ -1,0 +1,184 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3511: Clarify global permission to move</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3511" href="lwg-active.html#3511">3511.</a> Clarify global permission to move</h3>
+<p><b>Section:</b> 16.4.5.9 <a href="https://timsong-cpp.github.io/cppwp/res.on.arguments">[res.on.arguments]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Gonzalo Brito Gadeschi <b>Opened:</b> 2020-12-08 <b>Last modified:</b> 2020-12-21 17:08:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#res.on.arguments">issues</a> in [res.on.arguments].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The intent of LWG <a href="1204">1204</a> is to allow standard library APIs accepting rvalue arguments:
+</p>
+<ul>
+<li><p>to move from their arguments, e.g., without having to specify that they might do this as part of 
+their <i>Effects</i> clause, and</p></li>
+<li><p>to assume that rvalue arguments do not alias any pointer in the scope of the standard library API, 
+e.g., to allow <tt>vector</tt>'s <tt>push_back(T&amp;&amp; t)</tt> to assume that <tt>t</tt> is not an 
+element of the <tt>vector</tt>.</p></li>
+</ul>
+<p>
+The current wording in 16.4.5.9 <a href="https://timsong-cpp.github.io/cppwp/res.on.arguments">[res.on.arguments]</a>/1.3 states:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+If a function argument binds to an rvalue reference parameter, the implementation may assume that this 
+parameter is a unique reference to this argument.
+</p>
+</blockquote>
+<p>
+This sentence is not clear about the scope in which the reference can be assumed to be unique, and it 
+does not explicitly state that the function can modify the argument, e.g., to move from it.
+<p/>
+If the scope of the "unique reference" is "whole program scope", this example:
+</p>
+<blockquote><pre>
+void example(vector&lt;int&gt;&amp; a, int* b) 
+{
+  int* c = b;            <i>// reference to object pointed at by</i> <tt>b</tt>
+  a.push_back(move(*b)); <i>// UB: rvalue reference aliases</i> <tt>c</tt><i>: not unique in whole-program scope</i>
+  assert(c == b);        <i>// FAILS: if rvalue reference to</i> <tt>*b</tt><i> is unique,</i> <tt>b</tt><i> is unique, and</i> <tt>c == b</tt><i> is false</i>
+}
+</pre></blockquote>
+<p>
+exhibits UB because the implementation may assume that the reference to <tt>b</tt> is unique, which 
+does not hold since <tt>c</tt> is also a reference to <tt>b</tt>.  
+<p/>
+If the scope of the "unique reference" is the "function scope" of the standard
+library API, then the semantics of the rvalue reference argument are very similar
+to those of C's <tt>restrict</tt>. This allows aliasing optimizations, for example:
+</p>
+<blockquote><pre>
+void std_api(int&amp;&amp; a, int&amp;&amp; b); <i>// allowed to assume that</i> <tt>a</tt><i> and</i> <tt>b</tt> <i>do not alias</i>
+int a, b, c;
+std_api(move(a), move(b)); <i>// OK: two unique references in</i> <tt>std_api</tt>
+std_api(move(c), move(c)); <i>// UB:</i> <tt>a</tt> <i>and</i> <tt>b</tt> <i>alias</i>
+</pre></blockquote>
+<p>
+See <a href="https://bugs.llvm.org/show_bug.cgi?id=48238">llvm Bug 48238</a> for a bug tracking 
+the implementation of these optimizations in clang.
+<p/>
+This also allows optimizing <tt>vector::push_back(T&amp;&amp; t)</tt> since if <tt>t</tt> does not 
+alias any pointer in <tt>vector::push_back</tt>'s scope, it also does not alias <tt>this</tt>, 
+<tt>this-&gt;data()</tt>, <tt>(*this)[0]</tt>, etc.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4868">N4868</a>. 
+</p>
+
+<ol>
+<li><p>Modify 16.4.5.9 <a href="https://timsong-cpp.github.io/cppwp/res.on.arguments">[res.on.arguments]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Each of the following applies to all arguments to functions defined in the C++ standard library, unless
+explicitly stated otherwise.
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; If an argument to a function has an invalid value (such as a value outside the 
+domain of the function or a pointer invalid for its intended use), the behavior is undefined.</p></li>
+<li><p>(1.2) &mdash; If a function argument is described as being an array, the pointer actually passed 
+to the function shall have a value such that all address computations and accesses to objects (that 
+would be valid if the pointer did point to the first element of such an array) are in fact valid.</p></li>
+<li><p>(1.3) &mdash; If a function argument binds to an rvalue reference parameter, the implementation 
+may assume that this parameter is a unique reference to <del>this argument</del><ins>the value within 
+the function's scope and may move from it</ins>.
+<p/>
+<ins>[<i>Example ?:</i></ins>
+</p>
+<blockquote><pre>
+<ins>void std_api(int&amp;&amp; a);
+int a;
+std_api(move(a));
+<i>// <tt>a</tt> is in an unspecified but valid state</i></ins>
+</pre></blockquote>
+<p>
+<ins>&mdash; <i>end example</i>]</ins>
+<p/>
+<ins>[<i>Example ?:</i></ins>
+</p>
+<blockquote><pre>
+<ins>void std_api(int&amp;&amp; a, int&amp;&amp; b);
+int a, b, c;
+std_api(move(a), move(b)); <i>// OK:</i> <tt>int&amp;&amp; a</tt> <i>and</i> <tt>int&amp;&amp; b</tt> <i>do not alias</i>
+std_api(move(c), move(c)); <i>// UB:</i> <tt>int&amp;&amp; a</tt> <i>and</i> <tt>int&amp;&amp; b</tt> <i>alias</i></ins>
+</pre></blockquote>
+<p>
+<ins>&mdash; <i>end example</i>]</ins>
+<p/>
+<ins>[<i>Example ?:</i></ins>
+</p>
+<blockquote><pre>
+<ins>std::vector&lt;int&gt; a = {...};
+a.push_back(move(42)); <i>// OK: unique reference</i>
+a.push_back(move(a[0])); <i>// UB:</i> <tt>(*this)[0]</tt> <i>and rvalue argument alias</i></ins>
+</pre></blockquote>
+<p>
+<ins>&mdash; <i>end example</i>]</ins>
+<p/>
+[<i>Note 1:</i> If the parameter is a generic parameter of the form <tt>T&amp;&amp;</tt> and an lvalue 
+of type <tt>A</tt> is bound, the argument binds to an lvalue reference (13.10.3.2 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct.call">[temp.deduct.call]</a>) 
+and thus is not covered by <del>the previous sentence</del><ins>this item</ins>. &mdash; end note]
+<del>[<i>Note 2:</i> If a program casts an lvalue to an xvalue while passing that lvalue to a library function 
+(e.g., by calling the function with the argument <tt>std::move(x))</tt>, the program is effectively asking 
+that function to treat that lvalue as a temporary object. The implementation is free to optimize away 
+aliasing checks which might be needed if the argument was an lvalue. &mdash; end note]</del></p></li>
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
