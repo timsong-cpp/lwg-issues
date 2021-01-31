@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2020-12-21 at 17:08:47 UTC</p>
+<td align="left"><p>Revised 2021-01-31 at 16:45:21 UTC</p>
 </td>
 </tr>
 <tr>
@@ -64,6 +64,223 @@
 </tr>
 </table>
 <h2>Ready Issues</h2>
+<hr>
+<h3><a name="3391" href="3391">3391.</a> Problems with <tt>counted_iterator/move_iterator::base() const &amp;</tt></h3>
+<p><b>Section:</b> 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/move.iterators">[move.iterators]</a>, 23.5.6 <a href="https://timsong-cpp.github.io/cppwp/iterators.counted">[iterators.counted]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-07 <b>Last modified:</b> 2021-01-28 10:06:14 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iterators">issues</a> in [move.iterators].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It is not possible to use the <tt>const &amp;</tt> overloads of <tt>counted_iterator::base()</tt> or
+<tt>move_iterator::base()</tt> to get at an underlying move-only iterator in order to compare it 
+against a sentinel.
+<p/>
+More concretely, assuming issue LWG <a href="3389">3389</a> is fixed, this means that
+</p>
+<blockquote><pre>
+auto v = r | views::take(5);
+ranges::begin(v) == ranges::end(v);
+</pre></blockquote>
+<p>
+is invalid when <tt>r</tt> is a <tt>view</tt> whose <tt>begin()</tt> is a move-only input iterator.
+The code is invalid because <tt>ranges::take_view::sentinel::operator==()</tt> must call 
+<tt>counted_iterator::base()</tt> to compare the underlying iterator against its sentinel, and 
+therefore this <tt>operator==()</tt> requires that the underlying iterator is <tt>copy_constructible</tt>.
+<p/>
+Suggested resolution:
+<p/>
+Make these <tt>const &amp; base()</tt> overloads return the underlying iterator by <tt>const</tt> reference.  
+Remove the <tt>copy_constructible</tt> constraint on these overloads. Perhaps the <tt>base()</tt> 
+overloads for the iterator wrappers in 24.7 <a href="https://timsong-cpp.github.io/cppwp/range.adaptors">[range.adaptors]</a> could use the same treatment?
+</p>
+
+<p><i>[2020-02 Prioritized as P2 Monday morning in Prague]</i></p>
+
+
+<p><i>[2021-01-28; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4849">N4849</a>.</p>
+
+<ol>
+<li><p>Modify 23.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/move.iterator">[move.iterator]</a>, class template <tt>move_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Iterator&gt;
+  class move_iterator {
+  public:
+    using iterator_type = Iterator;
+    [&hellip;]
+    constexpr <ins>const</ins> iterator_type<ins>&amp;</ins> base() const &amp;;
+    constexpr iterator_type base() &amp;&amp;;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/move.iter.op.conv">[move.iter.op.conv]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <ins>const</ins> Iterator<ins>&amp;</ins> base() const &amp;;
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Constraints:</i> <tt>Iterator</tt> satisfies <tt>copy_constructible</tt>.</del>
+<p/>
+<del>-2- <i>Preconditions:</i> <tt>Iterator</tt> models <tt>copy_constructible</tt>.</del>
+<p/>
+-3- <i>Returns:</i> <tt>current</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>, class template <tt>counted_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I&gt;
+  class counted_iterator {
+  public:
+    using iterator_type = I;
+    [&hellip;]
+    constexpr <ins>const</ins> I<ins>&amp;</ins> base() const &amp; <del>requires copy_constructible&lt;I&gt;</del>;
+    constexpr I base() &amp;&amp;;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.3 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.access">[counted.iter.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <ins>const</ins> I<ins>&amp;</ins> base() const &amp; <del>requires copy_constructible&lt;I&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to: <tt>return current;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3433" href="3433">3433.</a> <tt>subrange::advance(n)</tt> has UB when <tt>n &lt; 0</tt></h3>
+<p><b>Section:</b> 24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-04-21 <b>Last modified:</b> 2021-01-15 22:03:31 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>subrange::advance(n)</tt> is specified to call <tt>ranges::advance(<i>begin_</i>, n, <i>end_</i>)</tt> 
+in both <tt><i>StoreSize</i></tt> and <tt>!<i>StoreSize</i></tt> cases (24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a>/9). 
+Unfortunately, <tt>ranges::advance(<i>begin_</i>, n, <i>end_</i>)</tt> has undefined behavior when 
+<tt>n &lt; 0</tt> unless <tt>[<i>end_</i>, <i>begin_</i>)</tt> denotes a valid range 
+(23.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>/5). This would all be perfectly fine &mdash; the UB is exposed to 
+the caller via effects-equivalent-to &mdash; were it not the design intent that <tt>subrange::advance(-n)</tt> 
+be usable to reverse the effects of <tt>subrange::advance(n)</tt> when the <tt>subrange</tt> has a 
+bidirectional iterator type. That is, however, clearly the design intent: <tt>subrange::prev()</tt>, 
+for example, is equivalent to <tt>subrange::advance(-1)</tt>.
+</p>
+
+<p><i>[2020-05-11; Reflector prioritization]</i></p>
+
+<p>
+Set priority to 2 after reflector discussions.
+</p>
+
+<p><i>[2021-01-15; Issue processing telecon]</i></p>
+
+<p>
+Set status to Tentatively Ready after discussion and poll.
+<table>
+<tr><th>F</th><th>A</th><th>N</th></tr>
+<tr><td>7</td><td>0</td><td>3</td></tr>
+</table>
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr subrange&amp; advance(iter_difference_t&lt;I&gt; n);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to:
+<ol style="list-style-type: none">
+<li><p><del>(9.1) &mdash; If <tt><i>StoreSize</i></tt> is <tt>true</tt>,</del></p>
+<blockquote><pre>
+<del>auto d = n - ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+if (d &gt;= 0)
+  <i>size_</i> -= <i>to-unsigned-like</i>(d);
+else
+  <i>size_</i> += <i>to-unsigned-like</i>(-d);
+return *this;</del>
+</pre></blockquote>
+</li>
+<li><p><del>(9.2) &mdash; Otherwise,</del></p>
+<blockquote><pre>
+<del>ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+return *this;</del>
+</pre></blockquote>
+</li>
+</ol>
+<blockquote><pre>
+<ins>if constexpr (bidirectional_iterator&lt;I&gt;) {
+  if (n &lt; 0) {
+    ranges::advance(<i>begin_</i>, n);
+    if constexpr (<i>StoreSize</i>)
+      <i>size_</i> += <i>to-unsigned-like</i>(-n);
+    return *this;
+  }
+}
+
+auto d = n - ranges::advance(<i>begin_</i>, n, <i>end_</i>);
+if constexpr (<i>StoreSize</i>)
+  <i>size_</i> -= <i>to-unsigned-like</i>(d);
+return *this;</ins>
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
 <hr>
 <h3><a name="3490" href="3490">3490.</a> <tt>ranges::drop_while_view::begin()</tt> is missing a precondition</h3>
 <p><b>Section:</b> 24.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.while.view">[range.drop.while.view]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
@@ -243,11 +460,77 @@ constexpr <i>iterator</i> operator++(int) requires forward_range&lt;<i>Base</i>&
 
 
 <hr>
+<h3><a name="3494" href="3494">3494.</a> Allow ranges to be conditionally borrowed</h3>
+<p><b>Section:</b> 24.7.15 <a href="https://timsong-cpp.github.io/cppwp/range.reverse">[range.reverse]</a>, 24.7.7 <a href="https://timsong-cpp.github.io/cppwp/range.take">[range.take]</a>, 24.7.9 <a href="https://timsong-cpp.github.io/cppwp/range.drop">[range.drop]</a>, 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.drop.while">[range.drop.while]</a>, 24.7.14 <a href="https://timsong-cpp.github.io/cppwp/range.common">[range.common]</a>, 24.7.10 <a href="https://timsong-cpp.github.io/cppwp/range.drop.while">[range.drop.while]</a>, 24.7.16 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-11-01 <b>Last modified:</b> 2021-01-15 22:07:14 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following approach to trimming a <tt>std::string</tt>:
+</p>
+<blockquote><pre>
+auto trim(std::string const&amp; s) {
+  auto isalpha = [](unsigned char c){ return std::isalpha(c); };
+  auto b = ranges::find_if(s, isalpha);
+  auto e = ranges::find_if(s | views::reverse, isalpha).base();
+  return subrange(b, e);
+}
+</pre></blockquote>
+<p>
+This is a fairly nice and, importantly, safe way to implement <tt>trim</tt>. The iterators <tt>b</tt> 
+and <tt>e</tt> returned from <tt>find_if</tt> will not dangle, since they point into the <tt>string s</tt> 
+whose lifetime outlives the function. But the status quo in C++20 is that <tt>s | views::reverse</tt> 
+is not a borrowed range (because <tt>reverse_view&lt;V&gt;</tt> is never a borrowed range for any <tt>V</tt>). 
+As a result, <tt>find_if(s | views::reverse, isalpha)</tt> returns <em>dangling</em> rather than 
+a real iterator.
+<p/>
+Instead, you have to write it this way, introducing a new named variable for the reversed view:
+</p>
+<blockquote><pre>
+auto trim(std::string const&amp; s) {
+  auto isalpha = [](unsigned char c){ return std::isalpha(c); };
+  auto b = ranges::find_if(s, isalpha);
+  auto reversed = s | views::reverse;
+  auto e = ranges::find_if(reversed, isalpha).base();
+  return subrange(b, e);
+}
+</pre></blockquote>
+<p>
+But borrowed range can be a transitive property. <tt>s</tt> itself is a borrowed range (as all 
+lvalue references are) so <tt>s | views::reverse</tt> could be made to be too, which would allow 
+the first example above to work with really no downside. We know such an iterator would not dangle, 
+we just need to teach the library this.
+<p/>
+<a href="https://wg21.link/p2017R1">P2017R1</a> resolves this by making <tt>reverse_view&lt;V&gt;</tt> 
+a borrowed range when <tt>V</tt> is a borrowed range (and likewise several other range adapters).
+</p>
+
+
+<p><b>Rationale:</b></p>
+Resolved by <a href="https://wg21.link/p2017R1">P2017R1</a>.
+
+
+<p><i>[2021-01-15; Telecon prioritization]</i></p>
+
+<p>
+Set status to Tentatively Ready after five P0 votes in reflector discussion.
+</p>
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
 <h3><a name="3500" href="3500">3500.</a> <tt>join_view::iterator::operator-&gt;()</tt> is bogus</h3>
 <p><b>Section:</b> 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2020-11-15 <b>Last modified:</b> 2020-11-21 13:58:36 UTC</p>
 <p><b>Priority: </b>0
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.join.iterator">active issues</a> in [range.join.iterator].</p>
 <p><b>View all other</b> <a href="lwg-index.html#range.join.iterator">issues</a> in [range.join.iterator].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
