@@ -1,0 +1,126 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3520: iter_move and iter_swap are inconsistent for transform_view::iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3520" href="lwg-active.html#3520">3520.</a> <tt>iter_move</tt> and <tt>iter_swap</tt> are inconsistent for <tt>transform_view::<i>iterator</i></tt></h3>
+<p><b>Section:</b> 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-03 <b>Last modified:</b> 2021-02-07 17:15:44 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.transform.iterator">issues</a> in [range.transform.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For <tt>transform_view::<i>iterator</i></tt>, <tt>iter_move</tt> is specified to operate on the
+transformed value but <tt>iter_swap</tt> is specified to operate on the underlying iterator.
+<p/>
+Consider the following test case:
+</p>
+<blockquote><pre>
+struct X { int x; int y; };
+std::vector&lt;X&gt; v = {...};
+auto t = v | views::transform(&amp;X::x);
+ranges::sort(t);
+</pre></blockquote>
+<p>
+<tt>iter_swap</tt> on <tt>t</tt>'s iterators would swap the whole <tt>X</tt>, including the 
+<tt>y</tt> part, but <tt>iter_move</tt> will only move the <tt>x</tt> data member and leave 
+the <tt>y</tt> part intact. Meanwhile, <tt>ranges::sort</tt> can use both <tt>iter_move</tt> and
+<tt>iter_swap</tt>, and does so in at least one implementation. The mixed behavior means that we 
+get neither "sort <tt>X</tt>s by their <tt>x</tt> data member" (as <tt>ranges::sort(v, {}, &amp;X::x)</tt> 
+would do), nor "sort the <tt>x</tt> data member of these <tt>X</tt>s and leave the rest unchanged", 
+as one might expect, but instead some arbitrary permutation of <tt>y</tt>. This seems like a
+questionable state of affairs.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>. 
+</p>
+
+<ol>
+<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>iterator</i> {
+    [&hellip;]
+    <del>friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      noexcept(noexcept(ranges::iter_swap(x.<i>current_</i>, y.<i>current_</i>)))
+      requires indirectly_swappable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;</del>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+<del>friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  noexcept(noexcept(ranges::iter_swap(x.<i>current_</i>, y.<i>current_</i>)))
+  requires indirectly_swappable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;;</del>
+</pre>
+<blockquote>
+<p>
+<del>-23- <i>Effects:</i> Equivalent to <tt>ranges::iter_swap(x.<i>current_</i>, y.<i>current_</i>)</tt>.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
