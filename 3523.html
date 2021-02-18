@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3523: iota_view::sentinel is not always iota_view's sentinel</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3523" href="lwg-active.html#3523">3523.</a> <tt>iota_view::<i>sentinel</i></tt> is not always <tt>iota_view</tt>'s sentinel</h3>
+<p><b>Section:</b> 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-17 <b>Last modified:</b> 2021-02-18 06:18:23 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.view">issues</a> in [range.iota.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P1739R4">P1739R4</a> added the following constructor to
+<tt>iota_view</tt>:
+</p>
+<blockquote><pre>
+constexpr iota_view(<i>iterator</i> first, <i>sentinel</i> last) : iota_view(*first, last.<i>bound_</i>) {}
+</pre></blockquote>
+<p>
+However, while <tt>iota_view</tt>'s iterator type is always <tt>iota_view::<i>iterator</i></tt>, its sentinel type
+is not always <tt>iota_view::<i>sentinel</i></tt>. First, if <tt>Bound</tt> is <tt>unreachable_sentinel_t</tt>, then
+the sentinel type is <tt>unreachable_sentinel_t</tt> too - we don't add an unnecessary level of wrapping
+on top. Second, when <tt>W</tt> and <tt>Bound</tt> are the same type, <tt>iota_view</tt> models <tt>common_range</tt>, and
+the sentinel type is the same as the iterator type - that is, <tt><i>iterator</i></tt>, not <tt><i>sentinel</i></tt>.
+</p>
+<p>
+Presumably the intent is to use the view's actual sentinel type, rather than always use the
+<tt><i>sentinel</i></tt> type.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  // [...]
+
+  template&lt;weakly_­incrementable W, semiregular Bound = unreachable_sentinel_t&gt;
+    requires <i>weakly-equality-comparable-with</i>&lt;W, Bound&gt; &amp;&amp; semiregular&lt;W&gt;
+  class iota_view : public view_interface&lt;iota_view&lt;W, Bound&gt;&gt; {
+  private:
+    // [range.iota.iterator], class iota_­view​::​iterator
+    struct <i>iterator</i>;            // exposition only
+    // [range.iota.sentinel], class iota_­view​::​sentinel
+    struct <i>sentinel</i>;            // exposition only
+    W <i>value_</i> = W();             // exposition only
+    Bound <i>bound_</i> = Bound();     // exposition only
+  public:
+    iota_view() = default;
+    constexpr explicit iota_view(W value);
+    constexpr iota_view(type_identity_t&lt;W&gt; value,
+                        type_identity_t&lt;Bound&gt; bound);
+    constexpr iota_view(<i>iterator</i> first, <i><del>sentinel</del><ins>see below</ins></i> last)<ins>;</ins><del>: iota_view(*first, last.<i>bound_</i>) {}</del>
+
+    constexpr <i>iterator</i> begin() const;
+    constexpr auto end() const;
+    constexpr <i>iterator</i> end() const requires same_­as&lt;W, Bound&gt;;
+
+    constexpr auto size() const requires see below;
+  };
+
+  template&lt;class W, class Bound&gt;
+      requires (!<i>is-integer-like</i>&lt;W&gt; || !<i>is-integer-like</i>&lt;Bound&gt; ||
+              (<i>is-signed-integer-like</i>&lt;W&gt; == <i>is-signed-integer-like</i>&lt;Bound&gt;))
+      iota_view(W, Bound) -&gt; iota_view&lt;W, Bound&gt;;
+}
+</pre>
+<p>[...]</p>
+<pre>
+constexpr iota_view(type_identity_t&lt;W&gt; value, type_identity_t&lt;Bound&gt; bound);
+</pre>
+<blockquote>
+<p>-8- <i>Preconditions</i>: <tt>Bound</tt> denotes <tt>unreachable_­sentinel_­t</tt> or <tt>bound</tt> is reachable
+from <tt>value</tt>. When <tt>W</tt> and <tt>Bound</tt> model <tt>totally_­ordered_­with</tt>, then <tt>bool(value &lt;= bound)</tt> is true.</p>
+<p>-9- <i>Effects</i>: Initializes <tt><i>value_</i></tt>­ with <tt>value</tt> and <tt><i>bound_</i></tt> with <tt>bound</tt>.</p>
+</blockquote>
+<pre>
+<ins>constexpr iota_view(<i>iterator</i> first, <i>see below</i> last);</ins>
+</pre>
+<blockquote>
+<p><ins>-?- <i>Effects</i>: Equivalent to:</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If <tt>same_as&lt;W, Bound&gt;</tt> is <tt>true</tt>, <tt>iota_view(first.<i>value_</i>, last.<i>value_</i>)</tt>.</ins></p></li>
+<li><p><ins>(?.2) &mdash; Otherwise, if <tt>Bound</tt> denotes <tt>unreachable_sentinel_t</tt>, <tt>iota_view(first.<i>value_</i>, last)</tt>.</ins></p></li>
+<li><p><ins>(?.3) &mdash; Otherwise, <tt>iota_view(first.<i>value_</i>, last.<i>bound_</i>)</tt>.</ins></p></li>
+</ol>
+<p><ins>-?- <i>Remarks</i>: The type of <tt>last</tt> is:</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If <tt>same_as&lt;W, Bound&gt;</tt> is <tt>true</tt>, <tt><i>iterator</i></tt>.</ins></p></li>
+<li><p><ins>(?.2) &mdash; Otherwise, if <tt>Bound</tt> denotes <tt>unreachable_sentinel_t</tt>, <tt>Bound</tt>.</ins></p></li>
+<li><p><ins>(?.3) &mdash; Otherwise, <tt><i>sentinel</i></tt>.</ins></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
