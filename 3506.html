@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3506" href="lwg-active.html#3506">3506.</a> Missing allocator-extended constructors for <tt>priority_queue</tt></h3>
 <p><b>Section:</b> 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-11-21 <b>Last modified:</b> 2021-01-15 21:32:54 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2020-11-21 <b>Last modified:</b> 2021-02-18 03:34:02 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#priority.queue">active issues</a> in [priority.queue].</p>
@@ -55,7 +55,7 @@
 <p><b>Discussion:</b></p>
 <p>
 <tt>priority_queue</tt> has two constructor templates taking a pair of input
-iterators in addition to a comparator and a container, but it does not have 
+iterators in addition to a comparator and a container, but it does not have
 allocator-extended constructors corresponding to these constructor templates:
 </p>
 <blockquote><pre>
@@ -71,11 +71,143 @@ template&lt;class InputIterator&gt;
 
 <p>
 Set priority to 3 during reflector discussions. It has been pointed out that this issue
-is related to LWG <a href="1199">1199</a>, LWG <a href="2210">2210</a>, and LWG <a href="2713">2713</a>. 
+is related to LWG <a href="1199">1199</a>, LWG <a href="2210">2210</a>, and LWG <a href="2713">2713</a>.
 </p>
+
+<p><i>[2021-02-17 Tim adds PR]</i></p>
+
 
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Add the following paragraph at the end of 22.6.1 <a href="https://timsong-cpp.github.io/cppwp/container.adaptors.general">[container.adaptors.general]</a>:</p>
+<blockquote>
+<p>
+<ins>-6- The exposition-only alias template <i><tt>iter-value-type</tt></i> defined in
+22.3.1 <a href="https://timsong-cpp.github.io/cppwp/sequences.general">[sequences.general]</a> may appear in deduction guides for container adaptors.</ins>
+</p>
+</blockquote>
+</li>
+<li><p>Modify 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a>, class template <tt>priority_queue</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T, class Container = vector&lt;T&gt;,
+            class Compare = less&lt;typename Container::value_type&gt;&gt;
+  class priority_queue {
+
+  // [&hellip;]
+
+  public:
+    priority_queue() : priority_queue(Compare()) {}
+    explicit priority_queue(const Compare&amp; x) : priority_queue(x, Container()) {}
+    priority_queue(const Compare&amp; x, const Container&amp;);
+    priority_queue(const Compare&amp; x, Container&amp;&amp;);
+    template&lt;class InputIterator&gt;
+      priority_queue(InputIterator first, InputIterator last, const Compare&amp; x,
+                      const Container&amp;);
+    template&lt;class InputIterator&gt;
+      priority_queue(InputIterator first, InputIterator last,
+                      const Compare&amp; x = Compare(), Container&amp;&amp; = Container());
+    template&lt;class Alloc&gt; explicit priority_queue(const Alloc&amp;);
+    template&lt;class Alloc&gt; priority_queue(const Compare&amp;, const Alloc&amp;);
+    template&lt;class Alloc&gt; priority_queue(const Compare&amp;, const Container&amp;, const Alloc&amp;);
+    template&lt;class Alloc&gt; priority_queue(const Compare&amp;, Container&amp;&amp;, const Alloc&amp;);
+    template&lt;class Alloc&gt; priority_queue(const priority_queue&amp;, const Alloc&amp;);
+    template&lt;class Alloc&gt; priority_queue(priority_queue&amp;&amp;, const Alloc&amp;);
+<ins>    template&lt;class InputIterator, class Alloc&gt;
+      priority_queue(InputIterator, InputIterator, const Alloc&amp;);
+    template&lt;class InputIterator, class Alloc&gt;
+      priority_queue(InputIterator, InputIterator, const Compare&amp;, const Alloc&amp;);
+    template&lt;class InputIterator, class Alloc&gt;
+      priority_queue(InputIterator, InputIterator, const Compare&amp;, const Container&amp;, const Alloc&amp;);
+    template&lt;class InputIterator, class Alloc&gt;
+      priority_queue(InputIterator, InputIterator, const Compare&amp;, Container&amp;&amp;, const Alloc&amp;);</ins>
+
+  // [&hellip;]
+
+  };
+
+  template&lt;class Compare, class Container&gt;
+    priority_queue(Compare, Container)
+      -&gt; priority_queue&lt;typename Container::value_type, Container, Compare&gt;;
+
+  template&lt;class InputIterator,
+            class Compare = less&lt;<del>typename iterator_traits</del><ins><i>iter-value-type</i></ins>&lt;InputIterator&gt;<del>::value_type</del>&gt;,
+            class Container = vector&lt;<del>typename iterator_traits</del><ins><i>iter-value-type</i></ins>&lt;InputIterator&gt;<del>::value_type</del>&gt;&gt;
+    priority_queue(InputIterator, InputIterator, Compare = Compare(), Container = Container())
+      -&gt; priority_queue&lt;<del>typename iterator_traits</del><ins><i>iter-value-type</i></ins>&lt;InputIterator&gt;<del>::value_type</del>, Container, Compare&gt;;
+
+  template&lt;class Compare, class Container, class Allocator&gt;
+    priority_queue(Compare, Container, Allocator)
+      -&gt; priority_queue&lt;typename Container::value_type, Container, Compare&gt;;
+
+<ins>  template&lt;class InputIterator, class Allocator&gt;
+    priority_queue(InputIterator, InputIterator, Allocator)
+      -&gt; priority_queue&lt;<i>iter-value-type</i>&lt;InputIterator&gt;,
+                        vector&lt;<i>iter-value-type</i>&lt;InputIterator&gt;, Allocator&gt;,
+                        less&lt;<i>iter-value-type</i>&lt;InputIterator&gt;&gt;&gt;;
+
+  template&lt;class InputIterator, class Compare, class Allocator&gt;
+    priority_queue(InputIterator, InputIterator, Compare, Allocator)
+      -&gt; priority_queue&lt;<i>iter-value-type</i>&lt;InputIterator&gt;,
+                        vector&lt;<i>iter-value-type</i>&lt;InputIterator&gt;, Allocator&gt;, Compare&gt;;
+
+  template&lt;class InputIterator, class Compare, class Container, class Allocator&gt;
+    priority_queue(InputIterator, InputIterator, Compare, Container, Allocator)
+      -&gt; priority_queue&lt;typename Container::value_type, Container, Compare&gt;;</ins>
+
+  // [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following paragraphs to 22.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons.alloc">[priqueue.cons.alloc]</a>:</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Alloc&amp; a);
+</pre>
+<blockquote>
+<p>-?- <i>Effects:</i> Initializes <tt>c</tt> with <tt>first</tt> as the first argument, <tt>last</tt> as
+the second argument, and <tt>a</tt> as the third argument, and value-initializes <tt>comp</tt>;
+calls <tt>make_heap(c.begin(), c.end(), comp)</tt>. </p>
+</blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; compare, const Alloc&amp; a);
+</pre>
+<blockquote>
+<p>-?- <i>Effects:</i> Initializes <tt>c</tt> with <tt>first</tt> as the first argument, <tt>last</tt> as
+the second argument, and <tt>a</tt> as the third argument, and initializes <tt>comp</tt> with <tt>compare</tt>;
+calls <tt>make_heap(c.begin(), c.end(), comp)</tt>. </p>
+</blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; compare, const Container&amp; cont, const Alloc&amp; a);
+</pre>
+<blockquote>
+<p>-?- <i>Effects:</i> Initializes <tt>c</tt> with <tt>cont</tt> as the first argument and <tt>a</tt> as
+the second argument, and initializes <tt>comp</tt> with <tt>compare</tt>; calls <tt>c.insert(c.end(), first, last)</tt>;
+and finally calls <tt>make_­heap(c.begin(), c.end(), comp)</tt>. </p>
+</blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; compare, Container&amp;&amp; cont, const Alloc&amp; a);
+</pre>
+<blockquote>
+<p>-?- <i>Effects:</i> Initializes <tt>c</tt> with <tt>std::move(cont)</tt> as the first argument and <tt>a</tt> as
+the second argument, and initializes <tt>comp</tt> with <tt>compare</tt>; calls <tt>c.insert(c.end(), first, last)</tt>;
+and finally calls <tt>make_­heap(c.begin(), c.end(), comp)</tt>. </p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
