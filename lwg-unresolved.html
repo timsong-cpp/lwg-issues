@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-02-27 at 13:36:23 UTC</p>
+<p><p>Revised 2021-02-28 at 14:42:33 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -40280,7 +40280,7 @@ is required to be ill-formed. This seems unlikely to be the intent either.
 <hr>
 <h3><a name="3525" href="3525">3525.</a> <tt>uses_allocator_construction_args</tt> fails to handle types convertible to <tt>pair</tt></h3>
 <p><b>Section:</b> 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2021-02-27 13:36:23 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2021-02-28 14:15:19 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
@@ -40303,13 +40303,521 @@ void f() {
 }
 </pre></blockquote>
 <p>
-There's no matching overload for <tt>uses_allocator_construction_args&lt;pair&lt;const int, int&gt;&gt;(alloc, S&amp;&amp;)</tt>, 
-since <tt>S</tt> is not a <tt>pair</tt> and every overload for constructing <tt>pair</tt>s that takes one 
+There's no matching overload for <tt>uses_allocator_construction_args&lt;pair&lt;const int, int&gt;&gt;(alloc, S&amp;&amp;)</tt>,
+since <tt>S</tt> is not a <tt>pair</tt> and every overload for constructing <tt>pair</tt>s that takes one
 non-allocator argument expects a <tt>pair</tt> from which template arguments can be deduced.
+</p>
+<p><i>[2021-02-27 Tim adds PR and comments]</i></p>
+
+<p>The superseded resolution below attempts to solve this issue by adding two
+additional overloads of <tt>uses_allocator_construction_args</tt> to
+handle this case. However, the new overloads forces implicit conversions
+at the call to <tt>uses_allocator_construction_args</tt>, which requires
+the result to be consumed within the same full-expression
+before any temporary created from the conversion is destroyed.
+This is not the case for the <tt>piecewise_construct</tt> overload of
+<tt>uses_allocator_construction_args</tt>, which recursively calls
+<tt>uses_allocator_construction_args</tt> for the two elements of the pair, which
+might themselves be <tt>pair</tt>s.</p>
+<p>
+The approach taken in the revised PR is to produce an exposition-only
+<tt><i>pair-constructor</i></tt> object instead. The object holds the allocator
+and the argument by reference, implicitly converts to the specified specialization of <tt>pair</tt>,
+and when so converted return a <tt>pair</tt> that is constructed by uses-allocator
+construction with the converted value of the original argument.
+This maintains the existing design that <tt>pair</tt> itself doesn't know
+anything about allocator construction.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>, uses-allocator construction</i>
+  [&hellip;]
+
+<ins>  template&lt;class T, class Alloc&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const remove_cv_t&lt;T&gt;&amp; pr) noexcept;</ins>
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp; pr) noexcept -&gt; <i>see below</i>;
+
+<ins>  template&lt;class T, class Alloc&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    remove_cv_t&lt;T&gt;&amp;&amp; pr) noexcept;</ins>
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+<blockquote>
+<pre>
+<ins>template&lt;class T, class Alloc&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  const remove_cv_t&lt;T&gt;&amp; pr) noexcept;</ins>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  const pair&lt;U, V&gt;&amp; pr) noexcept -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-12- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>. <ins>For the second overload, <tt>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</tt> is <tt>false</tt>.</ins>
+<p/>
+-13- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                            forward_as_tuple(pr.first),
+                                            forward_as_tuple(pr.second));
+</pre></blockquote>
+</blockquote>
+<pre>
+<ins>template&lt;class T, class Alloc&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  remove_cv_t&lt;T&gt;&amp;&amp; pr) noexcept;</ins>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-14- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>. <ins>For the second overload, <tt>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</tt> is <tt>false</tt>.</ins>
+<p/>
+-15- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                            forward_as_tuple(std::move(pr).first),
+                                            forward_as_tuple(std::move(pr).second));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+<ol>
+<li><p>Edit 20.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>, uses-allocator construction</i>
+  [&hellip;]
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp; pr) noexcept -&gt; <i>see below</i>;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+
+
+<ins>  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following to 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>:</p>
+<blockquote>
+<pre>
+<ins>  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- Let <tt><i>FUN</i></tt> be the function template:</ins>
+</p>
+<blockquote><pre><ins>
+  template&lt;class A, class B&gt;
+  void <i>FUN</i>(const pair&lt;A, B&gt;&amp;);</ins>
+</pre></blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>, and the expression <tt><i>FUN</i>(u)</tt> is not well-formed when considered as an unevaluated operand.</ins>
+<p/>
+<ins>-?- <i>Effects:</i> Equivalent to:</ins>
+</p>
+<blockquote><pre><ins>
+return make_tuple(<i>pair-constructor</i>{alloc, u});</ins>
+</pre></blockquote>
+<p><ins>where <tt><i>pair-constructor</i></tt> is an exposition-only class defined as follows:</ins></p>
+<blockquote><pre><ins>
+struct <i>pair-constructor</i> {
+  using <i>pair-type</i> = remove_cv_t&lt;T&gt;;            // exposition only
+
+  constexpr operator <i>pair-type</i>() const {
+    return <i>do-construct</i>(std::forward&lt;U&gt;(<i>u</i>));
+  }
+
+  constexpr auto <i>do-construct</i>(const <i>pair-type</i>&amp; p) const {  // exposition only
+    return make_obj_using_allocator&lt;<i>pair-type</i>&gt;(<i>alloc</i>, p);
+  }
+  constexpr auto <i>do-construct</i>(<i>pair-type</i>&amp;&amp; p) const {  // exposition only
+    return make_obj_using_allocator&lt;<i>pair-type</i>&gt;(<i>alloc</i>, std::move(p));
+  }
+
+  const Alloc&amp; <i>alloc</i>;  // exposition only
+  U&amp; <i>u</i>;                // exposition only
+};
+</ins></pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3526" href="3526">3526.</a> Return types of <tt>uses_allocator_construction_args</tt> unspecified</h3>
+<p><b>Section:</b> 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-02-25 <b>Last modified:</b> 2021-02-28 12:24:28 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The synopsis of <tt>&lt;memory&gt;</tt> in 20.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a> declares six overloads of 
+<tt>uses_allocator_construction_args</tt> with return types "<i>see below</i>":
+</p>
+<blockquote><pre>
+template&lt;class T, class Alloc, class... Args&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  Args&amp;&amp;... args) noexcept -&gt; <i>see below</i>;
+template&lt;class T, class Alloc, class Tuple1, class Tuple2&gt;>
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, piecewise_construct_t,
+                                                  Tuple1&amp;&amp; x, Tuple2&amp;&amp; y)
+                                                  noexcept -&gt; see below;
+template&lt;class T, class Alloc&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc) noexcept -&gt; <i>see below</i>;
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  U&amp;&amp; u, V&amp;&amp; v) noexcept -&gt; <i>see below</i>;
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  const pair&lt;U, V&gt;&amp; pr) noexcept -&gt; <i>see below</i>;
+template&lt;class T, class Alloc, class U, class V>
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+</pre></blockquote>
+<p>
+The "<i>see below</i>s" also appear in the detailed specification of these overloaded function templates 
+in 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> para 4 through 15. Despite that the values these function 
+templates return are specified therein, the return types are not. Presumably LWG wanted to specify deduced 
+return types, but couldn't figure out how to do so, and just gave up?
+</p>
+
+<p><i>[2021-02-27; Daniel comments and provides wording]</i></p>
+
+<p>
+My interpretation is that the appearance of the <i>trailing-return-type</i> was actually unintended and that
+these functions where supposed to use the return type placeholder to signal the intention that the actual
+return type is deduced by the consistent sum of all return statements as they appear in the prototype specifications.
+Given that at least one implementation has indeed realized this form, I suggest to simply adjust the specification
+to remove the <i>trailing-return-type</i>. Specification-wise we have already existing practice for this 
+approach (See e.g. <tt>to_address</tt>).
 </p>
 
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>, uses-allocator construction</i>
+  template&lt;class T, class Alloc, class... Args&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    Args&amp;&amp;... args) noexcept <del>-&gt; <i>see below</i></del>;
+  template&lt;class T, class Alloc, class Tuple1, class Tuple2&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, piecewise_construct_t,
+                                                    Tuple1&amp;&amp; x, Tuple2&amp;&amp; y)
+                                                    noexcept <del>-&gt; <i>see below</i></del>;
+  template&lt;class T, class Alloc&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc) noexcept <del>-&gt; <i>see below</i></del>;
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    U&amp;&amp; u, V&amp;&amp; v) noexcept <del>-&gt; <i>see below</i></del>;
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp; pr) noexcept <del>-&gt; <i>see below</i></del>;
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp;&amp; pr) noexcept <del>-&gt; <i>see below</i></del>;   
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Edit 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class Alloc, class... Args&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  Args&amp;&amp;... args) noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-5- <i>Returns:</i> A <tt>tuple</tt> value determined as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; if [&hellip;], return <tt>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</tt>.</p></li>
+<li><p>(5.2) &mdash; Otherwise, if [&hellip;], return</p>
+<blockquote><pre>
+tuple&lt;allocator_arg_t, const Alloc&amp;, Args&amp;&amp;...&gt;(
+  allocator_arg, alloc, std::forward&lt;Args&gt;(args)...)
+</pre></blockquote>
+</li>
+<li><p>(5.3) &mdash; Otherwise, if [&hellip;], return <tt>forward_as_tuple(std::forward&lt;Args&gt;(args)..., alloc)</tt>.</p></li>
+<li><p>(5.4) &mdash; Otherwise, the program is ill-formed.</p></li>
+</ol>
+</blockquote>
+<pre>
+template&lt;class T, class Alloc, class Tuple1, class Tuple2&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, piecewise_construct_t,
+                                                  Tuple1&amp;&amp; x, Tuple2&amp;&amp; y)
+                                                  noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- <i>Effects:</i> For <tt>T</tt> specified as <tt>pair&lt;T1, T2&gt;</tt>, equivalent to:
+</p>
+<blockquote><pre>
+return make_tuple(
+  piecewise_construct,
+  apply([&amp;alloc](auto&amp;&amp;... args1) {
+          return uses_allocator_construction_args&lt;T1&gt;(
+            alloc, std::forward&lt;decltype(args1)&gt;(args1)...);
+        }, std::forward&lt;Tuple1&gt;(x)),
+  apply([&amp;alloc](auto&amp;&amp;... args2) {
+          return uses_allocator_construction_args&lt;T2&gt;(
+            alloc, std::forward&lt;decltype(args2)&gt;(args2)...);
+        }, std::forward&lt;Tuple2&gt;(y)));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T, class Alloc&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc) noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-9- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                           tuple&lt;&gt;{}, tuple&lt;&gt;{});
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  U&amp;&amp; u, V&amp;&amp; v) noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-11- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                           forward_as_tuple(std::forward&lt;U&gt;(u)),
+                                           forward_as_tuple(std::forward&lt;V&gt;(v));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  const pair&lt;U, V&gt;&amp; pr) noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-13- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                           forward_as_tuple(pr.first),
+                                           forward_as_tuple(pr.second));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  pair&lt;U, V&gt;&amp;&amp; pr) noexcept <del>-&gt; <i>see below</i></del>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-15- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                           forward_as_tuple(std::move(pr).first),
+                                           forward_as_tuple(std::move(pr).second));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3527" href="3527">3527.</a> <tt>uses_allocator_construction_args</tt> handles rvalue pairs of rvalue references incorrectly</h3>
+<p><b>Section:</b> 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-27 <b>Last modified:</b> 2021-02-27 21:31:31 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For an rvalue pair <tt>pr</tt>, <tt>uses_allocator_construction_args</tt> is specified to forward
+<tt>std::move(pr).first</tt> and <tt>std::move(pr).second</tt>. This is correct
+for non-references and lvalue references, but wrong for rvalue refrences because
+the class member access produces an lvalue (see 7.6.1.5 <a href="https://timsong-cpp.github.io/cppwp/expr.ref">[expr.ref]</a>/6).
+<tt>get</tt> produces an xvalue, which is what is desired here.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-15- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                            forward_as_tuple(<del>std::move(pr).first</del><ins>get&lt;0&gt;(std::move(pr))</ins>),
+                                            forward_as_tuple(<del>std::move(pr).second</del><ins>get&lt;1&gt;(std::move(pr))</ins>));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3528" href="3528">3528.</a> <tt>make_from_tuple</tt> can perform (the equivalent of) a C-style cast</h3>
+<p><b>Section:</b> 20.5.5 <a href="https://timsong-cpp.github.io/cppwp/tuple.apply">[tuple.apply]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-28 <b>Last modified:</b> 2021-02-28 14:42:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>make_from_tuple</tt> is specified to return <tt>return T(get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...);</tt>.
+When there is only a single argument, this is equivalent to a C-style cast
+that may be an <tt>reinterpret_cast</tt> or an access-bypassing <tt>static_cast</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.5.5 <a href="https://timsong-cpp.github.io/cppwp/tuple.apply">[tuple.apply]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T, class Tuple&gt;
+  constexpr T make_from_tuple(Tuple&amp;&amp; t);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Effects:</i>  Given the exposition-only function:
+</p>
+<blockquote><pre>
+template&lt;class T, class Tuple, size_t... I&gt;
+<ins>  requires is_constructible_v&lt;T, decltype(get&lt;I&gt;(declval&lt;Tuple&gt;()))...></ins>
+constexpr T <i>make-from-tuple-impl</i>(Tuple&amp;&amp; t, index_sequence&lt;I...&gt;) {     // exposition only
+  return T(get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...);
+}
+</pre></blockquote>
+<p>
+Equivalent to:
+</p>
+<blockquote><pre>
+return <i>make-from-tuple-impl</i>&lt;T&gt;(
+  <ins>std::</ins>forward&lt;Tuple&gt;(t),
+  make_index_sequence&lt;tuple_size_v&lt;remove_reference_t&lt;Tuple&gt;&gt;&gt;{});
+</pre></blockquote>
+<p>
+[<i>Note 1:</i> The type of T must be supplied as an explicit template parameter,
+as it cannot be deduced from the argument list. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
