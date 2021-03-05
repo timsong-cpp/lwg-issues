@@ -1,0 +1,218 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3529: priority_queue(first, last) should construct c with (first, last)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3529" href="lwg-active.html#3529">3529.</a> <code>priority_queue(first, last)</code> should construct <code>c</code> with <code>(first, last)</code></h3>
+<p><b>Section:</b> 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2021-03-01 <b>Last modified:</b> 2021-03-01 16:16:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#priority.queue">active issues</a> in [priority.queue].</p>
+<p><b>View all other</b> <a href="lwg-index.html#priority.queue">issues</a> in [priority.queue].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Tim's new constructors for <code>priority_queue</code> (LWG<a href="3506">3506</a>)
+are specified so that when you construct
+</p>
+<pre>
+    auto pq = PQ(first, last, a);
+</pre>
+<p>
+it calls this new-in-LWG3506 constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Alloc&amp; a);
+</pre>
+<p>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument,
+<code>last</code> as the second argument,
+and <code>a</code> as the third argument,
+and value-initializes <code>comp</code>;
+calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+<p>
+But the pre-existing constructors are specified so that when you construct
+</p>
+<pre>
+    auto pq = PQ(first, last);
+</pre>
+<p>
+it calls this pre-existing constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare(), Container&amp;&amp; y = Container());
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code>
+and <code>c</code> with <code>y</code>
+(copy constructing or move constructing as appropriate);
+calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+
+<p>
+In other words,
+</p>
+<pre>
+    auto pq = PQ(first, last);
+</pre>
+<p>
+will default-construct a <code>Container</code>,
+then move-construct <code>c</code> from that object,
+then <code>c.insert(first, last)</code>,
+and finally <code>make_heap</code>.
+</p>
+<p>
+But our new
+</p>
+<pre>
+    auto pq = PQ(first, last, a);
+</pre>
+<p>
+will simply construct <code>c</code> with <code>(first, last)</code>,
+then <code>make_heap</code>.
+</p>
+<p>
+The latter is obviously better.
+</p>
+<p>
+Also, Corentin's <a href="https://wg21.link/p1425r3">P1425R3</a>
+specifies the new iterator-pair constructors for
+<code>stack</code> and <code>queue</code>
+to construct <code>c</code> from <code>(first, last)</code>. Good.
+</p>
+<p>
+LWG should refactor the existing constructor overload set so that
+the existing non-allocator-taking constructors simply construct <code>c</code>
+from <code>(first, last)</code>.
+This will improve consistency with the resolutions of LWG3506 and P1425,
+and reduce the surprise factor for users.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 22.6.5.1 <a href="https://timsong-cpp.github.io/cppwp/priqueue.overview">[priqueue.overview]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());</ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del><del> = Compare()</del></del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+</blockquote>
+</li>
+
+<li>
+<p>Edit 22.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons">[priqueue.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());
+</ins>
+</pre>
+<p>
+<ins>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</ins>
+</p>
+<p>
+<ins>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument and <code>last</code> as the second argument, and initializes <code>comp</code> with <code>x</code>; then calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</ins>
+</p>
+
+<pre>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del> = Compare()</del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code> and <code>c</code> with <code>y</code> (copy constructing or
+move constructing as appropriate); calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

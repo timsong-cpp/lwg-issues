@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-02-28 at 19:28:08 UTC</p>
+<p><p>Revised 2021-03-05 at 03:06:35 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -40815,6 +40815,468 @@ return <i>make-from-tuple-impl</i>&lt;T&gt;(
 [<i>Note 1:</i> The type of T must be supplied as an explicit template parameter,
 as it cannot be deduced from the argument list. &mdash; <i>end note</i>]
 </p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3529" href="3529">3529.</a> <code>priority_queue(first, last)</code> should construct <code>c</code> with <code>(first, last)</code></h3>
+<p><b>Section:</b> 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2021-03-01 <b>Last modified:</b> 2021-03-01 16:16:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#priority.queue">active issues</a> in [priority.queue].</p>
+<p><b>View all other</b> <a href="lwg-index.html#priority.queue">issues</a> in [priority.queue].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Tim's new constructors for <code>priority_queue</code> (LWG<a href="3506">3506</a>)
+are specified so that when you construct
+</p>
+<pre>
+    auto pq = PQ(first, last, a);
+</pre>
+<p>
+it calls this new-in-LWG3506 constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Alloc&amp; a);
+</pre>
+<p>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument,
+<code>last</code> as the second argument,
+and <code>a</code> as the third argument,
+and value-initializes <code>comp</code>;
+calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+<p>
+But the pre-existing constructors are specified so that when you construct
+</p>
+<pre>
+    auto pq = PQ(first, last);
+</pre>
+<p>
+it calls this pre-existing constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare(), Container&amp;&amp; y = Container());
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code>
+and <code>c</code> with <code>y</code>
+(copy constructing or move constructing as appropriate);
+calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+
+<p>
+In other words,
+</p>
+<pre>
+    auto pq = PQ(first, last);
+</pre>
+<p>
+will default-construct a <code>Container</code>,
+then move-construct <code>c</code> from that object,
+then <code>c.insert(first, last)</code>,
+and finally <code>make_heap</code>.
+</p>
+<p>
+But our new
+</p>
+<pre>
+    auto pq = PQ(first, last, a);
+</pre>
+<p>
+will simply construct <code>c</code> with <code>(first, last)</code>,
+then <code>make_heap</code>.
+</p>
+<p>
+The latter is obviously better.
+</p>
+<p>
+Also, Corentin's <a href="https://wg21.link/p1425r3">P1425R3</a>
+specifies the new iterator-pair constructors for
+<code>stack</code> and <code>queue</code>
+to construct <code>c</code> from <code>(first, last)</code>. Good.
+</p>
+<p>
+LWG should refactor the existing constructor overload set so that
+the existing non-allocator-taking constructors simply construct <code>c</code>
+from <code>(first, last)</code>.
+This will improve consistency with the resolutions of LWG3506 and P1425,
+and reduce the surprise factor for users.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 22.6.5.1 <a href="https://timsong-cpp.github.io/cppwp/priqueue.overview">[priqueue.overview]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());</ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del><del> = Compare()</del></del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+</blockquote>
+</li>
+
+<li>
+<p>Edit 22.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons">[priqueue.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());
+</ins>
+</pre>
+<p>
+<ins>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</ins>
+</p>
+<p>
+<ins>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument and <code>last</code> as the second argument, and initializes <code>comp</code> with <code>x</code>; then calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</ins>
+</p>
+
+<pre>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del> = Compare()</del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code> and <code>c</code> with <code>y</code> (copy constructing or
+move constructing as appropriate); calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3530" href="3530">3530.</a> <tt><i>BUILTIN-PTR-MEOW</i></tt> should not opt the type out of syntactic checks</h3>
+<p><b>Section:</b> 20.14.8.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons.three.way">[comparisons.three.way]</a>, 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-03-04 <b>Last modified:</b> 2021-03-05 03:06:35 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The use of <tt><i>BUILTIN-PTR-MEOW</i></tt> for the constrained comparison
+function objects was needed to disable the semantic requirements on the
+associated concepts when the comparison resolves to a built-in operator
+comparing pointers: the comparison object is adding special handling for this
+case to produce a total order despite the core language saying otherwise,
+so requiring the built-in operator to then produce a total order as part
+of the semantic requirements doesn't make sense.
+<p/>
+However, because it is specified as a disjunction on the constraint,
+it means that the comparison function objects are now required to accept
+types that don't even meet the syntactic requirements of the associated
+concept. For example, <tt>ranges::less</tt> requires all six comparison operators
+(because of <tt>totally_ordered_with</tt>) to be present...except when
+<tt>operator&lt;</tt> on the arguments resolves to a built-in operator comparing
+pointers, in which case it just requires <tt>operator&lt;</tt> and <tt>operator==</tt>
+(except that the latter isn't even required to be checked - it comes from the use
+of <tt>ranges::equal_to</tt> in the precondition of <tt>ranges::less</tt>).
+This seems entirely arbitrary.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.14.8.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons.three.way">[comparisons.three.way]</a> as indicated:</p>
+<blockquote>
+<p>
+<del>-1- In this subclause, <tt><i>BUILTIN-PTR-THREE-WAY</i>(T, U)</tt> for types <tt>T</tt>
+and <tt>U</tt> is a boolean constant expression. <tt><i>BUILTIN-PTR-THREE-WAY</i>(T, U)</tt>
+is true if and only if <tt>&lt;=&gt;</tt> in the expression</del>
+</p>
+<blockquote><pre>
+<del>declval&lt;T&gt;() &lt;=&gt; declval&lt;U&gt;()</del>
+</pre></blockquote>
+<p><del>resolves to a built-in operator comparing pointers.</del></p>
+
+<pre>
+struct compare_three_way {
+  template&lt;class T, class U&gt;
+    <del>requires three_way_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-THREE-WAY</i>(T, U)</del>
+  constexpr auto operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires three_way_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-THREE-WAY</i>(T, U)</del>
+constexpr auto operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>three_way_comparable_with</tt>.</ins>
+<p/>
+-2- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>&lt;=&gt;</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>three_way_comparable_with</tt></ins>.
+<p/>
+-3- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(3.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>&lt;=&gt;</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>strong_­ordering​::​less</tt> if (the converted value of) <tt>t</tt> precedes <tt>u</tt> in
+the implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>),
+<tt>strong_­ordering​::​greater</tt> if <tt>u</tt> precedes <tt>t</tt>, and otherwise <tt>strong_­ordering​::​equal</tt>.
+</p>
+</li>
+<li><p>
+(3.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u);</tt>
+</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Edit 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> as indicated:</p>
+<blockquote>
+<p>
+<del>-1- In this subclause, <tt><i>BUILTIN-PTR-CMP</i>(T,</tt> <i>op</i><tt>, U)</tt>
+for types <tt>T</tt> and <tt>U</tt> and where <i>op</i> is an equality (7.6.10 <a href="https://timsong-cpp.github.io/cppwp/expr.eq">[expr.eq]</a>)
+or relational operator (7.6.9 <a href="https://timsong-cpp.github.io/cppwp/expr.rel">[expr.rel]</a>) is a boolean constant expression.
+<tt><i>BUILTIN-PTR-CMP</i>(T,</tt> <i>op</i><tt>, U)</tt>
+is true if and only if <i>op</i> in the expression
+<tt>declval&lt;T&gt;()</tt> <i>op</i> <tt>declval&lt;U&gt;()</tt>
+resolves to a built-in operator comparing pointers.</del></p>
+
+<pre>
+struct ranges::equal_to {
+  template&lt;class T, class U&gt;
+    <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>equality_comparable_with</tt>.</ins>
+<p/>
+-2- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>==</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>equality_comparable_with</tt></ins>.
+<p/>
+-3- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(3.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>==</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>false</tt> if either (the converted value of) <tt>t</tt> precedes <tt>u</tt> or <tt>u</tt>
+precedes <tt>t</tt> in the implementation-defined strict total order over pointers
+(3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>) and otherwise <tt>true</tt>.
+</p>
+</li>
+<li><p>
+(3.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u);</tt>
+</p>
+</li>
+</ol>
+</blockquote>
+<pre>
+struct ranges::not_equal_to {
+    template&lt;class T, class U&gt;
+        <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+    constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+    using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>equality_comparable_with</tt>.</ins>
+<p/>
+-4- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return !ranges::equal_to{}(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+</pre></blockquote>
+</blockquote>
+<pre>
+struct ranges::greater {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-5- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return ranges::less{}(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+</pre></blockquote>
+</blockquote>
+
+<pre>
+struct ranges::less {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-6- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>&lt;</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>totally_ordered_with</tt></ins>.
+For any expressions <tt>ET</tt> and <tt>EU</tt> such that <tt>decltype((ET))</tt> is <tt>T</tt> and
+<tt>decltype((EU))</tt> is <tt>U</tt>, exactly one of <tt>ranges::less{}(ET, EU)</tt>, <tt>ranges::less{}(EU, ET)</tt>,
+or <tt>ranges::equal_to{}(ET, EU)</tt> is <tt>true</tt>.
+<p/>
+-7- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(7.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>&lt;</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>true</tt> if (the converted value of) <tt>t</tt> precedes <tt>u</tt> in the
+implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>)
+and otherwise <tt>false</tt>.
+</p>
+</li>
+<li><p>
+(7.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u);</tt>
+</p>
+</li>
+</ol>
+</blockquote>
+<pre>
+struct ranges::greater_equal {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-8- <tt>operator()</tt> has effects equivalent to:</p>
+<blockquote><pre>
+return !ranges::less{}(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+</pre></blockquote>
+</blockquote>
+
+<pre>
+struct ranges::less_equal {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-9- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return !ranges::less{}(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+</pre></blockquote>
 </blockquote>
 </blockquote>
 </li>
