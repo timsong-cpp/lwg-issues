@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-03-05 at 17:47:26 UTC</p>
+<p><p>Revised 2021-03-12 at 15:11:18 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="3052" href="3052">3052.</a> <tt>visit</tt> is underconstrained</h3>
@@ -298,6 +298,242 @@ and finally calls <tt>make_­heap(c.begin(), c.end(), comp)</tt>. </p>
 
 
 <hr>
+<h3><a name="3517" href="3517">3517.</a> <tt>join_view::<i>iterator</i></tt>'s <tt>iter_swap</tt> is underconstrained</h3>
+<p><b>Section:</b> 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-01-28 <b>Last modified:</b> 2021-03-12 15:09:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.iterator">issues</a> in [range.join.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>std::ranges::join_view::<i>iterator</i></tt>'s hidden friend <tt>iter_swap</tt> is specified in 
+24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>/16 as:
+</p>
+<blockquote>
+<pre>
+friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  noexcept(noexcept(ranges::iter_swap(x.<i>inner_</i>, y.<i>inner_</i>)));
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_swap(x.<i>inner_</i>, y.<i>inner_</i>);</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+Notably, the expression <tt>ranges::iter_swap(<i>meow</i>, <i>woof</i>)</tt> is not valid for all 
+iterators <tt><i>meow</i></tt> and <tt><i>woof</i></tt>, or even all input iterators of the same 
+type as is the case here. This <tt>iter_swap</tt> overload should be constrained to require the 
+type of <tt>iterator::<i>inner_</i></tt> (<tt>iterator_t&lt;range_reference_t&lt;<i>maybe-const</i>&lt;Const, V&gt;&gt;&gt;)</tt> 
+to satisfy <tt>indirectly_swappable</tt>. Notably this is already the case for <tt>iter_swap</tt> 
+friends of every other iterator adaptor in the Standard Library (<tt>reverse_iterator</tt>, <tt>move_iterator</tt>, 
+<tt>common_iterator</tt>, <tt>counted_iterator</tt>, <tt>filter_view::iterator</tt>, <tt>transform_view::iterator</tt>, and <tt>split_view::<i>inner-iterator</i></tt>). The omission for <tt>join_view::<i>iterator</i></tt> seems to 
+have simply been an oversight.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>. 
+</p>
+
+<ol>
+<li><p>Modify 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> If <a href="3500">3500</a> is accepted before this issue, it is 
+kindly suggested to the Project Editor to apply the equivalent replacement of
+"<tt>iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</tt>" by "<tt><i>InnerIter</i></tt>" to
+the newly inserted <tt>requires</tt>.
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             (is_reference_v&lt;range_reference_t&lt;V&gt;&gt; ||
+             view&lt;range_value_t&lt;V&gt;&gt;)
+  template&lt;bool Const&gt;
+  struct join_view&lt;V&gt;::<i>iterator</i> {
+    [&hellip;]
+    
+    friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      noexcept(noexcept(ranges::iter_swap(x.<i>inner_</i>, y.<i>inner_</i>)))
+      <ins>requires indirectly_swappable&lt;iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;</ins>;
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<blockquote>
+<pre>
+friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  noexcept(noexcept(ranges::iter_swap(x.<i>inner_</i>, y.<i>inner_</i>)))
+  <ins>requires indirectly_swappable&lt;iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_swap(x.<i>inner_</i>, y.<i>inner_</i>);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3518" href="3518">3518.</a> Exception requirements on char trait operations unclear</h3>
+<p><b>Section:</b> 21.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Zoe Carver <b>Opened:</b> 2021-02-01 <b>Last modified:</b> 2021-03-12 15:09:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#char.traits.require">active issues</a> in [char.traits.require].</p>
+<p><b>View all other</b> <a href="lwg-index.html#char.traits.require">issues</a> in [char.traits.require].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+21.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a> p1 says:
+</p>
+<blockquote>
+<p>
+<tt>X</tt> denotes a traits class defining types and functions for the character container type 
+<tt>C</tt> [&hellip;] Operations on <tt>X</tt> shall not throw exceptions.
+</p>
+</blockquote>
+<p>
+It should be clarified what "operations on <tt>X</tt>" means. For example, in <a href="https://reviews.llvm.org/D95251">this 
+patch</a>, there was some confusion around the exact meaning of "operations on <tt>X</tt>". If it refers to 
+the expressions specified in [tab:char.traits.req] or if it refers to all member functions of <tt>X</tt>, 
+this should be worded in some clearer way. 
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>. 
+</p>
+
+<ol>
+<li><p>Modify 21.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- In Table [tab:char.traits.req], <tt>X</tt> denotes a traits class defining types and functions for the 
+character container type <tt>C</tt>; [&hellip;] <del>Operations on <tt>X</tt> shall not throw exceptions</del><ins>No
+expression which is part of the character traits requirements specified in this subclause 21.2.2 <a href="https://timsong-cpp.github.io/cppwp/char.traits.require">[char.traits.require]</a> 
+shall exit via an exception</ins>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3521" href="3521">3521.</a> Overly strict requirements on <tt>qsort</tt> and <tt>bsearch</tt></h3>
+<p><b>Section:</b> 25.12 <a href="https://timsong-cpp.github.io/cppwp/alg.c.library">[alg.c.library]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Richard Smith <b>Opened:</b> 2021-02-02 <b>Last modified:</b> 2021-03-12 15:09:34 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.c.library">issues</a> in [alg.c.library].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Per 25.12 <a href="https://timsong-cpp.github.io/cppwp/alg.c.library">[alg.c.library]</a>/2, for <tt>qsort</tt> and <tt>bsearch</tt>, we have:
+</p>
+<blockquote>
+<p>
+<i>Preconditions:</i> The objects in the array pointed to by <tt>base</tt> are of trivial type.
+</p>
+</blockquote>
+<p>
+This seems like an unnecessarily strict requirement. <tt>qsort</tt> only needs the objects to be of a 
+trivially-copyable type (because it will use <tt>memcpy</tt> or equivalent to relocate them), and 
+<tt>bsearch</tt> doesn't need any particular properties of the array element type. Presumably it 
+would be in improvement to specify the more-precise requirements instead.
+<p/>
+We should also reconsider the other uses of the notion of a trivial type. It's really not a useful or 
+meaningful type property by itself, because it doesn't actually require that any operations on the type 
+are valid (due to the possibility of them being ambiguous or only some of them being available) and the 
+places that consider it very likely actually mean <tt>is_trivially_copyable</tt> plus 
+<tt>is_trivially_default_constructible</tt> instead, or perhaps <tt>is_trivially_copy_constructible</tt> 
+and <tt>is_trivially_move_constructible</tt> and so on.
+<p/>
+Other than <tt>qsort</tt> and <tt>bsearch</tt>, the only uses of this type property in the standard are 
+to constrain <tt>max_align_t</tt>, <tt>aligned_storage</tt>, <tt>aligned_union</tt>, and the element type 
+of <tt>basic_string</tt> (and in the definition of the deprecated <tt>is_pod</tt> trait), all of which 
+(other than <tt>is_pod</tt>) I think really mean "is trivially default constructible", not "has at least 
+one eligible default constructor and all eligible default constructors are trivial". And in fact I think 
+the alignment types are underspecified &mdash; we don't want to require merely that they be 
+trivially-copyable, since that doesn't require any particular operation on them to actually be valid &mdash; 
+we also want to require that they actually model <tt>semiregular</tt>.
+</p>
+
+<p><i>[2021-02-23; Casey Carter provides concrete wording]</i></p>
+
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>. 
+</p>
+
+<ol>
+<li><p>Modify 25.12 <a href="https://timsong-cpp.github.io/cppwp/alg.c.library">[alg.c.library]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void* bsearch(const void* key, const void* base, size_t nmemb, size_t size,
+             <i>c-compare-pred</i>* compar);
+void* bsearch(const void* key, const void* base, size_t nmemb, size_t size,
+              <i>compare-pred</i>* compar);
+void qsort(void* base, size_t nmemb, size_t size, <i>c-compare-pred</i>* compar);
+void qsort(void* base, size_t nmemb, size_t size, <i>compare-pred</i>* compar);
+</pre>
+<blockquote>
+<p>
+-2- <i>Preconditions:</i> <ins>For <tt>qsort</tt>, t</ins><del>T</del>he objects in the array pointed to 
+by <i>base</i> are of <del>trivial</del><ins>trivially copyable</ins> type.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
 <h3><a name="3522" href="3522">3522.</a> Missing requirement on <tt>InputIterator</tt> template parameter for <tt>priority_queue</tt> constructors</h3>
 <p><b>Section:</b> 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-17 <b>Last modified:</b> 2021-02-26 17:32:09 UTC</p>
@@ -370,6 +606,732 @@ type that does not qualify as an input iterator is deduced for that parameter.</
 <li><p>(4.1) &mdash; It has an <tt>InputIterator</tt> template parameter and a type that does not qualify as an input iterator is deduced for that parameter.</p></li>
 <li><p>[&hellip;]</p></li>
 </ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3523" href="3523">3523.</a> <tt>iota_view::<i>sentinel</i></tt> is not always <tt>iota_view</tt>'s sentinel</h3>
+<p><b>Section:</b> 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-17 <b>Last modified:</b> 2021-03-12 15:09:44 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.view">issues</a> in [range.iota.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P1739R4">P1739R4</a> added the following constructor to
+<tt>iota_view</tt>:
+</p>
+<blockquote><pre>
+constexpr iota_view(<i>iterator</i> first, <i>sentinel</i> last) : iota_view(*first, last.<i>bound_</i>) {}
+</pre></blockquote>
+<p>
+However, while <tt>iota_view</tt>'s iterator type is always <tt>iota_view::<i>iterator</i></tt>, its sentinel type
+is not always <tt>iota_view::<i>sentinel</i></tt>. First, if <tt>Bound</tt> is <tt>unreachable_sentinel_t</tt>, then
+the sentinel type is <tt>unreachable_sentinel_t</tt> too - we don't add an unnecessary level of wrapping
+on top. Second, when <tt>W</tt> and <tt>Bound</tt> are the same type, <tt>iota_view</tt> models <tt>common_range</tt>, and
+the sentinel type is the same as the iterator type - that is, <tt><i>iterator</i></tt>, not <tt><i>sentinel</i></tt>.
+</p>
+<p>
+Presumably the intent is to use the view's actual sentinel type, rather than always use the
+<tt><i>sentinel</i></tt> type.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  // [...]
+
+  template&lt;weakly_­incrementable W, semiregular Bound = unreachable_sentinel_t&gt;
+    requires <i>weakly-equality-comparable-with</i>&lt;W, Bound&gt; &amp;&amp; semiregular&lt;W&gt;
+  class iota_view : public view_interface&lt;iota_view&lt;W, Bound&gt;&gt; {
+  private:
+    // [range.iota.iterator], class iota_­view​::​iterator
+    struct <i>iterator</i>;            // exposition only
+    // [range.iota.sentinel], class iota_­view​::​sentinel
+    struct <i>sentinel</i>;            // exposition only
+    W <i>value_</i> = W();             // exposition only
+    Bound <i>bound_</i> = Bound();     // exposition only
+  public:
+    iota_view() = default;
+    constexpr explicit iota_view(W value);
+    constexpr iota_view(type_identity_t&lt;W&gt; value,
+                        type_identity_t&lt;Bound&gt; bound);
+    constexpr iota_view(<i>iterator</i> first, <i><del>sentinel</del><ins>see below</ins></i> last)<ins>;</ins><del>: iota_view(*first, last.<i>bound_</i>) {}</del>
+
+    constexpr <i>iterator</i> begin() const;
+    constexpr auto end() const;
+    constexpr <i>iterator</i> end() const requires same_­as&lt;W, Bound&gt;;
+
+    constexpr auto size() const requires see below;
+  };
+
+  template&lt;class W, class Bound&gt;
+      requires (!<i>is-integer-like</i>&lt;W&gt; || !<i>is-integer-like</i>&lt;Bound&gt; ||
+              (<i>is-signed-integer-like</i>&lt;W&gt; == <i>is-signed-integer-like</i>&lt;Bound&gt;))
+      iota_view(W, Bound) -&gt; iota_view&lt;W, Bound&gt;;
+}
+</pre>
+<p>[...]</p>
+<pre>
+constexpr iota_view(type_identity_t&lt;W&gt; value, type_identity_t&lt;Bound&gt; bound);
+</pre>
+<blockquote>
+<p>-8- <i>Preconditions</i>: <tt>Bound</tt> denotes <tt>unreachable_­sentinel_­t</tt> or <tt>bound</tt> is reachable
+from <tt>value</tt>. When <tt>W</tt> and <tt>Bound</tt> model <tt>totally_­ordered_­with</tt>, then <tt>bool(value &lt;= bound)</tt> is true.</p>
+<p>-9- <i>Effects</i>: Initializes <tt><i>value_</i></tt>­ with <tt>value</tt> and <tt><i>bound_</i></tt> with <tt>bound</tt>.</p>
+</blockquote>
+<pre>
+<ins>constexpr iota_view(<i>iterator</i> first, <i>see below</i> last);</ins>
+</pre>
+<blockquote>
+<p><ins>-?- <i>Effects</i>: Equivalent to:</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If <tt>same_as&lt;W, Bound&gt;</tt> is <tt>true</tt>, <tt>iota_view(first.<i>value_</i>, last.<i>value_</i>)</tt>.</ins></p></li>
+<li><p><ins>(?.2) &mdash; Otherwise, if <tt>Bound</tt> denotes <tt>unreachable_sentinel_t</tt>, <tt>iota_view(first.<i>value_</i>, last)</tt>.</ins></p></li>
+<li><p><ins>(?.3) &mdash; Otherwise, <tt>iota_view(first.<i>value_</i>, last.<i>bound_</i>)</tt>.</ins></p></li>
+</ol>
+<p><ins>-?- <i>Remarks</i>: The type of <tt>last</tt> is:</ins></p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If <tt>same_as&lt;W, Bound&gt;</tt> is <tt>true</tt>, <tt><i>iterator</i></tt>.</ins></p></li>
+<li><p><ins>(?.2) &mdash; Otherwise, if <tt>Bound</tt> denotes <tt>unreachable_sentinel_t</tt>, <tt>Bound</tt>.</ins></p></li>
+<li><p><ins>(?.3) &mdash; Otherwise, <tt><i>sentinel</i></tt>.</ins></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3527" href="3527">3527.</a> <tt>uses_allocator_construction_args</tt> handles rvalue pairs of rvalue references incorrectly</h3>
+<p><b>Section:</b> 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-27 <b>Last modified:</b> 2021-03-12 15:09:53 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For an rvalue pair <tt>pr</tt>, <tt>uses_allocator_construction_args</tt> is specified to forward
+<tt>std::move(pr).first</tt> and <tt>std::move(pr).second</tt>. This is correct
+for non-references and lvalue references, but wrong for rvalue refrences because
+the class member access produces an lvalue (see 7.6.1.5 <a href="https://timsong-cpp.github.io/cppwp/expr.ref">[expr.ref]</a>/6).
+<tt>get</tt> produces an xvalue, which is what is desired here.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.10.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T, class Alloc, class U, class V&gt;
+  constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                  pair&lt;U, V&gt;&amp;&amp; pr) noexcept -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-15- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                            forward_as_tuple(<del>std::move(pr).first</del><ins>get&lt;0&gt;(std::move(pr))</ins>),
+                                            forward_as_tuple(<del>std::move(pr).second</del><ins>get&lt;1&gt;(std::move(pr))</ins>));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3528" href="3528">3528.</a> <tt>make_from_tuple</tt> can perform (the equivalent of) a C-style cast</h3>
+<p><b>Section:</b> 20.5.5 <a href="https://timsong-cpp.github.io/cppwp/tuple.apply">[tuple.apply]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-28 <b>Last modified:</b> 2021-03-12 15:11:05 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>make_from_tuple</tt> is specified to return <tt>T(get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...)</tt>.
+When there is only a single tuple element, this is equivalent to a C-style cast
+that may be a <tt>reinterpret_cast</tt>, a <tt>const_cast</tt>,
+or an access-bypassing <tt>static_cast</tt>.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 following reflector poll.
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.5.5 <a href="https://timsong-cpp.github.io/cppwp/tuple.apply">[tuple.apply]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class T, class Tuple&gt;
+  constexpr T make_from_tuple(Tuple&amp;&amp; t);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Effects:</i>  Given the exposition-only function:
+</p>
+<blockquote><pre>
+template&lt;class T, class Tuple, size_t... I&gt;
+<ins>  requires is_constructible_v&lt;T, decltype(get&lt;I&gt;(declval&lt;Tuple&gt;()))...></ins>
+constexpr T <i>make-from-tuple-impl</i>(Tuple&amp;&amp; t, index_sequence&lt;I...&gt;) {     // exposition only
+  return T(get&lt;I&gt;(std::forward&lt;Tuple&gt;(t))...);
+}
+</pre></blockquote>
+<p>
+Equivalent to:
+</p>
+<blockquote><pre>
+return <i>make-from-tuple-impl</i>&lt;T&gt;(
+  <ins>std::</ins>forward&lt;Tuple&gt;(t),
+  make_index_sequence&lt;tuple_size_v&lt;remove_reference_t&lt;Tuple&gt;&gt;&gt;{});
+</pre></blockquote>
+<p>
+[<i>Note 1:</i> The type of T must be supplied as an explicit template parameter,
+as it cannot be deduced from the argument list. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3529" href="3529">3529.</a> <code>priority_queue(first, last)</code> should construct <code>c</code> with <code>(first, last)</code></h3>
+<p><b>Section:</b> 22.6.5 <a href="https://timsong-cpp.github.io/cppwp/priority.queue">[priority.queue]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2021-03-01 <b>Last modified:</b> 2021-03-12 15:11:10 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#priority.queue">active issues</a> in [priority.queue].</p>
+<p><b>View all other</b> <a href="lwg-index.html#priority.queue">issues</a> in [priority.queue].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Tim's new constructors for <code>priority_queue</code> (LWG <a href="3506">3506</a>)
+are specified so that when you construct
+</p>
+<blockquote>
+<pre>
+auto pq = PQ(first, last, a);
+</pre>
+</blockquote>
+<p>
+it calls this new-in-LWG3506 constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator, class Alloc&gt;
+  priority_queue(InputIterator first, InputIterator last, const Alloc&amp; a);
+</pre>
+<p>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument,
+<code>last</code> as the second argument,
+and <code>a</code> as the third argument,
+and value-initializes <code>comp</code>;
+calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+<p>
+But the pre-existing constructors are specified so that when you construct
+</p>
+<blockquote>
+<pre>
+auto pq = PQ(first, last);
+</pre>
+</blockquote>
+<p>
+it calls this pre-existing constructor:
+</p>
+<blockquote>
+<pre>
+template&lt;class InputIterator&gt;
+  priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare(), Container&amp;&amp; y = Container());
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code>
+and <code>c</code> with <code>y</code>
+(copy constructing or move constructing as appropriate);
+calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+
+<p>
+In other words,
+</p>
+<blockquote>
+<pre>
+auto pq = PQ(first, last);
+</pre>
+</blockquote>
+<p>
+will default-construct a <code>Container</code>,
+then move-construct <code>c</code> from that object,
+then <code>c.insert(first, last)</code>,
+and finally <code>make_heap</code>.
+</p>
+<p>
+But our new
+</p>
+<blockquote>
+<pre>
+auto pq = PQ(first, last, a);
+</pre>
+</blockquote>
+<p>
+will simply construct <code>c</code> with <code>(first, last)</code>,
+then <code>make_heap</code>.
+</p>
+<p>
+The latter is obviously better.
+</p>
+<p>
+Also, Corentin's <a href="https://wg21.link/p1425r3">P1425R3</a>
+specifies the new iterator-pair constructors for
+<code>stack</code> and <code>queue</code>
+to construct <code>c</code> from <code>(first, last)</code>. Good.
+</p>
+<p>
+LWG should refactor the existing constructor overload set so that
+the existing non-allocator-taking constructors simply construct <code>c</code>
+from <code>(first, last)</code>.
+This will improve consistency with the resolutions of LWG3506 and P1425,
+and reduce the surprise factor for users.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li>
+<p>Edit 22.6.5.1 <a href="https://timsong-cpp.github.io/cppwp/priqueue.overview">[priqueue.overview]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());</ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del><del> = Compare()</del></del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+</blockquote>
+</li>
+
+<li>
+<p>Edit 22.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons">[priqueue.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x = Compare());
+</ins>
+</pre>
+<p>
+<ins>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</ins>
+</p>
+<p>
+<ins>
+<i>Effects:</i>
+Initializes <code>c</code> with <code>first</code> as the first argument and <code>last</code> as the second argument, and initializes <code>comp</code> with <code>x</code>; then calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</ins>
+</p>
+
+<pre>
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x, const Container&amp; y);
+template&lt;class InputIterator&gt;
+    priority_queue(InputIterator first, InputIterator last, const Compare&amp; x<del> = Compare()</del>, Container&amp;&amp; y<del> = Container()</del>);
+</pre>
+<p>
+<i>Preconditions:</i>
+<code>x</code> defines a strict weak ordering ([alg.sorting]).
+</p>
+<p>
+<i>Effects:</i>
+Initializes <code>comp</code> with <code>x</code> and <code>c</code> with <code>y</code> (copy constructing or
+move constructing as appropriate); calls <code>c.insert(c.end(), first, last)</code>;
+and finally calls <code>make_heap(c.begin(), c.end(), comp)</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3530" href="3530">3530.</a> <tt><i>BUILTIN-PTR-MEOW</i></tt> should not opt the type out of syntactic checks</h3>
+<p><b>Section:</b> 20.14.8.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons.three.way">[comparisons.three.way]</a>, 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-03-04 <b>Last modified:</b> 2021-03-12 15:11:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The use of <tt><i>BUILTIN-PTR-MEOW</i></tt> for the constrained comparison
+function objects was needed to disable the semantic requirements on the
+associated concepts when the comparison resolves to a built-in operator
+comparing pointers: the comparison object is adding special handling for this
+case to produce a total order despite the core language saying otherwise,
+so requiring the built-in operator to then produce a total order as part
+of the semantic requirements doesn't make sense.
+<p/>
+However, because it is specified as a disjunction on the constraint,
+it means that the comparison function objects are now required to accept
+types that don't even meet the syntactic requirements of the associated
+concept. For example, <tt>ranges::less</tt> requires all six comparison operators
+(because of <tt>totally_ordered_with</tt>) to be present &hellip; except when
+<tt>operator&lt;</tt> on the arguments resolves to a built-in operator comparing
+pointers, in which case it just requires <tt>operator&lt;</tt> and <tt>operator==</tt>
+(except that the latter isn't even required to be checked &mdash; it comes from the use
+of <tt>ranges::equal_to</tt> in the precondition of <tt>ranges::less</tt>).
+This seems entirely arbitrary.
+</p>
+
+<p><i>[2021-03-12; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Edit 20.14.8.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons.three.way">[comparisons.three.way]</a> as indicated:</p>
+<blockquote>
+<p>
+<del>-1- In this subclause, <tt><i>BUILTIN-PTR-THREE-WAY</i>(T, U)</tt> for types <tt>T</tt>
+and <tt>U</tt> is a boolean constant expression. <tt><i>BUILTIN-PTR-THREE-WAY</i>(T, U)</tt>
+is true if and only if <tt>&lt;=&gt;</tt> in the expression</del>
+</p>
+<blockquote><pre>
+<del>declval&lt;T&gt;() &lt;=&gt; declval&lt;U&gt;()</del>
+</pre></blockquote>
+<p><del>resolves to a built-in operator comparing pointers.</del></p>
+
+<pre>
+struct compare_three_way {
+  template&lt;class T, class U&gt;
+    <del>requires three_way_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-THREE-WAY</i>(T, U)</del>
+  constexpr auto operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires three_way_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-THREE-WAY</i>(T, U)</del>
+constexpr auto operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>three_way_comparable_with</tt>.</ins>
+<p/>
+-2- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>&lt;=&gt;</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>three_way_comparable_with</tt></ins>.
+<p/>
+-3- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(3.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>&lt;=&gt;</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>strong_­ordering​::​less</tt> if (the converted value of) <tt>t</tt> precedes <tt>u</tt> in
+the implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>),
+<tt>strong_­ordering​::​greater</tt> if <tt>u</tt> precedes <tt>t</tt>, and otherwise <tt>strong_­ordering​::​equal</tt>.
+</p>
+</li>
+<li><p>
+(3.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) &lt;=&gt; std​::​forward&lt;U&gt;(u);</tt>
+</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Edit 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> as indicated:</p>
+<blockquote>
+<p>
+<del>-1- In this subclause, <tt><i>BUILTIN-PTR-CMP</i>(T,</tt> <i>op</i><tt>, U)</tt>
+for types <tt>T</tt> and <tt>U</tt> and where <i>op</i> is an equality (7.6.10 <a href="https://timsong-cpp.github.io/cppwp/expr.eq">[expr.eq]</a>)
+or relational operator (7.6.9 <a href="https://timsong-cpp.github.io/cppwp/expr.rel">[expr.rel]</a>) is a boolean constant expression.
+<tt><i>BUILTIN-PTR-CMP</i>(T,</tt> <i>op</i><tt>, U)</tt>
+is true if and only if <i>op</i> in the expression
+<tt>declval&lt;T&gt;()</tt> <i>op</i> <tt>declval&lt;U&gt;()</tt>
+resolves to a built-in operator comparing pointers.</del></p>
+
+<pre>
+struct ranges::equal_to {
+  template&lt;class T, class U&gt;
+    <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>equality_comparable_with</tt>.</ins>
+<p/>
+-2- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>==</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>equality_comparable_with</tt></ins>.
+<p/>
+-3- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(3.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>==</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>false</tt> if either (the converted value of) <tt>t</tt> precedes <tt>u</tt> or <tt>u</tt>
+precedes <tt>t</tt> in the implementation-defined strict total order over pointers
+(3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>) and otherwise <tt>true</tt>.
+</p>
+</li>
+<li><p>
+(3.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) == std​::​forward&lt;U&gt;(u);</tt>
+</p>
+</li>
+</ol>
+</blockquote>
+<pre>
+struct ranges::not_equal_to {
+    template&lt;class T, class U&gt;
+        <del>requires equality_comparable_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, ==, U)</del>
+    constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+    using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>equality_comparable_with</tt>.</ins>
+<p/>
+-4- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return !ranges::equal_to{}(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+</pre></blockquote>
+</blockquote>
+<pre>
+struct ranges::greater {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-5- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return ranges::less{}(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+</pre></blockquote>
+</blockquote>
+
+<pre>
+struct ranges::less {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+template&lt;class T, class U&gt;
+  <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-6- <i>Preconditions:</i> If the expression
+<tt>std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u)</tt> results in a call
+to a built-in operator <tt>&lt;</tt> comparing pointers of type <tt>P</tt>, the conversion
+sequences from both <tt>T</tt> and <tt>U</tt> to <tt>P</tt> are equality-preserving
+(18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>)<ins>; otherwise, <tt>T</tt> and <tt>U</tt>
+model <tt>totally_ordered_with</tt></ins>.
+For any expressions <tt>ET</tt> and <tt>EU</tt> such that <tt>decltype((ET))</tt> is <tt>T</tt> and
+<tt>decltype((EU))</tt> is <tt>U</tt>, exactly one of <tt>ranges::less{}(ET, EU)</tt>, <tt>ranges::less{}(EU, ET)</tt>,
+or <tt>ranges::equal_to{}(ET, EU)</tt> is <tt>true</tt>.
+<p/>
+-7- <i>Effects:</i></p>
+<ol style="list-style-type: none">
+<li><p>
+(7.1) &mdash; If the expression <tt>std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u)</tt>
+results in a call to a built-in operator <tt>&lt;</tt> comparing pointers of type <tt>P</tt>,
+returns <tt>true</tt> if (the converted value of) <tt>t</tt> precedes <tt>u</tt> in the
+implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>)
+and otherwise <tt>false</tt>.
+</p>
+</li>
+<li><p>
+(7.2) &mdash; Otherwise, equivalent to: <tt>return std​::​forward&lt;T&gt;(t) &lt; std​::​forward&lt;U&gt;(u);</tt>
+</p>
+</li>
+</ol>
+</blockquote>
+<pre>
+struct ranges::greater_equal {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-8- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return !ranges::less{}(std::forward&lt;T&gt;(t), std::forward&lt;U&gt;(u));
+</pre></blockquote>
+</blockquote>
+
+<pre>
+struct ranges::less_equal {
+  template&lt;class T, class U&gt;
+    <del>requires totally_ordered_with&lt;T, U&gt; || <i>BUILTIN-PTR-CMP</i>(T, &lt;, U)</del>
+  constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;
+
+  using is_transparent = <i>unspecified</i>;
+};
+</pre>
+
+<pre>
+<ins>template&lt;class T, class U&gt;
+constexpr bool operator()(T&amp;&amp; t, U&amp;&amp; u) const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> and <tt>U</tt> satisfy <tt>totally_ordered_with</tt>.</ins>
+<p/>
+-9- <del><tt>operator()</tt> has effects e</del><ins><i>Effects:</i> E</ins>quivalent to:</p>
+<blockquote><pre>
+return !ranges::less{}(std::forward&lt;U&gt;(u), std::forward&lt;T&gt;(t));
+</pre></blockquote>
+</blockquote>
 </blockquote>
 </li>
 </ol>
