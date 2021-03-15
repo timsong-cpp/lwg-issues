@@ -1,0 +1,184 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3533: Make base() const &amp; consistent across iterator wrappers that supports input_iterators</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3533" href="lwg-active.html#3533">3533.</a> Make <tt>base() const &amp;</tt> consistent across iterator wrappers that supports <tt>input_iterator</tt>s</h3>
+<p><b>Section:</b> 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a>, 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tomasz Kami&nacute;ski <b>Opened:</b> 2021-03-14 <b>Last modified:</b> 2021-03-14 17:47:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The resolution of LWG issue <a href="3391">3391</a> changed the <tt>base()</tt> function for the 
+<tt>counted_iterator</tt>/<tt>move_iterator</tt> to return <tt>const &amp;</tt>, because the previous 
+specification prevented non-mutating uses of the base iterator (comparing against sentinel) and made 
+<tt>take_view</tt> unimplementable. However, this change was not applied for all other iterators wrappers, 
+that may wrap move-only input iterators. As consequence, we end-up with inconsistency where a user can 
+perform the following operations on some adapters, but not on others (e. g. <tt>take_view</tt> uses 
+<tt>counted_iterator</tt> so it supports them).
+</p>
+<ol style="list-style-type:upper-alpha">
+<li><p>read the original value of the base iterator, by calling <tt>operator*</tt></p></li>
+<li><p>find position of an element in the underlying iterator, when sentinel is sized by calling <tt>operator-</tt> 
+(e.g. all input iterators wrapped into <tt>counted_iterator</tt>).</p></li>
+</ol>
+<p>
+To fix above, the proposed wording below proposes to modify the signature of <tt>iterator::base() const &amp;</tt> 
+member function for all iterators adapters that support input iterator. These include:
+</p>
+<ul>
+<li><p><tt>filter_view::<i>iterator</i></tt> (uses case B)</p></li>
+<li><p><tt>transform_view::<i>iterator</i></tt> (uses case A)</p></li>
+<li><p><tt>elements_view::<i>iterator</i></tt> (uses case B)</p></li>
+<li><p><tt>lazy_split_view&lt;V, Pattern&gt;::<i>inner-iterator</i></tt> (uses case B) if 
+<a href="https://wg21.link/p2210">P2210</a> is accepted</p></li>
+</ul>
+<p>
+Note: <tt>common_iterator</tt> does not expose the <tt>base()</tt> function (because it can either point to 
+iterator or sentinel), so changes to above are not proposed. However, both (A) and (B) use cases are supported.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<blockquote class="note">
+<p>
+If <a href="https://wg21.link/p2210">P2210</a> would become accepted, the corresponding subclause 
+[range.lazy.split.inner] (?) for <tt>lazy_split_view::<i>inner-iterator</i></tt> would require a similar change.
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 24.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr <ins>const</ins> iterator_t&lt;V&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;V&gt;&gt;</del>;
+[&hellip;]
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<blockquote>
+<pre>
+constexpr <ins>const</ins> iterator_t&lt;V&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;V&gt;&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr <ins>const</ins> iterator_t&lt;<i>Base</i>&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+[&hellip;]
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<blockquote>
+<pre>
+constexpr <ins>const</ins> iterator_t&lt;<i>Base</i>&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr <ins>const</ins> iterator_t&lt;<i>Base</i>&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+[&hellip;]
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<blockquote>
+<pre>
+constexpr <ins>const</ins> iterator_t&lt;<i>Base</i>&gt;<ins>&amp;</ins> base() const &amp;
+  <del>requires copyable&lt;iterator_t&lt;<i>Base</i>&gt;&gt;</del>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3531: LWG 3025 broke previous valid code</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3531" href="lwg-active.html#3531">3531.</a> LWG 3025 broke previous valid code</h3>
+<p><b>Section:</b> 22.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a>, 22.4.5.1 <a href="https://timsong-cpp.github.io/cppwp/multimap.overview">[multimap.overview]</a>, 22.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/unord.map.overview">[unord.map.overview]</a>, 22.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/unord.multimap.overview">[unord.multimap.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mike Spertus <b>Opened:</b> 2021-03-09 <b>Last modified:</b> 2021-03-14 11:18:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#map.overview">issues</a> in [map.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The resolution for LWG <a href="3025">3025</a> enabled code like the following to be accepted:
+</p>
+<blockquote><pre>
+map m1{{pair{1, 2}, {3, 4}}, less&lt;int&gt;()};
+</pre></blockquote>
+<p>
+but breaks code that had been previously working like the following
+</p>
+<blockquote><pre>
+using value_type = pair&lt;const int, int&gt;;
+
+map m2{{value_type{1, 2}, {3, 4}}, less&lt;int&gt;()};
+</pre></blockquote>
+<p>
+as shown <a href="https://godbolt.org/z/rz3fb9">on godbolt</a>.
+<p/>
+[Acknowledgment to Tim Song and Arthur O'Dwyer for independently pointing out this case on the LWG mailing list]
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<blockquote class="note">
+<p>
+We present two <em>partial</em> wording options for <tt>std::map</tt>, denoted by <b>(A)</b> and <b>(B)</b> below. 
+If the committee accepts one of them, we will complete them to all key-value containers.
+</p>
+</blockquote>
+
+<ol style="list-style-type: none">
+<li><p><b>(A)</b> Wording option 1: In this option, we restore the deduction guide that was removed in LWG 
+<a href="3025">3025</a> while maintaining the one that was added, <a href="https://godbolt.org/z/j74n9W"/> demonstrates 
+this working.</p>
+<ol>
+<li><p>Modify 22.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a> as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+         class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  map(initializer_list&lt;pair&lt;Key, T&gt;&gt;, Compare = Compare(), Allocator = Allocator())
+    -&gt; map&lt;Key, T, Compare, Allocator&gt;;
+    
+<ins>template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+         class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  map(initializer_list&lt;pair&lt;const Key, T&gt;&gt;, Compare = Compare(), Allocator = Allocator())
+    -&gt; map&lt;Key, T, Compare, Allocator&gt;;</ins>
+
+template&lt;class InputIterator, class Allocator&gt;
+  map(InputIterator, InputIterator, Allocator)
+    -&gt; map&lt;<i>iter-key-type</i>&lt;InputIterator&gt;, <i>iter-mapped-type</i>&lt;InputIterator&gt;,
+           less&lt;<i>iter-key-type</i>&gt;InputIterator&gt;&gt;, Allocator&gt;;
+           
+template&lt;class Key, class T, class Allocator&gt;
+  map(initializer_list&lt;pair&lt;Key, T&gt;&gt;, Allocator) -&gt; map&lt;Key, T, less&lt;Key&gt;, Allocator&gt;;           
+           
+<ins>template&lt;class Key, class T, class Allocator&gt;
+  map(initializer_list&lt;pair&lt;const Key, T&gt;&gt;, Allocator) -&gt; map&lt;Key, T, less&lt;Key&gt;, Allocator&gt;;</ins>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+</li>
+
+<li><p><b>(B)</b> Wording option 2: This one follows <a href="https://lists.isocpp.org/lib/2019/08/13091.php">Tim Song's suggestion</a>: 
+"It seems that the cleanest fix is to 1) disallow the <tt>initializer_list&lt;value_type&gt;</tt> constructors from being 
+used for CTAD, and 2) change the guides to use <tt>remove_const_t&lt;Key&gt;</tt>." This change has been tested locally 
+with g++ similar to the above godbolt.</p>
+<ol>
+<li><p>Modify 22.4.4.1 <a href="https://timsong-cpp.github.io/cppwp/map.overview">[map.overview]</a> as indicated:</p>
+<blockquote><pre>
+[&hellip;]
+<i>// types</i>
+using key_type = Key;
+using mapped_type = T;
+using value_type = <ins>type_identity_t&lt;</ins>pair&lt;const Key, T&gt;<ins>&gt;</ins>;
+[&hellip;]
+
+template&lt;class Key, class T, class Compare = less&lt;<ins>remove_const_t&lt;</ins>Key<ins>&gt;</ins>&gt;,
+         class Allocator = allocator&lt;pair&lt;const Key, T&gt;&gt;&gt;
+  map(initializer_list&lt;pair&lt;Key, T&gt;&gt;, Compare = Compare(), Allocator = Allocator())
+    -&gt; map&lt;<ins>remove_const_t&lt;</ins>Key<ins>&gt;</ins>, T, Compare, Allocator&gt;;
+    
+template&lt;class InputIterator, class Allocator&gt;
+  map(InputIterator, InputIterator, Allocator)
+    -&gt; map&lt;<i>iter-key-type</i>&lt;InputIterator&gt;, <i>iter-mapped-type</i>&lt;InputIterator&gt;,
+           less&lt;<i>iter-key-type</i>&gt;InputIterator&gt;&gt;, Allocator&gt;;
+           
+template&lt;class Key, class T, class Allocator&gt;
+  map(initializer_list&lt;pair&lt;Key, T&gt;&gt;, Allocator) 
+    -&gt; map&lt;<ins>remove_const_t&lt;</ins>Key<ins>&gt;</ins>, T, less&lt;<ins>remove_const_t&lt;</ins>Key<ins>&gt;</ins>&gt;, Allocator&gt;;           
+
+[&hellip;]
+</pre></blockquote>
+</li>
+</ol>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
