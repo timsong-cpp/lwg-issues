@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3536: Should chrono::from_stream() assign zero to duration for failure?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3536" href="lwg-active.html#3536">3536.</a> Should <tt>chrono::from_stream()</tt> assign zero to <tt>duration</tt> for failure?</h3>
+<p><b>Section:</b> 27.5.11 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matt Stephanson <b>Opened:</b> 2021-03-19 <b>Last modified:</b> 2021-03-20 18:54:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.duration.io">issues</a> in [time.duration.io].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>duration</tt> specialization of <tt>from_stream</tt> says in <a href="https://wg21.link/n4878">N4878</a> 
+27.5.11 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a>/3:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
+If the parse parses everything specified by the parsing format flags without error, and yet none of the flags impacts a duration, 
+<tt>d</tt> will be assigned a zero value.
+</p></blockquote>
+<p>
+This is in contrast to the other specializations that say, for example, 27.8.3.3 <a href="https://timsong-cpp.github.io/cppwp/time.cal.day.nonmembers">[time.cal.day.nonmembers]</a>/8:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
+If the parse fails to decode a valid day, <tt>is.setstate(ios_base::failbit)</tt> is called and <tt>d</tt> 
+is not modified.
+</p></blockquote>
+<p>
+The wording ("none of the flags impacts a duration" vs. "parse fails to decode a valid [meow]") and semantics 
+("assigned a zero value" vs. "not modified") are different, and it's not clear why that should be so. It also 
+leaves unspecified what should be done in case of a parse failure, for example parsing <tt>"%j"</tt> from a 
+stream containing <tt>"meow"</tt>. 27.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a>/12 says that <tt>failbit</tt> should be set, 
+but neither it nor 27.5.11 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a>/3 mention the <tt>duration</tt> result if parsing fails.
+<p/>
+This has been discussed at the Microsoft STL project, where Howard Hinnant, coauthor of 
+<a href="https://wg21.link/p0355R7">P0355R7</a> that added these functions, 
+<a href="https://github.com/microsoft/STL/issues/1740#issuecomment-802414649">commented</a>:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+This looks like a bug in the standard to me, due to two errors on my part.
+<p/>
+I believe that the standard should clearly say that if <tt>failbit</tt> is set, the parsed variable 
+(<tt>duration</tt>, <tt>time_point</tt>, whatever) is not modified. I mistakenly believed that the 
+definition of unformatted input function covered this behavior. But after review, I don't believe it 
+does. Instead each extraction operator seems to say this separately.
+<p/>
+I also at first did not have my example implementation coded to leave the duration unchanged. So that's how 
+the wording got in in the first place. Here's the commit where I fixed my implementation: 
+<a href="https://github.com/HowardHinnant/date/commit/d53db7a1cb61dc2651374e5b9660ed07e6d28358">HowardHinnant/date@d53db7a</a>. 
+And I failed to propagate that fix into the proposal/standard.
+</p>
+</blockquote>
+<p>
+It would be clearer and simpler for users if the <tt>from_stream</tt> specializations were consistent in wording 
+and behavior.
+<p/>
+Thanks to Stephan T. Lavavej, Miya Natsuhara, and Howard Hinnant for valuable investigation and discussion 
+of this issue.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.5.11 <a href="https://timsong-cpp.github.io/cppwp/time.duration.io">[time.duration.io]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class charT, class traits, class Rep, class Period, class Alloc = allocator&lt;charT&gt;&gt;
+  basic_istream&lt;charT, traits&gt;&amp;
+    from_stream(basic_istream&lt;charT, traits&gt;&amp; is, const charT* fmt,
+                duration&lt;Rep, Period&gt;&amp; d,
+                basic_string&lt;charT, traits, Alloc&gt;* abbrev = nullptr,
+                minutes* offset = nullptr);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Attempts to parse the input stream <tt>is</tt> into the duration <tt>d</tt> using 
+the format flags given in the NTCTS <tt>fmt</tt> as specified in 27.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a>. <del>If the parse 
+parses everything specified by the parsing format flags without error, and yet none of the flags impacts 
+a duration, <tt>d</tt> will be assigned a zero value</del><ins>If the parse fails to decode a valid duration, 
+<tt>is.setstate(ios_base::failbit)</tt> is called and <tt>d</tt> is not modified.</ins>. If <tt>%Z</tt> is 
+used and successfully parsed, that value will be assigned to <tt>*abbrev</tt> if <tt>abbrev</tt> is non-null. 
+If <tt>%z</tt> (or a modified variant) is used and successfully parsed, that value will be assigned to 
+<tt>*offset</tt> if <tt>offset</tt> is non-null.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

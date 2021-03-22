@@ -1,0 +1,244 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3534: ranges::set_intersection and ranges::set_difference algorithm requirements are too strict</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3534" href="lwg-active.html#3534">3534.</a> <tt>ranges::set_intersection</tt> and <tt>ranges::set_difference</tt> algorithm requirements are too strict</h3>
+<p><b>Section:</b> 25.8.7.4 <a href="https://timsong-cpp.github.io/cppwp/set.intersection">[set.intersection]</a>, 25.8.7.5 <a href="https://timsong-cpp.github.io/cppwp/set.difference">[set.difference]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Alexander Bessonov <b>Opened:</b> 2021-03-16 <b>Last modified:</b> 2021-03-20 17:24:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>std::mergeable</tt> concept requires elements of both source ranges to be copyable to the output iterator, while 
+the standard specifically tells that both algorithms <tt>ranges::set_intersection</tt> and <tt>ranges::set_difference</tt> 
+only use the first range as the source of elements to be copied into output. The following code snippet illustrates the problem:
+</p>
+<blockquote><pre>
+#include &lt;vector&gt;
+#include &lt;ranges&gt;
+#include &lt;algorithm&gt;
+#include &lt;cassert&gt;
+ 
+int main()
+{
+  std::vector&lt;std::pair&lt;int, int&gt;&gt; v1;
+  std::vector&lt;int&gt; v2;
+  
+  assert(std::ranges::is_sorted(v1));
+  assert(std::ranges::is_sorted(v2));
+  
+  std::vector&lt;std::pair&lt;int, int&gt;&gt; v3;
+  
+  // Compilation error on the following line:
+  std::ranges::set_intersection(v1, v2, std::back_inserter(v3),
+    std::less{}, [](const auto&amp; p) { return p.first; });
+}
+</pre></blockquote>
+<p>
+The proposed solution is to introduce a new concept. It could be declared "exposition-only" and is worded 
+<tt><i>half-mergeable</i></tt> below:
+</p>
+<blockquote><pre>
+template&lt;class I1, class I2, class Out, class R = ranges::less,
+	     class P1 = identity, class P2 = identity&gt;
+  concept <i>half-mergeable</i> =
+    input_iterator&lt;I1&gt; &amp;&amp;
+    input_iterator&lt;I2&gt; &amp;&amp;
+    weakly_incrementable&lt;Out&gt; &amp;&amp;
+    indirectly_copyable&lt;I1, Out&gt; &amp;&amp;
+    <i>// indirectly_copyable&lt;I2, Out&gt; &amp;&amp; &lt;&mdash; this line removed</i>
+    indirect_strict_weak_order&lt;R, projected&lt;I1, P1&gt;, projected&lt;I2, P2&gt;&gt;;
+</pre></blockquote>
+<p>
+After such template is introduced, <tt>std::mergeable</tt> may be defined based on it:
+</p>
+<blockquote><pre>
+template&lt;class I1, class I2, class Out, class R = ranges::less,
+	     class P1 = identity, class P2 = identity&gt;
+  concept mergeable = <i>half-mergeable</i>&lt;I1, I2, Out, R, P1, P2&gt; &amp;&amp; 
+    indirectly_copyable&lt;I2, Out&gt;;
+</pre></blockquote>
+<p>
+See also the related discussion on 
+<a href="https://www.reddit.com/r/cpp/comments/m1eqds/requirements_for_rangesset_intersection_algorithm/">reddit</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  
+  <i>// 23.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.req.mergeable">[alg.req.mergeable]</a>, concept mergeable</i>
+  <ins>template&lt;class I1, class I2, class Out, 
+      class R = ranges::less, class P1 = identity, class P2 = identity&gt;
+    concept <i>half-mergeable</i> = <i>see below</i>; <i>// exposition only</i></ins>
+
+  template&lt;class I1, class I2, class Out, 
+      class R = ranges::less, class P1 = identity, class P2 = identity&gt;
+    concept mergeable = <i>see below</i>;
+
+ [&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.req.mergeable">[alg.req.mergeable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<b>23.3.7.7 Concept <tt>mergeable</tt> [alg.req.mergeable]</b>
+<p/>
+-1- The <tt>mergeable</tt> concept specifies the requirements of algorithms that merge sorted sequences 
+into an output sequence by copying elements.
+</p>
+<blockquote>
+<pre>
+<ins>template&lt;class I1, class I2, class Out, class R = ranges::less,
+         class P1 = identity, class P2 = identity&gt;
+  concept <i>half-mergeable</i> = <i>// exposition only</i>
+    input_iterator&lt;I1&gt; &amp;&amp;
+    input_iterator&lt;I2&gt; &amp;&amp;
+    weakly_incrementable&lt;Out&gt; &amp;&amp;
+    indirectly_copyable&lt;I1, Out&gt; &amp;&amp;
+    indirect_strict_weak_order&lt;R, projected&lt;I1, P1&gt;, projected&lt;I2, P2&gt;&gt;;
+</ins>
+
+template&lt;class I1, class I2, class Out, class R = ranges::less,
+         class P1 = identity, class P2 = identity&gt;
+  concept mergeable =
+    <ins><i>half-mergeable</i>&lt;I1, I2, Out, R, P1, P2&gt; &amp;&amp;</ins>
+    <del>input_iterator&lt;I1&gt; &amp;&amp;
+    input_iterator&lt;I2&gt; &amp;&amp;
+    weakly_incrementable&lt;Out&gt; &amp;&amp;
+    indirectly_copyable&lt;I1, Out&gt; &amp;&amp;</del>
+    indirectly_copyable&lt;I2, Out&gt; <del>&amp;&amp;
+    indirect_strict_weak_order&lt;R, projected&lt;I1, P1&gt;, projected&lt;I2, P2&gt;&gt;</del>;
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 25.8.7.4 <a href="https://timsong-cpp.github.io/cppwp/set.intersection">[set.intersection]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+         weakly_incrementable O, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires <ins><i>half-mergeable</i></ins><del>mergeable</del>&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_intersection_result&lt;I1, I2, O&gt;
+    ranges::set_intersection(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                             Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;input_range R1, input_range R2, weakly_incrementable O,
+         class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+  requires <ins><i>half-mergeable</i></ins><del>mergeable</del>&lt;iterator_t&lt;R1&gt;&gt;, 
+    iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_intersection_result&lt;borrowed_iterator_t&lt;R1&gt;, borrowed_iterator_t&lt;R2&gt;, O&gt;
+    ranges::set_intersection(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                             Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-6- <i>Remarks:</i> Stable (16.4.6.8 <a href="https://timsong-cpp.github.io/cppwp/algorithm.stable">[algorithm.stable]</a>). If <tt>[first1, last1)</tt> contains <tt><i>m</i></tt> 
+elements that are equivalent to each other and <tt>[first2, last2)</tt> contains <tt><i>n</i></tt> elements that are 
+equivalent to them, the first <tt>min(<i>m</i>, <i>n</i>)</tt> elements are copied from the first range to the output 
+range, in order.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 25.8.7.5 <a href="https://timsong-cpp.github.io/cppwp/set.difference">[set.difference]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+         weakly_incrementable O, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires <ins><i>half-mergeable</i></ins><del>mergeable</del>&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;I1, O&gt;
+    ranges::set_difference(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;input_range R1, input_range R2, weakly_incrementable O,
+         class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+  requires <ins><i>half-mergeable</i></ins><del>mergeable</del>&lt;iterator_t&lt;R1&gt;&gt;, iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;borrowed_iterator_t&lt;R1&gt;, O&gt;
+    ranges::set_difference(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-6- <i>Remarks:</i> If <tt>[first1, last1)</tt> contains <tt><i>m</i></tt> elements that are equivalent to each other 
+and <tt>[first2, last2)</tt> contains <tt><i>n</i></tt> elements that are equivalent to them, the last 
+<tt>max(<i>m</i> - <i>n</i>, 0)</tt> elements from <tt>[first1, last1)</tt> is copied to the output range, in order.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

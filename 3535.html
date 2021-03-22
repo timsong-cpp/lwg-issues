@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3535: join_view::iterator::iterator_category and ::iterator_concept lie</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3535" href="lwg-active.html#3535">3535.</a> <tt>join_view::<i>iterator</i>::iterator_category</tt> and <tt>::iterator_concept</tt> lie</h3>
+<p><b>Section:</b> 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-03-16 <b>Last modified:</b> 2021-03-20 18:22:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.join.iterator">active issues</a> in [range.join.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.iterator">issues</a> in [range.join.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Per 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>/1, <tt>join_view::<i>iterator</i>::iterator_concept</tt> denotes 
+<tt>bidirectional_iterator_tag</tt> if <tt><i>ref-is-glvalue</i></tt> is <tt>true</tt> and <tt><i>Base</i></tt> and 
+<tt>range_reference_t&lt;<i>Base</i>&gt;</tt> each model <tt>bidirectional_range</tt>. Similarly, paragraph 2 says that 
+<tt>join_view::<i>iterator</i>::iterator_category</tt> is present if <tt><i>ref-is-glvalue</i></tt> is <tt>true</tt>, 
+and denotes <tt>bidirectional_iterator_tag</tt> if the categories of the iterators of both <tt><i>Base</i></tt> and 
+<tt>range_reference_t&lt;<i>Base</i>&gt;</tt> derive from <tt>bidirectional_iterator_tag</tt>.
+<p/>
+However, the constraints on the declarations of <tt>operator--</tt> and <tt>operator--(int)</tt> in the synopsis 
+that immediately precedes paragraph 1 disagree. Certainly they also consistently require <tt><i>ref-is-glvalue</i> 
+&amp;&amp; bidirectional_range&lt;<i>Base</i>&gt; &amp;&amp; bidirectional_range&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</tt>, 
+but they additionally require <tt>common_range&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;</tt>. So as currently specified, 
+this iterator sometimes declares itself to be bidirectional despite not implementing <tt>--</tt>. This is not 
+incorrect for iterator_concept &mdash; recall that <tt>iterator_concept</tt> is effectively an upper bound since 
+the concepts require substantial syntax &mdash; but slightly misleading. It is, however, very much incorrect for 
+<tt>iterator_category</tt> which must not denote a type derived from a tag that corresponds to a stronger category 
+than that iterator implements.
+<p/>
+It's worth pointing out, that LWG <a href="3313">3313</a> fixed the constraints on <tt>operator--()</tt> and 
+<tt>operator--(int)</tt> by adding the <tt>common_range</tt> requirements, but failed to make a consistent change 
+to the definitions of <tt>iterator_concept</tt> and <tt>iterator_category</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to the post-2021-February-virtual-meeting working draft.
+</p>
+
+<ol>
+<li><p>Modify 24.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <tt><i>iterator</i>::iterator_concept</tt> is defined as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; If <tt><i>ref-is-glvalue</i></tt> is <tt>true</tt><ins>,</ins> <del>and</del> <tt><i>Base</i></tt> 
+<del>and <tt>range_reference_t&lt;<i>Base</i>&gt;</tt> each</del> model<ins>s</ins> <tt>bidirectional_range</tt>, 
+<ins>and <tt>range_reference_t&lt;<i>Base</i>&gt;</tt> models both <tt>bidirectional_range</tt> and <tt>common_range</tt>,</ins> 
+then <tt>iterator_concept</tt> denotes <tt>bidirectional_iterator_tag</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+<p>
+[&hellip;]
+<p/>
+-2- The member <i>typedef-name</i> <tt>iterator_category</tt> is defined if and only if <tt><i>ref-is-glvalue</i></tt> 
+is <tt>true</tt>, <tt><i>Base</i></tt> models <tt>forward_range</tt>, and <tt>range_reference_t&lt;<i>Base</i>&gt;</tt> 
+models <tt>forward_range</tt>. In that case, <tt><i>iterator</i>::iterator_category</tt> is defined as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; Let <tt><i>OUTERC</i></tt> denote <tt>iterator_traits&lt;iterator_t&lt;<i>Base</i>&gt;&gt;::iterator_category</tt>, 
+and let <tt><i>INNERC</i></tt> denote <tt>iterator_traits&lt;iterator_t&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;::iterator_category</tt>.</p></li>
+<li><p>(2.2) &mdash; If <tt><i>OUTERC</i></tt> and <tt><i>INNERC</i></tt> each model 
+<tt>derived_from&lt;bidirectional_iterator_tag&gt;</tt>, <ins>and <tt>range_reference_t&lt;<i>Base</i>&gt;</tt> models 
+<tt>common_range</tt>,</ins> <tt>iterator_category</tt> denotes <tt>bidirectional_iterator_tag</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>
