@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3539: format_to must not copy models of output_iterator&lt;const charT&amp;&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3539" href="lwg-active.html#3539">3539.</a> <tt>format_to</tt> must not copy models of <tt>output_iterator&lt;const charT&amp;&gt;</tt></h3>
+<p><b>Section:</b> 20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-03-31 <b>Last modified:</b> 2021-04-04 13:18:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.functions">issues</a> in [format.functions].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> specifies the overloads of <tt>format_to</tt> as:
+</p>
+<blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(out, fmt, make_format_args&lt;context&gt;(args...));
+</pre>
+</blockquote>
+</blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, wstring_view fmt, const Args&amp;... args);
+  Out format_to(Out out, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(out, loc, fmt, make_format_args&lt;context&gt;(args...));
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+<p>
+but the overloads of <tt>vformat_to</tt> take their first argument by value (from the same subclause):
+</p>
+<blockquote>
+<pre>
+template&lt;class Out&gt;
+  Out vformat_to(Out out, string_view fmt,
+                 format_args_t&lt;type_identity_t&lt;Out&gt;, char&gt; args);
+template&lt;class Out&gt;
+  Out vformat_to(Out out, wstring_view fmt,
+                 format_args_t&lt;type_identity_t&lt;Out&gt;, wchar_t&gt; args);
+template&lt;class Out&gt;
+  Out vformat_to(Out out, const locale&amp; loc, string_view fmt,
+                 format_args_t&lt;type_identity_t&lt;Out&gt;, char&gt; args);
+template&lt;class Out>
+  Out vformat_to(Out out, const locale&amp; loc, wstring_view fmt,
+                 format_args_t&lt;type_identity_t&lt;Out&gt;, wchar_t&gt; args);
+</pre>
+<blockquote>
+<p>
+-10- Let <tt>charT</tt> be <tt>decltype(fmt)::value_type</tt>.
+<p/>
+-11- <i>Constraints:</i> <tt>Out</tt> satisfies <tt>output_iterator&lt;const charT&amp;&gt;</tt>.
+<p/>
+-12- <i>Preconditions:</i> <tt>Out</tt> models <tt>output_iterator&lt;const charT&amp;&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+and require its type to model <tt>output_iterator&lt;const charT&amp;&gt;</tt>. <tt>output_iterator&lt;T, U&gt;</tt> 
+refines <tt>input_or_output_iterator&lt;T&gt;</tt> which refines <tt>movable&lt;T&gt;</tt>, but it notably does not 
+refine <tt>copyable&lt;T&gt;</tt>. Consequently, the "Equivalent to" code for the <tt>format_to</tt> overloads is 
+copying an iterator that could be move-only. I suspect it is not the intent that calls to <tt>format_to</tt> with 
+move-only iterators be ill-formed, but that it was simply an oversight that this wording needs updating to be 
+consistent with the change to allow move-only single-pass iterators in C++20.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(<ins>std::move(</ins>out<ins>)</ins>, fmt, make_format_args&lt;context&gt;(args...));
+</pre>
+</blockquote>
+</blockquote>
+<pre>
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, string_view fmt, const Args&amp;... args);
+template&lt;class Out, class... Args&gt;
+  Out format_to(Out out, const locale&amp; loc, wstring_view fmt, const Args&amp;... args);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+using context = basic_format_context&lt;Out, decltype(fmt)::value_type&gt;;
+return vformat_to(<ins>std::move(</ins>out<ins>)</ins>, loc, fmt, make_format_args&lt;context&gt;(args...));
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
