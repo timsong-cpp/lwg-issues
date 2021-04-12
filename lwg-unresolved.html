@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-04-04 at 13:30:51 UTC</p>
+<p><p>Revised 2021-04-11 at 10:45:55 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -13641,7 +13641,7 @@ Only 4 functions are marked <tt>noexcept</tt> in all of Clause 28. Many more nee
 <hr>
 <h3><a name="2491" href="2491">2491.</a> <tt>std::less&lt;T*&gt;</tt> in constant expression</h3>
 <p><b>Section:</b> 20.14.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons">[comparisons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2015-04-01 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+ <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2015-04-01 <b>Last modified:</b> 2021-04-10 17:22:00 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#comparisons">active issues</a> in [comparisons].</p>
@@ -13683,9 +13683,8 @@ run-time would need results from linking to feed back to
 the compiler, something that C++ has traditionally not required.
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>This wording is relative to <a href="https://wg21.link/n4618">N4618</a>.</p>
 
 <ol>
@@ -13697,6 +13696,96 @@ if the call operator calls a built-in operator comparing pointers, the call oper
 that is consistent among those specializations and is also consistent with the partial order imposed by those 
 built-in operators. <ins>Relational comparisons of pointer values are not required to be usable as constant expressions.</ins>
 </p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-04-05; Jiang An comments and provides alternative wording]</i></p>
+
+<p>
+The libc++ and MSVC STL implementations only support flat address spaces, and always use comparison operators. 
+The libstdc++ implementation casts pointer values to <tt>uintptr_t</tt> if the direct comparison result is unusable 
+in constant evaluation.
+<p/>
+So, I think that we can specify that the implementation-defined strict total order (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>) 
+generates a core constant expression if and only if the corresponding underlying comparison expression comparing 
+pointer values is a core constant expression. No any other case should be a core constant expression, otherwise 
+we should also make the underlying comparison expression a core constant expression.
+<p/>
+IMO the proposed resolution is already implemented in libc++, libstdc++, and MSVC STL, and implementable on compilers 
+that either support flat address spaces only or have implemented intrinsics needed for transparent comparison operators 
+and <tt>std::is_constant_evaluated</tt>.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Add at the end of 20.14.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons">[comparisons]</a> p2:</p>
+<blockquote>
+<p>
+-2- For templates <tt>less</tt>, <tt>greater</tt>, <tt>less_equal</tt>, and <tt>greater_equal</tt>, the specializations 
+for any pointer type yield a result consistent with the implementation-defined strict total order over pointers 
+(3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>). [<i>Note 1</i>: If <tt>a &lt; b</tt> is well-defined for pointers <tt>a</tt> and 
+<tt>b</tt> of type <tt>P</tt>, then <tt>(a &lt; b) == less&lt;P&gt;()(a, b)</tt>, <tt>(a &gt; b) == greater&lt;P&gt;()(a, b)</tt>, 
+and so forth. &mdash; <i>end note</i>] For template specializations <tt>less&lt;void&gt;</tt>, <tt>greater&lt;void&gt;</tt>, 
+<tt>less_equal&lt;void&gt;</tt>, and <tt>greater_equal&lt;void&gt;</tt>, if the call operator calls a built-in operator 
+comparing pointers, the call operator yields a result consistent with the implementation-defined strict total order over 
+pointers. <ins>A comparison result of pointer values is a core constant expression if and only if the corresponding 
+built-in comparison expression is a core constant expression.</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Add at the end of 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> (3.1):</p>
+<blockquote>
+<p>
+-3- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; If the expression <tt>std::forward&lt;T&gt;(t) == std::forward&lt;U&gt;(u)</tt> results in a call 
+to a built-in operator <tt>==</tt> comparing pointers: returns <tt>false</tt> if either (the converted value of) <tt>t</tt> 
+precedes <tt>u</tt> or <tt>u</tt> precedes <tt>t</tt> in the implementation-defined strict total order over pointers 
+(3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>) and otherwise <tt>true</tt>. <ins>The result is a core constant expression if and only 
+if <tt>std::forward&lt;T&gt;(t) == std::forward&lt;U&gt;(u)</tt> is a core constant expression.</ins></p></li>
+<li><p>(3.2) &mdash; Otherwise, equivalent to: <tt>return std::forward&lt;T&gt;(t) == std::forward&lt;U&gt;(u);</tt></p></li>
+</ol>
+</blockquote>
+</li>
+
+<li><p>Add at the end of 20.14.9 <a href="https://timsong-cpp.github.io/cppwp/range.cmp">[range.cmp]</a> (7.1):</p>
+<blockquote>
+<p>
+-7- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; If the expression <tt>std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u)</tt> results in a call 
+to a built-in operator <tt>&lt;</tt> comparing pointers: returns <tt>true</tt> if (the converted value of) <tt>t</tt> 
+precedes <tt>u</tt> in the implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>) and 
+otherwise <tt>false</tt>. <ins>The result is a core constant expression if and only 
+if <tt>std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u)</tt> is a core constant expression.</ins></p></li>
+<li><p>(7.2) &mdash; Otherwise, equivalent to: <tt>return std::forward&lt;T&gt;(t) &lt; std::forward&lt;U&gt;(u);</tt></p></li>
+</ol>
+</blockquote>
+</li>
+
+<li><p>Add at the end of 20.14.8.8 <a href="https://timsong-cpp.github.io/cppwp/comparisons.three.way">[comparisons.three.way]</a> (3.1):</p>
+<blockquote>
+<p>
+-3- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; If the expression <tt>std::forward&lt;T&gt;(t) &lt;=&gt; std::forward&lt;U&gt;(u)</tt> results in a call 
+to a built-in operator <tt>&lt;=&gt;</tt> comparing pointers: returns <tt>strong_ordering::less</tt> if (the converted value 
+of) <tt>t</tt> precedes <tt>u</tt> in the implementation-defined strict total order over pointers (3.27 <a href="https://timsong-cpp.github.io/cppwp/defns.order.ptr">[defns.order.ptr]</a>), 
+<tt>strong_ordering::greater</tt> if <tt>u</tt> precedes <tt>t</tt>, and otherwise <tt>strong_ordering::equal</tt>. 
+<ins>The result is a core constant expression if and only if <tt>std::forward&lt;T&gt;(t) &lt;=&gt; std::forward&lt;U&gt;(u)</tt> 
+is a core constant expression.</ins></p></li>
+<li><p>(3.2) &mdash; Otherwise, equivalent to: <tt>return std::forward&lt;T&gt;(t) &lt;=&gt; std::forward&lt;U&gt;(u);</tt></p></li>
+</ol>
 </blockquote>
 </li>
 </ol>
@@ -41422,6 +41511,176 @@ return vformat_to(<ins>std::move(</ins>out<ins>)</ins>, loc, fmt, make_format_ar
 </pre>
 </blockquote>
 </blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3540" href="3540">3540.</a> &sect;[format.arg] There should be no <tt>const</tt> in <tt>basic_format_arg(const T* p)</tt></h3>
+<p><b>Section:</b> 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2021-04-07 <b>Last modified:</b> 2021-04-10 18:01:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.arg">issues</a> in [format.arg].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When <a href="https://wg21.link/p0645r10">P0645R10</a> "Text formatting" was merged into the draft standard, there was 
+a typo: an exposition-only constructor of <tt>basic_format_arg</tt> is declared as accepting <tt>const T*</tt> in the 
+class synopsis, but is later declared to accept <tt>T*</tt>. This was 
+<a href="https://github.com/cplusplus/draft/issues/3461">editorial issue 3461</a> and was resolved by adding 
+<tt>const</tt> to the redeclaration.
+<p/>
+As it is, constructing <tt>basic_format_arg</tt> from <tt>void*</tt> will select 
+<tt>template&lt;class T&gt; explicit basic_format_arg(const T&amp; v)</tt> and store a 
+<tt>basic_format_arg::handle</tt> instead of select <tt>template&lt;class T&gt; basic_format_arg(const T*)</tt> and 
+store a <tt>const void*</tt>, because <tt>void*</tt> &rarr; <tt>void*const&amp;</tt> is identity conversion, while 
+<tt>void*</tt> &rarr; <tt>const void*</tt> is qualification conversion.
+<p/>
+While this technically works, it seems that storing a <tt>const void*</tt> would be more intuitive.
+<p/>
+Hence, I think <tt>const</tt> should be removed from both declarations of <tt>basic_format_arg(const T*)</tt>, 
+so that construction from <tt>void*</tt> will select this constructor, resulting in more intuitive behavior.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Context&gt;
+  class basic_format_arg {
+  public:
+    class handle;
+
+  private:
+    using char_type = typename Context::char_type;                     <i>// exposition only</i>
+
+    variant&lt;monostate, bool, char_type,
+      int, unsigned int, long long int, unsigned long long int,
+      float, double, long double,
+      const char_type*, basic_string_view&lt;char_type&gt;,
+      const void*, handle&gt; value;                                      <i>// exposition only</i>
+
+    template&lt;class T&gt; explicit basic_format_arg(const T&amp; v) noexcept;  <i>// exposition only</i>
+    explicit basic_format_arg(float n) noexcept;                       <i>// exposition only</i>
+    explicit basic_format_arg(double n) noexcept;                      <i>// exposition only</i>
+    explicit basic_format_arg(long double n) noexcept;                 <i>// exposition only</i>
+    explicit basic_format_arg(const char_type* s);                     <i>// exposition only</i>
+
+    template&lt;class traits&gt;
+      explicit basic_format_arg(
+        basic_string_view&lt;char_type, traits&gt; s) noexcept;              <i>// exposition only</i>
+
+    template&lt;class traits, class Allocator&gt;
+      explicit basic_format_arg(
+        const basic_string&lt;char_type, traits, Allocator&gt;&amp; s) noexcept; <i>// exposition only</i>
+    
+    explicit basic_format_arg(nullptr_t) noexcept;                     <i>// exposition only</i>
+
+    template&lt;class T&gt;
+      explicit basic_format_arg(<del>const</del> T* p) noexcept;                  <i>// exposition only</i>
+  public:
+    basic_format_arg() noexcept;
+
+    explicit operator bool() const noexcept;
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;class T&gt; explicit basic_format_arg(<del>const</del> T* p) noexcept;
+</pre>
+<blockquote>
+<p>
+-12- <i>Constraints:</i> <tt>is_void_v&lt;T&gt;</tt> is <tt>true</tt>.
+<p/>
+-13- <i>Effects:</i> Initializes <tt>value</tt> with <tt>p</tt>.
+<p/>
+-14- [<i>Note 1</i>: Constructing <tt>basic_format_arg</tt> from a pointer to a member is ill-formed unless the 
+user provides an enabled specialization of formatter for that pointer to member type. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3541" href="3541">3541.</a> <tt>indirectly_readable_traits</tt> should be SFINAE-friendly for all types</h3>
+<p><b>Section:</b> 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Christopher Di Bella <b>Opened:</b> 2021-04-08 <b>Last modified:</b> 2021-04-11 10:45:55 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#readable.traits">issues</a> in [readable.traits].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Following the outcome of LWG <a href="3446">3446</a>, a strict implementation of <tt>std::indirectly_readable_traits</tt> 
+isn't SFINAE-friendly for types that have different <tt>value_type</tt> and <tt>element_type</tt> members due to 
+the ambiguity between the <tt><i>has-member-value-type</i></tt> and <tt><i>has-member-element-type</i></tt> 
+specialisations. Other traits types are empty when requirements aren't met; we should follow suit here.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.3.2.2 <a href="https://timsong-cpp.github.io/cppwp/readable.traits">[readable.traits]</a> p1 as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class T&gt;
+  concept <i>has-member-value-type</i> = requires { typename T::value_type; }; <i>// exposition only</i>
+
+template&lt;class T&gt;
+  concept <i>has-member-element-type</i> = requires { typename T::element_type; }; <i>// exposition only</i>
+
+template&lt;class&gt; struct indirectly_readable_traits { };
+
+[&hellip;]
+
+template&lt;<i>has-member-value-type</i> T&gt;
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
+
+template&lt;<i>has-member-element-type</i> T&gt;
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::element_type&gt; { };
+  
+template&lt;<i>has-member-value-type</i> T&gt;
+  requires <i>has-member-element-type</i>&lt;T&gt; &amp;&amp;
+           same_as&lt;remove_cv_t&lt;typename T::element_type&gt;, remove_cv_t&lt;typename T::value_type&gt;&gt;
+struct indirectly_readable_traits&lt;T&gt;
+  : <i>cond-value-type</i>&lt;typename T::value_type&gt; { };
+
+<ins>template&lt;<i>has-member-value-type</i> T&gt;
+  requires <i>has-member-element-type</i>&lt;T&gt;
+struct indirectly_readable_traits&lt;T&gt; { };</ins>
+[&hellip;]
+</pre>
 </blockquote>
 </li>
 
