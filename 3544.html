@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3544: format-arg-store::args is unintentionally not exposition-only</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3544" href="lwg-active.html#3544">3544.</a> <tt><i>format-arg-store</i>::args</tt> is unintentionally not exposition-only</h3>
+<p><b>Section:</b> 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-04-22 <b>Last modified:</b> 2021-04-24 16:31:28 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Despite the statement in 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a>/1: 
+</p>
+<blockquote><p>
+An instance of <tt>basic_format_args</tt> provides access to formatting arguments. Implementations should 
+optimize the representation of <tt>basic_format_args</tt> for a small number of formatting arguments.
+[<i>Note 1:</i> For example, by storing indices of type alternatives separately from values and packing 
+the former. &mdash; <i>end note</i>]
+</p></blockquote>
+<p>
+<tt>make_format_args</tt> and <tt>make_wformat_args</tt> are specified to return an object whose type is 
+a specialization of the exposition-only class template <tt><i>format-arg-store</i></tt> which has a public 
+non-static data member that is an <tt>array</tt> of <tt>basic_format_arg</tt>. In order to actually 
+"optimize the representation of <tt>basic_format_args</tt>" an implementation must internally avoid using 
+<tt>make_format_args</tt> (and <tt>make_wformat_args</tt>) and instead use a different mechanism to type-erase 
+arguments. <tt>basic_format_args</tt> must still be convertible from <tt><i>format-arg-store</i></tt> as 
+specified, however, so internally <tt>basic_format_args</tt> must support both the bad/slow standard mechanism 
+and a good/fast internal-only mechanism for argument storage.
+<p/>
+While this complicated state of affairs is technically implementable, it greatly complicates the implementation 
+of <tt>&lt;format&gt;</tt> with no commensurate benefit. Indeed, naive users may make the mistake of thinking 
+that e.g. <tt>vformat(fmt, make_format_args(args...))</tt> is as efficient as <tt>format(fmt, args...)</tt> &mdash; 
+that's what the "<i>Effects:</i> Equivalent to" in 20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/2 implies &mdash; and 
+inadvertently introduce performance regressions. It would be better for both implementers and users if 
+<tt><i>format-arg-store</i></tt> had no public data members and its member <tt>args</tt> were made exposition-only.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.1 <a href="https://timsong-cpp.github.io/cppwp/format.syn">[format.syn]</a>, header <tt>&lt;format&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a>, class template format-arg-store</i>
+template&lt;class Context, class... Args&gt; <del>struct</del><ins>class</ins> <i>format-arg-store</i>; <i>// exposition only</i>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Context, class... Args&gt;
+  <del>struct</del><ins>class</ins> <i>format-arg-store</i> { <i>// exposition only</i>
+    array&lt;basic_format_arg&lt;Context&gt;, sizeof...(Args)&gt; args; <ins><i>// exposition only</i></ins>
+  };
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
