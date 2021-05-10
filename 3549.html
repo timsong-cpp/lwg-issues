@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3549: view_interface is overspecified to derive from view_base</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3549" href="lwg-active.html#3549">3549.</a> <tt>view_interface</tt> is overspecified to derive from <tt>view_base</tt></h3>
+<p><b>Section:</b> 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a>, 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-05-09 <b>Last modified:</b> 2021-05-09 21:46:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>view_interface&lt;D&gt;</tt> is currently specified to publicly derive from
+<tt>view_base</tt>. This derivation requires unnecessary padding in range adaptors
+like <tt>reverse_view&lt;V&gt;</tt>: the <tt>view_base</tt> subobject of the
+<tt>reverse_view</tt> is required to reside at a different address than the
+<tt>view_base</tt> subobject of <tt>V</tt> (assuming that <tt>V</tt> similarly
+opted into being a view through derivation from <tt>view_interface</tt> or
+<tt>view_base</tt>).
+<p/>
+This appears to be a case of overspecification: we want public and unambiguous
+derivation from <tt>view_interface</tt> to make the class a <tt>view</tt>; the exact
+mechanism of how that opt-in is accomplished should have been left as an
+implementation detail.
+<p/>
+The proposed resolution below has been implemented on top of libstdc++ master
+and passes its ranges testsuite, with the exception of a test that checks for the size of
+various range adaptors (and therefore asserts the existence of
+<tt>view_base</tt>-induced padding).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class T&gt;
+  inline constexpr bool <i>is-derived-from-view-interface</i> = <i>see below</i>;   // exposition only</ins>
+template&lt;class T&gt;
+  inline constexpr bool enable_view = derived_from&lt;T, view_base&gt; <ins>|| <i>is-derived-from-view-interface</i>&lt;T&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+<ins>-?- For a type <tt>T</tt>, <tt><i>is-derived-from-view-interface</i>&lt;T&gt;</tt>
+is <tt>true</tt> if and only if <tt>T</tt> has exactly one public base class
+<tt>view_interface&lt;U&gt;</tt> for some type <tt>U</tt> and
+<tt>T</tt> has no base classes of type <tt>view_interface&lt;V&gt;</tt> for any
+other type <tt>V</tt>.</ins>
+<p/>
+-5- Remarks: Pursuant to 16.4.5.2.1 <a href="https://timsong-cpp.github.io/cppwp/namespace.std">[namespace.std]</a>, users may specialize
+<tt>enable_view</tt> to <tt>true</tt> for cv-unqualified program-defined types which
+model <tt>view</tt>, and <tt>false</tt> for types which do not. Such specializations
+shall be usable in constant expressions (7.7 <a href="https://timsong-cpp.github.io/cppwp/expr.const">[expr.const]</a>) and have
+type <tt>const bool</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+<li>
+<p>Modify 24.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a> as indicated: </p>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class D&gt;
+    requires is_class_v&lt;D&gt; &amp;&amp; same_as&lt;D, remove_cv_t&lt;D&gt;&gt;
+  class view_interface <del>: public view_base</del> {
+
+  [&hellip;]
+
+  };
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
