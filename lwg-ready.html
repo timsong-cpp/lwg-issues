@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2021-05-09 at 21:46:47 UTC</p>
+<td align="left"><p>Revised 2021-05-15 at 17:07:53 UTC</p>
 </td>
 </tr>
 <tr>
@@ -2886,6 +2886,242 @@ struct indirectly_readable_traits&lt;T&gt;
 </li>
 
 </ol>
+
+
+
+
+<hr>
+<h3><a name="3542" href="3542">3542.</a> <tt>basic_format_arg</tt> mis-handles <tt>basic_string_view</tt> with custom traits</h3>
+<p><b>Section:</b> 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-04-20 <b>Last modified:</b> 2021-05-10 16:23:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.arg">active issues</a> in [format.arg].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.arg">issues</a> in [format.arg].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>basic_format_arg</tt> has a constructor that accepts a <tt>basic_string_view</tt> of an appropriate character type, 
+with <em>any</em> <tt>traits</tt> type. The constructor is specified in 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> as:
+</p>
+<blockquote><pre>
+template&lt;class traits&gt;
+explicit basic_format_arg(basic_string_view&lt;char_type, traits&gt; s) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Initializes <tt>value</tt> with <tt>s</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+Recall that <tt>value</tt> is a <tt>variant&lt;monostate, bool, char_type, int, unsigned int, long long int, 
+unsigned long long int, float, double, long double, const char_type*, basic_string_view&lt;char_type&gt;, const void*, handle&gt;</tt> 
+as specified earlier in the subclause. Since <tt>basic_string_view&lt;<i>meow</i>, <i>woof</i>&gt;</tt> cannot be 
+initialized with an lvalue <tt>basic_string_view&lt;<i>meow</i>, <i>quack</i>&gt;</tt> &mdash; and certainly none 
+of the other alternative types can be initialized by such an lvalue &mdash; the effects of this constructor are 
+ill-formed when <tt>traits</tt> is not <tt>std::char_traits&lt;char_type&gt;</tt>.
+<p/>
+The <tt>basic_string</tt> constructor deals with this same issue by ignoring the deduced traits type when initializing 
+<tt>value</tt>'s <tt>basic_string_view</tt> member:
+</p>
+<blockquote><pre>
+template&lt;class traits, class Allocator&gt;
+  explicit basic_format_arg(
+    const basic_string&lt;char_type, traits, Allocator&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects:</i> Initializes <tt>value</tt> with <tt>basic_string_view&lt;char_type&gt;(s.data(), s.size())</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+which immediately begs the question of "why doesn't the <tt>basic_string_view</tt> constructor do the same?"
+</p>
+
+<p><i>[2021-05-10; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class traits&gt;
+  explicit basic_format_arg(basic_string_view&lt;char_type, traits&gt; s) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Initializes <tt>value</tt> with <tt><del>s</del><ins>basic_string_view&lt;char_type&gt;(s.data(), s.size())</ins></tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3543" href="3543">3543.</a> Definition of when <tt>counted_iterators</tt> refer to the same sequence isn't quite right</h3>
+<p><b>Section:</b> 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-04-21 <b>Last modified:</b> 2021-05-10 16:23:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#counted.iterator">active issues</a> in [counted.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#counted.iterator">issues</a> in [counted.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>/3 says:
+</p>
+<blockquote><p>
+Two values <tt>i1</tt> and <tt>i2</tt> of types <tt>counted_iterator&lt;I1&gt;</tt> and
+<tt>counted_iterator&lt;I2&gt;</tt> refer to elements of the same sequence if and
+only if <tt>next(i1.base(), i1.count())</tt> and <tt>next(i2.base(), i2.count())</tt>
+refer to the same (possibly past-the-end) element.
+</p></blockquote>
+<p>
+However, some users of <tt>counted_iterator</tt> (such as <tt>take_view</tt>) don't guarantee that 
+there are <tt>count()</tt> elements past <tt>base()</tt>. It seems that we need to rephrase this 
+definition to account for such uses.
+</p>
+
+<p><i>[2021-05-10; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Two values <tt>i1</tt> and <tt>i2</tt> of types <tt>counted_iterator&lt;I1&gt;</tt> and 
+<tt>counted_iterator&lt;I2&gt;</tt> refer to elements of the same sequence if and only if 
+<ins>there exists some integer <tt><i>n</i></tt> such that</ins> <tt>next(i1.base(), 
+i1.count() <ins>+ <i>n</i></ins>)</tt> and <tt>next(i2.base(), i2.count() <ins>+ <i>n</i></ins>)</tt> 
+refer to the same (possibly past-the-end) element.</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3546" href="3546">3546.</a> <tt>common_iterator</tt>'s <tt><i>postfix-proxy</i></tt> is not quite right</h3>
+<p><b>Section:</b> 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-04-23 <b>Last modified:</b> 2021-05-10 16:23:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/p2259r1">P2259R1</a> modeled <tt>common_iterator::operator++(int)</tt>'s 
+<tt><i>postfix-proxy</i></tt> class on the existing proxy class used by <tt>common_iterator::operator-&gt;</tt>, 
+but in doing so it overlooked two differences:
+</p>
+<ul>
+<li><p><tt>operator-&gt;</tt>'s proxy is only used when <tt>iter_reference_t&lt;I&gt;</tt> is not a
+reference type; this is not the case for <tt><i>postfix-proxy</i></tt>;</p></li>
+<li><p><tt>operator-&gt;</tt> returns a prvalue proxy, while <tt>operator++</tt>'s <tt><i>postfix-proxy</i></tt>
+is returned by (elidable) move, so the latter needs to require <tt>iter_value_t&lt;I&gt;</tt> to be 
+<tt>move_constructible</tt>.</p></li>
+</ul>
+<p>
+The proposed wording has been implemented and tested.
+</p>
+
+<p><i>[2021-05-10; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+decltype(auto) operator++(int);
+</pre>
+<blockquote>
+<p>
+-4- <i>Preconditions:</i> <tt>holds_alternative&lt;I&gt;(v_)</tt> is <tt>true</tt>.
+<p/>
+-5- <i>Effects:</i> If <tt>I</tt> models <tt>forward_iterator</tt>, equivalent to:
+</p>
+<blockquote><pre>
+common_iterator tmp = *this;
+++*this;
+return tmp;
+</pre></blockquote>
+<p>
+Otherwise, if <tt>requires (I&amp; i) { { *i++ } -&gt; <i>can-reference</i>; }</tt> is <tt>true</tt> 
+or <tt>constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt; <ins>&amp;&amp;
+move_constructible&lt;iter_value_t&lt;I&gt;&gt;</ins></tt> is <tt>false</tt>, equivalent to:
+</p>
+<blockquote><pre>
+return get&lt;I&gt;(v_)++;
+</pre></blockquote>
+<p>
+Otherwise, equivalent to:
+</p>
+<blockquote><pre>
+<i>postfix-proxy</i> p(**this);
+++*this;
+return p;
+</pre></blockquote>
+<p>
+where <tt><i>postfix-proxy</i></tt> is the exposition-only class:
+</p>
+<blockquote><pre>
+class <i>postfix-proxy</i> {
+  iter_value_t&lt;I&gt; keep_;
+  <i>postfix-proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
+    : keep_(std::<del>move</del><ins>forward&lt;iter_reference_t&lt;I&gt;&gt;</ins>(x)) {}
+public:
+  const iter_value_t&lt;I&gt;&amp; operator*() const {
+    return keep_;
+  }
+};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 
