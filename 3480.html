@@ -46,13 +46,13 @@
 <hr>
 <h3><a name="3480" href="lwg-active.html#3480">3480.</a> <tt>directory_iterator</tt> and <tt>recursive_directory_iterator</tt> are not C++20 ranges</h3>
 <p><b>Section:</b> 29.11.11 <a href="https://timsong-cpp.github.io/cppwp/fs.class.directory.iterator">[fs.class.directory.iterator]</a>, 29.11.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-27 <b>Last modified:</b> 2021-02-22 17:56:51 UTC</p>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-27 <b>Last modified:</b> 2021-05-18 04:18:44 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-<tt>std::filesystem::directory_iterator</tt> and <tt>std::filesystem::recursive_directory_iterator</tt> are 
+<tt>std::filesystem::directory_iterator</tt> and <tt>std::filesystem::recursive_directory_iterator</tt> are
 intended to be ranges, but both fail to satisfy the concept <tt>std::ranges::range</tt>.
 <p/>
 They both opt in to being a range the same way, via non-member functions:
@@ -65,7 +65,7 @@ recursive_directory_iterator begin(recursive_directory_iterator iter) noexcept;
 recursive_directory_iterator end(const recursive_directory_iterator&amp;) noexcept;
 </pre></blockquote>
 <p>
-This is good enough for a range-based for statement, but for the <tt>range</tt> concept, non-member 
+This is good enough for a range-based for statement, but for the <tt>range</tt> concept, non-member
 <tt>end</tt> is looked up in a context that includes (24.3.3 <a href="https://timsong-cpp.github.io/cppwp/range.access.end">[range.access.end]</a>/2.6) the declarations:
 </p>
 <blockquote><pre>
@@ -73,20 +73,20 @@ void end(auto&amp;) = delete;
 void end(const auto&amp;) = delete;
 </pre></blockquote>
 <p>
-Which means that non-<tt>const</tt> <tt>directory_iterator</tt> and non-<tt>const</tt> 
-<tt>recursive_directory_iterator</tt>, the <tt>void end(auto&amp;)</tt> overload ends up being 
-a better match and thus the CPO <tt>ranges::end</tt> doesn't find a candidate. Which means that 
-<tt>{recursive_,}directory_iterator</tt> is not a range, even though <tt>const {recursive_,}directory_iterator</tt> 
+Which means that non-<tt>const</tt> <tt>directory_iterator</tt> and non-<tt>const</tt>
+<tt>recursive_directory_iterator</tt>, the <tt>void end(auto&amp;)</tt> overload ends up being
+a better match and thus the CPO <tt>ranges::end</tt> doesn't find a candidate. Which means that
+<tt>{recursive_,}directory_iterator</tt> is not a range, even though <tt>const {recursive_,}directory_iterator</tt>
 <em>is</em> a range.
 <p/>
-This could be fixed by having the non-member <tt>end</tt> for both of these types just take by value 
-(as libstdc++ currently does anyway) or by adding member functions <tt>begin() const</tt> and <tt>end() const</tt>. 
+This could be fixed by having the non-member <tt>end</tt> for both of these types just take by value
+(as libstdc++ currently does anyway) or by adding member functions <tt>begin() const</tt> and <tt>end() const</tt>.
 <p/>
-A broader direction would be to consider removing the poison pill overloads. Their motivation from 
-<a href="https://wg21.link/p0970">P0970</a> was to support what are now called borrowed ranges &mdash; but 
-that design now is based on specializing a variable template instead of providing a non-member <tt>begin</tt> 
-that takes an rvalue, so the initial motivation simply no longer exists. And, in this particular case, 
-causes harm. 
+A broader direction would be to consider removing the poison pill overloads. Their motivation from
+<a href="https://wg21.link/p0970">P0970</a> was to support what are now called borrowed ranges &mdash; but
+that design now is based on specializing a variable template instead of providing a non-member <tt>begin</tt>
+that takes an rvalue, so the initial motivation simply no longer exists. And, in this particular case,
+causes harm.
 </p>
 
 <p><i>[2020-09-06; Reflector prioritization]</i></p>
@@ -98,14 +98,110 @@ Set priority to 3 during reflector discussions.
 <p><i>[2021-02-22, Barry Revzin comments]</i></p>
 
 <p>
-When we do make whichever of the alternative adjustments necessary such that 
+When we do make whichever of the alternative adjustments necessary such that
 <tt>range&lt;directory_iterator&gt;</tt> is <tt>true</tt>, we should also remember
 to specialize <tt>enable_borrowed_range</tt> for both types to be <tt>true</tt> (since
 the iterator is the range, this is kind of trivially true).
 </p>
 
+<p><i>[2021-05-17, Tim provides wording]</i></p>
+
+<p>
+Both MSVC and libstdc++'s <tt>end</tt> already take its argument by value, so
+the wording below just does that. Any discussion about changing or removing the
+poison pills is probably better suited for a paper.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+<ol>
+<li>
+<p>Edit 29.11.4 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+[&hellip;]
+namespace std::filesystem {
+  [&hellip;]
+
+  // 29.11.11.3 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.nonmembers">[fs.dir.itr.nonmembers]</a>, range access for directory iterators
+  directory_iterator begin(directory_iterator iter) noexcept;
+  directory_iterator end(<del>const</del> directory_iterator<del>&amp;</del>) noexcept;
+
+  [&hellip;]
+
+  // 29.11.12.3 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.nonmembers">[fs.rec.dir.itr.nonmembers]</a>, range access for recursive directory iterators
+  recursive_directory_iterator begin(recursive_directory_iterator iter) noexcept;
+  recursive_directory_iterator end(<del>const</del> recursive_directory_iterator<del>&amp;</del>) noexcept;
+
+  [&hellip;]
+}
+
+<ins>
+namespace std::ranges {
+  template&lt;&gt;
+  inline constexpr bool enable_borrowed_range&lt;filesystem::directory_iterator&gt; = true;
+  template&lt;&gt;
+  inline constexpr bool enable_borrowed_range&lt;filesystem::recursive_directory_iterator&gt; = true;
+
+  template&lt;&gt;
+  inline constexpr bool enable_view&lt;filesystem::directory_iterator&gt; = true;
+  template&lt;&gt;
+  inline constexpr bool enable_view&lt;filesystem::recursive_directory_iterator&gt; = true;
+}
+</ins>
+</pre>
+</blockquote>
+</li>
+<li>
+<p>Edit 29.11.11.3 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.nonmembers">[fs.dir.itr.nonmembers]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- These functions enable range access for <tt>directory_iterator</tt>.
+</p>
+<pre>
+directory_iterator begin(directory_iterator iter) noexcept;
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns</i>: <tt>iter</tt>.
+</p>
+</blockquote>
+<pre>
+directory_iterator end(<del>const</del> directory_iterator<del>&amp;</del>) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: <tt>directory_iterator()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p>Edit 29.11.12.3 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.nonmembers">[fs.rec.dir.itr.nonmembers]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- These functions enable use of <tt>recursive_directory_iterator</tt> with range-based for statements.
+</p>
+<pre>
+recursive_directory_iterator begin(recursive_directory_iterator iter) noexcept;
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns</i>: <tt>iter</tt>.
+</p>
+</blockquote>
+<pre>
+recursive_directory_iterator end(<del>const</del> recursive_directory_iterator<del>&amp;</del>) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: <tt>recursive_directory_iterator()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 

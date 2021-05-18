@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3493" href="lwg-active.html#3493">3493.</a> The constructor of <tt>std::function</tt> taking an <tt>F</tt> is missing a constraint</h3>
 <p><b>Section:</b> 20.14.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-10-31 <b>Last modified:</b> 2021-01-15 21:45:23 UTC</p>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-10-31 <b>Last modified:</b> 2021-05-18 01:56:01 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
@@ -54,7 +54,7 @@
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-In <a href="https://wg21.link/p0288">P0288</a>, <tt>any_invocable</tt> is (correctly) constraining 
+In <a href="https://wg21.link/p0288">P0288</a>, <tt>any_invocable</tt> is (correctly) constraining
 its constructor that takes an <tt>F</tt>:
 </p>
 <blockquote>
@@ -75,13 +75,13 @@ Let <tt>VT</tt> be <tt>decay_t&lt;F&gt;</tt>.
 </blockquote>
 </blockquote>
 <p>
-<tt>std::function</tt> doesn't do that. According to <a href="https://wg21.link/n4868">N4868</a>, 
-20.14.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> p8 has a constraint for Lvalue-Callable, but not for 
-copy-constructibility. There is a precondition in p9, but that's not enough for portable 
+<tt>std::function</tt> doesn't do that. According to <a href="https://wg21.link/n4868">N4868</a>,
+20.14.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> p8 has a constraint for Lvalue-Callable, but not for
+copy-constructibility. There is a precondition in p9, but that's not enough for portable
 well/ill-formedness.
 <p/>
-Since this is a constructor, and we want to give the right answer to 
-<tt>is_constructible</tt>/<tt>constructible_from</tt> queries, we should 
+Since this is a constructor, and we want to give the right answer to
+<tt>is_constructible</tt>/<tt>constructible_from</tt> queries, we should
 add the relevant constraint.
 </p>
 
@@ -97,11 +97,47 @@ This issue has some overlap with LWG <a href="2774">2774</a>.
 Set priority to 3 following reflector and telecon discussions.
 </p>
 
+<p><i>[2021-05-17; Tim comments]</i></p>
+
+<p>
+The new constraint causes constraint recursion in an example like:
+</p>
+<blockquote>
+<pre>
+struct C {
+    explicit C(std::function&lt;void()&gt;); // #1
+    void operator()() {}
+};
+static_assert(std::is_constructible_v&lt;C, const C&amp;&gt;);
+</pre>
+</blockquote>
+<p>
+Here, to determine whether a <tt>C</tt> can be constructed from a <tt>const C</tt>
+lvalue, the overload resolution will attempt to determine whether the constructor
+marked <tt>#1</tt> is a viable candidate, which involves a determination of
+whether that lvalue can be implicitly converted to a <tt>std::function&lt;void()&gt;</tt>,
+which, with the new constraint, requires a determination whether
+<tt>C</tt> is copy-constructible &mdash; in other words, whether it can be constructed
+from a <tt>C</tt> lvalue.
+<p/>
+This is similar to LWG <a href="3420">3420</a>: in both cases we have a class
+(<tt>filesystem::path</tt> there, <tt>function</tt> here) that is
+convertible from every type that are, <i>inter alia</i>, copy constructible,
+and this then results in constraint recursion when we ask whether a different
+type that is constructible from such a class is copy constructible.
+<p/>
+The <tt>C</tt> above is reduced from an internal helper type in libstdc++. Given
+the ubiquity of call wrappers &mdash; types that are callable in their own right
+and therefore may not be able to be ruled out by the Lvalue-Callable constraint,
+and can also naturally have a constructor that take the wrapped function object
+as the argument, triggering the recursion scenario &mdash; it is not clear that
+there is a good way to add this constraint without causing undue breakage.
+</p>
 
 
 <p><b>Proposed resolution:</b></p>
 <p>
-This wording is relative to <a href="https://wg21.link/n4868">N4868</a>. 
+This wording is relative to <a href="https://wg21.link/n4868">N4868</a>.
 </p>
 
 <ol>
@@ -116,8 +152,8 @@ template&lt;class F&gt; function(F f);
 </pre>
 <blockquote>
 <p>
--8- <i>Constraints:</i> <tt>F</tt> is Lvalue-Callable (20.14.17.3.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.general">[func.wrap.func.general]</a>) for 
-argument types <tt>ArgTypes...</tt> and return type <tt>R</tt><ins>, and 
+-8- <i>Constraints:</i> <tt>F</tt> is Lvalue-Callable (20.14.17.3.1 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.general">[func.wrap.func.general]</a>) for
+argument types <tt>ArgTypes...</tt> and return type <tt>R</tt><ins>, and
 <tt>is_copy_constructible_v&lt;F&gt;</tt> is <tt>true</tt></ins>.
 <p/>
 -9- <i>Preconditions:</i> <tt>F</tt> meets the <i>Cpp17CopyConstructible</i> requirements.
