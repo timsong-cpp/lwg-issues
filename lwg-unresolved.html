@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-05-18 at 09:43:39 UTC</p>
+<p><p>Revised 2021-05-19 at 04:45:25 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -11785,7 +11785,7 @@ much because it would still hold for all refined forms.
 <hr>
 <h3><a name="2381" href="2381">2381.</a> Inconsistency in parsing floating point numbers</h3>
 <p><b>Section:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2018-08-24 13:31:33 UTC</p>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2021-05-19 04:45:25 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#facet.num.get.virtuals">active issues</a> in [facet.num.get.virtuals].</p>
@@ -11809,7 +11809,7 @@ rules of one of the functions declared in the header <tt>&lt;cstdlib&gt;</tt>:
 This implies that for many cases, this routine should return true:
 </p>
 <blockquote><pre>
-bool is_same(const char* p) 
+bool is_same(const char* p)
 {
   std::string str{p};
   double val1 = std::strtod(str.c_str(), nullptr);
@@ -11851,7 +11851,7 @@ assert(is_same("-infinity"));
 These are all strings that are correctly parsed by <tt>std::strtod</tt>, but not by the stream extraction operators.
 They contain characters that are deemed invalid in stage 2 of parsing.
 <p/>
-If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that 
+If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that
 <tt>strtold</tt> accepts.
 </p>
 
@@ -11901,11 +11901,11 @@ Examples added.
 
 <p>Needs an Annex C entry. Tim to write Annex C.</p>
 
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>This wording is relative to N4606.</p>
 
-<ol> 
+<ol>
 <li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
 
 <blockquote>
@@ -11932,6 +11932,95 @@ Examples added.
 </p>
 </blockquote>
 <p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-05-18 Tim updates wording]</i></p>
+
+<p>Based on the git history, libc++ appears to have always included
+<tt>p</tt> and <tt>P</tt> in <tt>src</tt>.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+
+<blockquote>
+<p>
+&mdash; Stage 2:
+<p/>
+If <tt>in == end</tt> then stage 2 terminates. Otherwise a <tt>charT</tt>
+is taken from <tt>in</tt> and local variables are initialized as if by
+</p>
+<blockquote>
+<pre>
+char_type ct = *in;
+char c = src[find(atoms, atoms + sizeof(src) - 1, ct) - atoms];
+if (ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).decimal_point())
+c = '.';
+bool discard =
+  ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).thousands_sep()
+  &amp;&amp; use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).grouping().length() != 0;
+</pre>
+</blockquote>
+<p>
+where the values <tt>src</tt> and <tt>atoms</tt> are defined as if by:
+</p>
+<blockquote>
+<pre>
+static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";
+char_type atoms[sizeof(src)];
+use_facet&lt;ctype&lt;charT&gt;&gt;(loc).widen(src, src + sizeof(src), atoms);
+</pre>
+</blockquote>
+<p>
+for this value of <tt>loc</tt>.
+<p/>
+If <tt>discard</tt> is true, then if <tt>'.'</tt> has not yet been accumulated,
+then the position of the character is remembered, but the character is otherwise
+ignored. Otherwise, if <tt>'.'</tt> has already been accumulated, the character
+is discarded and Stage 2 terminates. If it is not discarded, then a check is
+made to determine if <tt>c</tt>> is allowed as the next character of an input
+field of the conversion specifier returned by Stage 1. If so, it is accumulated.
+<p/>
+If the character is either discarded or accumulated then <tt>in</tt> is advanced
+by <tt>++in</tt> and processing returns to the beginning of stage 2.
+<p/>
+<ins>[<i>Example:</i></ins>
+</p>
+<blockquote>
+<p>
+<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
+</p>
+<ul>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
+</ul>
+<p>
+<ins>In all cases, the remainder is left in the input.</ins>
+</p>
+</blockquote>
+<p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+<li>
+<p>Add the following new subclause to C.4 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp03">[diff.cpp03]</a>:</p>
+<blockquote>
+<p>
+<ins><b>C.4.? [locale]: localization library [diff.cpp03.locale]</b></ins>
+<p/>
+<ins><b>Affected subclause:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a><br/>
+<b>Change:</b> The <tt>num_get</tt> facet recognizes hexadecimal floating point values.<br/>
+<b>Rationale:</b> Required by new feature.<br/>
+<b>Effect on original feature:</b> Valid C++2003 code may have different behavior in this
+revision of C++.
+</ins>
+</p>
 </blockquote>
 </li>
 </ol>
@@ -33505,34 +33594,34 @@ removing the note might not be the only option to consider.
 <hr>
 <h3><a name="3407" href="3407">3407.</a> Some problems with the wording changes of <a href="https://wg21.link/p1739r4">P1739R4</a></h3>
 <p><b>Section:</b> 24.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a>, 24.6.4 <a href="https://timsong-cpp.github.io/cppwp/range.iota">[range.iota]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-21 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-21 <b>Last modified:</b> 2021-05-19 03:41:19 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Section 6.1 of <a href="https://wg21.link/p1739r4">P1739R4</a> changes the specification of 
+Section 6.1 of <a href="https://wg21.link/p1739r4">P1739R4</a> changes the specification of
 <tt>views::take</tt> as follows:
 </p>
 <blockquote>
 <p>
 -2- The name <tt>views::take</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
-<del>Given subexpressions <tt>E</tt> and <tt>F</tt>, the expression <tt>views::take(E, F)</tt> is 
+<del>Given subexpressions <tt>E</tt> and <tt>F</tt>, the expression <tt>views::take(E, F)</tt> is
 expression-equivalent to <tt>take_view{E, F}</tt>.</del>
 <ins>Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
 and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
-If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt> 
+If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt>
 is ill-formed. Otherwise, the expression <tt>views::take(E, F)</tt> is expression-equivalent to:</ins>
 </p>
 <ol style="list-style-type: none">
-<li><p><ins>&mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>), 
+<li><p><ins>&mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
 then <tt>((void) F, <i>decay-copy</i>(E))</tt>;</ins>
 </p></li>
-<li><p><ins>&mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt> and 
+<li><p><ins>&mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt> and
 is</ins>
 </p>
 <ol style="list-style-type: none">
-<li><p><ins>&mdash; a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where 
+<li><p><ins>&mdash; a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where
 <tt>T::extent == dynamic_extent</tt>,</ins></p></li>
 <li><p><ins>&mdash; a specialization of <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>),</ins></p></li>
 <li><p><ins>&mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</ins></p></li>
@@ -33561,26 +33650,26 @@ constructor that takes an <tt>iterator-iterator</tt> pair.
 More generally the above issue applies anytime <tt>T</tt> is a specialization of
 <tt>subrange</tt> that does not model <tt>common_range</tt>. But a similar issue also
 exists when <tt>T</tt> is a specialization of <tt>iota_view</tt> whose value type differs
-from its bound type. In this case yet another issue arises: In order for the expression 
-<tt><i>(*)</i></tt> to be well-formed when <tt>T</tt> is a specialization of <tt>iota_view</tt>, 
-we need to be able to construct an <tt>iota_view</tt> out of an <tt>iterator-iterator</tt> pair, 
+from its bound type. In this case yet another issue arises: In order for the expression
+<tt><i>(*)</i></tt> to be well-formed when <tt>T</tt> is a specialization of <tt>iota_view</tt>,
+we need to be able to construct an <tt>iota_view</tt> out of an <tt>iterator-iterator</tt> pair,
 and for that it seems we need to add another constructor to <tt>iota_view</tt>.
 </p>
 
 <p><i>[2020-02-24, Casey comments]</i></p>
 
 <p>
-Furthermore, the pertinent subrange constructor is only available when <tt>subrange::StoreSize</tt> is 
-<tt>false</tt> (i.e., when either the <tt>subrange</tt> specialization's third template argument is 
-not <tt>subrange_kind::sized</tt> or its iterator and sentinel types <tt>I</tt> and <tt>S</tt> model 
+Furthermore, the pertinent subrange constructor is only available when <tt>subrange::StoreSize</tt> is
+<tt>false</tt> (i.e., when either the <tt>subrange</tt> specialization's third template argument is
+not <tt>subrange_kind::sized</tt> or its iterator and sentinel types <tt>I</tt> and <tt>S</tt> model
 <tt>sized_sentinel_for&lt;S, I&gt;</tt>).
 </p>
 
 <p><i>[2020-03-16, Tomasz comments]</i></p>
 
 <p>
-A similar problem occurs for the <tt>views::drop</tt> for the <tt>subrange&lt;I, S, subrange_kind::sized&gt;</tt>, 
-that explicitly stores size (i.e. <tt>sized_sentinel_for&lt;I, S&gt;</tt> is <tt>false</tt>). In such case, 
+A similar problem occurs for the <tt>views::drop</tt> for the <tt>subrange&lt;I, S, subrange_kind::sized&gt;</tt>,
+that explicitly stores size (i.e. <tt>sized_sentinel_for&lt;I, S&gt;</tt> is <tt>false</tt>). In such case,
 the <tt>(iterator, sentinel)</tt> constructor that <tt>views::drop</tt> will be expression-equivalent is
 not available.
 </p>
@@ -33589,8 +33678,102 @@ not available.
 
 <p>Priority to 2 after reflector discussion.</p>
 
+<p><i>[2021-05-18 Tim adds wording]</i></p>
+
+<p>The proposed resolution below is based on the MSVC implementation, with one caveat:
+the MSVC implementation uses a SCARY iterator type for <tt>iota_view</tt> and therefore
+its <tt>iota_view</tt> case for <tt>take</tt> is able to directly construct the new view
+from the iterator type of the original. This is not required to work, so the wording below
+constructs the <tt>iota_view</tt> from the result of dereferencing the iterators instead
+in this case.
+</p>
+
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a> and includes the
+changes to these paragraphs made by <a href="https://wg21.link/P2367R0">P2367R0</a>.</p>
+<ol>
+<li>
+<p>Edit 24.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a> as indicated: </p>
+<blockquote>
+<p>
+-2- The name <tt>views::take</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
+and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
+If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt>
+is ill-formed. Otherwise, the expression <tt>views::take(E, F)</tt> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
+then <tt>((void) F, <i>decay-copy</i>(E))</tt><ins>, except that the evaluations of <tt>E</tt>
+and <tt>F</tt> are indeterminately sequenced</ins>;
+</p></li>
+<li><p>(2.2) &mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt>,
+and is <ins>a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>), <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>),
+or <tt>ranges::subrange</tt> (24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>),
+then <tt>U(ranges::begin(E), ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F))</tt>,
+except that <tt>E</tt> is evaluated only once, where <tt>U</tt> is a type determined as follows:</ins>
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.2.1) &mdash; <ins>if <tt>T</tt> is</ins> a specialization of <tt>span</tt> <del>(22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where
+<tt>T::extent == dynamic_extent</tt></del>,<ins> then <tt>U</tt> is <tt>span&lt;typename T::element_type&gt;</tt>;</ins></p></li>
+<li><p>(2.2.2) &mdash; <ins>otherwise, if <tt>T</tt> is</ins> a specialization of <tt>basic_string_view</tt> <del>(21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>)</del>, <ins>then <tt>U</tt> is <tt>T</tt>;</ins></p></li>
+<li><p><del>(2.2.3) &mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</del></p></li>
+<li><p>(2.2.4) &mdash; <ins>otherwise, <tt>T</tt> is</ins> a specialization of <tt>ranges::subrange</tt> <del>(24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>)</del>,
+<ins>and <tt>U</tt> is <tt>ranges::subrange&lt;iterator_t&lt;T&gt;&gt;</tt>;</ins></p></li>
+</ol>
+<p><del>then <tt>T{ranges::begin(E), ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F)}</tt>,
+except that <tt>E</tt> is evaluated only once;</del>
+</p></li>
+<li><p><ins>(2.?) &mdash; otherwise, if <tt>T</tt> is a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>)
+that models <tt>random_access_range</tt> and <tt>sized_range</tt>, then
+<tt>ranges::iota_view(*ranges::begin(E), *(ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F)))</tt>,
+except that <tt>E</tt> and <tt>F</tt> are each evaluated only once;</ins></p></li>
+<li><p>(2.3) &mdash; otherwise, <tt>ranges::take_view<del>{</del><ins>(</ins>E, F<ins>)</ins><del>}</del></tt>.
+</p></li>
+</ol>
+</blockquote>
+</li>
+<li>
+<p>Edit 24.7.9.1 <a href="https://timsong-cpp.github.io/cppwp/range.drop.overview">[range.drop.overview]</a> as indicated: </p>
+<blockquote>
+<p>
+-2- The name <tt>views::drop</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
+and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
+If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::drop(E, F)</tt>
+is ill-formed. Otherwise, the expression <tt>views::drop(E, F)</tt> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
+then <tt>((void) F, <i>decay-copy</i>(E))</tt><ins>, except that the evaluations of <tt>E</tt>
+and <tt>F</tt> are indeterminately sequenced</ins>;
+</p></li>
+<li><p>(2.2) &mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt>,
+and is
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.2.1) &mdash;a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) <del>where
+<tt>T::extent == dynamic_extent</tt></del>,</p></li>
+<li><p>(2.2.2) &mdash; a specialization of <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>), </p></li>
+<li><p>(2.2.3) &mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</p></li>
+<li><p>(2.2.4) &mdash; a specialization of <tt>ranges::subrange</tt> (24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>)
+<ins>where <tt>T::<i>StoreSize</i></tt> is <tt>false</tt></ins>,</p></li>
+</ol>
+<p>then <tt><del>T{</del><ins>U(</ins>ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F), ranges::end(E)<ins>)</ins><del>}</del></tt>,
+except that <tt>E</tt> is evaluated only once<ins>, where <tt>U</tt> is <tt>span&lt;typename T::element_type&gt;</tt>
+if <tt>T</tt> is a specialization of <tt>span</tt> and <tt>T</tt> otherwise</ins>;
+</p></li>
+<li><p><ins>(2.?) &mdash; otherwise, if <tt>T</tt> is a specialization of <tt>ranges::subrange</tt>
+(24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>) that models <tt>random_access_range</tt> and <tt>sized_range</tt>, then
+<tt>T(ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F), ranges::end(E), ranges::size(E) - min&lt;D&gt;(ranges::size(E), F))</tt>,
+except that <tt>E</tt> and <tt>F</tt> are each evaluated only once;</ins></p></li>
+<li><p>(2.3) &mdash; otherwise, <tt>ranges::drop_view<del>{</del><ins>(</ins>E, F<ins>)</ins><del>}</del></tt>.
+</p></li>
+</ol>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -39583,35 +39766,35 @@ Priority set to 2.
 <hr>
 <h3><a name="3544" href="3544">3544.</a> <tt><i>format-arg-store</i>::args</tt> is unintentionally not exposition-only</h3>
 <p><b>Section:</b> 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-04-22 <b>Last modified:</b> 2021-05-10 16:30:18 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-04-22 <b>Last modified:</b> 2021-05-18 13:50:07 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Despite the statement in 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a>/1: 
+Despite the statement in 20.20.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a>/1:
 </p>
 <blockquote><p>
-An instance of <tt>basic_format_args</tt> provides access to formatting arguments. Implementations should 
+An instance of <tt>basic_format_args</tt> provides access to formatting arguments. Implementations should
 optimize the representation of <tt>basic_format_args</tt> for a small number of formatting arguments.
-[<i>Note 1:</i> For example, by storing indices of type alternatives separately from values and packing 
+[<i>Note 1:</i> For example, by storing indices of type alternatives separately from values and packing
 the former. &mdash; <i>end note</i>]
 </p></blockquote>
 <p>
-<tt>make_format_args</tt> and <tt>make_wformat_args</tt> are specified to return an object whose type is 
-a specialization of the exposition-only class template <tt><i>format-arg-store</i></tt> which has a public 
-non-static data member that is an <tt>array</tt> of <tt>basic_format_arg</tt>. In order to actually 
-"optimize the representation of <tt>basic_format_args</tt>" an implementation must internally avoid using 
-<tt>make_format_args</tt> (and <tt>make_wformat_args</tt>) and instead use a different mechanism to type-erase 
-arguments. <tt>basic_format_args</tt> must still be convertible from <tt><i>format-arg-store</i></tt> as 
-specified, however, so internally <tt>basic_format_args</tt> must support both the bad/slow standard mechanism 
+<tt>make_format_args</tt> and <tt>make_wformat_args</tt> are specified to return an object whose type is
+a specialization of the exposition-only class template <tt><i>format-arg-store</i></tt> which has a public
+non-static data member that is an <tt>array</tt> of <tt>basic_format_arg</tt>. In order to actually
+"optimize the representation of <tt>basic_format_args</tt>" an implementation must internally avoid using
+<tt>make_format_args</tt> (and <tt>make_wformat_args</tt>) and instead use a different mechanism to type-erase
+arguments. <tt>basic_format_args</tt> must still be convertible from <tt><i>format-arg-store</i></tt> as
+specified, however, so internally <tt>basic_format_args</tt> must support both the bad/slow standard mechanism
 and a good/fast internal-only mechanism for argument storage.
 <p/>
-While this complicated state of affairs is technically implementable, it greatly complicates the implementation 
-of <tt>&lt;format&gt;</tt> with no commensurate benefit. Indeed, naive users may make the mistake of thinking 
-that e.g. <tt>vformat(fmt, make_format_args(args...))</tt> is as efficient as <tt>format(fmt, args...)</tt> &mdash; 
-that's what the "<i>Effects:</i> Equivalent to" in 20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/2 implies &mdash; and 
-inadvertently introduce performance regressions. It would be better for both implementers and users if 
+While this complicated state of affairs is technically implementable, it greatly complicates the implementation
+of <tt>&lt;format&gt;</tt> with no commensurate benefit. Indeed, naive users may make the mistake of thinking
+that e.g. <tt>vformat(fmt, make_format_args(args...))</tt> is as efficient as <tt>format(fmt, args...)</tt> &mdash;
+that's what the "<i>Effects:</i> Equivalent to" in 20.20.4 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/2 implies &mdash; and
+inadvertently introduce performance regressions. It would be better for both implementers and users if
 <tt><i>format-arg-store</i></tt> had no public data members and its member <tt>args</tt> were made exposition-only.
 </p>
 
@@ -39624,9 +39807,8 @@ Tim: "The current specification of <code>make_format_args</code> depends on
 which is no longer true with this PR."
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
 </p>
@@ -39655,6 +39837,64 @@ namespace std {
   };
 }
 </pre>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+<p><i>[2021-05-18; Tim updates wording.]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.1 <a href="https://timsong-cpp.github.io/cppwp/format.syn">[format.syn]</a>, header <tt>&lt;format&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a>, class template format-arg-store</i>
+template&lt;class Context, class... Args&gt; <del>struct</del><ins>class</ins> <i>format-arg-store</i>; <i>// exposition only</i>
+
+template&lt;class Context = format_context, class... Args&gt;
+  <i>format-arg-store</i>&lt;Context, Args...&gt;
+    make_format_args(const Args&amp;... <ins>fmt_</ins>args);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Context, class... Args&gt;
+  <del>struct</del><ins>class</ins> <i>format-arg-store</i> { <i>// exposition only</i>
+    array&lt;basic_format_arg&lt;Context&gt;, sizeof...(Args)&gt; args; <ins><i>// exposition only</i></ins>
+  };
+}
+</pre>
+<p>-1- An instance of <tt><i>format-arg-store</i></tt> stores formatting arguments.</p>
+<pre>
+template&lt;class Context = format_context, class... Args&gt;
+  <i>format-arg-store</i>&lt;Context, Args...&gt; make_format_args(const Args&amp;... <ins>fmt_</ins>args);
+</pre>
+<blockquote>
+<p>
+-2- <i>Preconditions</i>: The type <tt>typename Context::template formatter_type&lt;T<sub>i</sub>&gt;</tt>
+meets the <i>Formatter</i> requirements (20.20.5.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a>)
+for each <tt>T<sub>i</sub></tt> in <tt>Args</tt>.
+<p/>
+-3- <i>Returns</i>: <del></del>
+<ins>An object of type <tt><i>format-arg-store</i>&lt;Context, Args...&gt;</tt>
+whose <tt>args</tt> data member is initialized with</ins>
+<tt>{basic_format_arg&lt;Context&gt;(<ins>fmt_</ins>args)...}</tt>.
+</p>
+</blockquote>
 </blockquote>
 </li>
 </ol>

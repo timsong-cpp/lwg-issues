@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="2381" href="lwg-active.html#2381">2381.</a> Inconsistency in parsing floating point numbers</h3>
 <p><b>Section:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2018-08-24 13:31:33 UTC</p>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2021-05-19 04:45:25 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#facet.num.get.virtuals">active issues</a> in [facet.num.get.virtuals].</p>
@@ -70,7 +70,7 @@ rules of one of the functions declared in the header <tt>&lt;cstdlib&gt;</tt>:
 This implies that for many cases, this routine should return true:
 </p>
 <blockquote><pre>
-bool is_same(const char* p) 
+bool is_same(const char* p)
 {
   std::string str{p};
   double val1 = std::strtod(str.c_str(), nullptr);
@@ -112,7 +112,7 @@ assert(is_same("-infinity"));
 These are all strings that are correctly parsed by <tt>std::strtod</tt>, but not by the stream extraction operators.
 They contain characters that are deemed invalid in stage 2 of parsing.
 <p/>
-If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that 
+If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that
 <tt>strtold</tt> accepts.
 </p>
 
@@ -162,11 +162,11 @@ Examples added.
 
 <p>Needs an Annex C entry. Tim to write Annex C.</p>
 
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>This wording is relative to N4606.</p>
 
-<ol> 
+<ol>
 <li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
 
 <blockquote>
@@ -193,6 +193,95 @@ Examples added.
 </p>
 </blockquote>
 <p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-05-18 Tim updates wording]</i></p>
+
+<p>Based on the git history, libc++ appears to have always included
+<tt>p</tt> and <tt>P</tt> in <tt>src</tt>.</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+
+<blockquote>
+<p>
+&mdash; Stage 2:
+<p/>
+If <tt>in == end</tt> then stage 2 terminates. Otherwise a <tt>charT</tt>
+is taken from <tt>in</tt> and local variables are initialized as if by
+</p>
+<blockquote>
+<pre>
+char_type ct = *in;
+char c = src[find(atoms, atoms + sizeof(src) - 1, ct) - atoms];
+if (ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).decimal_point())
+c = '.';
+bool discard =
+  ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).thousands_sep()
+  &amp;&amp; use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).grouping().length() != 0;
+</pre>
+</blockquote>
+<p>
+where the values <tt>src</tt> and <tt>atoms</tt> are defined as if by:
+</p>
+<blockquote>
+<pre>
+static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";
+char_type atoms[sizeof(src)];
+use_facet&lt;ctype&lt;charT&gt;&gt;(loc).widen(src, src + sizeof(src), atoms);
+</pre>
+</blockquote>
+<p>
+for this value of <tt>loc</tt>.
+<p/>
+If <tt>discard</tt> is true, then if <tt>'.'</tt> has not yet been accumulated,
+then the position of the character is remembered, but the character is otherwise
+ignored. Otherwise, if <tt>'.'</tt> has already been accumulated, the character
+is discarded and Stage 2 terminates. If it is not discarded, then a check is
+made to determine if <tt>c</tt>> is allowed as the next character of an input
+field of the conversion specifier returned by Stage 1. If so, it is accumulated.
+<p/>
+If the character is either discarded or accumulated then <tt>in</tt> is advanced
+by <tt>++in</tt> and processing returns to the beginning of stage 2.
+<p/>
+<ins>[<i>Example:</i></ins>
+</p>
+<blockquote>
+<p>
+<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
+</p>
+<ul>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
+</ul>
+<p>
+<ins>In all cases, the remainder is left in the input.</ins>
+</p>
+</blockquote>
+<p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+<li>
+<p>Add the following new subclause to C.4 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp03">[diff.cpp03]</a>:</p>
+<blockquote>
+<p>
+<ins><b>C.4.? [locale]: localization library [diff.cpp03.locale]</b></ins>
+<p/>
+<ins><b>Affected subclause:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a><br/>
+<b>Change:</b> The <tt>num_get</tt> facet recognizes hexadecimal floating point values.<br/>
+<b>Rationale:</b> Required by new feature.<br/>
+<b>Effect on original feature:</b> Valid C++2003 code may have different behavior in this
+revision of C++.
+</ins>
+</p>
 </blockquote>
 </li>
 </ol>
