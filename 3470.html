@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3470" href="lwg-active.html#3470">3470.</a> <tt><i>convertible-to-non-slicing</i></tt> seems to reject valid case</h3>
 <p><b>Section:</b> 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2020-07-26 <b>Last modified:</b> 2020-08-21 13:43:37 UTC</p>
+ <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2020-07-26 <b>Last modified:</b> 2021-05-20 01:13:19 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
@@ -58,7 +58,7 @@ Consider
 <blockquote><pre>
 #include &lt;ranges&gt;
 
-int main() 
+int main()
 {
   int a[3] = { 1, 2, 3 };
   int* b[3] = { &amp;a[2], &amp;a[0], &amp;a[1] };
@@ -66,7 +66,7 @@ int main()
 }
 </pre></blockquote>
 <p>
-The construction of <tt>c</tt> is ill-formed because <tt><i>convertible-to-non-slicing</i>&lt;int**, const int*const*&gt;</tt> 
+The construction of <tt>c</tt> is ill-formed because <tt><i>convertible-to-non-slicing</i>&lt;int**, const int*const*&gt;</tt>
 is <tt>false</tt>, although the conversion does not involve object slicing.
 <p/>
 I think <tt>subrange</tt> should allow such qualification conversion, just like <tt>unique_ptr&lt;T[]&gt;</tt> already does.
@@ -79,10 +79,45 @@ I think <tt>subrange</tt> should allow such qualification conversion, just like 
 <p>
 Set priority to 3 after reflector discussions.
 </p>
+<p><i>[2021-05-19 Tim adds wording]</i></p>
 
+<p>
+The wording below, which has been implemented and tested on top of libstdc++,
+uses the same technique we use for <tt>unique_ptr</tt>, <tt>shared_ptr</tt>,
+and <tt>span</tt>. It seems especially appropriate to have feature parity between
+<tt>subrange</tt> and <tt>span</tt> in this respect.
+</p>
 
 
 <p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Modify 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <ins>template&lt;class From, class To&gt;
+    concept <i>uses-nonqualification-pointer-conversion</i> = <i>// exposition only</i>
+      is_pointer_v&lt;From&gt; &amp;&amp; is_pointer_v&lt;To&gt; &amp;&amp;
+      !convertible_to&lt;remove_pointer_t&lt;From&gt;(*)[], remove_pointer_t&lt;To&gt;(*)[]&gt;;</ins>
+
+  template&lt;class From, class To&gt;
+    concept <i>convertible-to-non-slicing</i> = <i>// exposition only</i>
+      convertible_to&lt;From, To&gt; &amp;&amp;
+      <ins>!<i>uses-nonqualification-pointer-conversion</i>&lt;decay_t&lt;From&gt;, decay_t&lt;To&gt;&gt;;</ins>
+      <del>!(is_pointer_v&lt;decay_t&lt;From&gt;&gt; &amp;&amp;
+      is_pointer_v&lt;decay_t&lt;To&gt;&gt; &amp;&amp;
+      <i>not-same-as</i>&lt;remove_pointer_t&lt;decay_t&lt;From&gt;&gt;, remove_pointer_t&lt;decay_t&lt;To&gt;&gt;&gt;
+      );</del>
+  [&hellip;]
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
 
 
 
