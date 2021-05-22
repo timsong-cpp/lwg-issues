@@ -34,6 +34,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -156,9 +157,10 @@ void format_issue_as_html(lwg::issue & is,
    // Reformat the issue text for the specified 'is' as valid HTML, replacing all the issue-list
    // specific XML markup as appropriate:
    //   tag             replacement
-   //   ---             ----------- 
+   //   ---             -----------
    //   iref            internal reference to another issue, replace with an anchor tag to that issue
    //   sref            section-tag reference, replace with formatted tag and section-number
+   //   paper           paper reference (PXXXX, PXXXXRX, NXXXX); replace with a wg21.link to the paper
    //   discussion      <p><b>Discussion:</b></p>CONTENTS
    //   resolution      <p><b>Proposed resolution:</b></p>CONTENTS
    //   rationale       <p><b>Rationale:</b></p>CONTENTS
@@ -255,7 +257,7 @@ void format_issue_as_html(lwg::issue & is,
              continue;
          }
 
-         if (s[j-1] == '/') { // self-contained tag: sref, iref
+         if (s[j-1] == '/') { // self-contained tag: sref, iref, paper
 
             // format section references
             if (tag == "sref") {
@@ -296,7 +298,7 @@ void format_issue_as_html(lwg::issue & is,
                    //std::cout << "bingo\n";
                    tag = fallback_tag;
                    //std::cout << "section_tag=\"" << tag.prefix << "\", \"" << tag.name << "\"\n";
-                 }    
+                 }
                }
 
                j -= i - 1;
@@ -355,6 +357,47 @@ void format_issue_as_html(lwg::issue & is,
                }
 
                j -= i - 1;
+               s.replace(i, j, r);
+               i += r.size() - 1;
+               continue;
+            }
+            else if (tag == "paper") {
+               static const
+               auto report_missing_quote = [](std::ostringstream & er, unsigned num) {
+                  er.clear();
+                  er.str("");
+                  er << "missing '\"' in <paper> in issue " << num;
+                  throw std::runtime_error{er.str()};
+               };
+
+               std::string r;
+               auto k = s.find('\"', i+6);
+               if (k >= j) {
+                  report_missing_quote(er, issue_num);
+               }
+
+               auto l = s.find('\"', k+1);
+               if (l >= j) {
+                  report_missing_quote(er, issue_num);
+               }
+
+               ++k;
+               auto paper_number = s.substr(k, l-k);
+               static const std::regex acceptable_numbers("N\\d+|P\\d+R\\d+|P\\d+", std::regex::icase);
+
+               if (!std::regex_match(paper_number, acceptable_numbers)) {
+                  er.clear();
+                  er.str("");
+                  er << "Invalid paper number '" << paper_number
+                     << "' in issue " << issue_num;
+                  throw std::runtime_error{er.str()};
+               }
+
+               // normalize paper numbers to use uppercase
+               std::transform(paper_number.begin(), paper_number.end(), paper_number.begin(), ::toupper);
+
+               j -= i - 1;
+               r = "<a href=\"https://wg21.link/" + paper_number + "\">" + paper_number + "</a>";
                s.replace(i, j, r);
                i += r.size() - 1;
                continue;
@@ -496,7 +539,7 @@ auto operator<<( std::ostream & out, discover_new_issues const & x) -> std::ostr
          out << "<li>Added the following " << item_count << " " << std::get<0>(i) << " issues: " << list_issues{std::get<1>(i)} << ".</li>\n";
       }
    }
-   
+
    if (added_issues.empty()) {
       out << "<li>No issues added.</li>\n";
    }
@@ -657,10 +700,10 @@ int main(int argc, char* argv[]) {
       }
 
       check_is_directory(path);
-	  
+
       const fs::path target_path{path / "mailing"};
       check_is_directory(target_path);
-	  
+
 
       lwg::section_map section_db =[&path]() {
          auto filename = path / "meta-data" / "section.data";
@@ -681,7 +724,7 @@ int main(int argc, char* argv[]) {
          std::cout << temp << ' ' << elem.second << '\n';
       }
 #endif
- 
+
       auto const old_issues = read_issues_from_toc(read_file_into_string(path / "meta-data" / "lwg-toc.old.html"));
 
       auto const issues_path = path / "xml";
