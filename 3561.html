@@ -1,0 +1,176 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3561: Issue with internal counter in discard_block_engine</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3561" href="lwg-active.html#3561">3561.</a> Issue with internal counter in <tt>discard_block_engine</tt></h3>
+<p><b>Section:</b> 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Ilya Burylov <b>Opened:</b> 2021-06-03 <b>Last modified:</b> 2021-06-06 12:27:07 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.adapt.disc">issues</a> in [rand.adapt.disc].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A <tt>discard_block_engine</tt> engine adaptor is described in 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a>. It produces 
+random numbers from the underlying engine discarding <tt>(p - r)</tt> last values of <tt>p - size</tt> block, 
+where <tt>r</tt> and <tt>p</tt> are template parameters of <tt>std::size_t</tt> type:
+</p>
+<blockquote><pre>
+template&lt;class Engine, size_t p, size_t r&gt;
+class discard_block_engine;
+</pre></blockquote>
+<p>
+The transition algorithm for <tt>discard_block_engine</tt> is described as follows (paragraph 2):
+</p>
+<blockquote><p>
+The transition algorithm discards all but <tt><i>r</i> &gt; 0</tt> values from each block of <tt><i>p</i> = <i>r</i></tt> 
+values delivered by <tt>&escr;</tt>. The state transition is performed as follows: If <tt><i>n</i> = <i>r</i></tt>, 
+advance the state of <tt>e</tt> from <tt>e<sub>i</sub></tt> to <tt>e<sub>i</sub>+<i>p</i>-<i>r</i></tt> and set 
+<tt><i>n</i></tt> to <tt>0</tt>. In any case, then increment <tt><i>n</i></tt> and advance <tt>e</tt>'s then-current state 
+<tt>e<sub>j</sub></tt> to <tt>e<sub>j+1</sub></tt>.
+</p></blockquote>
+<p>
+Where <tt><i>n</i></tt> is of integer type. In the API of discard block engine, <tt><i>n</i></tt> is represented 
+in the following way:
+</p>
+<blockquote><pre>
+[&hellip;]
+int n; <i>// exposition only</i>
+</pre></blockquote>
+<p>
+In cases where <tt>int</tt> is equal to <tt>int32_t</tt>, overflow is possible for <tt><i>n</i></tt> that leads 
+to undefined behavior. Such situation can happen when the <tt>p</tt> and <tt>r</tt> template parameters exceed 
+<tt>INT_MAX</tt>.
+<p/>
+This misleading exposition block leads to differences in implementations:
+</p>
+<ul>
+<li><p>GNU Libstdc++ uses <tt>size_t</tt> for <tt>n</tt> &mdash; in this case no overflow happened even if template 
+parameters exceed <tt>INT_MAX</tt></p></li>
+<li><p>LLVM Libcxx uses <tt>int</tt> for <tt>n</tt> together with a <tt>static_assert</tt> that is checking that 
+<tt>p</tt> and <tt>r</tt> values are <tt>&lt;= INT_MAX</tt></p></li> 
+</ul>
+<p>
+Such difference in implementation makes code not portable and may potentially breaks random number sequence consistency 
+between different implementors of C++ std lib.
+<p/>
+The problematic use case is the following one:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;random&gt;
+#include &lt;limits&gt;
+
+int main() {
+  std::minstd_rand0 generator;
+
+  constexpr std::size_t skipped_size = static_cast&lt;std::size_t&gt;(std::numeric_limits&lt;int&gt;::max());
+  constexpr std::size_t block_size = skipped_size + 5;
+  constexpr std::size_t used_block = skipped_size;
+
+  std::cout &lt;&lt; "block_size = " &lt;&lt; block_size &lt;&lt; std::endl;
+  std::cout &lt;&lt; "used_block = " &lt;&lt; used_block &lt;&lt; "\n" &lt;&lt; std::endl;
+
+  std::discard_block_engine&lt;std::minstd_rand0, block_size, used_block&gt; discard_generator;
+
+  <i>// Call discard procedures</i>
+  discard_generator.discard(used_block);
+  generator.discard(block_size);
+
+  <i>// Call generation. Results should be equal</i>
+  for (std::int32_t i = 0; i &lt; 10; ++i)
+  {
+    std::cout &lt;&lt; discard_generator() &lt;&lt; " should be equal " &lt;&lt; generator() &lt;&lt; std::endl;
+  }
+}
+</pre></blockquote> 
+<p>
+We see no solid reason for <tt>n</tt> to be an <tt>int</tt>, given that the relevant template parameters are 
+<tt>std::size_t</tt>. It seems like a perfectly fine use case to generate random numbers in amounts larger than 
+<tt>INT_MAX</tt>.
+<p/>
+The proposal is to change exposition text to <tt>std::size_t</tt>:
+</p>
+<blockquote><pre>
+size_t n; <i>// exposition only</i>
+</pre></blockquote>
+<p>
+It will not mandate the existing libraries to break ABI, but at least guide for better implementation.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a>, class template <tt>discard_block_engine</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  <i>// generating functions</i>
+  result_type operator()();
+  void discard(unsigned long long z);
+  
+  <i>// property functions</i>
+  const Engine&amp; base() const noexcept { return e; };
+  
+private:
+  Engine e; <i>// exposition only</i>
+  <del>int</del><ins>size_t</ins> n; <i>// exposition only</i>
+};
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>

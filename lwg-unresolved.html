@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-06-05 at 21:37:32 UTC</p>
+<p><p>Revised 2021-06-06 at 13:23:57 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -39748,6 +39748,236 @@ at worst &#x1d4aa;(<tt><i>N</i><sup>2</sup></tt>), where <tt><i>N</i></tt> has t
 </blockquote>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3561" href="3561">3561.</a> Issue with internal counter in <tt>discard_block_engine</tt></h3>
+<p><b>Section:</b> 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Ilya Burylov <b>Opened:</b> 2021-06-03 <b>Last modified:</b> 2021-06-06 12:27:07 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.adapt.disc">issues</a> in [rand.adapt.disc].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A <tt>discard_block_engine</tt> engine adaptor is described in 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a>. It produces 
+random numbers from the underlying engine discarding <tt>(p - r)</tt> last values of <tt>p - size</tt> block, 
+where <tt>r</tt> and <tt>p</tt> are template parameters of <tt>std::size_t</tt> type:
+</p>
+<blockquote><pre>
+template&lt;class Engine, size_t p, size_t r&gt;
+class discard_block_engine;
+</pre></blockquote>
+<p>
+The transition algorithm for <tt>discard_block_engine</tt> is described as follows (paragraph 2):
+</p>
+<blockquote><p>
+The transition algorithm discards all but <tt><i>r</i> &gt; 0</tt> values from each block of <tt><i>p</i> = <i>r</i></tt> 
+values delivered by <tt>&escr;</tt>. The state transition is performed as follows: If <tt><i>n</i> = <i>r</i></tt>, 
+advance the state of <tt>e</tt> from <tt>e<sub>i</sub></tt> to <tt>e<sub>i</sub>+<i>p</i>-<i>r</i></tt> and set 
+<tt><i>n</i></tt> to <tt>0</tt>. In any case, then increment <tt><i>n</i></tt> and advance <tt>e</tt>'s then-current state 
+<tt>e<sub>j</sub></tt> to <tt>e<sub>j+1</sub></tt>.
+</p></blockquote>
+<p>
+Where <tt><i>n</i></tt> is of integer type. In the API of discard block engine, <tt><i>n</i></tt> is represented 
+in the following way:
+</p>
+<blockquote><pre>
+[&hellip;]
+int n; <i>// exposition only</i>
+</pre></blockquote>
+<p>
+In cases where <tt>int</tt> is equal to <tt>int32_t</tt>, overflow is possible for <tt><i>n</i></tt> that leads 
+to undefined behavior. Such situation can happen when the <tt>p</tt> and <tt>r</tt> template parameters exceed 
+<tt>INT_MAX</tt>.
+<p/>
+This misleading exposition block leads to differences in implementations:
+</p>
+<ul>
+<li><p>GNU Libstdc++ uses <tt>size_t</tt> for <tt>n</tt> &mdash; in this case no overflow happened even if template 
+parameters exceed <tt>INT_MAX</tt></p></li>
+<li><p>LLVM Libcxx uses <tt>int</tt> for <tt>n</tt> together with a <tt>static_assert</tt> that is checking that 
+<tt>p</tt> and <tt>r</tt> values are <tt>&lt;= INT_MAX</tt></p></li> 
+</ul>
+<p>
+Such difference in implementation makes code not portable and may potentially breaks random number sequence consistency 
+between different implementors of C++ std lib.
+<p/>
+The problematic use case is the following one:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;random&gt;
+#include &lt;limits&gt;
+
+int main() {
+  std::minstd_rand0 generator;
+
+  constexpr std::size_t skipped_size = static_cast&lt;std::size_t&gt;(std::numeric_limits&lt;int&gt;::max());
+  constexpr std::size_t block_size = skipped_size + 5;
+  constexpr std::size_t used_block = skipped_size;
+
+  std::cout &lt;&lt; "block_size = " &lt;&lt; block_size &lt;&lt; std::endl;
+  std::cout &lt;&lt; "used_block = " &lt;&lt; used_block &lt;&lt; "\n" &lt;&lt; std::endl;
+
+  std::discard_block_engine&lt;std::minstd_rand0, block_size, used_block&gt; discard_generator;
+
+  <i>// Call discard procedures</i>
+  discard_generator.discard(used_block);
+  generator.discard(block_size);
+
+  <i>// Call generation. Results should be equal</i>
+  for (std::int32_t i = 0; i &lt; 10; ++i)
+  {
+    std::cout &lt;&lt; discard_generator() &lt;&lt; " should be equal " &lt;&lt; generator() &lt;&lt; std::endl;
+  }
+}
+</pre></blockquote> 
+<p>
+We see no solid reason for <tt>n</tt> to be an <tt>int</tt>, given that the relevant template parameters are 
+<tt>std::size_t</tt>. It seems like a perfectly fine use case to generate random numbers in amounts larger than 
+<tt>INT_MAX</tt>.
+<p/>
+The proposal is to change exposition text to <tt>std::size_t</tt>:
+</p>
+<blockquote><pre>
+size_t n; <i>// exposition only</i>
+</pre></blockquote>
+<p>
+It will not mandate the existing libraries to break ABI, but at least guide for better implementation.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.adapt.disc">[rand.adapt.disc]</a>, class template <tt>discard_block_engine</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  <i>// generating functions</i>
+  result_type operator()();
+  void discard(unsigned long long z);
+  
+  <i>// property functions</i>
+  const Engine&amp; base() const noexcept { return e; };
+  
+private:
+  Engine e; <i>// exposition only</i>
+  <del>int</del><ins>size_t</ins> n; <i>// exposition only</i>
+};
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3562" href="3562">3562.</a> Superseding <tt>nullopt_t</tt>'s requirement to not be <i>DefaultConstructible</i></h3>
+<p><b>Section:</b> 20.6.4 <a href="https://timsong-cpp.github.io/cppwp/optional.nullopt">[optional.nullopt]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> David Friberg <b>Opened:</b> 2021-06-04 <b>Last modified:</b> 2021-06-06 13:23:57 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.nullopt">issues</a> in [optional.nullopt].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+20.6.4 <a href="https://timsong-cpp.github.io/cppwp/optional.nullopt">[optional.nullopt]</a> p2 requires that <tt>nullopt_t</tt> shall not have a default constructor 
+([&hellip;] or an initializer-list constructor, and shall not be an aggregate). However, after the final 
+resolution of LWG issue <a href="2510">2510</a> and <a href="https://wg21.link/cwg1518">CWG 1518</a> it seems 
+as if the following synopsis would suffice:
+</p>
+<blockquote><pre>
+struct nullopt_t { explicit nullopt_t() = default; };
+</pre></blockquote>
+<p>
+Which would also be consistent with other tag types.
+<p/>
+20.6.4 <a href="https://timsong-cpp.github.io/cppwp/optional.nullopt">[optional.nullopt]</a> p2 in its current form was written prior to the final resolution of LWG issue 
+<a href="2510">2510</a> and <a href="https://wg21.link/cwg1518">CWG 1518</a>, and is arguably based on using an 
+earlier proposed approach for tag types which was later superseded.
+<p/>
+<b>Details:</b>
+<p/>
+<a href="https://wg21.link/P0032R3">P0032R3</a> was part of introducing <tt>optional</tt> and contained a discussion around the 
+<tt>nullopt_t</tt> type, tag types in general, and the <i>DefaultConstructible</i> requirement. Particularly, 
+from section 'Not assignable from <tt>{}</tt>':
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
+To re-enforce this design, there is an pending issue 2510-Tag types should not be DefaultConstructible Core issue 2510.
+</p></blockquote>
+<p>
+At the time of <a href="https://wg21.link/P0032R3">P0032R3</a>, the resolution of LWG issue <a href="2510">2510</a> was indeed for all tag types
+to not be <i>DefaultConstructible</i>, but this resolution was later superseded as part of the resolution of 
+CWG issue <a href="https://wg21.link/cwg1518">CWG 1518</a>, which in turn reverted parts of the resolution of 
+CWG issue <a href="https://wg21.link/cwg1630">CWG 1630</a> (which "went too far in allowing use of explicit 
+constructors for default initialization").
+<p/>
+The final resolution for CWG 1518 (<a href="https://wg21.link/P0398R0">P0398R0</a>) lead to the requirement for aggregate classes to not 
+have any explicit [user-declared] constructors, and LWG <a href="2510">2510</a> was resolved accordingly by making all 
+tag types have explicit user-declared (constexpr) default constructors.
+<p/>
+However, the spec of <tt>nullopt_t</tt> never changed after these events or as part of updating other tag types, 
+and it is still explicitly required to not be <i>DefaultConstructible</i> (nor have a initialization-list constructor) 
+and to not be an aggregate, whereas the implementation of it is otherwise unspecified.
+<p/>
+We may note that we still see some compiler variance on the topic of CWG issues 1518 &amp; 1630, see this
+<a href="https://godbolt.org/z/Tf96s4Krf">godbolt link</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.6.2 <a href="https://timsong-cpp.github.io/cppwp/optional.syn">[optional.syn]</a>, header <tt>&lt;optional&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+
+<i>// 20.6.4 <a href="https://timsong-cpp.github.io/cppwp/optional.nullopt">[optional.nullopt]</a>, no-value state indicator</i>
+struct nullopt_t{<del><i>see below</i></del> <ins>explicit nullopt_t() = default;</ins> };
+inline constexpr nullopt_t nullopt<ins>{}</ins><del>(<i>unspecified</i>)</del>;
+
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 20.6.4 <a href="https://timsong-cpp.github.io/cppwp/optional.nullopt">[optional.nullopt]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+struct nullopt_t{<del><i>see below</i></del> <ins>explicit nullopt_t() = default;</ins> };
+inline constexpr nullopt_t nullopt<ins>{}</ins><del>(<i>unspecified</i>)</del>;
+</pre>
+</blockquote>
+<p>
+-1- The struct <tt>nullopt_t</tt> is an empty class type used as a unique type to indicate the state 
+of not containing a value for <tt>optional</tt> objects. In particular, <tt>optional&lt;T&gt;</tt> 
+has a constructor with <tt>nullopt_t</tt> as a single argument; this indicates that an optional object 
+not containing a value shall be constructed.
+<p/>
+<del>-2- Type <tt>nullopt_t</tt> shall not have a default constructor or an initializer-list constructor, 
+and shall not be an aggregate.</del>
+</p>
+</blockquote>
+</li>
+
 </ol>
 
 
