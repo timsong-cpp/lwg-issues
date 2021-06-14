@@ -137,6 +137,8 @@ auto lwg::get_status_priority(std::string_view stat) noexcept -> std::ptrdiff_t 
       "EWG",
       "Core",
       "SG1",
+      "SG9",
+      "SG16",
       "Deferred",
       "Tentatively Resolved",
       "Pending DR",
