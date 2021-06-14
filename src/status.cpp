@@ -49,6 +49,8 @@ auto lwg::filename_for_status(std::string_view stat) -> std::string_view {
         : (stat == "LEWG")          ? LWG_ACTIVE
         : (stat == "Core")          ? LWG_ACTIVE
         : (stat == "SG1")           ? LWG_ACTIVE
+        : (stat == "SG9")           ? LWG_ACTIVE
+        : (stat == "SG16")          ? LWG_ACTIVE
         : (stat == "Deferred")      ? LWG_ACTIVE
         : throw std::runtime_error("unknown status '" + std::string(stat) + "'");
 }
