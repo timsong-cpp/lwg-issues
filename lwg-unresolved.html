@@ -39405,6 +39405,164 @@ and is useful for extracting values from associative containers.
 
 
 <hr>
+<h3><a name="3564" href="3564">3564.</a> <tt>transform_view::<i>iterator</i>&lt;true&gt;::value_type</tt> and <tt>iterator_category</tt> should 
+use <tt>const F&amp;</tt></h3>
+<p><b>Section:</b> 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#SG9">SG9</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-06-06 <b>Last modified:</b> 2021-06-14 14:05:21 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.transform.iterator">issues</a> in [range.transform.iterator].</p>
+<p><b>Discussion:</b></p>
+<p>
+Iterators obtained from a <tt>const transform_view</tt> invoke the
+transformation function as <tt>const</tt>, but the <tt>value_type</tt> and
+<tt>iterator_category</tt> determination uses plain <tt>F&amp;</tt>, i.e., non-<tt>const</tt>.
+</p>
+
+<p><i>[2021-06-14; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll, send to SG9 for design clarification.
+Should <code>r</code> and <code>as_const(r)</code> guarantee same elements?
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, copy_constructible F&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;V&gt;&gt;&gt;
+  template&lt;bool Const&gt;
+  class transform_view&lt;V, F&gt;::<i>iterator</i> {
+  private:
+    [&hellip;]
+  public:
+    using iterator_concept = <i>see below</i>;
+    using iterator_category = <i>see below</i>; <i>// not always present</i>
+    using value_type =
+      remove_cvref_t&lt;invoke_result_t&lt;<ins><i>maybe-const</i>&lt;Const,</ins> F<ins>&gt;</ins>&amp;, 
+      range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;;
+    using difference_type = range_difference_t&lt;<i>Base</i>&gt;;  
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+-1- [&hellip;]
+<p/>
+-2- The member <i>typedef-name</i> <tt>iterator_category</tt> is defined if and only if <tt><i>Base</i></tt> 
+models <tt>forward_range</tt>. In that case, <tt>iterator::iterator_category</tt> is defined as follows: Let 
+<tt>C</tt> denote the type <tt>iterator_traits&lt;iterator_t&lt;<i>Base</i>&gt;&gt;::iterator_category</tt>.
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; If <tt>is_lvalue_reference_v&lt;invoke_result_t&lt;<ins><i>maybe-const</i>&lt;Const,</ins> 
+F<ins>&gt;</ins>&amp;, range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;</tt> 
+is <tt>true</tt>, then</p>
+<ol style="list-style-type: none">
+<li><p>(2.1.1) &mdash; [&hellip;]</p></li>
+<li><p>(2.1.2) &mdash; [&hellip;]</p></li>
+</ol>
+</li>
+<li><p>(2.2) &mdash; Otherwise, <tt>iterator_category</tt> denotes <tt>input_iterator_tag</tt>.</p></li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3565" href="3565">3565.</a> Handling of encodings in localized formatting of <tt>chrono</tt> types is underspecified</h3>
+<p><b>Section:</b> 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#SG16">SG16</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2021-05-31 <b>Last modified:</b> 2021-06-14 14:05:22 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>Discussion:</b></p>
+<p>
+When formatting chrono types using a locale the result is underspecified, possibly a mix of the literal and locale encodings. For example:
+</p>
+<blockquote><pre>
+std::locale::global(std::locale("Russian.1251"));
+auto s = std::format("&Dcy;&iecy;&ncy;&softcy; &ncy;&iecy;&dcy;&iecy;&lcy;&icy;: {}", std::chrono::Monday);
+</pre></blockquote>
+<p>
+(Note that "<tt>{}</tt>" should be replaced with "<tt>{:L}</tt>" if <a href="https://wg21.link/P2372">P2372</a> is adopted but that's non-essential.)
+<p/>
+If the literal encoding is UTF-8 and the <tt>"Russian.1251"</tt> locale exists we have a mismatch between encodings. 
+As far as I can see the standard doesn't specify what happens in this case.
+<p/>
+One possible and undesirable result is
+</p>
+<blockquote><pre>
+"&Dcy;&iecy;&ncy;&softcy; &ncy;&iecy;&dcy;&iecy;&lcy;&icy;: \xcf\xed"
+</pre></blockquote>
+<p>
+where <tt>"\xcf\xed"</tt> is <tt>"&Pcy;&ncy;"</tt> (Mon in Russian) in CP1251 and is not valid UTF-8.
+<p/>
+Another possible and desirable result is
+</p>
+<blockquote><pre>
+"&Dcy;&iecy;&ncy;&softcy; &ncy;&iecy;&dcy;&iecy;&lcy;&icy;: &Pcy;&ncy;"
+</pre></blockquote>
+<p>
+where everything is in one encoding (UTF-8).
+<p/>
+This issue is not resolved by LWG <a href="3547">3547</a> / <a href="https://wg21.link/P2372">P2372</a> but the resolution proposed here is 
+compatible with P2372 and can be rebased onto its wording if the paper is adopted.
+</p>
+
+<p><i>[2021-06-14; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll. Send to SG16.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- Each conversion specifier <i>conversion-spec</i> is replaced by appropriate characters as described in Table 
+[tab:time.format.spec]; the formats specified in ISO 8601:2004 shall be used where so described. Some of the 
+conversion specifiers depend on the locale that is passed to the formatting function if the latter takes one, 
+or the global locale otherwise. <ins>If the string literal encoding is UTF-8 the replacement of a conversion 
+specifier that depends on the locale is transcoded to UTF-8 for narrow strings, otherwise the replacement is 
+taken as is.</ins> If the formatted object does not contain the information the conversion specifier refers to, 
+an exception of type <tt>format_error</tt> is thrown.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3566" href="3566">3566.</a> Constraint recursion for <tt>operator&lt;=&gt;(optional&lt;T&gt;, U)</tt></h3>
 <p><b>Section:</b> 20.6.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-06-07 <b>Last modified:</b> 2021-06-15 16:11:47 UTC</p>
