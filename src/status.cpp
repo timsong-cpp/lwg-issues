@@ -78,7 +78,9 @@ auto lwg::is_tentative(std::string_view stat) -> bool {
 }
 
 auto lwg::is_assigned_to_another_group(std::string_view stat) -> bool {
-   for( auto s : {"Core", "EWG", "LEWG", "SG1" }) { if(s == stat) return true; }
+   for( auto s : {"Core", "EWG", "LEWG", "SG1", "SG9", "SG16" }) {
+     if(s == stat) return true;
+   }
    return false;
 }
 
