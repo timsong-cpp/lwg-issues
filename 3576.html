@@ -1,0 +1,181 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3576: Clarifying fill character in std::format</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3576" href="lwg-active.html#3576">3576.</a> Clarifying fill character in <tt>std::format</tt></h3>
+<p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2021-08-01 <b>Last modified:</b> 2021-08-15 20:23:57 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The paper <a href="https://wg21.link/P1868">P1868</a> "width: clarifying units of width and precision in 
+<tt>std::format</tt>" added optional Unicode support to the <tt>format</tt> header.  
+This paper didn't update the definition of the fill character, which is defined as
+</p>
+<blockquote><p>
+"The fill character can be any character other than <tt>{</tt> or <tt>}</tt>."
+</p></blockquote>
+<p>
+This wording means the fill is a character and not a Unicode grapheme cluster. Based 
+on the current wording the range of available fill characters depends on the 
+<tt>char_type</tt> of the format string. After P1868 the determination of the required 
+padding size is Unicode aware, but it's not possible to use a Unicode grapheme clusters 
+as padding. This looks odd from a user's perspective and already lead to implementation 
+divergence between libc++ and MSVC STL:
+</p>
+<ul>
+<li><p>The WIP libc++ implementation stores one <tt>char_type</tt>, strictly adhering
+to the wording of the Standard.</p></li>
+<li><p>MSVC STL stores one code point, regardless of the <tt>char_type</tt> used. This 
+is already better from a user's perspective; all 1 code point grapheme clusters are 
+properly handled.</p></li>
+</ul>
+<p>
+For the width calculation the width of a Unicode grapheme cluster is estimated to be 1 or 2. 
+Since padding with a 2 column width can't properly pad an odd number of columns the grapheme 
+cluster used should always have a column width of 1.
+<p/>
+The responsibility for precondition can be either be validated in the library or by the user. 
+It would be possible to do the validation compile time and make the code ill-formed when the 
+precondition is violated. For the following reason I think it's better to not validate
+the width:
+</p>
+<ul>
+<li><p>P1868 14. Implementation</p>
+<blockquote><p>
+"More importantly, our approach permits refining the definition in the future if there is 
+interest in doing so. It will mostly require researching the status of Unicode support on 
+terminals and minimal or no changes to the implementation."
+</p></blockquote>
+<p>When an estimated width of 1 is required it means that improving the Standard may make 
+previously valid code ill-formed after the improvement.</p></li>
+<li><p>P1868 13. Examples</p>
+<p>The example of the family grapheme cluster is only rendered properly on the MacOS terminal. 
+So even when the library does a proper validation it's not certain the output will be 
+rendered properly.</p></li>
+</ul>
+<p>
+Changing the fill type changes the size of the <tt>std::formatter</tt> and thus will be an ABI break.
+<p/>
+The proposed resolution probably needs some additional changes since the Unicode and output 
+width are specified later in the standard, specifically 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a>/9 - 12.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- [<i>Note 2</i>: <del>The <i>fill</i> character can be any character other than <tt>{</tt> or <tt>}</tt>.</del> 
+<ins>For a string in a Unicode encoding, the <i>fill</i> character can be any Unicode grapheme cluster 
+other than <tt>{</tt> or <tt>}</tt>. For a string in a non-Unicode encoding, the <i>fill</i> character 
+can be any character other than <tt>{</tt> or <tt>}</tt>. The output width of the fill character is 
+always assumed to be one column.</ins> The presence of a fill character is signaled by the character 
+following it, which must be one of the alignment options. If the second character of <i>std-format-spec</i> 
+is not a valid alignment option, then it is assumed that both the fill character and the alignment 
+option are absent. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2021-08-09; Mark de Wever provides improved wording]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- [&hellip;] The syntax of format specifications is as follows:
+</p>
+<blockquote>
+<pre>
+[&hellip;]
+<i>fill</i>:
+             any <ins>Unicode grapheme cluster or</ins> character other than <tt>{</tt> or <tt>}</tt>
+[&hellip;]
+</pre>
+</blockquote>
+<p>
+-2- <del>[<i>Note 2</i>: The <i>fill</i> character can be any character other than <tt>{</tt> or <tt>}</tt>.</del> 
+<ins>For a string in a Unicode encoding, the <i>fill</i> character can be any Unicode grapheme cluster 
+other than <tt>{</tt> or <tt>}</tt>. For a string in a non-Unicode encoding, the <i>fill</i> character 
+can be any character other than <tt>{</tt> or <tt>}</tt>. The output width of the fill character is 
+always assumed to be one column.</ins> 
+<p/>
+<ins>[<i>Note 2</i>:</ins> The presence of a fill character is signaled by the character following it, which must be 
+one of the alignment options. If the second character of <i>std-format-spec</i> is not a valid alignment option, 
+then it is assumed that both the fill character and the alignment option are absent. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
