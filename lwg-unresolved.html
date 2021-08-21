@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-08-15 at 20:23:57 UTC</p>
+<p><p>Revised 2021-08-20 at 17:27:29 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -26034,155 +26034,6 @@ different <tt>streamoff</tt> values are not equal.
 
 
 <hr>
-<h3><a name="3121" href="3121">3121.</a> <tt>tuple</tt> constructor constraints for <tt>UTypes&amp;&amp;...</tt> overloads</h3>
-<p><b>Section:</b> 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Matt Calabrese <b>Opened:</b> 2018-06-12 <b>Last modified:</b> 2021-05-21 00:53:53 UTC</p>
-<p><b>Priority: </b>2
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
-<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Currently the <tt>tuple</tt> constructors of the form:
-</p>
-<blockquote>
-<pre>
-template&lt;class... UTypes&gt;
-<i>EXPLICIT</i> constexpr tuple(UTypes&amp;&amp;...);
-</pre>
-</blockquote>
-<p>
-are not properly constrained in that in the 1-element <tt>tuple</tt> case, the constraints do no short-circuit when
-the constructor would be (incorrectly) considered as a possible copy/move constructor candidate. libc++ has a
-workaround for this, but the additional short-circuiting does not actually appear in the working draft.
-<p/>
-As an example of why this lack of short circuiting is a problem in practice, consider the following line:
-</p>
-<blockquote>
-<pre>
-bool a = std::is_copy_constructible_v&lt;std::tuple&lt;any&gt;&gt;;
-</pre>
-</blockquote>
-<p>
-The above code will cause a compile error because of a recursive trait definition. The copy constructibility
-check implies doing substitution into the <tt>UTypes&amp;&amp;...</tt> constructor overloads, which in turn
-will check if <tt>tuple&lt;any&gt;</tt> is convertible to any, which in turn will check if <tt>tuple&lt;any&gt;</tt>
-is copy constructible (and so the trait is dependent on itself).
-<p/>
-I do not provide wording for the proposed fix in anticipation of requires clauses potentially changing how we
-do the specification, however, the basic solution should be similar to what we've done for other standard library
-types, which is to say that the very first constraint should be to check that if <tt>sizeof...(UTypes) == 1</tt>
-and the type, after applying <tt>remove_cvref_t</tt>, is the <tt>tuple</tt> type itself, then we should force
-substitution failure rather than checking any further constraints.
-</p>
-
-<p><i>[2018-06-23 after reflector discussion]</i></p>
-
-<p>Priority set to 3</p>
-
-<p><i>[2018-08-20, Jonathan provides wording]</i></p>
-
-
-<p><i>[2018-08-20, Daniel comments]</i></p>
-
-<p>
-The wording changes by this issue are very near to those suggested for LWG <a href="3155">3155</a>.
-</p>
-
-<p><i>[2018-11 San Diego Thursday night issue processing]</i></p>
-
-<p>Jonathan to update wording - using conjunction. Priority set to 2</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
-<ul>
-<li><p>Modify 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
-<blockquote>
-<pre>
-template&lt;class... UTypes&gt; explicit(<i>see below</i>) constexpr tuple(UTypes&amp;&amp;... u);
-</pre>
-<blockquote>
-<p>
--9- <i>Effects:</i> Initializes the elements in the tuple with the corresponding value in
-<tt>std::forward&lt;UTypes&gt;(u)</tt>.
-<p/>
--10- <i>Remarks:</i> This constructor shall not participate in overload resolution unless
-<tt>sizeof...(Types) == sizeof...(UTypes)</tt> and <tt>sizeof...(Types) &gt;= 1</tt> <ins>and <tt>(sizeof...(Types)
-&gt; 1 || !is_same_v&lt;remove_cvref_t&lt;U<sub>0</sub>&gt;, tuple&gt;)</tt></ins> and
-<tt>is_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&amp;&amp;&gt;</tt> is <tt>true</tt>
-for all <tt><i>i</i></tt>. The expression inside <tt>explicit</tt> is equivalent to:
-<p/>
-<tt>!conjunction_v&lt;is_convertible&lt;UTypes, Types&gt;...&gt;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ul>
-</blockquote>
-<p><i>[2021-05-20 Tim updates wording]</i></p>
-
-<p>
-The new wording below also resolves LWG <a href="3155">3155</a>, relating to an
-<tt>allocator_arg_t</tt> tag argument being treated by this constructor template
-as converting to the first tuple element instead of as a tag. To minimize
-collateral damage, this wording takes this constructor out of overload resolution
-only if the tuple is of size 2 or 3, the first argument is an <tt>allocator_arg_t</tt>,
-but the first tuple element isn't of type <tt>allocator_arg_t</tt> (in both cases
-after removing cv/ref qualifiers). This avoids damaging tuples that actually
-contain an <tt>allocator_arg_t</tt> as the first element (which can be formed
-during uses-allocator construction, thanks to <tt>uses_allocator_construction_args</tt>).
-<p/>
-The proposed wording has been implemented and tested on top of libstdc++.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>, and also resolves LWG <a href="3155">3155</a>.</p>
-<ol>
-<li><p>Modify 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
-<blockquote>
-<pre>
-template&lt;class... UTypes&gt; explicit(<i>see below</i>) constexpr tuple(UTypes&amp;&amp;... u);
-</pre>
-<blockquote>
-<p>
-<ins>
--?- Let <i><tt>disambiguating-constraint</tt></i> be:
-</ins>
-</p>
-<ol style="list-style-type: none">
-<li><p><ins>(?.1) &mdash; <tt>negation&lt;is_same&lt;remove_cvref_t&lt;U<sub>0</sub>&gt;, tuple&gt;&gt;</tt> if <tt>sizeof...(Types)</tt> is 1;</ins></p></li>
-<li><p><ins>(?.2) &mdash; otherwise, <tt>bool_constant&lt;!is_same_v&lt;remove_cvref_t&lt;U<sub>0</sub>&gt;, allocator_arg_t&gt; || is_same_v&lt;remove_cvref_t&lt;T<sub>0</sub>&gt;, allocator_arg_t&gt;&gt;</tt> if <tt>sizeof...(Types)</tt> is 2 or 3;</ins></p></li>
-<li><p><ins>(?.3) &mdash; otherwise, <tt>true_type</tt>.</ins></p></li>
-</ol>
-<p>
--12- <i>Constraints:</i></p>
-<ol style="list-style-type: none">
-<li><p><ins>(12.1) &mdash;</ins> <tt>sizeof...(Types)</tt> equals <tt>sizeof...(UTypes)</tt><ins>,</ins> <del>and</del></p></li>
-<li><p><ins>(12.2) &mdash;</ins> <tt>sizeof...(Types)</tt> &ge; 1<ins>,</ins> and</p></li>
-<li><p><ins>(12.3) &mdash; <tt>conjunction_v&lt;<i>disambiguating-constraint</i>, is_constructible&lt;TTypes, UTypes&gt;...&gt;</tt> is <tt>true</tt></ins> <del><tt>is_constructible_v&lt;T<sub>i</sub>, U<sub>i</sub>&gt;</tt>
-is <tt>true</tt> for all <i>i</i></del>.</p></li>
-</ol>
-<p>
--13- <i>Effects:</i> Initializes the elements in the tuple with the corresponding value in
-<tt>std::forward&lt;UTypes&gt;(u)</tt>.
-<p/>
--14- <i>Remarks:</i> The expression inside <tt>explicit</tt> is equivalent to:
-<p/>
-<tt>!conjunction_v&lt;is_convertible&lt;UTypes, Types&gt;...&gt;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
 <h3><a name="3123" href="3123">3123.</a> <tt>duration</tt> constructor from representation shouldn't be effectively non-throwing</h3>
 <p><b>Section:</b> 27.5 <a href="https://timsong-cpp.github.io/cppwp/time.duration">[time.duration]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2018-06-22 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
@@ -26711,192 +26562,6 @@ ill-formed with no diagnostic required.</ins>
 </p>
 </blockquote>
 
-
-
-
-
-
-<hr>
-<h3><a name="3146" href="3146">3146.</a> Excessive unwrapping in <tt>std::ref</tt>/<tt>cref</tt></h3>
-<p><b>Section:</b> 20.14.6.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap.helpers">[refwrap.helpers]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2018-07-10 <b>Last modified:</b> 2021-05-22 14:46:43 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-The overloads of <tt>std::ref</tt>/<tt>cref</tt> that take a <tt>reference_wrapper</tt> as argument are
-defined as calling <tt>std::ref</tt>/<tt>cref</tt> recursively, whereas the return type is defined as
-unwrapping just one level. Calling these functions with arguments of multiple level of wrapping leads
-to ill-formed programs:
-</p>
-<blockquote><pre>
-int i = 0;
-std::reference_wrapper&lt;int&gt; ri(i);
-std::reference_wrapper&lt;std::reference_wrapper&lt;int&gt;&gt; rri(ri);
-std::ref(rri); <i>// error within 'std::ref'</i>
-</pre></blockquote>
-<p>
-[Note: these overloads were added by issue resolution 10.29 for TR1, which can be found at
-<a href="https://wg21.link/n1688">N1688</a>, at Redmond 2004]
-</p>
-<p><i>[2018-08-20 Priority set to 3 after reflector discussion]</i></p>
-
-<p><i>[2021-05-22 Tim syncs wording to the current working draft]</i></p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4885">N4885</a>.
-</p>
-
-<ol>
-<li>
-<p>Change 20.14.6.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap.helpers">[refwrap.helpers]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T&gt; constexpr reference_wrapper&lt;T&gt; ref(reference_wrapper&lt;T&gt; t) noexcept;
-</pre>
-<blockquote>
-<p>
--3- <i>Returns:</i> <tt><del>ref(t.get())</del><ins>t</ins></tt>.
-</p>
-</blockquote>
-[&hellip;]
-<pre>
-template&lt;class T&gt; constexpr reference_wrapper&lt;const T&gt; cref(reference_wrapper&lt;T&gt; t) noexcept;
-</pre>
-<blockquote>
-<p>
--5- <i>Returns:</i> <tt><del>cref(t.get())</del><ins>t</ins></tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3155" href="3155">3155.</a> <tt>tuple&lt;any, any&gt;{allocator_arg_t, an_allocator}</tt></h3>
-<p><b>Section:</b> 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2018-08-18 <b>Last modified:</b> 2021-05-21 00:53:53 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
-<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-For a 2-element <tt>std::tuple</tt>, attempting to call the "allocator-extended default constructor" might actually
-pass the <tt>allocator_arg</tt> tag and the allocator to the tuple element constructors:
-</p>
-<blockquote>
-<pre>
-tuple&lt;any, any&gt; t{allocator_arg, allocator&lt;int&gt;{}};
-assert(std::get&lt;0&gt;(t).has_value());
-</pre>
-</blockquote>
-<p>
-This assertion should pass according to the standard, but users might expect the elements to be default constructed.
-If you really wanted to construct the elements with the tag and the allocator, you could do:
-</p>
-<blockquote>
-<pre>
-tuple&lt;any, any&gt; t{{allocator_arg}, {allocator&lt;int&gt;{}}};
-</pre>
-</blockquote>
-<p>
-or
-</p>
-<blockquote>
-<pre>
-tuple&lt;any, any&gt; t{tuple&lt;allocator_arg_t, allocator&lt;int&gt;&gt;{allocator_arg, allocator&lt;int&gt;{}}};
-</pre>
-</blockquote>
-<p>
-The deduction guides for <tt>std::tuple</tt> always treat <tt>{allocator_arg_t, <i>an_allocator</i>}</tt> as the
-allocator-extended default constructor, so this creates an empty tuple:
-</p>
-<blockquote>
-<pre>
-tuple t{allocator_arg, allocator&lt;int&gt;{}};
-</pre>
-</blockquote>
-<p>
-And this is needed to create <tt>tuple&lt;any, any&gt;</tt>:
-</p>
-<blockquote>
-<pre>
-tuple t{allocator_arg, allocator&lt;int&gt;{}, any{}, any{}};
-</pre>
-</blockquote>
-<p>
-The proposed resolution seems consistent with that, always calling an allocator-extended constructor for
-<tt>{allocator_arg_t, <i>a</i>}</tt>, instead of the <tt>tuple(UTypes&amp;&amp;...)</tt> constructor.
-<p/>
-Ville Voutilainen:
-<p/>
-This was discussed in <a href="http://lists.isocpp.org/lib-ext/2016/10/3154.php">this reflector thread</a>,
-where Andrzej convinced me to change libstdc++ tuple.
-</p>
-
-<p><i>[2018-08-20, Daniel comments]</i></p>
-
-<p>
-The wording changes by this issue are very near to those suggested for LWG <a href="3121">3121</a>.
-</p>
-
-<p><i>[2018-08 Batavia Monday issue prioritization]</i></p>
-
-<p>Priority set to 0, status to 'Tentatively Ready'. Alisdair to write a paper about
-SFINAE constraints on the Allocator-aware tuple constructors.</p>
-
-<p><i>[2018-08 Batavia Friday]</i></p>
-
-<p>Tim Song found a 3-element case of this issue. Status back to 'Open'</p>
-<p><tt>tuple&lt;any,any,any&gt;(allocator_arg_t, a, tuple)</tt></p>
-
-<p><i>[2018-09 Reflector prioritization]</i></p>
-
-<p>Set Priority to 3</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to <a href="https://wg21.link/n4762">N4762</a>.</p>
-
-<ol>
-<li><p>Modify 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
-<blockquote>
-<pre>
-template&lt;class... UTypes&gt; explicit(<i>see below</i>) constexpr tuple(UTypes&amp;&amp;... u);
-</pre>
-<blockquote>
-<p>
--9- <i>Effects:</i> Initializes the elements in the tuple with the corresponding value in
-<tt>std::forward&lt;UTypes&gt;(u)</tt>.
-<p/>
--10- <i>Remarks:</i> This constructor shall not participate in overload resolution unless
-<tt>sizeof...(Types) == sizeof...(UTypes)</tt> and <tt>sizeof...(Types) &gt;= 1</tt> and
-<tt>is_constructible_v&lt;T<sub><i>i</i></sub>, U<sub><i>i</i></sub>&amp;&amp;&gt;</tt> is <tt>true</tt>
-for all <tt><i>i</i></tt> <ins>and <tt>(sizeof...(Types) != 2 || !is_same_v&lt;remove_cvref_t&lt;U<sub>0</sub>&gt;,
-allocator_arg_t&gt;)</tt></ins>. The expression inside <tt>explicit</tt> is equivalent to:
-<p/>
-<tt>!conjunction_v&lt;is_convertible&lt;UTypes, Types&gt;...&gt;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-</blockquote>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This issue is resolved by the resolution of issue <a href="3121">3121</a>.</p>
 
 
 
@@ -32053,198 +31718,6 @@ removing the note might not be the only option to consider.
 
 
 <hr>
-<h3><a name="3407" href="3407">3407.</a> Some problems with the wording changes of <a href="https://wg21.link/p1739r4">P1739R4</a></h3>
-<p><b>Section:</b> 24.7.8.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a>, 24.6.4 <a href="https://timsong-cpp.github.io/cppwp/range.iota">[range.iota]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2020-02-21 <b>Last modified:</b> 2021-06-19 05:11:43 UTC</p>
-<p><b>Priority: </b>2
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Section 6.1 of <a href="https://wg21.link/p1739r4">P1739R4</a> changes the specification of
-<tt>views::take</tt> as follows:
-</p>
-<blockquote>
-<p>
--2- The name <tt>views::take</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
-<del>Given subexpressions <tt>E</tt> and <tt>F</tt>, the expression <tt>views::take(E, F)</tt> is
-expression-equivalent to <tt>take_view{E, F}</tt>.</del>
-<ins>Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
-and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
-If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt>
-is ill-formed. Otherwise, the expression <tt>views::take(E, F)</tt> is expression-equivalent to:</ins>
-</p>
-<ol style="list-style-type: none">
-<li><p><ins>&mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
-then <tt>((void) F, <i>decay-copy</i>(E))</tt>;</ins>
-</p></li>
-<li><p><ins>&mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt> and
-is</ins>
-</p>
-<ol style="list-style-type: none">
-<li><p><ins>&mdash; a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where
-<tt>T::extent == dynamic_extent</tt>,</ins></p></li>
-<li><p><ins>&mdash; a specialization of <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>),</ins></p></li>
-<li><p><ins>&mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</ins></p></li>
-<li><p><ins>&mdash; a specialization of <tt>ranges::subrange</tt> (24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>),</ins></p></li>
-</ol>
-<p><ins>then <tt>T{ranges::begin(E), ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F)}</tt>,
-except that <tt>E</tt> is evaluated only once;</ins>
-</p></li>
-<li><p>
-<ins>&mdash; otherwise, <tt>ranges::take_view{E, F}</tt>.</ins>
-</p></li>
-</ol>
-</blockquote>
-<p>
-Consider the case when <tt>T = subrange&lt;counted_iterator&lt;int&gt;, default_sentinel_t&gt;</tt>.
-Then according to the above wording, <tt>views::take(E, F)</tt> is expression-equivalent to
-</p>
-<blockquote><pre>
-T{ranges::begin(E), ranges:begin(E) + min&lt;D&gt;(ranges::size(E), F)};   <i>(*)</i>
-</pre></blockquote>
-<p>
-But this expression is ill-formed for the <tt>T</tt> we chose because
-<tt>subrange&lt;counted_iterator&lt;int&gt;, default_sentinel_t&gt;</tt> has no matching
-constructor that takes an <tt>iterator-iterator</tt> pair.
-<p/>
-More generally the above issue applies anytime <tt>T</tt> is a specialization of
-<tt>subrange</tt> that does not model <tt>common_range</tt>. But a similar issue also
-exists when <tt>T</tt> is a specialization of <tt>iota_view</tt> whose value type differs
-from its bound type. In this case yet another issue arises: In order for the expression
-<tt><i>(*)</i></tt> to be well-formed when <tt>T</tt> is a specialization of <tt>iota_view</tt>,
-we need to be able to construct an <tt>iota_view</tt> out of an <tt>iterator-iterator</tt> pair,
-and for that it seems we need to add another constructor to <tt>iota_view</tt>.
-</p>
-
-<p><i>[2020-02-24, Casey comments]</i></p>
-
-<p>
-Furthermore, the pertinent subrange constructor is only available when <tt>subrange::StoreSize</tt> is
-<tt>false</tt> (i.e., when either the <tt>subrange</tt> specialization's third template argument is
-not <tt>subrange_kind::sized</tt> or its iterator and sentinel types <tt>I</tt> and <tt>S</tt> model
-<tt>sized_sentinel_for&lt;S, I&gt;</tt>).
-</p>
-
-<p><i>[2020-03-16, Tomasz comments]</i></p>
-
-<p>
-A similar problem occurs for the <tt>views::drop</tt> for the <tt>subrange&lt;I, S, subrange_kind::sized&gt;</tt>,
-that explicitly stores size (i.e. <tt>sized_sentinel_for&lt;I, S&gt;</tt> is <tt>false</tt>). In such case,
-the <tt>(iterator, sentinel)</tt> constructor that <tt>views::drop</tt> will be expression-equivalent is
-not available.
-</p>
-
-<p><i>[2020-03-29 Issue Prioritization]</i></p>
-
-<p>Priority to 2 after reflector discussion.</p>
-
-<p><i>[2021-05-18 Tim adds wording]</i></p>
-
-<p>The proposed resolution below is based on the MSVC implementation, with one caveat:
-the MSVC implementation uses a SCARY iterator type for <tt>iota_view</tt> and therefore
-its <tt>iota_view</tt> case for <tt>take</tt> is able to directly construct the new view
-from the iterator type of the original. This is not required to work, so the wording below
-constructs the <tt>iota_view</tt> from the result of dereferencing the iterators instead
-in this case.
-</p>
-
-<p><i>[2021-06-18 Tim syncs wording to the current working draft]</i></p>
-
-<p>The wording below also corrects the size calculation in the presence of
-integer-class types.</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/N4892">N4892</a>.</p>
-<ol>
-<li>
-<p>Edit 24.7.8.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a> as indicated: </p>
-<blockquote>
-<p>
--2- The name <tt>views::take</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
-Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
-and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
-If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::take(E, F)</tt>
-is ill-formed. Otherwise, the expression <tt>views::take(E, F)</tt> is expression-equivalent to:
-</p>
-<ol style="list-style-type: none">
-<li><p>(2.1) &mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
-then <tt>((void) F, <i>decay-copy</i>(E))</tt>, except that the evaluations of <tt>E</tt>
-and <tt>F</tt> are indeterminately sequenced;
-</p></li>
-<li><p>(2.2) &mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt>,
-and is <ins>a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>), <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>),
-or <tt>ranges::subrange</tt> (24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>),
-then <tt>U(ranges::begin(E), ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F))</tt>,
-except that <tt>E</tt> is evaluated only once, where <tt>U</tt> is a type determined as follows:</ins>
-</p>
-<ol style="list-style-type: none">
-<li><p>(2.2.1) &mdash; <ins>if <tt>T</tt> is</ins> a specialization of <tt>span</tt> <del>(22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) where
-<tt>T::extent == dynamic_extent</tt></del>,<ins> then <tt>U</tt> is <tt>span&lt;typename T::element_type&gt;</tt>;</ins></p></li>
-<li><p>(2.2.2) &mdash; <ins>otherwise, if <tt>T</tt> is</ins> a specialization of <tt>basic_string_view</tt> <del>(21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>)</del>, <ins>then <tt>U</tt> is <tt>T</tt>;</ins></p></li>
-<li><p><del>(2.2.3) &mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</del></p></li>
-<li><p>(2.2.4) &mdash; <ins>otherwise, <tt>T</tt> is</ins> a specialization of <tt>ranges::subrange</tt> <del>(24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>)</del>,
-<ins>and <tt>U</tt> is <tt>ranges::subrange&lt;iterator_t&lt;T&gt;&gt;</tt>;</ins></p></li>
-</ol>
-<p><del>then <tt>T{ranges::begin(E), ranges::begin(E) + min&lt;D&gt;(ranges::size(E), F)}</tt>,
-except that <tt>E</tt> is evaluated only once;</del>
-</p></li>
-<li><p><ins>(2.?) &mdash; otherwise, if <tt>T</tt> is a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>)
-that models <tt>random_access_range</tt> and <tt>sized_range</tt>, then
-<tt>ranges::iota_view(*ranges::begin(E), *(ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F)))</tt>,
-except that <tt>E</tt> and <tt>F</tt> are each evaluated only once;</ins></p></li>
-<li><p>(2.3) &mdash; otherwise, <tt>ranges::take_view(E, F)</tt>.
-</p></li>
-</ol>
-</blockquote>
-</li>
-<li>
-<p>Edit 24.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.drop.overview">[range.drop.overview]</a> as indicated: </p>
-<blockquote>
-<p>
--2- The name <tt>views::drop</tt> denotes a range adaptor object (24.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
-Let <tt>E</tt> and <tt>F</tt> be expressions, let <tt>T</tt> be <tt>remove_cvref_t&lt;decltype((E))&gt;</tt>,
-and let <tt>D</tt> be <tt>range_difference_t&lt;decltype((E))&gt;</tt>.
-If <tt>decltype((F))</tt> does not model <tt>convertible_to&lt;D&gt;</tt>, <tt>views::drop(E, F)</tt>
-is ill-formed. Otherwise, the expression <tt>views::drop(E, F)</tt> is expression-equivalent to:
-</p>
-<ol style="list-style-type: none">
-<li><p>(2.1) &mdash; if <tt>T</tt> is a specialization of <tt>ranges::empty_view</tt> (24.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
-then <tt>((void) F, <i>decay-copy</i>(E))</tt>, except that the evaluations of <tt>E</tt>
-and <tt>F</tt> are indeterminately sequenced;
-</p></li>
-<li><p>(2.2) &mdash; otherwise, if <tt>T</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt>,
-and is
-</p>
-<ol style="list-style-type: none">
-<li><p>(2.2.1) &mdash;a specialization of <tt>span</tt> (22.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>) <del>where
-<tt>T::extent == dynamic_extent</tt></del>,</p></li>
-<li><p>(2.2.2) &mdash; a specialization of <tt>basic_string_view</tt> (21.4 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>), </p></li>
-<li><p>(2.2.3) &mdash; a specialization of <tt>ranges::iota_view</tt> (24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</p></li>
-<li><p>(2.2.4) &mdash; a specialization of <tt>ranges::subrange</tt> (24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>)
-<ins>where <tt>T::<i>StoreSize</i></tt> is <tt>false</tt></ins>,</p></li>
-</ol>
-<p>then <tt><del>T</del><ins>U</ins>(ranges::begin(E) + <ins>std::</ins>min&lt;D&gt;(ranges::<del>size</del><ins>distance</ins>(E), F), ranges::end(E))</tt>,
-except that <tt>E</tt> is evaluated only once<ins>, where <tt>U</tt> is <tt>span&lt;typename T::element_type&gt;</tt>
-if <tt>T</tt> is a specialization of <tt>span</tt> and <tt>T</tt> otherwise</ins>;
-</p></li>
-<li><p><ins>(2.?) &mdash; otherwise, if <tt>T</tt> is a specialization of <tt>ranges::subrange</tt>
-(24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>) that models <tt>random_access_range</tt> and <tt>sized_range</tt>, then
-<tt>T(ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F), ranges::end(E),
-<i>to-unsigned-like</i>(ranges::distance(E) - std::min&lt;D&gt;(ranges::distance(E), F)))</tt>,
-except that <tt>E</tt> and <tt>F</tt> are each evaluated only once;</ins></p></li>
-<li><p>(2.3) &mdash; otherwise, <tt>ranges::drop_view(E, F)</tt>.
-</p></li>
-</ol>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3409" href="3409">3409.</a> Too lax description of <tt>atomic_ref&lt;T&gt;::required_alignment</tt></h3>
 <p><b>Section:</b> 31.7.2 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Andrey Semashev <b>Opened:</b> 2020-02-27 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
@@ -35133,7 +34606,7 @@ Set priority to 3 following reflector and telecon discussions.
 <hr>
 <h3><a name="3493" href="3493">3493.</a> The constructor of <tt>std::function</tt> taking an <tt>F</tt> is missing a constraint</h3>
 <p><b>Section:</b> 20.14.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-10-31 <b>Last modified:</b> 2021-05-18 01:56:01 UTC</p>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2020-10-31 <b>Last modified:</b> 2021-08-20 17:27:29 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
@@ -35220,6 +34693,16 @@ and can also naturally have a constructor that take the wrapped function object
 as the argument, triggering the recursion scenario &mdash; it is not clear that
 there is a good way to add this constraint without causing undue breakage.
 </p>
+
+<p><i>[2021-08-20; LWG telecon]</i></p>
+
+<p>
+LWG requested that the constraint cited above for
+<code>move_only_function</code> (n&eacute; <code>any_invocable</code>)
+be moved to a <i>Mandates:</i> element instead, to avoid the same
+constraint recursion.
+</p>
+
 
 
 <p><b>Proposed resolution:</b></p>
@@ -37417,6 +36900,7 @@ is <tt>true</tt>, then</p>
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
 <p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#SG16">SG16</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 When formatting chrono types using a locale the result is underspecified, possibly a mix of the literal and locale encodings. For example:
@@ -37649,63 +37133,10 @@ friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator<
 
 
 <hr>
-<h3><a name="3573" href="3573">3573.</a> Missing <i>Throws</i> element for <tt>basic_string_view(It begin, End end)</tt></h3>
-<p><b>Section:</b> 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-07-13 <b>Last modified:</b> 2021-07-17 17:00:32 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-The standard does not specify the exceptions of this constructor, but since <tt>std::to_address</tt> is a 
-<tt>noexcept</tt> function, this constructor throws if and only when <tt>end - begin</tt> throws, we should 
-add a <i>Throws</i> element for it.
-</p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class It, class End&gt;
-  constexpr basic_string_view(It begin, End end);
-</pre>
-<blockquote>
-<p>
--7- <i>Constraints:</i> 
-<p/>
-[&hellip;]
-<p/>
--8- <i>Preconditions:</i> 
-<p/>
-[&hellip;]
-<p/>
--9- <i>Effects:</i> Initializes <tt>data_</tt> with <tt>to_address(begin)</tt> and initializes <tt>size_</tt> 
-with <tt>end - begin</tt>.
-<p/>
-<ins>-?- <i>Throws:</i> When and what <tt>end - begin</tt> throws.</ins>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3574" href="3574">3574.</a> <tt>common_iterator</tt> should be completely <tt>constexpr</tt>-able</h3>
 <p><b>Section:</b> 23.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-07-21 <b>Last modified:</b> 2021-07-25 17:07:36 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-07-21 <b>Last modified:</b> 2021-08-20 17:17:04 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#common.iterator">issues</a> in [common.iterator].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -37713,6 +37144,13 @@ with <tt>end - begin</tt>.
 <p>
 After <a href="https://wg21.link/P2231R1">P2231R1</a>, <tt>variant</tt> becomes completely <tt>constexpr</tt>-able, which means that 
 <tt>common_iterator</tt> can also be completely <tt>constexpr</tt>-able.
+</p>
+
+
+<p><i>[2021-08-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
 </p>
 
 
@@ -37928,44 +37366,14 @@ template&lt;indirectly_swappable&lt;I&gt; I2, class S2&gt;
 
 
 <hr>
-<h3><a name="3575" href="3575">3575.</a> <tt>&lt;=&gt;</tt> for integer-class types isn't consistently specified</h3>
-<p><b>Section:</b> 23.3.4.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.winc">[iterator.concept.winc]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-07-25 <b>Last modified:</b> 2021-07-31 10:53:29 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#iterator.concept.winc">active issues</a> in [iterator.concept.winc].</p>
-<p><b>View all other</b> <a href="lwg-index.html#iterator.concept.winc">issues</a> in [iterator.concept.winc].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-It seems that the return type of <tt>&lt;=&gt;</tt> for integer-class types is not specified consistently with 
-other comparison operators. Even <a href="https://wg21.link/P2393R0">P2393R0</a> has ignored it.
-<p/>
-IMO <tt>strong_ordering</tt> should be added to 23.3.4.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.winc">[iterator.concept.winc]</a>/(5.3), and 
-<tt>three_way_comparable&lt;strong_ordering&gt;</tt> should be added to 23.3.4.4 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.winc">[iterator.concept.winc]</a>/8.
-</p>
-
-<p><i>[2021-07-31, Daniel comments]</i></p>
-
-<p>
-The upcoming revision <a href="https://wg21.link/P2393R1">P2393R1</a> will provide additional wording to solve this issue.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-
-
-
-
-<hr>
 <h3><a name="3576" href="3576">3576.</a> Clarifying fill character in <tt>std::format</tt></h3>
-<p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2021-08-01 <b>Last modified:</b> 2021-08-15 20:23:57 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+<p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#SG16">SG16</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2021-08-01 <b>Last modified:</b> 2021-08-20 17:06:18 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
 <p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#SG16">SG16</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 The paper <a href="https://wg21.link/P1868">P1868</a> "width: clarifying units of width and precision in 
@@ -38050,6 +37458,13 @@ option are absent. &mdash; <i>end note</i>]
 <p><i>[2021-08-09; Mark de Wever provides improved wording]</i></p>
 
 
+<p><i>[2021-08-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 and status to "SG16" after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 <p>
@@ -38094,8 +37509,8 @@ then it is assumed that both the fill character and the alignment option are abs
 <hr>
 <h3><a name="3577" href="3577">3577.</a> Merging an (unordered) associative container with itself</h3>
 <p><b>Section:</b> 22.2.6.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a>, 22.2.7.1 <a href="https://timsong-cpp.github.io/cppwp/unord.req.general">[unord.req.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz <b>Opened:</b> 2021-08-04 <b>Last modified:</b> 2021-08-08 11:34:27 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz <b>Opened:</b> 2021-08-04 <b>Last modified:</b> 2021-08-20 17:17:04 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts.general">active issues</a> in [associative.reqmts.general].</p>
 <p><b>View all other</b> <a href="lwg-index.html#associative.reqmts.general">issues</a> in [associative.reqmts.general].</p>
@@ -38141,6 +37556,17 @@ as the case <tt>position == i</tt> is taken care of.</p></li>
 <li><p><tt>std::list::merge</tt> explicitly allows the case <tt>addressof(x) == this</tt> (resulting in a no-op).</p></li>
 </ul>
 
+<p><i>[2021-08-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+
+Tim Song commented:
+"I think the current PR of LWG<a href="2414">2414</a> bans this code,
+but we might want to have consistency with <code>list::merge</code> instead."
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -38151,8 +37577,8 @@ as the case <tt>position == i</tt> is taken care of.</p></li>
 <hr>
 <h3><a name="3578" href="3578">3578.</a> Iterator SCARYness in the context of associative container merging</h3>
 <p><b>Section:</b> 22.2.6.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz <b>Opened:</b> 2021-08-04 <b>Last modified:</b> 2021-08-08 11:37:50 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Joaqu&iacute;n M L&oacute;pez Mu&ntilde;oz <b>Opened:</b> 2021-08-04 <b>Last modified:</b> 2021-08-20 17:17:04 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts.general">active issues</a> in [associative.reqmts.general].</p>
 <p><b>View all other</b> <a href="lwg-index.html#associative.reqmts.general">issues</a> in [associative.reqmts.general].</p>
@@ -38183,6 +37609,13 @@ if SCARY iterators are finally required for associative containers, it makes muc
 to unordered associative containers as well.
 </p>
 
+<p><i>[2021-08-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -38192,12 +37625,12 @@ to unordered associative containers as well.
 
 <hr>
 <h3><a name="3579" href="3579">3579.</a> Complexity guarantees for <tt>resize()</tt> and <tt>append()</tt> functions across the library</h3>
-<p><b>Section:</b> 21.3.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a>, 22.3.8.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a>, 22.3.10.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a>, 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>, 22.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a>, 26.7.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a>, 21.3.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 29.12.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.append">[fs.path.append]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2021-08-11 <b>Last modified:</b> 2021-08-14 19:40:43 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+<p><b>Section:</b> 21.3.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a>, 22.3.8.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a>, 22.3.10.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a>, 22.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>, 22.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a>, 26.7.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a>, 21.3.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 29.12.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.append">[fs.path.append]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2021-08-11 <b>Last modified:</b> 2021-08-20 17:10:36 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#string.capacity">issues</a> in [string.capacity].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 This issue requests to clarify the complexity requirements for <tt>resize</tt> and <tt>append</tt> 
@@ -38240,81 +37673,16 @@ None of them specify a complexity requirement. I think we should update all of t
 what is expected or permitted in an implementation.
 </p>
 
+<p><i>[2021-08-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 and status to "LEWG" after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 
-
-
-
-
-<hr>
-<h3><a name="3580" href="3580">3580.</a> <tt>iota_view's iterator</tt>'s binary <tt>operator+</tt> should be improved</h3>
-<p><b>Section:</b> 24.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Zoe Carver <b>Opened:</b> 2021-08-14 <b>Last modified:</b> 2021-08-14 20:06:41 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#range.iota.iterator">issues</a> in [range.iota.iterator].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-<tt>iota_view</tt>'s iterator's <tt>operator+</tt> could avoid a copy construct by doing 
-"<tt>i += n; return i</tt>" rather than "<tt>return i += n;</tt>" as seen in 24.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a>.
-<p/>
-This is what libc++ has implemented and shipped, even though it may not technically be conforming 
-(if a program asserted the number of copies, for example). 
-<p/>
-It might be good to update this operator and the minus operator accordingly. 
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-friend constexpr <i>iterator</i> operator+(<i>iterator</i> i, difference_type n)
-  requires <i>advanceable</i>&lt;W&gt;;
-</pre>
-<blockquote>
-<p>
--20- <i>Effects:</i> Equivalent to:
-</p>
-<blockquote><pre>
-<del>return</del> i += n; 
-<ins>return i;</ins>
-</pre></blockquote>
-</blockquote>
-<pre>
-friend constexpr <i>iterator</i> operator+(difference_type n, <i>iterator</i> i)
-  requires <i>advanceable</i>&lt;W&gt;;
-</pre>
-<blockquote>
-<p>
--21- <i>Effects:</i> Equivalent to: <tt>return i + n;</tt>
-</p>
-</blockquote>
-<pre>
-friend constexpr <i>iterator</i> operator-(<i>iterator</i> i, difference_type n)
-  requires <i>advanceable</i>&lt;W&gt;;
-</pre>
-<blockquote>
-<p>
--22- <i>Effects:</i> Equivalent to:
-</p>
-<blockquote><pre>
-<del>return</del> i -= n;
-<ins>return i;</ins>
-</pre></blockquote>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
 
 
 
