@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3581: The range constructor makes basic_string_view not trivially move constructible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3581" href="lwg-active.html#3581">3581.</a> The range constructor makes <tt>basic_string_view</tt> not trivially move constructible</h3>
+<p><b>Section:</b> 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An, Casey Carter <b>Opened:</b> 2021-08-16 <b>Last modified:</b> 2021-08-21 16:26:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#string.view.cons">active issues</a> in [string.view.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.view.cons">issues</a> in [string.view.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<b>Jiang An</b>:
+</p>
+<p>
+ The issue is found in <a href="https://github.com/microsoft/STL/pull/2128">this Microsoft STL pull request</a>.
+<p/>
+I think an additional constraint should be added to 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a>/11 (a similar constraint is 
+already present for <tt>reference_wrapper</tt>):
+</p>
+<blockquote><p>
+<ins>(11.?) &mdash; <tt>is_same_v&lt;remove_cvref_t&lt;R&gt;, basic_string_view&gt;</tt> is <tt>false</tt>.</ins>
+</p></blockquote>
+<p>
+<b>Casey Carter</b>:
+</p>
+<p>
+<a href="https://wg21.link/p1989R2">P1989R2</a> "Range constructor for <tt>std::string_view</tt> 2: Constrain Harder" 
+added a converting constructor to <tt>basic_string_view</tt> that accepts (by forwarding reference) any sized 
+contiguous range with a compatible element type. This constructor unfortunately intercepts attempts at move 
+construction which previously would have resulted in a call to the copy constructor. (I suspect the authors if 
+P1989 were under the mistaken impression that <tt>basic_string_view</tt> had a defaulted move constructor, which 
+would sidestep this issue by being chosen by overload resolution via the "non-template vs. template" tiebreaker.)
+<p/>
+The resulting inefficiency could be corrected by adding a defaulted move constructor and move assignment operator 
+to <tt>basic_string_view</tt>, but it would be awkward to add text to specify that these moves always leave the 
+source intact. Presumably this is why the move operations were omitted in the first place. We therefore recommend 
+constraining the conversion constructor template to reject arguments whose decayed type is <tt>basic_string_view</tt> 
+(which we should probably do for all conversion constructor templates in the Standard Library).
+<p/>
+Implementation experience: MSFTSTL is in the process of implementing this fix. Per Jonathan Wakely, libstdc++ has a 
+similar constraint.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R&gt;
+  constexpr basic_string_view(R&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+-10- Let <tt>d</tt> be an lvalue of type <tt>remove_cvref_t&lt;R&gt;</tt>.
+<p/>
+-11- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(11.?) &mdash; <tt>remove_cvref_t&lt;R&gt;</tt> is not the same type as <tt>basic_string_view</tt>,</ins></p></li>
+<li><p>(11.1) &mdash; <tt>R</tt> models <tt>ranges::contiguous_range</tt> and <tt>ranges::sized_range</tt>,</p></li>
+<li><p>(11.2) &mdash; <tt>is_same_v&lt;ranges::range_value_t&lt;R&gt;, charT&gt;</tt> is <tt>true</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>
