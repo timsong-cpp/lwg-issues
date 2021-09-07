@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3582: Unclear where std::async exceptions are handled</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3582" href="lwg-active.html#3582">3582.</a> Unclear where <tt>std::async</tt> exceptions are handled</h3>
+<p><b>Section:</b> 32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-08-27 17:37:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#futures.async">active issues</a> in [futures.async].</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.async">issues</a> in [futures.async].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> (3.1) says:
+</p>
+<blockquote>
+<p>
+Any exception propagated from the execution of <tt>invoke(<i>decay-copy</i>(std::forward&lt;F&gt;(f)), 
+<i>decay-copy</i>(std::forward&lt;Args&gt;(args))...)</tt> is stored as the exceptional result in the 
+shared state.
+</p>
+</blockquote>
+<p>
+It's not clear whether this includes the evaluation of the <tt><i>decay-copy</i></tt> calls in the calling 
+thread, or only the invocation of invoke with the results of those <tt><i>decay-copy</i></tt> calls.
+<p/>
+A literal reading suggests that any exceptions from any part of that expression should be stored in the 
+shared state. All of libstdc++, libc++ and MSVC only store exceptions from the call to <tt>invoke</tt>, not the 
+calls to <tt><i>decay-copy</i></tt>. Exceptions from the <tt><i>decay-copy</i></tt> calls are propagated 
+to the caller of <tt>std::async</tt>. We should clarify that that's what the standard means.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F, class... Args&gt;
+  [[nodiscard]] future&lt;invoke_result_t&lt;decay_t&lt;F&gt;, decay_t&lt;Args&gt;...&gt;&gt;
+    async(F&amp;&amp; f, Args&amp;&amp;... args);
+template&lt;class F, class... Args&gt;
+  [[nodiscard]] future&lt;invoke_result_t&lt;decay_t&lt;F&gt;, decay_t&lt;Args&gt;...&gt;&gt;
+    async(launch policy, F&amp;&amp; f, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-2- <i>Mandates</i>: [&hellip;]
+<p/>
+-3- <i>Effects</i>: The first function behaves the same as a call to the second function with a <tt>policy</tt> argument of
+<tt>launch::async | launch::deferred</tt> and the same arguments for <tt>F</tt> and <tt>Args</tt>. The second function
+creates a shared state that is associated with the returned <tt>future</tt> object. The further behavior of the second function 
+depends on the <tt>policy</tt> argument as follows (if more than one of these conditions applies, the implementation may 
+choose any of the corresponding policies):
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; If <tt>launch::async</tt> is set in <tt>policy</tt>, calls 
+<tt>invoke(<i>decay-copy</i>(std::forward&lt;F&gt;(f)), <i>decay-copy</i>(std::forward&lt;Args&gt;(args))...)</tt> 
+(20.14.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>, 32.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a>) as if in a new thread of execution
+represented by a <tt>thread</tt> object with the calls to <tt><i>decay-copy</i></tt> being evaluated 
+in the thread that called <tt>async</tt>. Any return value is stored as the result in the shared state. Any 
+exception propagated from the <del>execution of <tt>invoke(<i>decay-copy</i>(std::forward&lt;F&gt;(f)), 
+<i>decay-copy</i>(std::forward&lt;Args&gt;(args))...)</tt></del><ins>call to <tt>invoke</tt></ins> is stored as 
+the exceptional result in the shared state. <ins>[<i>Note ?:</i> Exceptions from the <tt><i>decay-copy</i></tt> 
+calls are propagated to the caller. &mdash; <i>end note</i>]</ins> The <tt>thread</tt> object is stored in 
+the shared state and affects the behavior of any asynchronous return objects that reference that state.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

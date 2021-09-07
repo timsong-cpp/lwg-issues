@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3569" href="lwg-active.html#3569">3569.</a> <tt>join_view</tt> fails to support ranges of ranges with non-<tt>default_initializable</tt> iterators</h3>
 <p><b>Section:</b> 24.7.12.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-06-16 <b>Last modified:</b> 2021-06-23 14:18:24 UTC</p>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-06-16 <b>Last modified:</b> 2021-08-27 18:24:12 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#range.join.iterator">active issues</a> in [range.join.iterator].</p>
@@ -71,9 +71,8 @@ ill-formed if its type is not <tt>default_initializable</tt>.
 Set priority to 3 after reflector poll.
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 Wording relative to the <a href="https://github.com/cplusplus/draft/releases/download/n4892/n4892.pdf">post 2021-06 
 virtual plenary working draft</a>. This PR is currently being implemented in MSVC.
@@ -94,6 +93,177 @@ namespace std::ranges {
   struct join_view&lt;V&gt;::<i>iterator</i> {
     [&hellip;]
     <ins>optional&lt;</ins><i>InnerIter</i><ins>&gt;</ins> <i>inner_</i><del> = <i>InnerIter</i>()</del>;
+    [&hellip;]
+    constexpr decltype(auto) operator*() const { return <ins>*</ins>*<i>inner_</i>; }
+    [&hellip;]
+    friend constexpr decltype(auto) iter_move(const <i>iterator</i>&amp; i)
+    noexcept(noexcept(ranges::iter_move(<ins>*</ins>i.<i>inner_</i>))) {
+      return ranges::iter_move(<ins>*</ins>i.<i>inner_</i>);
+    }
+    
+    friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      noexcept(noexcept(ranges::iter_swap(<ins>*</ins>x.<i>inner_</i>, <ins>*</ins>y.<i>inner_</i>)))
+      requires indirectly_swappable&lt;<i>InnerIter</i>&gt;;
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr void <i>satisfy();</i>       <i>// exposition only</i>
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+auto update_inner = [this](const iterator_t&lt;<i>Base</i>&gt;&amp; x) -> auto&amp;&amp; {
+[&hellip;] 
+};
+for (; <i>outer_</i> != ranges::end(<i>parent_</i>-&gt;<i>base_</i>); ++<i>outer_</i>) {
+  auto&amp;&amp; inner = update_inner(*<i>outer_</i>);
+  <i>inner_</i> = ranges::begin(inner);
+  if (<ins>*</ins><i>inner_</i> != ranges::end(inner))
+    return;
+}
+if constexpr (<i>ref-is-glvalue</i>)
+  <i>inner_</i><ins>.reset()</ins><del> = <i>InnerIter</i>()</del>;
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr <i>InnerIter</i> operator-&gt;() const
+  requires <i>has-arrow</i>&lt;<i>InnerIter</i>&gt; &amp;&amp; copyable&lt;<i>InnerIter</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to: <tt>return <ins>*</ins><i>inner_</i>;</tt>
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>&amp; operator++();
+</pre>
+<blockquote>
+<p>
+-9- Let <i>inner-range</i> be:
+<p/>
+[&hellip;]
+<p/>
+-10- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+auto&amp;&amp; inner_rng = <i>inner-range</i>;
+if (++<ins>*</ins><i>inner_</i> == ranges::end(inner_rng)) {
+  ++<i>outer_</i>;
+  <i>satisfy</i>();
+}
+return *this;
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr <i>iterator</i>&amp; operator--()
+  requires <i>ref-is-glvalue</i> &amp;&amp; bidirectional_range&lt;<i>Base</i>&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;Base&gt;&gt; &amp;&amp;
+           common_range&lt;range_reference_t&lt;Base&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-13- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote>
+<pre>
+if (<i>outer_</i> == ranges::end(<i>parent_</i>-&gt;<i>base_</i>))
+  <i>inner_</i> = ranges::end(*--<i>outer_</i>);
+while (<ins>*</ins><i>inner_</i> == ranges::begin(*<i>outer_</i>))
+  <ins>*</ins><i>inner_</i> = ranges::end(*--<i>outer_</i>);
+--<ins>*</ins><i>inner_</i>;
+return *this;
+</pre>
+</blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  noexcept(noexcept(ranges::iter_swap(<ins>*</ins>x.<i>inner_</i>, <ins>*</ins>y.<i>inner_</i>)))
+  requires indirectly_swappable&lt;<i>InnerIter</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects:</i> Equivalent to: return <tt>ranges::iter_swap(<ins>*</ins>x.<i>inner_</i>, <ins>*</ins>y.<i>inner_</i>);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2021-08-23; Louis Dionne comments and provides improved wording]</i></p>
+
+<p>
+I believe the currently proposed resolution is missing the removal of the <tt>default_initializable&lt;<i>InnerIter</i>&gt;</tt> 
+constraint on <tt>join_view::<i>iterator</i></tt>'s default constructor in 24.7.12.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a>. Indeed, 
+after the currently-proposed resolution, <tt>join_view::<i>iterator</i></tt> reads like:
+</p>
+<blockquote><pre>
+template&lt;input_range V&gt;
+  requires [&hellip;]
+struct join_view&lt;V&gt;::<i>iterator</i> {
+private:
+  optional&lt;<i>InnerIter</i>&gt; <i>inner_</i>; <i>// exposition only</i>
+  [&hellip;]
+public:
+  <i>iterator</i>() requires default_initializable&lt;<i>OuterIter</i>&gt; &amp;&amp;
+                      default_initializable&lt;<i>InnerIter</i>&gt; = default;
+    [&hellip;]
+};
+</pre></blockquote>
+<p>
+I believe we should drop the <tt>default_initializable&lt;<i>InnerIter</i>&gt;</tt> constraint from the default constructor 
+(that seems like an oversight unless I missed something):
+</p>
+<blockquote><pre>
+template&lt;input_range V&gt;
+  requires [&hellip;]
+struct join_view&lt;V&gt;::<i>iterator</i> {
+private:
+  optional&lt;<i>InnerIter</i>&gt; <i>inner_</i>; <i>// exposition only</i>
+  [&hellip;]
+public:
+  <i>iterator</i>() requires default_initializable&lt;<i>OuterIter</i>&gt; = default;
+  [&hellip;]
+};
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.12.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt; &amp;&amp;
+             (is_reference_v&lt;range_reference_t&lt;V&gt;&gt; ||
+              view&lt;range_value_t&lt;V&gt;&gt;)
+  template&lt;bool Const&gt;
+  struct join_view&lt;V&gt;::<i>iterator</i> {
+    [&hellip;]
+    <ins>optional&lt;</ins><i>InnerIter</i><ins>&gt;</ins> <i>inner_</i><del> = <i>InnerIter</i>()</del>;
+    [&hellip;]
+    <i>iterator</i>() requires default_initializable&lt;<i>OuterIter</i>&gt; <del>&amp;&amp;
+                        default_initializable&lt;<i>InnerIter</i>&gt;</del> = default;
     [&hellip;]
     constexpr decltype(auto) operator*() const { return <ins>*</ins>*<i>inner_</i>; }
     [&hellip;]

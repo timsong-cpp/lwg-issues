@@ -1,0 +1,140 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3585: Variant converting assignment with immovable alternative</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3585" href="lwg-active.html#3585">3585.</a> Variant converting assignment with immovable alternative</h3>
+<p><b>Section:</b> 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-09-01 <b>Last modified:</b> 2021-09-04 16:14:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#variant.assign">active issues</a> in [variant.assign].</p>
+<p><b>View all other</b> <a href="lwg-index.html#variant.assign">issues</a> in [variant.assign].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Example originally from <a href="https://stackoverflow.com/q/68998153/2069064">StackOverflow</a> but with a more reasonable example from Tim Song:
+</p>
+<blockquote><pre>
+#include &lt;variant&gt;
+#include &lt;string&gt;
+
+struct A {
+  A() = default;
+  A(A&amp;&amp;) = delete;
+};
+
+int main() {
+  std::variant&lt;A, std::string&gt; v;
+  v = "hello";
+}
+</pre></blockquote>
+<p>
+There is implementation divergence here: libstdc++ rejects, libc++ and msvc accept.
+<p/>
+20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> bullet (13.3) says that if we're changing the alternative in assignment 
+and it is not the case that the converting construction won't throw (as in the above), then "Otherwise, 
+equivalent to <tt>operator=(variant(std::forward&lt;T&gt;(t)))</tt>." That is, we defer to move assignment.
+<p/>
+<tt>variant&lt;A, string&gt;</tt> isn't move-assignable (because <tt>A</tt> isn't move constructible). Per 
+the wording in the standard, we have to reject this. libstdc++ follows the wording of the standard.
+<p/>
+But we don't actually have to do a full move assignment here, since we know the situation we're in is 
+changing the alternative, so the fact that <tt>A</tt> isn't move-assignable shouldn't matter. libc++ and 
+msvc instead do something more direct, allowing the above program.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This should cover the case that we want to cover: that if construction of <tt>T<sub><i>j</i></sub></tt> 
+from <tt>T</tt> throws, we haven't yet changed any state in the variant.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; constexpr variant&amp; operator=(T&amp;&amp; t) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-11- Let <tt>T<sub><i>j</i></sub></tt> be a type that is determined as follows: build an imaginary function 
+<tt><i>FUN</i>(T<sub><i>i</i></sub>)</tt> for each alternative type <tt>T<sub><i>i</i></sub></tt> for which 
+<tt>T<sub><i>i</i></sub> x[] = {std::forward&lt;T&gt;(t)};</tt> is well-formed for some invented variable 
+<tt>x</tt>. The overload <tt><i>FUN</i>(T<sub><i>j</i></sub>)</tt> selected by overload resolution for the 
+expression <tt><i>FUN</i>(std::forward&lt;T&gt;(t))</tt> defines the alternative <tt>T<sub><i>j</i></sub></tt> 
+which is the type of the contained value after assignment.
+<p/>
+-12- <i>Constraints:</i> [&hellip;]
+<p/>
+-13- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(13.1) &mdash; If <tt>*this</tt> holds a <tt>T<sub><i>j</i></sub></tt>, assigns <tt>std::forward&lt;T&gt;(t)</tt> 
+to the value contained in <tt>*this</tt>.</p></li>
+<li><p>(13.2) &mdash; Otherwise, if <tt>is_nothrow_constructible_v&lt;T<sub><i>j</i></sub>, T&gt; || 
+!is_nothrow_move_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> is <tt>true</tt>, equivalent to 
+<tt>emplace&lt;<i>j</i>&gt;(std::forward&lt;T&gt;(t))</tt>.</p></li>
+<li><p>(13.3) &mdash; Otherwise, equivalent to 
+<tt><del>operator=(variant(std::forward&lt;T&gt;(t)))</del><ins>emplace&lt;<i>j</i>&gt;(T<sub><i>j</i></sub>(std::forward&lt;T&gt;(t)))</ins></tt>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
