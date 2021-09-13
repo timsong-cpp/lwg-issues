@@ -1,0 +1,243 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3588: Strike out purposeless UB involving the deleter in members functions of unique_ptr</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3588" href="lwg-active.html#3588">3588.</a> Strike out purposeless UB involving the deleter in members functions of <tt>unique_ptr</tt></h3>
+<p><b>Section:</b> 20.11.1.3.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.general">[unique.ptr.single.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2021-09-07 <b>Last modified:</b> 2021-09-11 13:30:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This originated from the editorial issues <a href="https://github.com/cplusplus/draft/pull/4871">#4871</a> 
+and <a href="https://github.com/cplusplus/draft/pull/4872">#4872</a>.
+<p/>
+Several member functions of <tt>unique_ptr</tt> are <tt>noexcept</tt>, and yet, they have the precondition 
+that an expression involving the deleter does not exit via an exception. There's nothing an implementation 
+or user can take advantage of in presence of this UB. Since the behavior otherwise would be a call to 
+<tt>std::terminate</tt>, these preconditions should be striked out.
+<p/>
+Note that although <tt>~unique_ptr()</tt> is not <tt>noexcept</tt>, 16.4.6.13 <a href="https://timsong-cpp.github.io/cppwp/res.on.exception.handling">[res.on.exception.handling]</a> p3 
+specifies it to behave as if it were.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.11.1.3.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr unique_ptr() noexcept;
+constexpr unique_ptr(nullptr_t) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- [&hellip;]
+<p/>
+-2- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
+and that construction does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+explicit unique_ptr(pointer p) noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Constraints:</i> [&hellip;]
+<p/>
+-6- <i>Mandates:</i> [&hellip;]
+<p/>
+-7- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
+and that construction does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+unique_ptr(pointer p, const D&amp; d) noexcept;
+unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Constraints:</i> [&hellip;]
+<p/>
+-11- <i>Mandates:</i> [&hellip;]
+<p/>
+-12- <i>Preconditions:</i> For the first constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> 
+meets the <i>Cpp17CopyConstructible</i> requirements <del>and such construction does not exit via an exception</del>. 
+For the second constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
+requirements <del>and such construction does not exit via an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+unique_ptr(unique_ptr&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-17- <i>Constraints:</i> [&hellip;]
+<p/>
+-18- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
+requirements (Table 28). <del>Construction of the deleter from an rvalue of type <tt>D</tt> does not throw an exception.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U, class E&gt; unique_ptr(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-21- <i>Constraints:</i> [&hellip;]
+<p/>
+-22- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, construction of the deleter from an rvalue of type 
+<tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a reference type and 
+construction of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.dtor">[unique.ptr.single.dtor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~unique_ptr();
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del>
+<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.4 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+unique_ptr&amp; operator=(unique_ptr&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints:</i> [&hellip;]
+<p/>
+-2- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the 
+<i>Cpp17MoveAssignable</i> requirements (Table 30) <del>and assignment of the deleter from an 
+rvalue of type <tt>D</tt> does not throw an exception</del>. Otherwise, <tt>D</tt> is a
+reference type; <tt>remove_reference_t&lt;D&gt;</tt> meets the <i>Cpp17CopyAssignable</i> 
+requirements <del>and assignment of the deleter from an lvalue of type <tt>D</tt> does not 
+throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U, class E&gt; unique_ptr&amp; operator=(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> [&hellip;]
+<p/>
+-7- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, assignment of the deleter from an rvalue 
+of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a 
+reference type and assignment of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and 
+does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.6 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.modifiers">[unique.ptr.single.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void reset(pointer p = pointer()) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del> 
+<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void swap(unique_ptr&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions:</i> <tt>get_deleter()</tt> is swappable (16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>) <del>and 
+does not throw an exception under <tt>swap</tt></del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

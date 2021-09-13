@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-09-05 at 16:05:49 UTC</p>
+<p><p>Revised 2021-09-11 at 13:51:19 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -38098,6 +38098,317 @@ and <tt>bool</tt> or when an integer presentation type is specified</del>.</td>
 </table>
 </blockquote>
 </li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3587" href="3587">3587.</a> <tt>std::three_way_comparable_with&lt;T, U, void&gt;</tt> can be satisfied but can't be modeled</h3>
+<p><b>Section:</b> 17.11.4 <a href="https://timsong-cpp.github.io/cppwp/cmp.concept">[cmp.concept]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-09-06 <b>Last modified:</b> 2021-09-11 12:35:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmp.concept">issues</a> in [cmp.concept].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Due to the current specification of <tt>std::common_comparison_category</tt>, 
+<tt><i>compare-as</i>&lt;void, void&gt;</tt> is satisfied. And thus given two types <tt>T</tt> 
+and <tt>U</tt> with regular <tt>==</tt>, <tt>!=</tt>, <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, 
+and <tt>&gt;=</tt> but irregular <tt>&lt;=&gt;</tt> that has return type <tt>void</tt>, 
+<tt>std::three_way_comparable_with&lt;T, U, void&gt;</tt> is satisfied.
+<p/>
+However, in this situation <tt>std::three_way_comparable_with&lt;T, U, void&gt;</tt> 
+can't be modeled, because <tt>Cat(t &lt;=&gt; u) == Cat(C(t) &lt;=&gt; C(u))</tt> 
+is ill-formed if <tt>Cat</tt> is <tt>void</tt> (see <a href="https://gcc.godbolt.org/z/5c4839qz1"/>this godbolt link<a/>).
+<p/>
+I don't think this issue has any impact on meaningful codes, but it seems to be a hole in the 
+current specification.
+<p/>
+It seems that <tt><i>compares-as</i>&lt;void, void&gt;</tt> should be changed to <tt>false</tt>. 
+<tt><i>compares-as</i>&lt;NonComparisonCategoryType, void&gt;</tt> might need refinement.
+<p/>
+(Note: The same problem does not exists for <tt>std::three_way_comparable</tt>, because 
+<tt>std::three_way_comparable&lt;T, void&gt;</tt> can be modeled if the <tt>&lt;=&gt;</tt> on <tt>T</tt> 
+has "regular" definition or its return type is not a comparison category type, but the return value 
+has "regular" semantics)
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3588" href="3588">3588.</a> Strike out purposeless UB involving the deleter in members functions of <tt>unique_ptr</tt></h3>
+<p><b>Section:</b> 20.11.1.3.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.general">[unique.ptr.single.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2021-09-07 <b>Last modified:</b> 2021-09-11 13:30:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This originated from the editorial issues <a href="https://github.com/cplusplus/draft/pull/4871">#4871</a> 
+and <a href="https://github.com/cplusplus/draft/pull/4872">#4872</a>.
+<p/>
+Several member functions of <tt>unique_ptr</tt> are <tt>noexcept</tt>, and yet, they have the precondition 
+that an expression involving the deleter does not exit via an exception. There's nothing an implementation 
+or user can take advantage of in presence of this UB. Since the behavior otherwise would be a call to 
+<tt>std::terminate</tt>, these preconditions should be striked out.
+<p/>
+Note that although <tt>~unique_ptr()</tt> is not <tt>noexcept</tt>, 16.4.6.13 <a href="https://timsong-cpp.github.io/cppwp/res.on.exception.handling">[res.on.exception.handling]</a> p3 
+specifies it to behave as if it were.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.11.1.3.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr unique_ptr() noexcept;
+constexpr unique_ptr(nullptr_t) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- [&hellip;]
+<p/>
+-2- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
+and that construction does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+explicit unique_ptr(pointer p) noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Constraints:</i> [&hellip;]
+<p/>
+-6- <i>Mandates:</i> [&hellip;]
+<p/>
+-7- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
+and that construction does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+unique_ptr(pointer p, const D&amp; d) noexcept;
+unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Constraints:</i> [&hellip;]
+<p/>
+-11- <i>Mandates:</i> [&hellip;]
+<p/>
+-12- <i>Preconditions:</i> For the first constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> 
+meets the <i>Cpp17CopyConstructible</i> requirements <del>and such construction does not exit via an exception</del>. 
+For the second constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
+requirements <del>and such construction does not exit via an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+unique_ptr(unique_ptr&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-17- <i>Constraints:</i> [&hellip;]
+<p/>
+-18- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
+requirements (Table 28). <del>Construction of the deleter from an rvalue of type <tt>D</tt> does not throw an exception.</del>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U, class E&gt; unique_ptr(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-21- <i>Constraints:</i> [&hellip;]
+<p/>
+-22- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, construction of the deleter from an rvalue of type 
+<tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a reference type and 
+construction of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.dtor">[unique.ptr.single.dtor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~unique_ptr();
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del>
+<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.4 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+unique_ptr&amp; operator=(unique_ptr&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints:</i> [&hellip;]
+<p/>
+-2- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the 
+<i>Cpp17MoveAssignable</i> requirements (Table 30) <del>and assignment of the deleter from an 
+rvalue of type <tt>D</tt> does not throw an exception</del>. Otherwise, <tt>D</tt> is a
+reference type; <tt>remove_reference_t&lt;D&gt;</tt> meets the <i>Cpp17CopyAssignable</i> 
+requirements <del>and assignment of the deleter from an lvalue of type <tt>D</tt> does not 
+throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U, class E&gt; unique_ptr&amp; operator=(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> [&hellip;]
+<p/>
+-7- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, assignment of the deleter from an rvalue 
+of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a 
+reference type and assignment of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and 
+does not throw an exception</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.11.1.3.6 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.modifiers">[unique.ptr.single.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void reset(pointer p = pointer()) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del> 
+<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void swap(unique_ptr&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions:</i> <tt>get_deleter()</tt> is swappable (16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>) <del>and 
+does not throw an exception under <tt>swap</tt></del>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3589" href="3589">3589.</a> The <tt>const</tt> lvalue reference overload of <tt>get</tt> for <tt>subrange</tt> 
+does not constrain <tt>I</tt> to be <tt>copyable</tt> when <tt>N == 0</tt></h3>
+<p><b>Section:</b> 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-08 <b>Last modified:</b> 2021-09-11 13:51:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>const</tt> lvalue reference overload of <tt>get</tt> used for <tt>subrange</tt> 
+only constraint that <tt>N &lt; 2</tt>, this will cause the "discards qualifiers" error 
+inside the function body when applying <tt>get</tt> to the lvalue <tt>subrange</tt> that 
+stores a non-<tt>copyable</tt> iterator since its <tt>begin()</tt> is non-<tt>const</tt> 
+qualified, we probably need to add a constraint for it.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>: Equivalent to:
+</p>
+<pre>
+if constexpr (N == 0)
+  return r.begin();
+else
+  return r.end();
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
 </ol>
 
 
