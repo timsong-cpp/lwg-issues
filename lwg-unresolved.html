@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-09-11 at 13:51:19 UTC</p>
+<p><p>Revised 2021-09-20 at 13:52:41 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -11565,253 +11565,6 @@ the iterators should compare equal.
 
 
 <p><b>Proposed resolution:</b></p>
-
-
-
-
-
-<hr>
-<h3><a name="2381" href="2381">2381.</a> Inconsistency in parsing floating point numbers</h3>
-<p><b>Section:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2021-08-23 15:24:41 UTC</p>
-<p><b>Priority: </b>2
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#facet.num.get.virtuals">active issues</a> in [facet.num.get.virtuals].</p>
-<p><b>View all other</b> <a href="lwg-index.html#facet.num.get.virtuals">issues</a> in [facet.num.get.virtuals].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-In 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> we have:
-</p>
-<blockquote><p>
-Stage 3: The sequence of chars accumulated in stage 2 (the field) is converted to a numeric value by the
-rules of one of the functions declared in the header <tt>&lt;cstdlib&gt;</tt>:
-</p>
-<ul>
-<li><p>For a signed integer value, the function <tt>strtoll</tt>.</p></li>
-<li><p>For an unsigned integer value, the function <tt>strtoull</tt>.</p></li>
-<li><p>For a floating-point value, the function <tt>strtold</tt>.</p></li>
-</ul>
-</blockquote>
-<p>
-This implies that for many cases, this routine should return true:
-</p>
-<blockquote><pre>
-bool is_same(const char* p)
-{
-  std::string str{p};
-  double val1 = std::strtod(str.c_str(), nullptr);
-  std::stringstream ss(str);
-  double val2;
-  ss &gt;&gt; val2;
-  return std::isinf(val1) == std::isinf(val2) &amp;&amp;                 // either they're both infinity
-         std::isnan(val1) == std::isnan(val2) &amp;&amp;                 // or they're both NaN
-         (std::isinf(val1) || std::isnan(val1) || val1 == val2); // or they're equal
-}
-</pre></blockquote>
-<p>
-and this is indeed true, for many strings:
-</p>
-<blockquote><pre>
-assert(is_same("0"));
-assert(is_same("1.0"));
-assert(is_same("-1.0"));
-assert(is_same("100.123"));
-assert(is_same("1234.456e89"));
-</pre></blockquote>
-<p>
-but not for others
-</p>
-<blockquote><pre>
-assert(is_same("0xABp-4")); // hex float
-assert(is_same("inf"));
-assert(is_same("+inf"));
-assert(is_same("-inf"));
-assert(is_same("nan"));
-assert(is_same("+nan"));
-assert(is_same("-nan"));
-
-assert(is_same("infinity"));
-assert(is_same("+infinity"));
-assert(is_same("-infinity"));
-</pre></blockquote>
-<p>
-These are all strings that are correctly parsed by <tt>std::strtod</tt>, but not by the stream extraction operators.
-They contain characters that are deemed invalid in stage 2 of parsing.
-<p/>
-If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that
-<tt>strtold</tt> accepts.
-</p>
-
-<p><i>[2016-04, Issues Telecon]</i></p>
-
-<p>
-People are much more interested in round-tripping hex floats than handling <tt>inf</tt> and <tt>nan</tt>. Priority changed to P2.
-</p>
-<p>
-Marshall says he'll try to write some wording, noting that this is a very closely specified part of the standard, and has remained unchanged for a long time. Also, there will need to be a sample implementation.
-</p>
-
-<p><i>[2016-08, Chicago]</i></p>
-
-<p>Zhihao provides wording</p>
-<p>The <tt>src</tt> array in Stage 2 does narrowing only.  The actual
-input validation is delegated to <tt>strtold</tt> (independent from
-the parsing in Stage 3 which is again being delegated
-to <tt>strtold</tt>) by saying:</p>
-
-<p>  [...] If it is not discarded, then a check is made to determine
-  if c is allowed as the next character of an input field of the
-  conversion specifier returned by Stage 1.</p>
-
-<p>So a conforming C++11 <tt>num_get</tt> is supposed to magically
-accept an hexfloat without an exponent</p>
-
-<p>  0x3.AB</p>
-
-<p>because we refers to C99, and the fix to this issue should be
-just expanding the <tt>src</tt> array.</p>
-
-<p>Support for Infs and NaNs are not proposed because of the
-complexity of nan(n-chars).</p>
-
-<p><i>[2016-08, Chicago]</i></p>
-
-<p>Tues PM: Move to Open</p>
-
-<p><i>[2016-09-08, Zhihao Yuan comments and updates proposed wording]</i></p>
-
-<p>
-Examples added.
-</p>
-
-<p><i>[2018-08-23 Batavia Issues processing]</i></p>
-
-<p>Needs an Annex C entry. Tim to write Annex C.</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to N4606.</p>
-
-<ol>
-<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
-
-<blockquote>
-<p><tt>static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";</tt></p>
-</blockquote>
-</li>
-
-<li><p>Append the following examples to 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
-<blockquote>
-<p>
-<ins>[<i>Example:</i></ins>
-</p>
-<blockquote>
-<p>
-<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
-</p>
-<ul>
-<li><p><ins>if Stage 1 returns <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
-<li><p><ins>if Stage 1 returns <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
-<li><p><ins>if Stage 1 returns <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
-</ul>
-<p>
-<ins>In all cases, leaving the rest in the input.</ins>
-</p>
-</blockquote>
-<p><ins>&mdash; end example]</ins></p>
-</blockquote>
-</li>
-</ol>
-</blockquote>
-
-<p><i>[2021-05-18 Tim updates wording]</i></p>
-
-<p>Based on the git history, libc++ appears to have always included
-<tt>p</tt> and <tt>P</tt> in <tt>src</tt>.</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
-
-<ol>
-<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
-
-<blockquote>
-<p>
-&mdash; Stage 2:
-<p/>
-If <tt>in == end</tt> then stage 2 terminates. Otherwise a <tt>charT</tt>
-is taken from <tt>in</tt> and local variables are initialized as if by
-</p>
-<blockquote>
-<pre>
-char_type ct = *in;
-char c = src[find(atoms, atoms + sizeof(src) - 1, ct) - atoms];
-if (ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).decimal_point())
-c = '.';
-bool discard =
-  ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).thousands_sep()
-  &amp;&amp; use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).grouping().length() != 0;
-</pre>
-</blockquote>
-<p>
-where the values <tt>src</tt> and <tt>atoms</tt> are defined as if by:
-</p>
-<blockquote>
-<pre>
-static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";
-char_type atoms[sizeof(src)];
-use_facet&lt;ctype&lt;charT&gt;&gt;(loc).widen(src, src + sizeof(src), atoms);
-</pre>
-</blockquote>
-<p>
-for this value of <tt>loc</tt>.
-<p/>
-If <tt>discard</tt> is true, then if <tt>'.'</tt> has not yet been accumulated,
-then the position of the character is remembered, but the character is otherwise
-ignored. Otherwise, if <tt>'.'</tt> has already been accumulated, the character
-is discarded and Stage 2 terminates. If it is not discarded, then a check is
-made to determine if <tt>c</tt> is allowed as the next character of an input
-field of the conversion specifier returned by Stage 1. If so, it is accumulated.
-<p/>
-If the character is either discarded or accumulated then <tt>in</tt> is advanced
-by <tt>++in</tt> and processing returns to the beginning of stage 2.
-<p/>
-<ins>[<i>Example:</i></ins>
-</p>
-<blockquote>
-<p>
-<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
-</p>
-<ul>
-<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
-<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
-<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
-</ul>
-<p>
-<ins>In all cases, the remainder is left in the input.</ins>
-</p>
-</blockquote>
-<p><ins>&mdash; end example]</ins></p>
-</blockquote>
-</li>
-<li>
-<p>Add the following new subclause to C.5 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp03">[diff.cpp03]</a>:</p>
-<blockquote>
-<p>
-<ins><b>C.4.? [locale]: localization library [diff.cpp03.locale]</b></ins>
-<p/>
-<ins><b>Affected subclause:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a><br/>
-<b>Change:</b> The <tt>num_get</tt> facet recognizes hexadecimal floating point values.<br/>
-<b>Rationale:</b> Required by new feature.<br/>
-<b>Effect on original feature:</b> Valid C++2003 code may have different behavior in this
-revision of C++.
-</ins>
-</p>
-</blockquote>
-</li>
-</ol>
 
 
 
@@ -26036,140 +25789,6 @@ different <tt>streamoff</tt> values are not equal.
 
 
 <hr>
-<h3><a name="3123" href="3123">3123.</a> <tt>duration</tt> constructor from representation shouldn't be effectively non-throwing</h3>
-<p><b>Section:</b> 27.5 <a href="https://timsong-cpp.github.io/cppwp/time.duration">[time.duration]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2018-06-22 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#time.duration">issues</a> in [time.duration].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-[time.duration]/4 states:
-</p>
-<blockquote><p>
-Members of duration shall not throw exceptions other than those thrown by the indicated operations on their representations.
-</p></blockquote>
-<p>
-Where representation is defined in the non-normative, brief description at [time.duration]/1:
-</p>
-<blockquote><p>
-[&hellip;] A duration has a representation which holds a count of ticks and a tick period. [&hellip;]
-</p></blockquote>
-<p>
-[time.duration.cons]/2 doesn't indicate the operation undergone by its representation, merely stating a postcondition in [time.duration.cons]/3:
-</p>
-<blockquote>
-<p>
-<i>Effects:</i> Constructs an object of type <tt>duration</tt>.
-<p/>
-<i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.
-</p>
-</blockquote>
-<p>
-I suggest this reformulation that follows the format of [time.duration.cons]/5.
-</p>
-<blockquote>
-<p>
-<i>Effects:</i> Constructs an object of type duration, constructing <tt>rep_</tt> from <tt>r</tt>.
-</p>
-</blockquote>
-<p>
-Now it is clear why the constructor would throw.
-</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>
-This wording is relative to <a href="https://wg21.link/n4750">N4750</a>.
-</p>
-
-<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class Rep2&gt;
-  constexpr explicit duration(const Rep2&amp; r);
-</pre>
-<blockquote>
-<p>
--1- <i>Remarks:</i> This constructor shall not participate in overload resolution unless [&hellip;]
-<p/>
--2- <i>Effects:</i> Constructs an object of type <tt>duration</tt><ins>, constructing <tt>rep_</tt> from <tt>r</tt></ins>.
-<p/>
--3- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.
-</p>
-</blockquote>
-</blockquote></blockquote>
-
-<p><i>[2018-06-27 after reflector discussion]</i></p>
-
-<p>Priority set to 3. Improved wording as result of that discussion.</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>
-This wording is relative to <a href="https://wg21.link/n4750">N4750</a>.
-</p>
-
-<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class Rep2&gt;
-  constexpr explicit duration(const Rep2&amp; r);
-</pre>
-<blockquote>
-<p>
--1- <i>Remarks:</i> This constructor shall not participate in overload resolution unless [&hellip;]
-<p/>
--2- <i>Effects:</i> <del>Constructs an object of type <tt>duration</tt></del><ins>Initializes <tt>rep_</tt> with <tt>r</tt></ins>.
-<p/>
-<del>-3- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.</del>
-</p>
-</blockquote>
-</blockquote>
-</blockquote>
-
-<p><i>[2020-05-02; Daniel resyncs wording with recent working draft]</i></p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
-</p>
-
-<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class Rep2&gt;
-  constexpr explicit duration(const Rep2&amp; r);
-</pre>
-<blockquote>
-<p>
--1- <i>Constraints:</i> <tt>is_convertible_v&lt;const Rep2&amp;, rep&gt;</tt> is <tt>true</tt> and
-</p>
-<ol style="list-style-type: none">
-<li><p>(1.1) &mdash; <tt>treat_as_floating_point_v&lt;rep&gt;</tt> is <tt>true</tt> or</p></li>
-<li><p>(1.2) &mdash; <tt>treat_as_floating_point_v&lt;Rep2&gt;</tt> is <tt>false</tt>.</p></li>
-</ol>
-<p>
-[<i>Example:</i> [&hellip;] <i>end example</i>]
-<p/>
-<ins>-?- <i>Effects:</i> Initializes <tt>rep_</tt> with <tt>r</tt>.</ins>
-<p/>
-<del>-2- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.</del>
-</p>
-</blockquote>
-</blockquote>
-
-
-
-
-
-<hr>
 <h3><a name="3124" href="3124">3124.</a> [networking.ts] Unclear how <tt>execution_context</tt> is intended to store services</h3>
 <p><b>Section:</b> 13.7.5 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/async.exec.ctx.globals">[networking.ts::async.exec.ctx.globals]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
  <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2018-06-23 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
@@ -30998,105 +30617,6 @@ before calling reseed. [<i>Note:</i> <tt>reseed</tt> also resets any instances o
 </blockquote>
 </li>
 
-</ol>
-
-
-
-
-<hr>
-<h3><a name="3361" href="3361">3361.</a> <tt>safe_range&lt;<i>SomeRange</i>&amp;></tt> case</h3>
-<p><b>Section:</b> 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2019-12-19 <b>Last modified:</b> 2021-05-20 01:13:11 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-24.5.5 <a href="https://timsong-cpp.github.io/cppwp/range.dangling">[range.dangling]</a> p2 hints at how <tt>safe_range</tt> should allow lvalue ranges to model it.
-However, its wording doesn't take into account that case.
-</p>
-
-<p><i>[2020-01 Priority set to 3 after review on the reflector.]</i></p>
-
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
-
-<ol>
-<li><p>Modify 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T&gt;
-  concept safe_range =
-    range&lt;T&gt; &amp;&amp;
-      (is_lvalue_reference_v&lt;T&gt; || enable_safe_range&lt;remove_cvref_t&lt;T&gt;&gt;);
-</pre>
-<blockquote>
-<p>
--5- <del>Given an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt>,</del><ins>A type</ins>
-<tt>T</tt> models <tt>safe_range</tt> <del>only</del> <ins>if:</ins>
-<ol style="list-style-type: none">
-<li><p><ins>(5.1) &mdash; <tt>is_lvalue_reference_v&lt;T&gt;</tt> is <tt>true</tt>, or</ins></p></li>
-<li><p><ins>(5.2) &mdash; given an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt>,</ins>
-<del>if</del> the validity of iterators obtained from the object denoted by <tt>E</tt> is not tied to the lifetime of
-that object.</p></li>
-</ol>
-<p/>
--6- [<i>Note:</i> <del>Since the validity of iterators is not tied to the lifetime of an object
-whose type models <tt>safe_range</tt>, a</del><ins>A</ins> function can accept arguments of <del>such</del> a
-type <ins>that models <tt>safe_range</tt></ins> <del>by value</del> and return iterators obtained from it
-without danger of dangling. &mdash; <i>end note</i>]
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-</blockquote>
-
-<p><i>[2021-05-19 Tim updates wording]</i></p>
-
-<p>
-The new wording below attempts to keep the "borrowed" property generally
-applicable to all models of <tt>borrowed_range</tt>, instead of bluntly carving
-out lvalue reference types.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
-
-<ol>
-<li><p>Modify 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class T&gt;
-  concept borrowed_range =
-    range&lt;T&gt; &amp;&amp;
-      (is_lvalue_reference_v&lt;T&gt; || enable_borrowed_range&lt;remove_cvref_t&lt;T&gt;&gt;);
-</pre>
-<blockquote>
-<p>
--5- <ins>Let <tt>U</tt> be <tt>remove_reference_t&lt;T&gt;</tt> if <tt>T</tt>
-is an rvalue reference type, and <tt>T</tt> otherwise.</ins>
-Given <del>an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt></del>
-<ins>a variable <tt>u</tt> of type <tt>U</tt></ins>,
-<tt>T</tt> models <tt>borrowed_range</tt> only if the validity of iterators
-obtained from <del>the object denoted by <tt>E</tt></del> <ins>u</ins> is not tied
-to the lifetime of that <del>object</del> <ins>variable</ins>.
-<p/>
--6- [<i>Note:</i> Since the validity of iterators is not tied to the lifetime of
-<del>an object</del><ins>a variable</ins> whose type models <tt>borrowed_range</tt>,
-a function <del>can accept arguments of</del> <ins>with a parameter of</ins>
-such a type <del>by value and</del> <ins>can</ins> return iterators
-obtained from it without danger of dangling.
-&mdash; <i>end note</i>]
-</p>
-</blockquote>
-</blockquote>
-</li>
 </ol>
 
 
@@ -36610,217 +36130,6 @@ Set priority to 3 after reflector poll.
 
 
 <hr>
-<h3><a name="3563" href="3563">3563.</a> <tt>keys_view</tt> example is broken</h3>
-<p><b>Section:</b> 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-05-29 <b>Last modified:</b> 2021-06-19 05:11:34 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-In 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> we have:
-</p>
-<blockquote><p>
-<tt>keys_view</tt> is an alias for <tt>elements_view&lt;views::all_t&lt;R&gt;, 0&gt;</tt>, and
-is useful for extracting keys from associative containers.
-<p/>
-[<i>Example 2:</i>
-</p>
-<blockquote><pre>
-auto names = keys_view{historical_figures};
-for (auto&amp;&amp; name : names) {
-  cout &lt;&lt; name &lt;&lt; ' ';  <i>// prints Babbage Hamilton Lovelace Turing</i>
-}
-</pre></blockquote>
-<p>
-&mdash; <i>end example</i>]
-</p>
-</blockquote>
-<p>
-Where <tt>keys_view</tt> is defined as:
-</p>
-<blockquote><pre>
-template&lt;class R&gt;
-  using keys_view = elements_view&lt;views::all_t&lt;R&gt;, 0&gt;;
-</pre></blockquote>
-<p>
-There's a similar example for <tt>values_view</tt>.
-<p/>
-But class template argument deduction cannot work here, <tt>keys_view(r)</tt> cannot deduce <tt>R</tt> &mdash;
-it's a non-deduced context. At the very least, the example is wrong and should be rewritten as
-<tt>views::keys(historical_figures)</tt>. Or, I guess, as
-<tt>keys_view&lt;decltype(historical_figures)&gt;(historical_figures)&gt;</tt> (but really, not).
-</p>
-
-<p><i>[2021-05-29 Tim comments and provides wording]</i></p>
-
-<p>
-I have some ideas about making CTAD work for <tt>keys_view</tt> and
-<tt>values_view</tt>, but current implementations of alias template CTAD are
-not yet in a shape to permit those ideas to be tested.
-What <em>is</em> clear, though, is that the current definitions of <tt>keys_view</tt>
-and <tt>values_view</tt> can't possibly ever work for CTAD, because <tt>R</tt> is only
-used in a non-deduced context and so they can never meet the "deducible" constraint in
-12.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/over.match.class.deduct">[over.match.class.deduct]</a> p2.3.
-<p/>
-The proposed resolution below removes the <tt>views::all_t</tt> transformation
-in those alias templates. This makes these aliases transparent enough to support CTAD out
-of the box when a view is used, and any questions about deduction guides on
-<tt>elements_view</tt> can be addressed later once the implementations become more mature.
-This also makes them consistent with all the other views: you can't write
-<tt>elements_view&lt;map&lt;int, int&gt;&amp;, 0&gt;</tt> or
-<tt>reverse_view&lt;map&lt;int, int&gt;&amp;&gt;</tt>, so why do we allow
-<tt>keys_view&lt;map&lt;int, int&gt;&amp;&gt;</tt>? It is, however, a breaking change,
-so it is important that we get this in sooner rather than later.
-<p/>
-The proposed resolution has been implemented and tested.
-</p>
-
-<p><i>[2021-06-14; Reflector poll]</i></p>
-
-<p>
-Set priority to 3 after reflector poll.
-Partially addressed by an
-<a href="https://github.com/cplusplus/draft/pull/4659">editorial change</a>.
-</p>
-
-<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
-<blockquote class="note">
-<p>
-This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-namespace std::ranges {
-[&hellip;]
-
-  <i>// 24.7.18 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a>, elements view</i>
-  template&lt;input_range V, size_t N&gt;
-    requires <i>see below</i>
-  class elements_view;
-
-  template&lt;class T, size_t N&gt;
-    inline constexpr bool enable_borrowed_range&lt;elements_view&lt;T, N&gt;&gt; = enable_borrowed_range&lt;T&gt;;
-
-  template&lt;class R&gt;
-    using keys_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;;
-  template&lt;class R&gt;
-    using values_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;;
-
-[&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> as indicated:</p>
-
-<blockquote>
-<p>
--3- <tt>keys_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;</tt>,
-and is useful for extracting keys from associative containers.
-<p/>
-[<i>Example 2</i>:
-</p>
-<blockquote>
-<pre>
-auto names = keys_view{<ins>views::all(</ins>historical_figures<ins>)</ins>};
-for (auto&amp;&amp; name : names) {
-  cout &lt;&lt; name &lt;&lt; ' '; <i>// prints Babbage Hamilton Lovelace Turing</i>
-}
-</pre>
-</blockquote>
-<p>
-&mdash; <i>end example</i>]
-<p/>
--4- <tt>values_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;</tt>,
-and is useful for extracting values from associative containers.
-<p/>
-[<i>Example 3</i>:
-</p>
-<blockquote>
-<pre>
-auto is_even = [](const auto x) { return x % 2 == 0; };
-cout &lt;&lt; ranges::count_if(values_view{<ins>views::all(</ins>historical_figures<ins>)</ins>}, is_even); <i>// prints 2</i>
-</pre>
-</blockquote>
-<p>
-&mdash; <i>end example</i>]
-</p>
-</blockquote>
-</li>
-
-</ol>
-</blockquote>
-<p><i>[2021-06-18 Tim syncs wording to latest working draft]</i></p>
-
-<p>
-The examples have been editorially corrected, so the new wording simply changes the
-definition of <tt>keys_view</tt> and <tt>values_view</tt>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-namespace std::ranges {
-[&hellip;]
-
-  <i>// 24.7.18 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a>, elements view</i>
-  template&lt;input_range V, size_t N&gt;
-    requires <i>see below</i>
-  class elements_view;
-
-  template&lt;class T, size_t N&gt;
-    inline constexpr bool enable_borrowed_range&lt;elements_view&lt;T, N&gt;&gt; = enable_borrowed_range&lt;T&gt;;
-
-  template&lt;class R&gt;
-    using keys_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;;
-  template&lt;class R&gt;
-    using values_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;;
-
-[&hellip;]
-}
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> as indicated:</p>
-
-<blockquote>
-<p>
--3- <tt>keys_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;</tt>,
-and is useful for extracting keys from associative containers.
-<p/>
-[<i>Example 2</i>: &hellip; &mdash; <i>end example</i>]
-<p/>
--4- <tt>values_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;</tt>,
-and is useful for extracting values from associative containers.
-<p/>
-[<i>Example 3</i>: &hellip; &mdash; <i>end example</i>]
-</p>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3564" href="3564">3564.</a> <tt>transform_view::<i>iterator</i>&lt;true&gt;::value_type</tt> and <tt>iterator_category</tt> should 
 use <tt>const F&amp;</tt></h3>
 <p><b>Section:</b> 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> <b>Status:</b> <a href="lwg-active.html#SG9">SG9</a>
@@ -37670,88 +36979,10 @@ Set priority to 3 and status to "LEWG" after reflector poll.
 
 
 <hr>
-<h3><a name="3581" href="3581">3581.</a> The range constructor makes <tt>basic_string_view</tt> not trivially move constructible</h3>
-<p><b>Section:</b> 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An, Casey Carter <b>Opened:</b> 2021-08-16 <b>Last modified:</b> 2021-08-23 13:28:40 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#string.view.cons">active issues</a> in [string.view.cons].</p>
-<p><b>View all other</b> <a href="lwg-index.html#string.view.cons">issues</a> in [string.view.cons].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-<b>Jiang An</b>:
-</p>
-<p>
- The issue is found in <a href="https://github.com/microsoft/STL/pull/2128">this Microsoft STL pull request</a>.
-<p/>
-I think an additional constraint should be added to 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a>/11 (a similar constraint is 
-already present for <tt>reference_wrapper</tt>):
-</p>
-<blockquote><p>
-<ins>(11.?) &mdash; <tt>is_same_v&lt;remove_cvref_t&lt;R&gt;, basic_string_view&gt;</tt> is <tt>false</tt>.</ins>
-</p></blockquote>
-<p>
-<b>Casey Carter</b>:
-</p>
-<p>
-<a href="https://wg21.link/p1989R2">P1989R2</a> "Range constructor for <tt>std::string_view</tt> 2: Constrain Harder" 
-added a converting constructor to <tt>basic_string_view</tt> that accepts (by forwarding reference) any sized 
-contiguous range with a compatible element type. This constructor unfortunately intercepts attempts at move 
-construction which previously would have resulted in a call to the copy constructor. (I suspect the authors of 
-P1989 were under the mistaken impression that <tt>basic_string_view</tt> had a defaulted move constructor, which 
-would sidestep this issue by being chosen by overload resolution via the "non-template vs. template" tiebreaker.)
-<p/>
-The resulting inefficiency could be corrected by adding a defaulted move constructor and move assignment operator 
-to <tt>basic_string_view</tt>, but it would be awkward to add text to specify that these moves always leave the 
-source intact. Presumably this is why the move operations were omitted in the first place. We therefore recommend 
-constraining the conversion constructor template to reject arguments whose decayed type is <tt>basic_string_view</tt> 
-(which we should probably do for all conversion constructor templates in the Standard Library).
-<p/>
-Implementation experience: MSVC STL is in the process of implementing this fix. Per Jonathan Wakely, libstdc++ has a 
-similar constraint.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-template&lt;class R&gt;
-  constexpr basic_string_view(R&amp;&amp; r);
-</pre>
-<blockquote>
-<p>
--10- Let <tt>d</tt> be an lvalue of type <tt>remove_cvref_t&lt;R&gt;</tt>.
-<p/>
--11- <i>Constraints</i>:
-</p>
-<ol style="list-style-type: none">
-<li><p><ins>(11.?) &mdash; <tt>remove_cvref_t&lt;R&gt;</tt> is not the same type as <tt>basic_string_view</tt>,</ins></p></li>
-<li><p>(11.1) &mdash; <tt>R</tt> models <tt>ranges::contiguous_range</tt> and <tt>ranges::sized_range</tt>,</p></li>
-<li><p>(11.2) &mdash; <tt>is_same_v&lt;ranges::range_value_t&lt;R&gt;, charT&gt;</tt> is <tt>true</tt>,</p></li>
-<li><p>[&hellip;]</p></li>
-</ol>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-<hr>
 <h3><a name="3582" href="3582">3582.</a> Unclear where <tt>std::async</tt> exceptions are handled</h3>
 <p><b>Section:</b> 32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-08-27 17:37:45 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-09-20 13:45:08 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#futures.async">active issues</a> in [futures.async].</p>
 <p><b>View all other</b> <a href="lwg-index.html#futures.async">issues</a> in [futures.async].</p>
@@ -37777,6 +37008,13 @@ calls to <tt><i>decay-copy</i></tt>. Exceptions from the <tt><i>decay-copy</i></
 to the caller of <tt>std::async</tt>. We should clarify that that's what the standard means.
 </p>
 
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 <p>
@@ -37784,7 +37022,7 @@ This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
 
 <ol>
-<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
+<li><p>Modify 32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -37831,8 +37069,8 @@ the shared state and affects the behavior of any asynchronous return objects tha
 <hr>
 <h3><a name="3583" href="3583">3583.</a> Clarify if/when short circuiting applies to conditions in <i>Constraints:</i> elements</h3>
 <p><b>Section:</b> 20.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-08-27 17:52:06 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-09-20 11:22:03 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
 <p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
@@ -37858,6 +37096,13 @@ We should clarify what is intended, and refactor any <i>Constraints:</i> element
 different is required.
 </p>
 
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -37868,8 +37113,8 @@ different is required.
 <hr>
 <h3><a name="3584" href="3584">3584.</a> Clarify common comparison category conversions</h3>
 <p><b>Section:</b> 17.11.3 <a href="https://timsong-cpp.github.io/cppwp/cmp.common">[cmp.common]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Peter Brett <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-08-27 18:52:31 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Peter Brett <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-09-20 11:39:03 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -37909,8 +37154,20 @@ Delete 17.11.3 <a href="https://timsong-cpp.github.io/cppwp/cmp.common">[cmp.com
 already more precisely included in 17.11.3 <a href="https://timsong-cpp.github.io/cppwp/cmp.common">[cmp.common]</a>/2.
 </p>
 
+<p><i>[2021-09-20; Reflector poll]</i></p>
 
-<p><b>Proposed resolution:</b></p>
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Jens suggests alternative wording.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
@@ -37939,51 +37196,8 @@ of <tt>Ts...</tt>, the expanded parameter pack, or <tt>void</tt> if any element 
 </li>
 </ol>
 
+</blockquote>
 
-
-
-
-<hr>
-<h3><a name="3585" href="3585">3585.</a> Variant converting assignment with immovable alternative</h3>
-<p><b>Section:</b> 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-09-01 <b>Last modified:</b> 2021-09-04 16:14:25 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#variant.assign">active issues</a> in [variant.assign].</p>
-<p><b>View all other</b> <a href="lwg-index.html#variant.assign">issues</a> in [variant.assign].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Example originally from <a href="https://stackoverflow.com/q/68998153/2069064">StackOverflow</a> but with a more reasonable example from Tim Song:
-</p>
-<blockquote><pre>
-#include &lt;variant&gt;
-#include &lt;string&gt;
-
-struct A {
-  A() = default;
-  A(A&amp;&amp;) = delete;
-};
-
-int main() {
-  std::variant&lt;A, std::string&gt; v;
-  v = "hello";
-}
-</pre></blockquote>
-<p>
-There is implementation divergence here: libstdc++ rejects, libc++ and msvc accept.
-<p/>
-20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> bullet (13.3) says that if we're changing the alternative in assignment 
-and it is not the case that the converting construction won't throw (as in the above), then "Otherwise, 
-equivalent to <tt>operator=(variant(std::forward&lt;T&gt;(t)))</tt>." That is, we defer to move assignment.
-<p/>
-<tt>variant&lt;A, string&gt;</tt> isn't move-assignable (because <tt>A</tt> isn't move constructible). Per 
-the wording in the standard, we have to reject this. libstdc++ follows the wording of the standard.
-<p/>
-But we don't actually have to do a full move assignment here, since we know the situation we're in is 
-changing the alternative, so the fact that <tt>A</tt> isn't move-assignable shouldn't matter. libc++ and 
-msvc instead do something more direct, allowing the above program.
-</p>
 
 
 <p><b>Proposed resolution:</b></p>
@@ -37992,42 +37206,26 @@ This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
 
 <ol>
-<li><p>Modify 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> as indicated:</p>
-
-<blockquote class="note">
-<p>
-[<i>Drafting note:</i> This should cover the case that we want to cover: that if construction of <tt>T<sub><i>j</i></sub></tt> 
-from <tt>T</tt> throws, we haven't yet changed any state in the variant.]
-</p>
-</blockquote>
+<li><p>Modify 17.11.3 <a href="https://timsong-cpp.github.io/cppwp/cmp.common">[cmp.common]</a> as indicated:</p>
 
 <blockquote>
+<p>
+-1- The type <tt>common_comparison_category</tt> provides an alias for the strongest comparison category <del>to which
+all of the template arguments can be converted</del>
+<ins>among all the template arguments</ins>.
+[<i>Note 1</i>: A comparison category type is stronger than another if they are distinct types and an instance of the former
+can be converted to an instance of the latter. &mdash; <i>end note</i>]
+</p>
 <pre>
-template&lt;class T&gt; constexpr variant&amp; operator=(T&amp;&amp; t) noexcept(<i>see below</i>);
+template&lt;class... Ts&gt;
+struct common_comparison_category {
+  using type = <i>see below</i>;
+};
 </pre>
-<blockquote>
 <p>
--11- Let <tt>T<sub><i>j</i></sub></tt> be a type that is determined as follows: build an imaginary function 
-<tt><i>FUN</i>(T<sub><i>i</i></sub>)</tt> for each alternative type <tt>T<sub><i>i</i></sub></tt> for which 
-<tt>T<sub><i>i</i></sub> x[] = {std::forward&lt;T&gt;(t)};</tt> is well-formed for some invented variable 
-<tt>x</tt>. The overload <tt><i>FUN</i>(T<sub><i>j</i></sub>)</tt> selected by overload resolution for the 
-expression <tt><i>FUN</i>(std::forward&lt;T&gt;(t))</tt> defines the alternative <tt>T<sub><i>j</i></sub></tt> 
-which is the type of the contained value after assignment.
-<p/>
--12- <i>Constraints:</i> [&hellip;]
-<p/>
--13- <i>Effects:</i>
+-2- <i>Remarks:</i> The member <i>typedef-name</i> <tt>type</tt> denotes the common comparison type (11.10.3 <a href="https://timsong-cpp.github.io/cppwp/class.spaceship">[class.spaceship]</a>)
+of <tt>Ts...</tt>, the expanded parameter pack, or <tt>void</tt> if any element of <tt>Ts</tt> is not a comparison category type.
 </p>
-<ol style="list-style-type: none">
-<li><p>(13.1) &mdash; If <tt>*this</tt> holds a <tt>T<sub><i>j</i></sub></tt>, assigns <tt>std::forward&lt;T&gt;(t)</tt> 
-to the value contained in <tt>*this</tt>.</p></li>
-<li><p>(13.2) &mdash; Otherwise, if <tt>is_nothrow_constructible_v&lt;T<sub><i>j</i></sub>, T&gt; || 
-!is_nothrow_move_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> is <tt>true</tt>, equivalent to 
-<tt>emplace&lt;<i>j</i>&gt;(std::forward&lt;T&gt;(t))</tt>.</p></li>
-<li><p>(13.3) &mdash; Otherwise, equivalent to 
-<tt><del>operator=(variant(std::forward&lt;T&gt;(t)))</del><ins>emplace&lt;<i>j</i>&gt;(T<sub><i>j</i></sub>(std::forward&lt;T&gt;(t)))</ins></tt>.</p></li>
-</ol>
-</blockquote>
 </blockquote>
 </li>
 </ol>
@@ -38039,8 +37237,8 @@ to the value contained in <tt>*this</tt>.</p></li>
 <hr>
 <h3><a name="3586" href="3586">3586.</a> Formatting character alignment inconsistencies</h3>
 <p><b>Section:</b> 20.20.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2021-09-05 <b>Last modified:</b> 2021-09-05 16:05:49 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2021-09-05 <b>Last modified:</b> 2021-09-20 11:36:23 UTC</p>
+<p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
 <p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
@@ -38061,6 +37259,17 @@ mixes the type and the presentation type. To me, it seems clearer to adjust to w
 to only use the presentation type. Another approach would be adjusting the wording to 
 add an exception when an integer type uses the character presentation.
 </p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+<p>
+Victor said "It mostly looks correct but I think the wording needs a bit more
+work because we don't mention arithmetic presentation types anywhere."
+</p>
+
 
 
 <p><b>Proposed resolution:</b></p>
@@ -38107,8 +37316,8 @@ and <tt>bool</tt> or when an integer presentation type is specified</del>.</td>
 <hr>
 <h3><a name="3587" href="3587">3587.</a> <tt>std::three_way_comparable_with&lt;T, U, void&gt;</tt> can be satisfied but can't be modeled</h3>
 <p><b>Section:</b> 17.11.4 <a href="https://timsong-cpp.github.io/cppwp/cmp.concept">[cmp.concept]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-09-06 <b>Last modified:</b> 2021-09-11 12:35:25 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-09-06 <b>Last modified:</b> 2021-09-20 11:22:03 UTC</p>
+<p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#cmp.concept">issues</a> in [cmp.concept].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -38136,6 +37345,13 @@ has "regular" definition or its return type is not a comparison category type, b
 has "regular" semantics)
 </p>
 
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
 
 <p><b>Proposed resolution:</b></p>
 
@@ -38144,24 +37360,19 @@ has "regular" semantics)
 
 
 <hr>
-<h3><a name="3588" href="3588">3588.</a> Strike out purposeless UB involving the deleter in members functions of <tt>unique_ptr</tt></h3>
-<p><b>Section:</b> 20.11.1.3.1 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.general">[unique.ptr.single.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2021-09-07 <b>Last modified:</b> 2021-09-11 13:30:19 UTC</p>
+<h3><a name="3590" href="3590">3590.</a> <tt>split_view::base() const &amp;</tt> is overconstrained</h3>
+<p><b>Section:</b> 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.split.view">[range.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-13 <b>Last modified:</b> 2021-09-17 15:12:40 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-This originated from the editorial issues <a href="https://github.com/cplusplus/draft/pull/4871">#4871</a> 
-and <a href="https://github.com/cplusplus/draft/pull/4872">#4872</a>.
+Unlike every other range adaptor, <tt>split_view::base() const &amp;</tt> is
+constrained on <tt>copyable&lt;V&gt;</tt> instead of <tt>copy_constructible&lt;V&gt;</tt>.
 <p/>
-Several member functions of <tt>unique_ptr</tt> are <tt>noexcept</tt>, and yet, they have the precondition 
-that an expression involving the deleter does not exit via an exception. There's nothing an implementation 
-or user can take advantage of in presence of this UB. Since the behavior otherwise would be a call to 
-<tt>std::terminate</tt>, these preconditions should be striked out.
-<p/>
-Note that although <tt>~unique_ptr()</tt> is not <tt>noexcept</tt>, 16.4.6.13 <a href="https://timsong-cpp.github.io/cppwp/res.on.exception.handling">[res.on.exception.handling]</a> p3 
-specifies it to behave as if it were.
+Since this function just performs a copy construction, there is no
+reason to require all of <tt>copyable</tt> &mdash; <tt>copy_constructible</tt> is sufficient.
 </p>
 
 
@@ -38171,245 +37382,641 @@ This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
 
 <ol>
-<li><p>Modify 20.11.1.3.2 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.ctor">[unique.ptr.single.ctor]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-constexpr unique_ptr() noexcept;
-constexpr unique_ptr(nullptr_t) noexcept;
-</pre>
-<blockquote>
-<p>
--1- [&hellip;]
-<p/>
--2- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
-and that construction does not throw an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-explicit unique_ptr(pointer p) noexcept;
-</pre>
-<blockquote>
-<p>
--5- <i>Constraints:</i> [&hellip;]
-<p/>
--6- <i>Mandates:</i> [&hellip;]
-<p/>
--7- <i>Preconditions:</i> <tt>D</tt> meets the <i>Cpp17DefaultConstructible</i> requirements (Table 27)<del>, 
-and that construction does not throw an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-unique_ptr(pointer p, const D&amp; d) noexcept;
-unique_ptr(pointer p, remove_reference_t&lt;D&gt;&amp;&amp; d) noexcept;
-</pre>
-<blockquote>
-<p>
--10- <i>Constraints:</i> [&hellip;]
-<p/>
--11- <i>Mandates:</i> [&hellip;]
-<p/>
--12- <i>Preconditions:</i> For the first constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> 
-meets the <i>Cpp17CopyConstructible</i> requirements <del>and such construction does not exit via an exception</del>. 
-For the second constructor, if <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
-requirements <del>and such construction does not exit via an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-unique_ptr(unique_ptr&amp;&amp; u) noexcept;
-</pre>
-<blockquote>
-<p>
--17- <i>Constraints:</i> [&hellip;]
-<p/>
--18- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the <i>Cpp17MoveConstructible</i> 
-requirements (Table 28). <del>Construction of the deleter from an rvalue of type <tt>D</tt> does not throw an exception.</del>
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-template&lt;class U, class E&gt; unique_ptr(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
-</pre>
-<blockquote>
-<p>
--21- <i>Constraints:</i> [&hellip;]
-<p/>
--22- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, construction of the deleter from an rvalue of type 
-<tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a reference type and 
-construction of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 20.11.1.3.3 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.dtor">[unique.ptr.single.dtor]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-~unique_ptr();
-</pre>
-<blockquote>
-<p>
--1- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del>
-<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 20.11.1.3.4 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.asgn">[unique.ptr.single.asgn]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-unique_ptr&amp; operator=(unique_ptr&amp;&amp; u) noexcept;
-</pre>
-<blockquote>
-<p>
--1- <i>Constraints:</i> [&hellip;]
-<p/>
--2- <i>Preconditions:</i> If <tt>D</tt> is not a reference type, <tt>D</tt> meets the 
-<i>Cpp17MoveAssignable</i> requirements (Table 30) <del>and assignment of the deleter from an 
-rvalue of type <tt>D</tt> does not throw an exception</del>. Otherwise, <tt>D</tt> is a
-reference type; <tt>remove_reference_t&lt;D&gt;</tt> meets the <i>Cpp17CopyAssignable</i> 
-requirements <del>and assignment of the deleter from an lvalue of type <tt>D</tt> does not 
-throw an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-template&lt;class U, class E&gt; unique_ptr&amp; operator=(unique_ptr&lt;U, E&gt;&amp;&amp; u) noexcept;
-</pre>
-<blockquote>
-<p>
--6- <i>Constraints:</i> [&hellip;]
-<p/>
--7- <i>Preconditions:</i> If <tt>E</tt> is not a reference type, assignment of the deleter from an rvalue 
-of type <tt>E</tt> is well-formed <del>and does not throw an exception</del>. Otherwise, <tt>E</tt> is a 
-reference type and assignment of the deleter from an lvalue of type <tt>E</tt> is well-formed <del>and 
-does not throw an exception</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 20.11.1.3.6 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.modifiers">[unique.ptr.single.modifiers]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-void reset(pointer p = pointer()) noexcept;
-</pre>
-<blockquote>
-<p>
--3- <i>Preconditions:</i> The expression <tt>get_deleter()(get())</tt> is well-formed<del>,</del> 
-<ins>and</ins> has well-defined behavior<del>, and does not throw exceptions</del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-<pre>
-void swap(unique_ptr&amp; u) noexcept;
-</pre>
-<blockquote>
-<p>
--6- <i>Preconditions:</i> <tt>get_deleter()</tt> is swappable (16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>) <del>and 
-does not throw an exception under <tt>swap</tt></del>.
-<p/>
-[&hellip;]
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3589" href="3589">3589.</a> The <tt>const</tt> lvalue reference overload of <tt>get</tt> for <tt>subrange</tt> 
-does not constrain <tt>I</tt> to be <tt>copyable</tt> when <tt>N == 0</tt></h3>
-<p><b>Section:</b> 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-08 <b>Last modified:</b> 2021-09-11 13:51:19 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
-<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-The <tt>const</tt> lvalue reference overload of <tt>get</tt> used for <tt>subrange</tt> 
-only constraint that <tt>N &lt; 2</tt>, this will cause the "discards qualifiers" error 
-inside the function body when applying <tt>get</tt> to the lvalue <tt>subrange</tt> that 
-stores a non-<tt>copyable</tt> iterator since its <tt>begin()</tt> is non-<tt>const</tt> 
-qualified, we probably need to add a constraint for it.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+<li><p>Modify 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.split.view">[range.split.view]</a>, class template <tt>split_view</tt> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
 namespace std::ranges {
-  [&hellip;]
-  template&lt;size_t N, class I, class S, subrange_kind K&gt;
-    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
-    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+  template&lt;forward_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt;
+  class split_view : public view_interface&lt;split_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
 
-  template&lt;size_t N, class I, class S, subrange_kind K&gt;
-    requires (N &lt; 2)
-    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
-}
+    constexpr V base() const&amp; requires <del>copyable</del><ins>copy_constructible</ins>&lt;V&gt; { return <i>base_</i>; }
+    constexpr V base() &amp;&amp; { return std::move(<i>base_</i>); }
+
+    [&hellip;]
+  };
 </pre>
 </blockquote>
 </li>
 
-<li><p>Modify 24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3591" href="3591">3591.</a> <tt>lazy_split_view&lt;input_view&gt;::<i>inner-iterator</i>::base() &amp;&amp;</tt> invalidates outer iterators</h3>
+<p><b>Section:</b> 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-13 <b>Last modified:</b> 2021-09-17 17:01:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>base() &amp;&amp;</tt> members of iterator adaptors (and iterators of range
+adaptors) invalidate the adaptor itself by moving from the contained iterator. This 
+is generally unobjectionable &mdash; since you are calling <tt>base()</tt> on an rvalue, 
+it is expected that you won't be using it afterwards.
+<p/>
+But <tt>lazy_split_view&lt;input_view&gt;::<i>inner-iterator</i>::base() &amp;&amp;</tt> 
+is special: the iterator being moved from is stored in the <tt>lazy_split_view</tt> itself
+and shared between the inner and outer iterators, so the operation invalidates not just the 
+<tt><i>inner-iterator</i></tt> on which it is called, but also the <tt><i>outer-iterator</i></tt> 
+from which the <tt><i>inner-iterator</i></tt> was obtained.
+This spooky-action-at-a-distance behavior can be surprising, and the value category of the 
+inner iterator seems to be too subtle to base it upon.
+<p/>
+The PR below constrains this overload to forward ranges. Forward iterators are copyable anyway, 
+but moving could potentially be more efficient.
+
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> as indicated:</p>
+
+<blockquote style="note">
+<p>
+[<i>Drafting note:</i> The constraint uses <tt>forward_range&lt;V&gt;</tt> since that's the condition for 
+caching in <tt>lazy_split_view</tt>.]
+</p>
+</blockquote>
 
 <blockquote>
+<blockquote>
 <pre>
-  [&hellip;]
-  template&lt;size_t N, class I, class S, subrange_kind K&gt;
-    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
-    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
-  template&lt;size_t N, class I, class S, subrange_kind K&gt;
-    requires (N &lt; 2)
-    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+namespace std::ranges {
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+             (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  template&lt;bool Const&gt;
+  struct lazy_split_view&lt;V, Pattern&gt;::<i>inner-iterator</i> {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp;;
+    constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp; <ins>requires forward_range&lt;V&gt;</ins>;
+
+    [&hellip;]
+  };
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp; <ins>requires forward_range&lt;V&gt;</ins>;
 </pre>
 <blockquote>
 <p>
--10- <i>Effects</i>: Equivalent to:
+-4- <i>Effects:</i> Equivalent to: <tt>return std::move(<i>i_.current</i>);</tt>
 </p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3592" href="3592">3592.</a> <tt>lazy_split_view</tt> needs to check the simpleness of <tt>Pattern</tt></h3>
+<p><b>Section:</b> 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-15 <b>Last modified:</b> 2021-09-19 14:01:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For forward ranges, the non-<tt>const</tt> versions of <tt>lazy_split_view::begin()</tt>
+and <tt>lazy_split_view::end()</tt> returns an <tt><i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;</tt>,
+promoting to <tt>const</tt> if <tt>V</tt> models <tt><i>simple-view</i></tt>. However, this failed to
+take <tt>Pattern</tt> into account, even though that will also be accessed as <tt>const</tt> if 
+<tt>const</tt>-promotion takes place. There is no requirement that <tt>const Pattern</tt> is a range, 
+however.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
 <pre>
-if constexpr (N == 0)
-  return r.begin();
-else
-  return r.end();
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+            (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      if constexpr (forward_range&lt;V&gt;)
+        return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
+          <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::begin(<i>base_</i>)};
+      else {
+        <i>current_</i> = ranges::begin(<i>base_</i>);
+        return <i>outer-iterator</i>&lt;false&gt;{*this};
+      }
+    }
+    
+    [&hellip;]
+    
+    constexpr auto end() requires forward_range&lt;V&gt; &amp;&amp; common_range&lt;V&gt; {
+      return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
+        <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::end(<i>base_</i>)};
+    }
+
+    [&hellip;]
+  };
+  
+  [&hellip;]
+  
+}
 </pre>
 </blockquote>
 </blockquote>
 </li>
 
 </ol>
+
+
+
+
+
+<hr>
+<h3><a name="3593" href="3593">3593.</a> Several iterators' <tt>base() const &amp;</tt> and <tt>lazy_split_view::<i>outer-iterator</i>::value_type::end()</tt> missing <tt>noexcept</tt></h3>
+<p><b>Section:</b> 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/move.iterators">[move.iterators]</a>, 23.5.6 <a href="https://timsong-cpp.github.io/cppwp/iterators.counted">[iterators.counted]</a>, 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a>, 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.13.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a>, 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a>, 24.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-14 <b>Last modified:</b> 2021-09-18 15:06:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iterators">issues</a> in [move.iterators].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3391">3391</a> and <a href="3533">3533</a> changed some iterators' <tt>base() const &amp;</tt> from returning value to 
+returning <tt>const</tt> reference, which also prevents them from throwing exceptions, we should add <tt>noexcept</tt> for them. 
+Also, <tt>lazy_split_view::<i>outer-iterator</i>::value_type::end()</tt> can be <tt>noexcept</tt> since it only returns 
+<tt>default_sentinel</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/move.iterators">[move.iterators]</a>, class template <tt>move_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const iterator_type&amp; base() const &amp; <ins>noexcept</ins>;
+constexpr iterator_type base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/move.iter.op.conv">[move.iter.op.conv]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr const Iterator&amp; base() const &amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns:</i> <tt>current</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>, class template <tt>counted_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const I&amp; base() const &amp; <ins>noexcept</ins>;
+constexpr I base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.6.3 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.access">[counted.iter.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr const I&amp; base() const &amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Equivalent to: <tt>return current;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const iterator_t&lt;V&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+constexpr iterator_t&lt;V&gt; base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr const iterator_t&lt;V&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.13.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr <i>inner-iterator</i>&lt;Const&gt; begin() const;
+constexpr default_sentinel_t end() const <ins>noexcept</ins>;
+[&hellip;]
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr default_sentinel_t end() const <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return default_sentinel;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return <i>i_</i>.<i>current</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+[&hellip;]
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const&amp; <ins>noexcept</ins>;
+constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
+[&hellip;]
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const&amp; <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3594" href="3594">3594.</a> <tt>inout_ptr</tt> &mdash; inconsistent <tt>release()</tt> in destructor</h3>
+<p><b>Section:</b> 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> JeanHeyd Meneide <b>Opened:</b> 2021-09-16 <b>Last modified:</b> 2021-09-18 17:24:56 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+More succinctly, the model for <tt>std::out_ptr_t</tt> and <tt>std::inout_ptr_t</tt>
+both have a conditional release in their destructors as part of their
+specification (20.11.8 <a href="https://timsong-cpp.github.io/cppwp/out.ptr.t">[out.ptr.t]</a> p8) (Option #2 below).
+But, if the wording is followed, they have an unconditional release in
+their constructor (Option #1 below). This is not exactly correct and
+can cause issues with double-free in <tt>inout_ptr</tt> in particular.
+<p/>
+Consider a function <tt>MyFunc</tt> that sets <tt>rawPtr</tt> to <tt>nullptr</tt> when freeing
+an old value and deciding not to produce a new value, as shown below:
+</p>
+<blockquote><pre>
+// Option #1:
+auto uptr = std::make_unique&lt;BYTE[]&gt;(25);
+auto rawPtr = uptr.get();
+uptr.release(); // UNCONDITIONAL
+MyFunc(&amp;rawPtr);
+If (rawPtr)
+{
+  uptr.reset(rawPtr);
+}
+
+// Option #2:
+auto uptr = std::make_unique&lt;BYTE[]&gt;(25);
+auto rawPtr = uptr.get();
+MyFunc(&amp;rawPtr);
+If (rawPtr)
+{
+  uptr.release(); // CONDITIONAL
+  uptr.reset(rawPtr);
+}
+</pre></blockquote>
+<p>
+This is no problem if the implementation selected Option #1 (release
+in the constructor), but results in double-free if the implementation
+selected option #2 (release in the destructor).
+<p/>
+As the paper author and after conferring with others, the intent was
+that the behavior was identical and whether a choice between the
+constructor or destructor is made. The reset should be unconditional,
+at least for <tt>inout_ptr_t</tt>. Suggested change for the <tt>~inout_ptr_t</tt>
+destructor text is to remove the "<tt>if (p) { ... }</tt>" wrapper from around
+the code in 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> p11.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~inout_ptr_t();
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>SP</tt> be <tt><i>POINTER_OF_OR</i>(Smart, Pointer)</tt> (20.10.1 <a href="https://timsong-cpp.github.io/cppwp/memory.general">[memory.general]</a>).
+<p/>
+-10- Let <tt><i>release-statement</i></tt> be <tt>s.release()</tt>; if an implementation does not call <tt>s.release()</tt> in the
+constructor. Otherwise, it is empty.
+<p/>
+-11- <i>Effects:</i> Equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; </p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  s = Smart( static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_pointer_v&lt;Smart&gt;</tt> is <tt>true</tt>;
+</p></li>
+<li><p>(11.2) &mdash; otherwise,</p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  <i>release-statement</i>;
+  s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if the expression <tt>s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...)</tt> is wellformed;
+</p>
+</li>
+<li><p>(11.3) &mdash; otherwise,</p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  <i>release-statement</i>;
+  s = Smart(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
+</p>
+</li>
+<li><p>(11.4) &mdash; otherwise, the program is ill-formed.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3595" href="3595">3595.</a> Exposition-only classes <tt><i>proxy</i></tt> and <tt><i>postfix-proxy</i></tt> for <tt>common_iterator</tt> 
+should be fully <tt>constexpr</tt></h3>
+<p><b>Section:</b> 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a>, 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-18 <b>Last modified:</b> 2021-09-19 12:38:58 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3574">3574</a> added <tt>constexpr</tt> to all member functions and friends of <tt>common_iterator</tt> to make it 
+fully <tt>constexpr</tt>, but accidentally omitted the exposition-only classes <tt><i>proxy</i></tt> and 
+<tt><i>postfix-proxy</i></tt> defined for some member functions. We should make these two classes fully <tt>constexpr</tt>, too.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+decltype(auto) operator-&gt;() const
+  requires <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-3- [&hellip;]
+<p/>
+-4- [&hellip;]
+<p/>
+-5- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; [&hellip;]</p></li>
+<li><p>(5.2) &mdash; [&hellip;]</p></li>
+<li><p>(5.3) &mdash; Otherwise, equivalent to: <tt>return <i>proxy</i>(*get&lt;I&gt;(<i>v_</i>));</tt> 
+where <tt><i>proxy</i></tt> is the exposition-only class:</p>
+<blockquote><pre>
+class <i>proxy</i> {
+  iter_value_t&lt;I&gt; keep_;
+  <ins>constexpr</ins> <i>proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
+    : keep_(std::move(x)) {}
+public:
+  <ins>constexpr</ins> const iter_value_t&lt;I&gt;* operator-&gt;() const <ins>noexcept</ins> {
+    return addressof(keep_);
+  }
+};
+</pre></blockquote>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+decltype(auto) operator++(int);
+</pre>
+<blockquote>
+<p>
+-4- [&hellip;]
+<p/>
+-5- <i>Effects:</i> If I models forward_iterator, equivalent to:
+<p/>
+[&hellip;]
+<p/>
+Otherwise, if [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+Otherwise, equivalent to:
+</p>
+<blockquote><pre>
+<i>postfix-proxy</i> p(**this);
+++*this;
+return p;
+</pre></blockquote>
+<p>
+where <tt><i>postfix-proxy</i></tt> is the exposition-only class:
+</p>
+<blockquote><pre>
+class <i>postfix-proxy</i> {
+  iter_value_t&lt;I&gt; keep_;
+  <ins>constexpr</ins> <i>postfix-proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
+    : keep_(std::forward&lt;iter_reference_t&lt;I&gt;&gt;(x)) {}
+public:
+  <ins>constexpr</ins> const iter_value_t&lt;I&gt;&amp; operator*() const <ins>noexcept</ins> {
+    return keep_;
+  }
+};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3596" href="3596">3596.</a> <tt>ranges::starts_with</tt> and <tt>ranges::ends_with</tt> are underspecified</h3>
+<p><b>Section:</b> 25.6.14 <a href="https://timsong-cpp.github.io/cppwp/alg.starts.with">[alg.starts.with]</a>, 25.6.15 <a href="https://timsong-cpp.github.io/cppwp/alg.ends.with">[alg.ends.with]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2021-09-17 <b>Last modified:</b> 2021-09-19 12:39:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When implementing C++23 new <tt>ranges::starts_with</tt> and <tt>ranges::ends_with</tt> 
+<a href="https://github.com/microsoft/STL/pull/1997">for MSVC</a> we came around some issues regarding infinite ranges.
+<p/>
+In short, there is no possible answers to <tt>ends_with</tt>, if the second range is infinite. Similarly, there 
+is no meaningful answer to <tt>starts_with</tt> if both ranges are infinite.
+<p/>
+We should constraint both algorithms to forbid those corner cases (preferred resolution), or explicitly specify a 
+given return value for those (The reasonable choice would be "<tt>return false;</tt>")
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
 
 
 

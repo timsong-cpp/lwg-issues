@@ -1,0 +1,124 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3592: lazy_split_view needs to check the simpleness of Pattern</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3592" href="lwg-active.html#3592">3592.</a> <tt>lazy_split_view</tt> needs to check the simpleness of <tt>Pattern</tt></h3>
+<p><b>Section:</b> 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-15 <b>Last modified:</b> 2021-09-19 14:01:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For forward ranges, the non-<tt>const</tt> versions of <tt>lazy_split_view::begin()</tt>
+and <tt>lazy_split_view::end()</tt> returns an <tt><i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;</tt>,
+promoting to <tt>const</tt> if <tt>V</tt> models <tt><i>simple-view</i></tt>. However, this failed to
+take <tt>Pattern</tt> into account, even though that will also be accessed as <tt>const</tt> if 
+<tt>const</tt>-promotion takes place. There is no requirement that <tt>const Pattern</tt> is a range, 
+however.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+            (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      if constexpr (forward_range&lt;V&gt;)
+        return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
+          <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::begin(<i>base_</i>)};
+      else {
+        <i>current_</i> = ranges::begin(<i>base_</i>);
+        return <i>outer-iterator</i>&lt;false&gt;{*this};
+      }
+    }
+    
+    [&hellip;]
+    
+    constexpr auto end() requires forward_range&lt;V&gt; &amp;&amp; common_range&lt;V&gt; {
+      return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
+        <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::end(<i>base_</i>)};
+    }
+
+    [&hellip;]
+  };
+  
+  [&hellip;]
+  
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

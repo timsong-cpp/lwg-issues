@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2021-09-11 at 13:51:19 UTC</p>
+<td align="left"><p>Revised 2021-09-20 at 13:52:41 UTC</p>
 </td>
 </tr>
 <tr>
@@ -416,6 +416,260 @@ match_results&amp; operator=(match_results&amp;&amp; m);
 
 </li>
 
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="2381" href="2381">2381.</a> Inconsistency in parsing floating point numbers</h3>
+<p><b>Section:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Marshall Clow <b>Opened:</b> 2014-04-30 <b>Last modified:</b> 2021-09-20 11:24:27 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#facet.num.get.virtuals">active issues</a> in [facet.num.get.virtuals].</p>
+<p><b>View all other</b> <a href="lwg-index.html#facet.num.get.virtuals">issues</a> in [facet.num.get.virtuals].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a> we have:
+</p>
+<blockquote><p>
+Stage 3: The sequence of chars accumulated in stage 2 (the field) is converted to a numeric value by the
+rules of one of the functions declared in the header <tt>&lt;cstdlib&gt;</tt>:
+</p>
+<ul>
+<li><p>For a signed integer value, the function <tt>strtoll</tt>.</p></li>
+<li><p>For an unsigned integer value, the function <tt>strtoull</tt>.</p></li>
+<li><p>For a floating-point value, the function <tt>strtold</tt>.</p></li>
+</ul>
+</blockquote>
+<p>
+This implies that for many cases, this routine should return true:
+</p>
+<blockquote><pre>
+bool is_same(const char* p)
+{
+  std::string str{p};
+  double val1 = std::strtod(str.c_str(), nullptr);
+  std::stringstream ss(str);
+  double val2;
+  ss &gt;&gt; val2;
+  return std::isinf(val1) == std::isinf(val2) &amp;&amp;                 // either they're both infinity
+         std::isnan(val1) == std::isnan(val2) &amp;&amp;                 // or they're both NaN
+         (std::isinf(val1) || std::isnan(val1) || val1 == val2); // or they're equal
+}
+</pre></blockquote>
+<p>
+and this is indeed true, for many strings:
+</p>
+<blockquote><pre>
+assert(is_same("0"));
+assert(is_same("1.0"));
+assert(is_same("-1.0"));
+assert(is_same("100.123"));
+assert(is_same("1234.456e89"));
+</pre></blockquote>
+<p>
+but not for others
+</p>
+<blockquote><pre>
+assert(is_same("0xABp-4")); // hex float
+assert(is_same("inf"));
+assert(is_same("+inf"));
+assert(is_same("-inf"));
+assert(is_same("nan"));
+assert(is_same("+nan"));
+assert(is_same("-nan"));
+
+assert(is_same("infinity"));
+assert(is_same("+infinity"));
+assert(is_same("-infinity"));
+</pre></blockquote>
+<p>
+These are all strings that are correctly parsed by <tt>std::strtod</tt>, but not by the stream extraction operators.
+They contain characters that are deemed invalid in stage 2 of parsing.
+<p/>
+If we're going to say that we're converting by the rules of <tt>strtold</tt>, then we should accept all the things that
+<tt>strtold</tt> accepts.
+</p>
+
+<p><i>[2016-04, Issues Telecon]</i></p>
+
+<p>
+People are much more interested in round-tripping hex floats than handling <tt>inf</tt> and <tt>nan</tt>. Priority changed to P2.
+</p>
+<p>
+Marshall says he'll try to write some wording, noting that this is a very closely specified part of the standard, and has remained unchanged for a long time. Also, there will need to be a sample implementation.
+</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Zhihao provides wording</p>
+<p>The <tt>src</tt> array in Stage 2 does narrowing only.  The actual
+input validation is delegated to <tt>strtold</tt> (independent from
+the parsing in Stage 3 which is again being delegated
+to <tt>strtold</tt>) by saying:</p>
+
+<p>  [...] If it is not discarded, then a check is made to determine
+  if c is allowed as the next character of an input field of the
+  conversion specifier returned by Stage 1.</p>
+
+<p>So a conforming C++11 <tt>num_get</tt> is supposed to magically
+accept an hexfloat without an exponent</p>
+
+<p>  0x3.AB</p>
+
+<p>because we refers to C99, and the fix to this issue should be
+just expanding the <tt>src</tt> array.</p>
+
+<p>Support for Infs and NaNs are not proposed because of the
+complexity of nan(n-chars).</p>
+
+<p><i>[2016-08, Chicago]</i></p>
+
+<p>Tues PM: Move to Open</p>
+
+<p><i>[2016-09-08, Zhihao Yuan comments and updates proposed wording]</i></p>
+
+<p>
+Examples added.
+</p>
+
+<p><i>[2018-08-23 Batavia Issues processing]</i></p>
+
+<p>Needs an Annex C entry. Tim to write Annex C.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to N4606.</p>
+
+<ol>
+<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+
+<blockquote>
+<p><tt>static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";</tt></p>
+</blockquote>
+</li>
+
+<li><p>Append the following examples to 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+<blockquote>
+<p>
+<ins>[<i>Example:</i></ins>
+</p>
+<blockquote>
+<p>
+<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
+</p>
+<ul>
+<li><p><ins>if Stage 1 returns <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
+<li><p><ins>if Stage 1 returns <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
+<li><p><ins>if Stage 1 returns <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
+</ul>
+<p>
+<ins>In all cases, leaving the rest in the input.</ins>
+</p>
+</blockquote>
+<p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-05-18 Tim updates wording]</i></p>
+
+<p>Based on the git history, libc++ appears to have always included
+<tt>p</tt> and <tt>P</tt> in <tt>src</tt>.</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Change 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a>/3 Stage 2 as indicated:</p>
+
+<blockquote>
+<p>
+&mdash; Stage 2:
+<p/>
+If <tt>in == end</tt> then stage 2 terminates. Otherwise a <tt>charT</tt>
+is taken from <tt>in</tt> and local variables are initialized as if by
+</p>
+<blockquote>
+<pre>
+char_type ct = *in;
+char c = src[find(atoms, atoms + sizeof(src) - 1, ct) - atoms];
+if (ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).decimal_point())
+c = '.';
+bool discard =
+  ct == use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).thousands_sep()
+  &amp;&amp; use_facet&lt;numpunct&lt;charT&gt;&gt;(loc).grouping().length() != 0;
+</pre>
+</blockquote>
+<p>
+where the values <tt>src</tt> and <tt>atoms</tt> are defined as if by:
+</p>
+<blockquote>
+<pre>
+static const char src[] = "0123456789abcdef<ins>p</ins>xABCDEF<ins>P</ins>X+-";
+char_type atoms[sizeof(src)];
+use_facet&lt;ctype&lt;charT&gt;&gt;(loc).widen(src, src + sizeof(src), atoms);
+</pre>
+</blockquote>
+<p>
+for this value of <tt>loc</tt>.
+<p/>
+If <tt>discard</tt> is true, then if <tt>'.'</tt> has not yet been accumulated,
+then the position of the character is remembered, but the character is otherwise
+ignored. Otherwise, if <tt>'.'</tt> has already been accumulated, the character
+is discarded and Stage 2 terminates. If it is not discarded, then a check is
+made to determine if <tt>c</tt> is allowed as the next character of an input
+field of the conversion specifier returned by Stage 1. If so, it is accumulated.
+<p/>
+If the character is either discarded or accumulated then <tt>in</tt> is advanced
+by <tt>++in</tt> and processing returns to the beginning of stage 2.
+<p/>
+<ins>[<i>Example:</i></ins>
+</p>
+<blockquote>
+<p>
+<ins>Given an input sequence of <tt>"0x1a.bp+07p"</tt>,</ins>
+</p>
+<ul>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%d</tt>, <tt>"0"</tt> is accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%i</tt>, <tt>"0x1a"</tt> are accumulated;</ins></p></li>
+<li><p><ins>if the conversion specifier returned by Stage 1 is <tt>%g</tt>, <tt>"0x1a.bp+07"</tt> are accumulated.</ins></p></li>
+</ul>
+<p>
+<ins>In all cases, the remainder is left in the input.</ins>
+</p>
+</blockquote>
+<p><ins>&mdash; end example]</ins></p>
+</blockquote>
+</li>
+<li>
+<p>Add the following new subclause to C.5 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp03">[diff.cpp03]</a>:</p>
+<blockquote>
+<p>
+<ins><b>C.4.? [locale]: localization library [diff.cpp03.locale]</b></ins>
+<p/>
+<ins><b>Affected subclause:</b> 28.4.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.get.virtuals">[facet.num.get.virtuals]</a><br/>
+<b>Change:</b> The <tt>num_get</tt> facet recognizes hexadecimal floating point values.<br/>
+<b>Rationale:</b> Required by new feature.<br/>
+<b>Effect on original feature:</b> Valid C++2003 code may have different behavior in this
+revision of C++.
+</ins>
+</p>
+</blockquote>
+</li>
 </ol>
 
 
@@ -821,6 +1075,147 @@ is <tt>true</tt> for all <i>i</i></del>.</p></li>
 
 
 <hr>
+<h3><a name="3123" href="3123">3123.</a> <tt>duration</tt> constructor from representation shouldn't be effectively non-throwing</h3>
+<p><b>Section:</b> 27.5 <a href="https://timsong-cpp.github.io/cppwp/time.duration">[time.duration]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2018-06-22 <b>Last modified:</b> 2021-09-20 11:25:23 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.duration">issues</a> in [time.duration].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[time.duration]/4 states:
+</p>
+<blockquote><p>
+Members of duration shall not throw exceptions other than those thrown by the indicated operations on their representations.
+</p></blockquote>
+<p>
+Where representation is defined in the non-normative, brief description at [time.duration]/1:
+</p>
+<blockquote><p>
+[&hellip;] A duration has a representation which holds a count of ticks and a tick period. [&hellip;]
+</p></blockquote>
+<p>
+[time.duration.cons]/2 doesn't indicate the operation undergone by its representation, merely stating a postcondition in [time.duration.cons]/3:
+</p>
+<blockquote>
+<p>
+<i>Effects:</i> Constructs an object of type <tt>duration</tt>.
+<p/>
+<i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.
+</p>
+</blockquote>
+<p>
+I suggest this reformulation that follows the format of [time.duration.cons]/5.
+</p>
+<blockquote>
+<p>
+<i>Effects:</i> Constructs an object of type duration, constructing <tt>rep_</tt> from <tt>r</tt>.
+</p>
+</blockquote>
+<p>
+Now it is clear why the constructor would throw.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4750">N4750</a>.
+</p>
+
+<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Rep2&gt;
+  constexpr explicit duration(const Rep2&amp; r);
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This constructor shall not participate in overload resolution unless [&hellip;]
+<p/>
+-2- <i>Effects:</i> Constructs an object of type <tt>duration</tt><ins>, constructing <tt>rep_</tt> from <tt>r</tt></ins>.
+<p/>
+-3- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.
+</p>
+</blockquote>
+</blockquote></blockquote>
+
+<p><i>[2018-06-27 after reflector discussion]</i></p>
+
+<p>Priority set to 3. Improved wording as result of that discussion.</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4750">N4750</a>.
+</p>
+
+<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Rep2&gt;
+  constexpr explicit duration(const Rep2&amp; r);
+</pre>
+<blockquote>
+<p>
+-1- <i>Remarks:</i> This constructor shall not participate in overload resolution unless [&hellip;]
+<p/>
+-2- <i>Effects:</i> <del>Constructs an object of type <tt>duration</tt></del><ins>Initializes <tt>rep_</tt> with <tt>r</tt></ins>.
+<p/>
+<del>-3- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.</del>
+</p>
+</blockquote>
+</blockquote>
+</blockquote>
+
+<p><i>[2020-05-02; Daniel resyncs wording with recent working draft]</i></p>
+
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
+</p>
+
+<p>Change 27.5.2 <a href="https://timsong-cpp.github.io/cppwp/time.duration.cons">[time.duration.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Rep2&gt;
+  constexpr explicit duration(const Rep2&amp; r);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints:</i> <tt>is_convertible_v&lt;const Rep2&amp;, rep&gt;</tt> is <tt>true</tt> and
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; <tt>treat_as_floating_point_v&lt;rep&gt;</tt> is <tt>true</tt> or</p></li>
+<li><p>(1.2) &mdash; <tt>treat_as_floating_point_v&lt;Rep2&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+[<i>Example:</i> [&hellip;] <i>end example</i>]
+<p/>
+<ins>-?- <i>Effects:</i> Initializes <tt>rep_</tt> with <tt>r</tt>.</ins>
+<p/>
+<del>-2- <i>Postconditions:</i> <tt>count() == static_cast&lt;rep&gt;(r)</tt>.</del>
+</p>
+</blockquote>
+</blockquote>
+
+
+
+
+
+<hr>
 <h3><a name="3146" href="3146">3146.</a> Excessive unwrapping in <tt>std::ref</tt>/<tt>cref</tt></h3>
 <p><b>Section:</b> 20.14.6.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap.helpers">[refwrap.helpers]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Agust&iacute;n K-ballo Berg&eacute; <b>Opened:</b> 2018-07-10 <b>Last modified:</b> 2021-08-20 17:21:40 UTC</p>
@@ -1090,6 +1485,112 @@ template&lt;class Iterator&gt;
 
 </li>
 
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3361" href="3361">3361.</a> <tt>safe_range&lt;<i>SomeRange</i>&amp;></tt> case</h3>
+<p><b>Section:</b> 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2019-12-19 <b>Last modified:</b> 2021-09-20 11:34:46 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+24.5.5 <a href="https://timsong-cpp.github.io/cppwp/range.dangling">[range.dangling]</a> p2 hints at how <tt>safe_range</tt> should allow lvalue ranges to model it.
+However, its wording doesn't take into account that case.
+</p>
+
+<p><i>[2020-01 Priority set to 3 after review on the reflector.]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>This wording is relative to <a href="https://wg21.link/n4842">N4842</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept safe_range =
+    range&lt;T&gt; &amp;&amp;
+      (is_lvalue_reference_v&lt;T&gt; || enable_safe_range&lt;remove_cvref_t&lt;T&gt;&gt;);
+</pre>
+<blockquote>
+<p>
+-5- <del>Given an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt>,</del><ins>A type</ins>
+<tt>T</tt> models <tt>safe_range</tt> <del>only</del> <ins>if:</ins>
+<ol style="list-style-type: none">
+<li><p><ins>(5.1) &mdash; <tt>is_lvalue_reference_v&lt;T&gt;</tt> is <tt>true</tt>, or</ins></p></li>
+<li><p><ins>(5.2) &mdash; given an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt>,</ins>
+<del>if</del> the validity of iterators obtained from the object denoted by <tt>E</tt> is not tied to the lifetime of
+that object.</p></li>
+</ol>
+<p/>
+-6- [<i>Note:</i> <del>Since the validity of iterators is not tied to the lifetime of an object
+whose type models <tt>safe_range</tt>, a</del><ins>A</ins> function can accept arguments of <del>such</del> a
+type <ins>that models <tt>safe_range</tt></ins> <del>by value</del> and return iterators obtained from it
+without danger of dangling. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-05-19 Tim updates wording]</i></p>
+
+<p>
+The new wording below attempts to keep the "borrowed" property generally
+applicable to all models of <tt>borrowed_range</tt>, instead of bluntly carving
+out lvalue reference types.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll in June.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.</p>
+
+<ol>
+<li><p>Modify 24.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept borrowed_range =
+    range&lt;T&gt; &amp;&amp;
+      (is_lvalue_reference_v&lt;T&gt; || enable_borrowed_range&lt;remove_cvref_t&lt;T&gt;&gt;);
+</pre>
+<blockquote>
+<p>
+-5- <ins>Let <tt>U</tt> be <tt>remove_reference_t&lt;T&gt;</tt> if <tt>T</tt>
+is an rvalue reference type, and <tt>T</tt> otherwise.</ins>
+Given <del>an expression <tt>E</tt> such that <tt>decltype((E))</tt> is <tt>T</tt></del>
+<ins>a variable <tt>u</tt> of type <tt>U</tt></ins>,
+<tt>T</tt> models <tt>borrowed_range</tt> only if the validity of iterators
+obtained from <del>the object denoted by <tt>E</tt></del> <ins>u</ins> is not tied
+to the lifetime of that <del>object</del> <ins>variable</ins>.
+<p/>
+-6- [<i>Note:</i> Since the validity of iterators is not tied to the lifetime of
+<del>an object</del><ins>a variable</ins> whose type models <tt>borrowed_range</tt>,
+a function <del>can accept arguments of</del> <ins>with a parameter of</ins>
+such a type <del>by value and</del> <ins>can</ins> return iterators
+obtained from it without danger of dangling.
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
 </ol>
 
 
@@ -2940,6 +3441,224 @@ private:
 
 
 <hr>
+<h3><a name="3563" href="3563">3563.</a> <tt>keys_view</tt> example is broken</h3>
+<p><b>Section:</b> 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-05-29 <b>Last modified:</b> 2021-09-20 11:34:46 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> we have:
+</p>
+<blockquote><p>
+<tt>keys_view</tt> is an alias for <tt>elements_view&lt;views::all_t&lt;R&gt;, 0&gt;</tt>, and
+is useful for extracting keys from associative containers.
+<p/>
+[<i>Example 2:</i>
+</p>
+<blockquote><pre>
+auto names = keys_view{historical_figures};
+for (auto&amp;&amp; name : names) {
+  cout &lt;&lt; name &lt;&lt; ' ';  <i>// prints Babbage Hamilton Lovelace Turing</i>
+}
+</pre></blockquote>
+<p>
+&mdash; <i>end example</i>]
+</p>
+</blockquote>
+<p>
+Where <tt>keys_view</tt> is defined as:
+</p>
+<blockquote><pre>
+template&lt;class R&gt;
+  using keys_view = elements_view&lt;views::all_t&lt;R&gt;, 0&gt;;
+</pre></blockquote>
+<p>
+There's a similar example for <tt>values_view</tt>.
+<p/>
+But class template argument deduction cannot work here, <tt>keys_view(r)</tt> cannot deduce <tt>R</tt> &mdash;
+it's a non-deduced context. At the very least, the example is wrong and should be rewritten as
+<tt>views::keys(historical_figures)</tt>. Or, I guess, as
+<tt>keys_view&lt;decltype(historical_figures)&gt;(historical_figures)&gt;</tt> (but really, not).
+</p>
+
+<p><i>[2021-05-29 Tim comments and provides wording]</i></p>
+
+<p>
+I have some ideas about making CTAD work for <tt>keys_view</tt> and
+<tt>values_view</tt>, but current implementations of alias template CTAD are
+not yet in a shape to permit those ideas to be tested.
+What <em>is</em> clear, though, is that the current definitions of <tt>keys_view</tt>
+and <tt>values_view</tt> can't possibly ever work for CTAD, because <tt>R</tt> is only
+used in a non-deduced context and so they can never meet the "deducible" constraint in
+12.2.2.9 <a href="https://timsong-cpp.github.io/cppwp/over.match.class.deduct">[over.match.class.deduct]</a> p2.3.
+<p/>
+The proposed resolution below removes the <tt>views::all_t</tt> transformation
+in those alias templates. This makes these aliases transparent enough to support CTAD out
+of the box when a view is used, and any questions about deduction guides on
+<tt>elements_view</tt> can be addressed later once the implementations become more mature.
+This also makes them consistent with all the other views: you can't write
+<tt>elements_view&lt;map&lt;int, int&gt;&amp;, 0&gt;</tt> or
+<tt>reverse_view&lt;map&lt;int, int&gt;&amp;&gt;</tt>, so why do we allow
+<tt>keys_view&lt;map&lt;int, int&gt;&amp;&gt;</tt>? It is, however, a breaking change,
+so it is important that we get this in sooner rather than later.
+<p/>
+The proposed resolution has been implemented and tested.
+</p>
+
+<p><i>[2021-06-14; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll in August.
+Partially addressed by an
+<a href="https://github.com/cplusplus/draft/pull/4659">editorial change</a>.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std::ranges {
+[&hellip;]
+
+  <i>// 24.7.18 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a>, elements view</i>
+  template&lt;input_range V, size_t N&gt;
+    requires <i>see below</i>
+  class elements_view;
+
+  template&lt;class T, size_t N&gt;
+    inline constexpr bool enable_borrowed_range&lt;elements_view&lt;T, N&gt;&gt; = enable_borrowed_range&lt;T&gt;;
+
+  template&lt;class R&gt;
+    using keys_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;;
+  template&lt;class R&gt;
+    using values_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;;
+
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- <tt>keys_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;</tt>,
+and is useful for extracting keys from associative containers.
+<p/>
+[<i>Example 2</i>:
+</p>
+<blockquote>
+<pre>
+auto names = keys_view{<ins>views::all(</ins>historical_figures<ins>)</ins>};
+for (auto&amp;&amp; name : names) {
+  cout &lt;&lt; name &lt;&lt; ' '; <i>// prints Babbage Hamilton Lovelace Turing</i>
+}
+</pre>
+</blockquote>
+<p>
+&mdash; <i>end example</i>]
+<p/>
+-4- <tt>values_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;</tt>,
+and is useful for extracting values from associative containers.
+<p/>
+[<i>Example 3</i>:
+</p>
+<blockquote>
+<pre>
+auto is_even = [](const auto x) { return x % 2 == 0; };
+cout &lt;&lt; ranges::count_if(values_view{<ins>views::all(</ins>historical_figures<ins>)</ins>}, is_even); <i>// prints 2</i>
+</pre>
+</blockquote>
+<p>
+&mdash; <i>end example</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+<p><i>[2021-06-18 Tim syncs wording to latest working draft]</i></p>
+
+<p>
+The examples have been editorially corrected, so the new wording simply changes the
+definition of <tt>keys_view</tt> and <tt>values_view</tt>.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std::ranges {
+[&hellip;]
+
+  <i>// 24.7.18 <a href="https://timsong-cpp.github.io/cppwp/range.elements">[range.elements]</a>, elements view</i>
+  template&lt;input_range V, size_t N&gt;
+    requires <i>see below</i>
+  class elements_view;
+
+  template&lt;class T, size_t N&gt;
+    inline constexpr bool enable_borrowed_range&lt;elements_view&lt;T, N&gt;&gt; = enable_borrowed_range&lt;T&gt;;
+
+  template&lt;class R&gt;
+    using keys_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;;
+  template&lt;class R&gt;
+    using values_view = elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;;
+
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.7.18.1 <a href="https://timsong-cpp.github.io/cppwp/range.elements.overview">[range.elements.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- <tt>keys_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 0&gt;</tt>,
+and is useful for extracting keys from associative containers.
+<p/>
+[<i>Example 2</i>: &hellip; &mdash; <i>end example</i>]
+<p/>
+-4- <tt>values_view</tt> is an alias for <tt>elements_view&lt;<del>views::all_t&lt;</del>R<del>&gt;</del>, 1&gt;</tt>,
+and is useful for extracting values from associative containers.
+<p/>
+[<i>Example 3</i>: &hellip; &mdash; <i>end example</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3566" href="3566">3566.</a> Constraint recursion for <tt>operator&lt;=&gt;(optional&lt;T&gt;, U)</tt></h3>
 <p><b>Section:</b> 20.6.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-06-07 <b>Last modified:</b> 2021-06-23 14:16:45 UTC</p>
@@ -3791,6 +4510,281 @@ friend constexpr <i>iterator</i> operator-(<i>iterator</i> i, difference_type n)
 </li>
 
 </ol>
+
+
+
+
+<hr>
+<h3><a name="3581" href="3581">3581.</a> The range constructor makes <tt>basic_string_view</tt> not trivially move constructible</h3>
+<p><b>Section:</b> 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An, Casey Carter <b>Opened:</b> 2021-08-16 <b>Last modified:</b> 2021-09-20 11:21:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#string.view.cons">active issues</a> in [string.view.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.view.cons">issues</a> in [string.view.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<b>Jiang An</b>:
+</p>
+<p>
+ The issue is found in <a href="https://github.com/microsoft/STL/pull/2128">this Microsoft STL pull request</a>.
+<p/>
+I think an additional constraint should be added to 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a>/11 (a similar constraint is 
+already present for <tt>reference_wrapper</tt>):
+</p>
+<blockquote><p>
+<ins>(11.?) &mdash; <tt>is_same_v&lt;remove_cvref_t&lt;R&gt;, basic_string_view&gt;</tt> is <tt>false</tt>.</ins>
+</p></blockquote>
+<p>
+<b>Casey Carter</b>:
+</p>
+<p>
+<a href="https://wg21.link/p1989R2">P1989R2</a> "Range constructor for <tt>std::string_view</tt> 2: Constrain Harder" 
+added a converting constructor to <tt>basic_string_view</tt> that accepts (by forwarding reference) any sized 
+contiguous range with a compatible element type. This constructor unfortunately intercepts attempts at move 
+construction which previously would have resulted in a call to the copy constructor. (I suspect the authors of 
+P1989 were under the mistaken impression that <tt>basic_string_view</tt> had a defaulted move constructor, which 
+would sidestep this issue by being chosen by overload resolution via the "non-template vs. template" tiebreaker.)
+<p/>
+The resulting inefficiency could be corrected by adding a defaulted move constructor and move assignment operator 
+to <tt>basic_string_view</tt>, but it would be awkward to add text to specify that these moves always leave the 
+source intact. Presumably this is why the move operations were omitted in the first place. We therefore recommend 
+constraining the conversion constructor template to reject arguments whose decayed type is <tt>basic_string_view</tt> 
+(which we should probably do for all conversion constructor templates in the Standard Library).
+<p/>
+Implementation experience: MSVC STL is in the process of implementing this fix. Per Jonathan Wakely, libstdc++ has a 
+similar constraint.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.4.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R&gt;
+  constexpr basic_string_view(R&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+-10- Let <tt>d</tt> be an lvalue of type <tt>remove_cvref_t&lt;R&gt;</tt>.
+<p/>
+-11- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(11.?) &mdash; <tt>remove_cvref_t&lt;R&gt;</tt> is not the same type as <tt>basic_string_view</tt>,</ins></p></li>
+<li><p>(11.1) &mdash; <tt>R</tt> models <tt>ranges::contiguous_range</tt> and <tt>ranges::sized_range</tt>,</p></li>
+<li><p>(11.2) &mdash; <tt>is_same_v&lt;ranges::range_value_t&lt;R&gt;, charT&gt;</tt> is <tt>true</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+<hr>
+<h3><a name="3585" href="3585">3585.</a> Variant converting assignment with immovable alternative</h3>
+<p><b>Section:</b> 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-09-01 <b>Last modified:</b> 2021-09-20 11:21:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#variant.assign">active issues</a> in [variant.assign].</p>
+<p><b>View all other</b> <a href="lwg-index.html#variant.assign">issues</a> in [variant.assign].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Example originally from <a href="https://stackoverflow.com/q/68998153/2069064">StackOverflow</a> but with a more reasonable example from Tim Song:
+</p>
+<blockquote><pre>
+#include &lt;variant&gt;
+#include &lt;string&gt;
+
+struct A {
+  A() = default;
+  A(A&amp;&amp;) = delete;
+};
+
+int main() {
+  std::variant&lt;A, std::string&gt; v;
+  v = "hello";
+}
+</pre></blockquote>
+<p>
+There is implementation divergence here: libstdc++ rejects, libc++ and msvc accept.
+<p/>
+20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> bullet (13.3) says that if we're changing the alternative in assignment 
+and it is not the case that the converting construction won't throw (as in the above), then "Otherwise, 
+equivalent to <tt>operator=(variant(std::forward&lt;T&gt;(t)))</tt>." That is, we defer to move assignment.
+<p/>
+<tt>variant&lt;A, string&gt;</tt> isn't move-assignable (because <tt>A</tt> isn't move constructible). Per 
+the wording in the standard, we have to reject this. libstdc++ follows the wording of the standard.
+<p/>
+But we don't actually have to do a full move assignment here, since we know the situation we're in is 
+changing the alternative, so the fact that <tt>A</tt> isn't move-assignable shouldn't matter. libc++ and 
+msvc instead do something more direct, allowing the above program.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.7.3.4 <a href="https://timsong-cpp.github.io/cppwp/variant.assign">[variant.assign]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This should cover the case that we want to cover: that if construction of <tt>T<sub><i>j</i></sub></tt> 
+from <tt>T</tt> throws, we haven't yet changed any state in the variant.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; constexpr variant&amp; operator=(T&amp;&amp; t) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-11- Let <tt>T<sub><i>j</i></sub></tt> be a type that is determined as follows: build an imaginary function 
+<tt><i>FUN</i>(T<sub><i>i</i></sub>)</tt> for each alternative type <tt>T<sub><i>i</i></sub></tt> for which 
+<tt>T<sub><i>i</i></sub> x[] = {std::forward&lt;T&gt;(t)};</tt> is well-formed for some invented variable 
+<tt>x</tt>. The overload <tt><i>FUN</i>(T<sub><i>j</i></sub>)</tt> selected by overload resolution for the 
+expression <tt><i>FUN</i>(std::forward&lt;T&gt;(t))</tt> defines the alternative <tt>T<sub><i>j</i></sub></tt> 
+which is the type of the contained value after assignment.
+<p/>
+-12- <i>Constraints:</i> [&hellip;]
+<p/>
+-13- <i>Effects:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(13.1) &mdash; If <tt>*this</tt> holds a <tt>T<sub><i>j</i></sub></tt>, assigns <tt>std::forward&lt;T&gt;(t)</tt> 
+to the value contained in <tt>*this</tt>.</p></li>
+<li><p>(13.2) &mdash; Otherwise, if <tt>is_nothrow_constructible_v&lt;T<sub><i>j</i></sub>, T&gt; || 
+!is_nothrow_move_constructible_v&lt;T<sub><i>j</i></sub>&gt;</tt> is <tt>true</tt>, equivalent to 
+<tt>emplace&lt;<i>j</i>&gt;(std::forward&lt;T&gt;(t))</tt>.</p></li>
+<li><p>(13.3) &mdash; Otherwise, equivalent to 
+<tt><del>operator=(variant(std::forward&lt;T&gt;(t)))</del><ins>emplace&lt;<i>j</i>&gt;(T<sub><i>j</i></sub>(std::forward&lt;T&gt;(t)))</ins></tt>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3589" href="3589">3589.</a> The <tt>const</tt> lvalue reference overload of <tt>get</tt> for <tt>subrange</tt> 
+does not constrain <tt>I</tt> to be <tt>copyable</tt> when <tt>N == 0</tt></h3>
+<p><b>Section:</b> 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-08 <b>Last modified:</b> 2021-09-20 13:52:41 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange">active issues</a> in [range.subrange].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange">issues</a> in [range.subrange].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>const</tt> lvalue reference overload of <tt>get</tt> used for <tt>subrange</tt> 
+only constraint that <tt>N &lt; 2</tt>, this will cause the "discards qualifiers" error 
+inside the function body when applying <tt>get</tt> to the lvalue <tt>subrange</tt> that 
+stores a non-<tt>copyable</tt> iterator since its <tt>begin()</tt> is non-<tt>const</tt> 
+qualified, we probably need to add a constraint for it.
+</p>
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
+<p><i>[2021-09-20; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+  [&hellip;]
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires <ins>(</ins>(N <del>&lt; 2</del><ins>== 0 &amp;&amp; copyable&lt;I&gt;) || N == 1</ins>)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>: Equivalent to:
+</p>
+<pre>
+if constexpr (N == 0)
+  return r.begin();
+else
+  return r.end();
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
 
 
 

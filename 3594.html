@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3594: inout_ptr &mdash; inconsistent release() in destructor</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3594" href="lwg-active.html#3594">3594.</a> <tt>inout_ptr</tt> &mdash; inconsistent <tt>release()</tt> in destructor</h3>
+<p><b>Section:</b> 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> JeanHeyd Meneide <b>Opened:</b> 2021-09-16 <b>Last modified:</b> 2021-09-18 17:24:56 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+More succinctly, the model for <tt>std::out_ptr_t</tt> and <tt>std::inout_ptr_t</tt>
+both have a conditional release in their destructors as part of their
+specification (20.11.8 <a href="https://timsong-cpp.github.io/cppwp/out.ptr.t">[out.ptr.t]</a> p8) (Option #2 below).
+But, if the wording is followed, they have an unconditional release in
+their constructor (Option #1 below). This is not exactly correct and
+can cause issues with double-free in <tt>inout_ptr</tt> in particular.
+<p/>
+Consider a function <tt>MyFunc</tt> that sets <tt>rawPtr</tt> to <tt>nullptr</tt> when freeing
+an old value and deciding not to produce a new value, as shown below:
+</p>
+<blockquote><pre>
+// Option #1:
+auto uptr = std::make_unique&lt;BYTE[]&gt;(25);
+auto rawPtr = uptr.get();
+uptr.release(); // UNCONDITIONAL
+MyFunc(&amp;rawPtr);
+If (rawPtr)
+{
+  uptr.reset(rawPtr);
+}
+
+// Option #2:
+auto uptr = std::make_unique&lt;BYTE[]&gt;(25);
+auto rawPtr = uptr.get();
+MyFunc(&amp;rawPtr);
+If (rawPtr)
+{
+  uptr.release(); // CONDITIONAL
+  uptr.reset(rawPtr);
+}
+</pre></blockquote>
+<p>
+This is no problem if the implementation selected Option #1 (release
+in the constructor), but results in double-free if the implementation
+selected option #2 (release in the destructor).
+<p/>
+As the paper author and after conferring with others, the intent was
+that the behavior was identical and whether a choice between the
+constructor or destructor is made. The reset should be unconditional,
+at least for <tt>inout_ptr_t</tt>. Suggested change for the <tt>~inout_ptr_t</tt>
+destructor text is to remove the "<tt>if (p) { ... }</tt>" wrapper from around
+the code in 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> p11.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~inout_ptr_t();
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>SP</tt> be <tt><i>POINTER_OF_OR</i>(Smart, Pointer)</tt> (20.10.1 <a href="https://timsong-cpp.github.io/cppwp/memory.general">[memory.general]</a>).
+<p/>
+-10- Let <tt><i>release-statement</i></tt> be <tt>s.release()</tt>; if an implementation does not call <tt>s.release()</tt> in the
+constructor. Otherwise, it is empty.
+<p/>
+-11- <i>Effects:</i> Equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; </p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  s = Smart( static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_pointer_v&lt;Smart&gt;</tt> is <tt>true</tt>;
+</p></li>
+<li><p>(11.2) &mdash; otherwise,</p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  <i>release-statement</i>;
+  s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if the expression <tt>s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...)</tt> is wellformed;
+</p>
+</li>
+<li><p>(11.3) &mdash; otherwise,</p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+  <i>release-statement</i>;
+  s = Smart(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
+</p>
+</li>
+<li><p>(11.4) &mdash; otherwise, the program is ill-formed.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
