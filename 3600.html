@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3600: Making istream_iterator copy constructor trivial is an ABI break</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3600" href="lwg-active.html#3600">3600.</a> Making <tt>istream_iterator</tt> copy constructor trivial is an ABI break</h3>
+<p><b>Section:</b> 23.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 16:40:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream.iterator.cons">issues</a> in [istream.iterator.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Libstdc++ never implemented this change made between C++03 and C++11 (by <a href="https://wg21.link/n2994">N2994</a>):
+</p>
+24.6.1.1 [istream.iterator.cons] p3:
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&lt;T,charT,traits,Distance&gt;&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Constructs a copy of <tt>x</tt>. If <tt>T</tt> is a literal type, then this constructor shall 
+be a trivial copy constructor.
+</p>
+</blockquote>
+</blockquote>
+<p>
+This breaks our ABI, as it changes the argument passing convention for the type, meaning this function segfaults 
+if compiled with today's libstdc++ and called from one that makes the triviality change:
+</p>
+<blockquote><pre>
+#include &lt;iterator&gt;
+#include &lt;istream&gt;
+
+int f(std::istream_iterator&lt;int&gt; i)
+{
+  return *i++;
+}
+</pre></blockquote>
+<p>
+As a result, it's likely that libstdc++ will never implement the change.
+<p/>
+There is no reason to require this constructor to be trivial. It was required for C++0x at one point, so the type 
+could be literal, but that is not true in the current language. We should strike the requirement, to reflect reality. 
+MSVC and libc++ are free to continue to define it as defaulted (and so trivial when appropriate) but we should not 
+require it from libstdc++. The cost of an ABI break is not worth the negligible benefit from making it trivial.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-5- <i>Postconditions:</i> <tt>in_stream == x.in_stream</tt> is <tt>true</tt>.
+<p/>
+<del>-6- <i>Remarks:</i> If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>true</tt>, 
+then this constructor is trivial.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

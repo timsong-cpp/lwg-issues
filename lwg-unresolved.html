@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2021-09-20 at 13:52:41 UTC</p>
+<p><p>Revised 2021-09-24 at 17:58:46 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -37360,417 +37360,10 @@ Set priority to 3 after reflector poll.
 
 
 <hr>
-<h3><a name="3590" href="3590">3590.</a> <tt>split_view::base() const &amp;</tt> is overconstrained</h3>
-<p><b>Section:</b> 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.split.view">[range.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-13 <b>Last modified:</b> 2021-09-17 15:12:40 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Unlike every other range adaptor, <tt>split_view::base() const &amp;</tt> is
-constrained on <tt>copyable&lt;V&gt;</tt> instead of <tt>copy_constructible&lt;V&gt;</tt>.
-<p/>
-Since this function just performs a copy construction, there is no
-reason to require all of <tt>copyable</tt> &mdash; <tt>copy_constructible</tt> is sufficient.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.split.view">[range.split.view]</a>, class template <tt>split_view</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;forward_range V, forward_range Pattern&gt;
-    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
-             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt;
-  class split_view : public view_interface&lt;split_view&lt;V, Pattern&gt;&gt; {
-  private:
-    [&hellip;]
-  public:
-    [&hellip;]
-
-    constexpr V base() const&amp; requires <del>copyable</del><ins>copy_constructible</ins>&lt;V&gt; { return <i>base_</i>; }
-    constexpr V base() &amp;&amp; { return std::move(<i>base_</i>); }
-
-    [&hellip;]
-  };
-</pre>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3591" href="3591">3591.</a> <tt>lazy_split_view&lt;input_view&gt;::<i>inner-iterator</i>::base() &amp;&amp;</tt> invalidates outer iterators</h3>
-<p><b>Section:</b> 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-13 <b>Last modified:</b> 2021-09-17 17:01:46 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-The <tt>base() &amp;&amp;</tt> members of iterator adaptors (and iterators of range
-adaptors) invalidate the adaptor itself by moving from the contained iterator. This 
-is generally unobjectionable &mdash; since you are calling <tt>base()</tt> on an rvalue, 
-it is expected that you won't be using it afterwards.
-<p/>
-But <tt>lazy_split_view&lt;input_view&gt;::<i>inner-iterator</i>::base() &amp;&amp;</tt> 
-is special: the iterator being moved from is stored in the <tt>lazy_split_view</tt> itself
-and shared between the inner and outer iterators, so the operation invalidates not just the 
-<tt><i>inner-iterator</i></tt> on which it is called, but also the <tt><i>outer-iterator</i></tt> 
-from which the <tt><i>inner-iterator</i></tt> was obtained.
-This spooky-action-at-a-distance behavior can be surprising, and the value category of the 
-inner iterator seems to be too subtle to base it upon.
-<p/>
-The PR below constrains this overload to forward ranges. Forward iterators are copyable anyway, 
-but moving could potentially be more efficient.
-
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> as indicated:</p>
-
-<blockquote style="note">
-<p>
-[<i>Drafting note:</i> The constraint uses <tt>forward_range&lt;V&gt;</tt> since that's the condition for 
-caching in <tt>lazy_split_view</tt>.]
-</p>
-</blockquote>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;input_range V, forward_range Pattern&gt;
-    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
-             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
-             (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
-  template&lt;bool Const&gt;
-  struct lazy_split_view&lt;V, Pattern&gt;::<i>inner-iterator</i> {
-  private:
-    [&hellip;]
-  public:
-    [&hellip;]
-
-    constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp;;
-    constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp; <ins>requires forward_range&lt;V&gt;</ins>;
-
-    [&hellip;]
-  };
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp; <ins>requires forward_range&lt;V&gt;</ins>;
-</pre>
-<blockquote>
-<p>
--4- <i>Effects:</i> Equivalent to: <tt>return std::move(<i>i_.current</i>);</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3592" href="3592">3592.</a> <tt>lazy_split_view</tt> needs to check the simpleness of <tt>Pattern</tt></h3>
-<p><b>Section:</b> 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-09-15 <b>Last modified:</b> 2021-09-19 14:01:33 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-For forward ranges, the non-<tt>const</tt> versions of <tt>lazy_split_view::begin()</tt>
-and <tt>lazy_split_view::end()</tt> returns an <tt><i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;</tt>,
-promoting to <tt>const</tt> if <tt>V</tt> models <tt><i>simple-view</i></tt>. However, this failed to
-take <tt>Pattern</tt> into account, even though that will also be accessed as <tt>const</tt> if 
-<tt>const</tt>-promotion takes place. There is no requirement that <tt>const Pattern</tt> is a range, 
-however.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-
-  [&hellip;]
-
-  template&lt;input_range V, forward_range Pattern&gt;
-    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
-             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
-            (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
-  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
-  private:
-    [&hellip;]
-  public:
-    [&hellip;]
-
-    constexpr auto begin() {
-      if constexpr (forward_range&lt;V&gt;)
-        return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
-          <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::begin(<i>base_</i>)};
-      else {
-        <i>current_</i> = ranges::begin(<i>base_</i>);
-        return <i>outer-iterator</i>&lt;false&gt;{*this};
-      }
-    }
-    
-    [&hellip;]
-    
-    constexpr auto end() requires forward_range&lt;V&gt; &amp;&amp; common_range&lt;V&gt; {
-      return <i>outer-iterator</i>&lt;<i>simple-view</i>&lt;V&gt;<ins> &amp;&amp;
-        <i>simple-view</i>&lt;Pattern&gt;</ins>&gt;{*this, ranges::end(<i>base_</i>)};
-    }
-
-    [&hellip;]
-  };
-  
-  [&hellip;]
-  
-}
-</pre>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3593" href="3593">3593.</a> Several iterators' <tt>base() const &amp;</tt> and <tt>lazy_split_view::<i>outer-iterator</i>::value_type::end()</tt> missing <tt>noexcept</tt></h3>
-<p><b>Section:</b> 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/move.iterators">[move.iterators]</a>, 23.5.6 <a href="https://timsong-cpp.github.io/cppwp/iterators.counted">[iterators.counted]</a>, 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a>, 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a>, 24.7.13.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a>, 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a>, 24.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-14 <b>Last modified:</b> 2021-09-18 15:06:39 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#move.iterators">issues</a> in [move.iterators].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-LWG <a href="3391">3391</a> and <a href="3533">3533</a> changed some iterators' <tt>base() const &amp;</tt> from returning value to 
-returning <tt>const</tt> reference, which also prevents them from throwing exceptions, we should add <tt>noexcept</tt> for them. 
-Also, <tt>lazy_split_view::<i>outer-iterator</i>::value_type::end()</tt> can be <tt>noexcept</tt> since it only returns 
-<tt>default_sentinel</tt>.
-</p>
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
-</p>
-
-<ol>
-<li><p>Modify 23.5.3 <a href="https://timsong-cpp.github.io/cppwp/move.iterators">[move.iterators]</a>, class template <tt>move_iterator</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const iterator_type&amp; base() const &amp; <ins>noexcept</ins>;
-constexpr iterator_type base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 23.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/move.iter.op.conv">[move.iter.op.conv]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-constexpr const Iterator&amp; base() const &amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--1- <i>Returns:</i> <tt>current</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 23.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>, class template <tt>counted_iterator</tt> synopsis, as indicated:</p>
-
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const I&amp; base() const &amp; <ins>noexcept</ins>;
-constexpr I base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-</li>
-
-<li><p>Modify 23.5.6.3 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.access">[counted.iter.access]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-constexpr const I&amp; base() const &amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--1- <i>Effects:</i> Equivalent to: <tt>return current;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.6.3 <a href="https://timsong-cpp.github.io/cppwp/range.filter.iterator">[range.filter.iterator]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const iterator_t&lt;V&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-constexpr iterator_t&lt;V&gt; base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr const iterator_t&lt;V&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.transform.iterator">[range.transform.iterator]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--5- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.13.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-[&hellip;]
-constexpr <i>inner-iterator</i>&lt;Const&gt; begin() const;
-constexpr default_sentinel_t end() const <ins>noexcept</ins>;
-[&hellip;]
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr default_sentinel_t end() const <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--3- <i>Effects:</i> Equivalent to: <tt>return default_sentinel;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.13.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const &amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--3- <i>Effects:</i> Equivalent to: <tt>return <i>i_</i>.<i>current</i>;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 24.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-[&hellip;]
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const&amp; <ins>noexcept</ins>;
-constexpr iterator_t&lt;<i>Base</i>&gt; base() &amp;&amp;;
-[&hellip;]
-</pre>
-</blockquote>
-[&hellip;]
-<pre>
-constexpr const iterator_t&lt;<i>Base</i>&gt;&amp; base() const&amp; <ins>noexcept</ins>;
-</pre>
-<blockquote>
-<p>
--6- <i>Effects:</i> Equivalent to: <tt>return <i>current_</i>;</tt>
-</p>
-</blockquote>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
 <h3><a name="3594" href="3594">3594.</a> <tt>inout_ptr</tt> &mdash; inconsistent <tt>release()</tt> in destructor</h3>
 <p><b>Section:</b> 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> JeanHeyd Meneide <b>Opened:</b> 2021-09-16 <b>Last modified:</b> 2021-09-18 17:24:56 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> JeanHeyd Meneide <b>Opened:</b> 2021-09-16 <b>Last modified:</b> 2021-09-24 17:55:39 UTC</p>
+<p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -37818,6 +37411,13 @@ at least for <tt>inout_ptr_t</tt>. Suggested change for the <tt>~inout_ptr_t</tt
 destructor text is to remove the "<tt>if (p) { ... }</tt>" wrapper from around
 the code in 20.11.10 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> p11.
 </p>
+
+<p><i>[2021-09-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 1 after reflector poll.
+</p>
+
 
 
 <p><b>Proposed resolution:</b></p>
@@ -37889,18 +37489,83 @@ if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
 
 
 <hr>
-<h3><a name="3595" href="3595">3595.</a> Exposition-only classes <tt><i>proxy</i></tt> and <tt><i>postfix-proxy</i></tt> for <tt>common_iterator</tt> 
-should be fully <tt>constexpr</tt></h3>
-<p><b>Section:</b> 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a>, 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-18 <b>Last modified:</b> 2021-09-19 12:38:58 UTC</p>
+<h3><a name="3597" href="3597">3597.</a> Unsigned integer types don't model <tt><i>advanceable</i></tt></h3>
+<p><b>Section:</b> 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 14:41:52 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.view">issues</a> in [range.iota.view].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-LWG <a href="3574">3574</a> added <tt>constexpr</tt> to all member functions and friends of <tt>common_iterator</tt> to make it 
-fully <tt>constexpr</tt>, but accidentally omitted the exposition-only classes <tt><i>proxy</i></tt> and 
-<tt><i>postfix-proxy</i></tt> defined for some member functions. We should make these two classes fully <tt>constexpr</tt>, too.
+Unsigned integer types satisfy <tt><i>advanceable</i></tt>, but don't model it, since
+</p>
+<blockquote><p>
+every two values of an unsigned integer type are reachable from each other, and
+modular arithmetic is performed on unsigned integer types,
+</p></blockquote>
+<p>
+which makes the last three bullets of the semantic requirements of <tt><i>advanceable</i></tt> 
+(24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>/5) can't be satisfied, and some (if not all) uses of 
+<tt>iota_view</tt>s of unsigned integer types ill-formed, no diagnostic required.
+<p/>
+Some operations that are likely to expect the semantic requirements of <tt><i>advanceable</i></tt> 
+behave incorrectly for unsigned integer types. E.g. according to 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>/6 
+and 24.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>/16, <tt>std::ranges::iota_view&lt;std::uint8_t, std::uint8_t&gt;(std::uint8_t(1)).size()</tt> 
+is well-defined IMO, because
+</p>
+<blockquote><p>
+<tt>Bound()</tt> is <tt>std::uint8_t(0)</tt>, which is reachable from <tt>std::uint8_t(1)</tt>, and
+not modeling <tt><i>advanceable</i></tt> shouldn't affect the validity, as both <tt>W</tt> and 
+<tt>Bound</tt> are integer types.
+</p></blockquote>
+<p>
+However, it returns <tt>unsigned(-1)</tt> on common implementations (where <tt>sizeof(int) &gt; sizeof(std::uint8_t))</tt>, 
+which is wrong.
+<p/>
+Perhaps the semantic requirements of <tt><i>advanceable</i></tt> should be adjusted, 
+and a refined definition of reachability in 24.6.4 <a href="https://timsong-cpp.github.io/cppwp/range.iota">[range.iota]</a> is needed to avoid reaching 
+<tt>a</tt> from <tt>b</tt> when <tt>a &gt; b</tt> (the iterator type is also affected).
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3598" href="3598">3598.</a> <tt>system_category().default_error_condition(0)</tt> is underspecified</h3>
+<p><b>Section:</b> 19.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 15:29:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#syserr.errcat.objects">issues</a> in [syserr.errcat.objects].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+19.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a> says:
+</p>
+<blockquote><p>
+If the argument <tt>ev</tt> corresponds to a POSIX <tt>errno</tt> value <tt>posv</tt>, 
+the function shall return <tt>error_condition(posv, generic_category())</tt>. Otherwise, 
+the function shall return <tt>error_condition(ev, system_category())</tt>. What constitutes 
+correspondence for any given operating system is unspecified.
+</p></blockquote>
+<p>
+What is "a POSIX <tt>errno</tt> value"? Does it mean a value equal to one of the <tt>&lt;cerrno&gt;</tt> 
+<tt>Exxx</tt> macros? Because in that case, the value <tt>0</tt> is not "a POSIX <tt>errno</tt> value". 
+So arguably <tt>system_category().default_error_condition(0)</tt> is required to return an 
+<tt>error_condition</tt> using the "system" category, which means that <tt>error_code{} == error_condition{}</tt> 
+is required to be <tt>false</tt>. This seems wrong.
+<p/>
+For POSIX-based systems the value <tt>0</tt> should definitely correspond to the generic category. 
+Arguably that needs to be <tt>true</tt> for all systems, because the <tt>std::error_code</tt> API 
+strongly encourages a model where zero means "no error".
+<p/>
+The proposed resolution has been implemented in libstdc++. Libc++ has always treated system error code 
+<tt>0</tt> as corresponding to generic error code <tt>0</tt>.
 </p>
 
 
@@ -37910,82 +37575,32 @@ This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
 
 <ol>
-<li><p>Modify 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> as indicated:</p>
+<li><p>Modify 19.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcat.objects">[syserr.errcat.objects]</a> as indicated:</p>
 
 <blockquote>
 <pre>
-decltype(auto) operator-&gt;() const
-  requires <i>see below</i>;
+const error_category&amp; system_category() noexcept;
 </pre>
 <blockquote>
 <p>
--3- [&hellip;]
+-3- <i>Returns:</i> [&hellip;]
 <p/>
--4- [&hellip;]
+-4- <i>Remarks:</i> The object's <tt>equivalent</tt> virtual functions shall behave as specified 
+for class <tt>error_category</tt>. The object's <tt>name</tt> virtual function shall return a pointer 
+to the string <tt>"system"</tt>. The object's <tt>default_error_condition</tt> virtual function 
+shall behave as follows:
 <p/>
--5- <i>Effects:</i>
+If the argument <tt>ev</tt> <ins>is equal to <tt>0</tt>, the function returns 
+<tt>error_condition(0, generic_category())</tt>. Otherwise, if <tt>ev</tt></ins> corresponds to a POSIX 
+<tt>errno</tt> value <tt>posv</tt>, the function <del>shall return</del><ins>returns</ins> 
+<tt>error_condition(posv, generic_category())</tt>. Otherwise, the function <del>shall return</del><ins>returns</ins> 
+<tt>error_condition(ev, system_category())</tt>. What constitutes correspondence for any given operating 
+system is unspecified.
+<p/>
+[<i>Note 1</i>: The number of potential system error codes is large and unbounded, and some might not 
+correspond to any POSIX <tt>errno</tt> value. Thus implementations are given latitude in determining 
+correspondence. &mdash; <i>end note</i>]
 </p>
-<ol style="list-style-type: none">
-<li><p>(5.1) &mdash; [&hellip;]</p></li>
-<li><p>(5.2) &mdash; [&hellip;]</p></li>
-<li><p>(5.3) &mdash; Otherwise, equivalent to: <tt>return <i>proxy</i>(*get&lt;I&gt;(<i>v_</i>));</tt> 
-where <tt><i>proxy</i></tt> is the exposition-only class:</p>
-<blockquote><pre>
-class <i>proxy</i> {
-  iter_value_t&lt;I&gt; keep_;
-  <ins>constexpr</ins> <i>proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
-    : keep_(std::move(x)) {}
-public:
-  <ins>constexpr</ins> const iter_value_t&lt;I&gt;* operator-&gt;() const <ins>noexcept</ins> {
-    return addressof(keep_);
-  }
-};
-</pre></blockquote>
-</li>
-</ol>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-decltype(auto) operator++(int);
-</pre>
-<blockquote>
-<p>
--4- [&hellip;]
-<p/>
--5- <i>Effects:</i> If I models forward_iterator, equivalent to:
-<p/>
-[&hellip;]
-<p/>
-Otherwise, if [&hellip;]
-<p/>
-[&hellip;]
-<p/>
-Otherwise, equivalent to:
-</p>
-<blockquote><pre>
-<i>postfix-proxy</i> p(**this);
-++*this;
-return p;
-</pre></blockquote>
-<p>
-where <tt><i>postfix-proxy</i></tt> is the exposition-only class:
-</p>
-<blockquote><pre>
-class <i>postfix-proxy</i> {
-  iter_value_t&lt;I&gt; keep_;
-  <ins>constexpr</ins> <i>postfix-proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
-    : keep_(std::forward&lt;iter_reference_t&lt;I&gt;&gt;(x)) {}
-public:
-  <ins>constexpr</ins> const iter_value_t&lt;I&gt;&amp; operator*() const <ins>noexcept</ins> {
-    return keep_;
-  }
-};
-</pre></blockquote>
 </blockquote>
 </blockquote>
 </li>
@@ -37997,26 +37612,246 @@ public:
 
 
 <hr>
-<h3><a name="3596" href="3596">3596.</a> <tt>ranges::starts_with</tt> and <tt>ranges::ends_with</tt> are underspecified</h3>
-<p><b>Section:</b> 25.6.14 <a href="https://timsong-cpp.github.io/cppwp/alg.starts.with">[alg.starts.with]</a>, 25.6.15 <a href="https://timsong-cpp.github.io/cppwp/alg.ends.with">[alg.ends.with]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Michael Schellenberger Costa <b>Opened:</b> 2021-09-17 <b>Last modified:</b> 2021-09-19 12:39:41 UTC</p>
+<h3><a name="3599" href="3599">3599.</a> The <tt>const</tt> overload of <tt>lazy_split_view::begin</tt> should be constrained by <tt>const Pattern</tt></h3>
+<p><b>Section:</b> 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 16:20:15 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.lazy.split.view">active issues</a> in [range.lazy.split.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.view">issues</a> in [range.lazy.split.view].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-When implementing C++23 new <tt>ranges::starts_with</tt> and <tt>ranges::ends_with</tt> 
-<a href="https://github.com/microsoft/STL/pull/1997">for MSVC</a> we came around some issues regarding infinite ranges.
-<p/>
-In short, there is no possible answers to <tt>ends_with</tt>, if the second range is infinite. Similarly, there 
-is no meaningful answer to <tt>starts_with</tt> if both ranges are infinite.
-<p/>
-We should constraint both algorithms to forbid those corner cases (preferred resolution), or explicitly specify a 
-given return value for those (The reasonable choice would be "<tt>return false;</tt>")
+ Consider the following code snippet:
+</p>
+<blockquote>
+<pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto p = std::views::iota(0)
+         | std::views::take(1)
+         | std::views::reverse;
+  auto r = std::views::single(42)
+         | std::views::lazy_split(p);
+  auto f = r.front();
+}
+</pre>
+</blockquote>
+<p>
+<tt>r.front()</tt> is ill-formed even if <tt>r</tt> is a <tt>forward_range</tt>.
+</p>
+<p>
+This is because the <tt>const</tt> overload of <tt>lazy_split_view::begin</tt> is not constrained by the
+<tt>const Pattern</tt>, which makes it still well-formed in such cases. When the <tt>const</tt> overload 
+of <tt>view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt;::front</tt> is instantiated, the 
+<tt>subrange{parent_-&gt;pattern_}</tt> inside <tt>lazy_split_view::<i>outer-iterator</i>&lt;true&gt;::operator++()</tt> 
+will cause a hard error since <tt>const Pattern</tt> is not a <tt>range</tt>.
+</p>
+
+<p><i>[2021-09-24; Daniel comments]</i></p>
+
+<p>
+This issue is related to LWG <a href="3592">3592</a>.
 </p>
 
 
 <p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+            (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      [&hellip;]
+    }
+    
+    constexpr auto begin() const requires forward_range&lt;V&gt; &amp;&amp; forward_range&lt;const V&gt; <ins>&amp;&amp;
+                                          forward_range&lt;const Pattern&gt;</ins>{
+      return <i>outer-iterator</i>&lt;true&gt;{*this, ranges::begin(<i>base_</i>)};
+    }
+    
+    constexpr auto end() requires forward_range&lt;V&gt; &amp;&amp; common_range&lt;V&gt; {
+      [&hellip;]
+    }
+
+    constexpr auto end() const {
+      if constexpr (forward_range&lt;V&gt; &amp;&amp; forward_range&lt;const V&gt; &amp;&amp; common_range&lt;const V&gt; <ins>&amp;&amp;
+                    forward_range&lt;const Pattern&gt;</ins>)
+        return <i>outer-iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return default_sentinel;
+    }
+  };
+  
+  [&hellip;]
+  
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3600" href="3600">3600.</a> Making <tt>istream_iterator</tt> copy constructor trivial is an ABI break</h3>
+<p><b>Section:</b> 23.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 16:40:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream.iterator.cons">issues</a> in [istream.iterator.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Libstdc++ never implemented this change made between C++03 and C++11 (by <a href="https://wg21.link/n2994">N2994</a>):
+</p>
+24.6.1.1 [istream.iterator.cons] p3:
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&lt;T,charT,traits,Distance&gt;&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Constructs a copy of <tt>x</tt>. If <tt>T</tt> is a literal type, then this constructor shall 
+be a trivial copy constructor.
+</p>
+</blockquote>
+</blockquote>
+<p>
+This breaks our ABI, as it changes the argument passing convention for the type, meaning this function segfaults 
+if compiled with today's libstdc++ and called from one that makes the triviality change:
+</p>
+<blockquote><pre>
+#include &lt;iterator&gt;
+#include &lt;istream&gt;
+
+int f(std::istream_iterator&lt;int&gt; i)
+{
+  return *i++;
+}
+</pre></blockquote>
+<p>
+As a result, it's likely that libstdc++ will never implement the change.
+<p/>
+There is no reason to require this constructor to be trivial. It was required for C++0x at one point, so the type 
+could be literal, but that is not true in the current language. We should strike the requirement, to reflect reality. 
+MSVC and libc++ are free to continue to define it as defaulted (and so trivial when appropriate) but we should not 
+require it from libstdc++. The cost of an ABI break is not worth the negligible benefit from making it trivial.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-5- <i>Postconditions:</i> <tt>in_stream == x.in_stream</tt> is <tt>true</tt>.
+<p/>
+<del>-6- <i>Remarks:</i> If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>true</tt>, 
+then this constructor is trivial.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3601" href="3601">3601.</a> <tt>common_iterator</tt>'s <tt><i>postfix-proxy</i></tt> needs <tt>indirectly_readable</tt></h3>
+<p><b>Section:</b> 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2021-09-24 <b>Last modified:</b> 2021-09-24 17:06:49 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#common.iter.nav">issues</a> in [common.iter.nav].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It would appear that when <a href="https://wg21.link/p2259r1">P2259R1</a> added <tt><i>postfix-proxy</i></tt> to 
+<tt>common_iterator::operator++(int)</tt> LWG missed a crucial difference between <tt>operator++(int)</tt> and 
+<tt>operator-&gt;</tt> which uses a similar proxy: <tt>operator-&gt;</tt> requires the wrapped type to be 
+<tt>indirectly_readable</tt>, but <tt>operator++(int)</tt> does not. Consequently, operations that read from the 
+wrapped type for the <tt><i>postfix-proxy</i></tt> case in <tt>operator++(int)</tt> are not properly constrained 
+to be valid.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/common.iter.nav">[common.iter.nav]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+decltype(auto) operator++(int);
+</pre>
+<blockquote>
+<p>
+-4- <i>Preconditions:</i> <tt>holds_alternative&lt;I&gt;(v_)</tt> is <tt>true</tt>.
+<p/>
+-5- <i>Effects:</i> If <tt>I</tt> models <tt>forward_iterator</tt>, equivalent to:
+</p>
+<blockquote><pre>
+common_iterator tmp = *this;
+++*this;
+return tmp;
+</pre></blockquote>
+<p>
+Otherwise, if <tt>requires (I&amp; i) { { *i++ } -&gt; <i>can-reference</i>; }</tt> is <tt>true</tt> 
+or <tt><ins>indirectly_readable&lt;I&gt; &amp;&amp;</ins> constructible_from&lt;iter_value_t&lt;I&gt;, 
+iter_reference_t&lt;I&gt;&gt; &amp;&amp; move_constructible&lt;iter_value_t&lt;I&gt;&gt;</tt> is <tt>false</tt>, 
+equivalent to:
+</p>
+<blockquote><pre>
+return get&lt;I&gt;(v_)++;
+</pre></blockquote>
+<p>
+Otherwise, equivalent to: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
 
 
 

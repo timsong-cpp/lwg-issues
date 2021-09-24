@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3599: The const overload of lazy_split_view::begin should be constrained by const Pattern</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3599" href="lwg-active.html#3599">3599.</a> The <tt>const</tt> overload of <tt>lazy_split_view::begin</tt> should be constrained by <tt>const Pattern</tt></h3>
+<p><b>Section:</b> 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2021-09-24 16:20:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.lazy.split.view">active issues</a> in [range.lazy.split.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.view">issues</a> in [range.lazy.split.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+ Consider the following code snippet:
+</p>
+<blockquote>
+<pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto p = std::views::iota(0)
+         | std::views::take(1)
+         | std::views::reverse;
+  auto r = std::views::single(42)
+         | std::views::lazy_split(p);
+  auto f = r.front();
+}
+</pre>
+</blockquote>
+<p>
+<tt>r.front()</tt> is ill-formed even if <tt>r</tt> is a <tt>forward_range</tt>.
+</p>
+<p>
+This is because the <tt>const</tt> overload of <tt>lazy_split_view::begin</tt> is not constrained by the
+<tt>const Pattern</tt>, which makes it still well-formed in such cases. When the <tt>const</tt> overload 
+of <tt>view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt;::front</tt> is instantiated, the 
+<tt>subrange{parent_-&gt;pattern_}</tt> inside <tt>lazy_split_view::<i>outer-iterator</i>&lt;true&gt;::operator++()</tt> 
+will cause a hard error since <tt>const Pattern</tt> is not a <tt>range</tt>.
+</p>
+
+<p><i>[2021-09-24; Daniel comments]</i></p>
+
+<p>
+This issue is related to LWG <a href="3592">3592</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+            (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      [&hellip;]
+    }
+    
+    constexpr auto begin() const requires forward_range&lt;V&gt; &amp;&amp; forward_range&lt;const V&gt; <ins>&amp;&amp;
+                                          forward_range&lt;const Pattern&gt;</ins>{
+      return <i>outer-iterator</i>&lt;true&gt;{*this, ranges::begin(<i>base_</i>)};
+    }
+    
+    constexpr auto end() requires forward_range&lt;V&gt; &amp;&amp; common_range&lt;V&gt; {
+      [&hellip;]
+    }
+
+    constexpr auto end() const {
+      if constexpr (forward_range&lt;V&gt; &amp;&amp; forward_range&lt;const V&gt; &amp;&amp; common_range&lt;const V&gt; <ins>&amp;&amp;
+                    forward_range&lt;const Pattern&gt;</ins>)
+        return <i>outer-iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return default_sentinel;
+    }
+  };
+  
+  [&hellip;]
+  
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
