@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3582" href="lwg-active.html#3582">3582.</a> Unclear where <tt>std::async</tt> exceptions are handled</h3>
 <p><b>Section:</b> 32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-09-20 13:45:08 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-08-23 <b>Last modified:</b> 2021-09-30 15:57:29 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#futures.async">active issues</a> in [futures.async].</p>
@@ -79,9 +79,14 @@ to the caller of <tt>std::async</tt>. We should clarify that that's what the sta
 Set priority to 3 after reflector poll.
 </p>
 
+<p><i>[2021-09-20;
+Jonathan updates wording to change the <i>Throws:</i> and attempt to
+align the <i>Effects:</i> with the deferred function case.
+]</i></p>
 
 
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
 </p>
@@ -121,6 +126,69 @@ calls are propagated to the caller. &mdash; <i>end note</i>]</ins> The <tt>threa
 the shared state and affects the behavior of any asynchronous return objects that reference that state.</p></li>
 <li><p>[&hellip;]</p></li>
 </ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 32.9.9 <a href="https://timsong-cpp.github.io/cppwp/futures.async">[futures.async]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F, class... Args&gt;
+  [[nodiscard]] future&lt;invoke_result_t&lt;decay_t&lt;F&gt;, decay_t&lt;Args&gt;...&gt;&gt;
+    async(F&amp;&amp; f, Args&amp;&amp;... args);
+template&lt;class F, class... Args&gt;
+  [[nodiscard]] future&lt;invoke_result_t&lt;decay_t&lt;F&gt;, decay_t&lt;Args&gt;...&gt;&gt;
+    async(launch policy, F&amp;&amp; f, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-2- <i>Mandates</i>: [&hellip;]
+<p/>
+-3- <i>Effects</i>: The first function behaves the same as a call to the second function with a <tt>policy</tt> argument of
+<tt>launch::async | launch::deferred</tt> and the same arguments for <tt>F</tt> and <tt>Args</tt>. The second function
+creates a shared state that is associated with the returned <tt>future</tt> object. The further behavior of the second function 
+depends on the <tt>policy</tt> argument as follows (if more than one of these conditions applies, the implementation may 
+choose any of the corresponding policies):
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; If <tt>launch::async</tt> is set in <tt>policy</tt>, calls 
+<tt>invoke(<i>decay-copy</i>(std::forward&lt;F&gt;(f)), <i>decay-copy</i>(std::forward&lt;Args&gt;(args))...)</tt> 
+(20.14.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>, 32.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a>) as if in a new thread of execution
+represented by a <tt>thread</tt> object with the calls to <tt><i>decay-copy</i></tt> being evaluated 
+in the thread that called <tt>async</tt>. Any return value is stored as the result in the shared state. Any 
+exception propagated from the execution of <tt>invoke(<del><i>decay-copy</i>(std::forward&lt;F&gt;(f)), 
+<i>decay-copy</i>(std::forward&lt;Args&gt;(args)...)</del><ins>std::move(g), std::move(xyz)</ins>)</tt> is stored as 
+the exceptional result in the shared state<ins>,
+where <tt>g</tt> is the result of
+<tt><i>decay-copy</i>(std::forward&lt;F&gt;(f))</tt>
+and <tt>xyz</tt> is the result of
+<tt><i>decay-copy</i>(std::forward&lt;Args&gt;(args))...</tt>
+</ins>.
+<ins>[<i>Note ?:</i> Exceptions from the <tt><i>decay-copy</i></tt> 
+calls are propagated to the caller. &mdash; <i>end note</i>]</ins> The <tt>thread</tt> object is stored in 
+the shared state and affects the behavior of any asynchronous return objects that reference that state.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+<p>[&hellip;]</p>
+<p>-6- <i>Throws:</i>
+<tt>system_error</tt> if <tt>policy == launch::async</tt>
+and the implementation is unable to start a new thread;
+<tt><del>std::</del>bad_alloc</tt> if memory for the internal data structures
+  cannot be allocated<ins>;
+or any exception thrown by the initialization of the objects returned by the
+  <tt><i>decay-copy</i></tt> calls</ins>.</p>
 </blockquote>
 </blockquote>
 </li>
