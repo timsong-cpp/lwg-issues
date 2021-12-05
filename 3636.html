@@ -1,0 +1,314 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3636: formatter&lt;T&gt;::format should be const-qualified</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3636" href="lwg-active.html#3636">3636.</a> <tt>formatter&lt;T&gt;::format</tt> should be <tt>const</tt>-qualified</h3>
+<p><b>Section:</b> 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2021-11-11 <b>Last modified:</b> 2021-11-20 17:06:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#formatter.requirements">issues</a> in [formatter.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In <a href="https://reviews.llvm.org/D112017">libc++ review</a>, we've noticed that we don't understand 
+the implications of 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> bullet 3.1 and Table [tab:formatter.basic]: 
+(emphasize mine):
+</p>
+<blockquote>
+<p>
+(3.1) &mdash; <tt>f</tt> is a <b>value</b> of type <tt>F</tt>,
+<p/>
+[&hellip;]
+<p/>
+Table 70: <i>BasicFormatter</i> requirements [tab:formatter.basic]
+<p/>
+[&hellip;]
+<p/>
+<tt>f.parse(pc)</tt> [<em>must compile</em>] [&hellip;]
+<p/>
+<tt>f.format(u, fc)</tt> [<em>must compile</em>] [&hellip;]
+</p>
+</blockquote>
+<p>
+According to Victor Zverovich, his intent was that <tt>f.parse(pc)</tt> should modify the 
+state of <tt>f</tt>, but <tt>f.format(u, fc)</tt> should merely read <tt>f</tt>'s state to 
+support format string compilation where formatter objects are immutable and therefore the 
+<tt>format</tt> function must be <tt>const</tt>-qualified. 
+<p/>
+That is, a typical formatter should look something like this (modulo errors introduced by me):
+</p>
+<blockquote>
+<pre>
+struct WidgetFormatter {
+  auto parse(std::format_parse_context&amp;) -&gt; std::format_parse_context::iterator;
+  auto format(const Widget&amp;, std::format_context&amp;) const -&gt; std::format_context::iterator;
+};
+</pre>
+</blockquote>
+<p>
+However, this is not reflected in the wording, which treats <tt>parse</tt> and <tt>format</tt> symmetrically.
+Also, there is at least one example that shows a non-const <tt>format</tt> method:
+</p>
+<blockquote>
+<pre>
+template&lt;&gt; struct std::formatter&lt;color&gt; : std::formatter&lt;const char*&gt; {
+  auto format(color c, format_context&amp; ctx) {
+    return formatter&lt;const char*&gt;::format(color_names[c], ctx);
+  }
+};
+</pre>
+</blockquote>
+<p>
+Victor writes:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Maybe we should [&hellip;] open an LWG issue clarifying that all standard formatters have a 
+<tt>const</tt> format function.
+</p>
+</blockquote>
+<p>
+I'd like to be even more assertive: Let's open an LWG issue clarifying that all formatters must have a 
+<tt>const</tt> format function!
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> It might also be reasonable to do a drive-by clarification that when the Table 70 says 
+"Stores the parsed format specifiers in <tt>*this</tt>," what it actually means is "Stores the parsed format 
+specifiers in <tt>g</tt>." (But I don't think anyone's seriously confused by that wording.)
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+-3- Given character type <tt>charT</tt>, output iterator type <tt>Out</tt>, and formatting argument type <tt>T</tt>, 
+in Table 70 and Table 71:
+</p>
+<ol style="list-style-type:none">
+<li><p>(3.1) &mdash; <tt>f</tt> is a value of type <ins>(possibly <tt>const</tt>)</ins> <tt>F</tt>,</p></li>
+<li><p><ins>(3.?) &mdash; <tt>g</tt> is an lvalue of type <tt>F</tt>,</ins></p></li>
+<li><p>(3.2) &mdash; <tt>u</tt> is an lvalue of type <tt>T</tt>,</p></li>
+<li><p>(3.3) &mdash; <tt>t</tt> is a value of a type convertible to (possibly <tt>const</tt>) <tt>T</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+<p>
+[&hellip;]
+</p>
+<blockquote>
+<table border="1">
+<caption>Table 70: <i>Formatter</i> requirements [tab:formatter]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td>
+<tt><del>f</del><ins>g</ins>.parse(pc)</tt>
+</td>
+<td>
+<tt>PC::iterator</tt>
+</td>
+<td>
+[&hellip;]<br/>
+Stores the parsed format specifiers in <tt>*this</tt> and
+returns an iterator past the end of the parsed range.
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+</table>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 20.20.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-6- An enabled specialization <tt>formatter&lt;T, charT&gt;</tt> meets the <i>BasicFormatter</i> requirements 
+(20.20.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a>).
+<p/>
+[<i>Example 1</i>:
+</p>
+<blockquote>
+<pre>
+#include &lt;format&gt;
+
+enum color { red, green, blue };
+const char* color_names[] = { "red", "green", "blue" };
+
+template&lt;&gt; struct std::formatter&lt;color&gt; : std::formatter&lt;const char*&gt; {
+  auto format(color c, format_context&amp; ctx) <ins>const</ins> {
+    return formatter&lt;const char*&gt;::format(color_names[c], ctx);
+  }
+};
+
+[&hellip;]
+</pre>
+</blockquote>
+<p>
+&mdash; <i>end example</i>]
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 20.20.6.4 <a href="https://timsong-cpp.github.io/cppwp/format.context">[format.context]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void advance_to(iterator it);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to: <tt>out_ = std::move(it);</tt>
+<p/>
+[<i>Example 1</i>:
+</p>
+<blockquote>
+<pre>
+struct S { int value; };
+
+template&lt;&gt; struct std::formatter&lt;S&gt; {
+  size_t width_arg_id = 0;
+  
+  <i>// Parses a width argument id in the format { digit }.</i>
+  constexpr auto parse(format_parse_context&amp; ctx) {
+    [&hellip;]
+  }
+  
+  <i>// Formats an S with width given by the argument width_arg_id.</i>
+  auto format(S s, format_context&amp; ctx) <ins>const</ins> {
+    int width = visit_format_arg([](auto value) -&gt; int {
+      if constexpr (!is_integral_v&lt;decltype(value)&gt;)
+        throw format_error("width is not integral");
+      else if (value &lt; 0 || value &gt; numeric_limits&lt;int&gt;::max())
+        throw format_error("invalid width");
+      else
+        return value;
+      }, ctx.arg(width_arg_id));
+    return format_to(ctx.out(), "{0:x&lt;{1}}", s.value, width);
+  }
+};
+
+[&hellip;]
+</pre>
+</blockquote>
+<p>
+&mdash; <i>end example</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Duration, class charT&gt;
+struct formatter&lt;chrono::<i>local-time-format-t</i>&lt;Duration&gt;, charT&gt;;
+</pre>
+<blockquote>
+<p>
+-15- Let <tt>f</tt> be [&hellip;]
+<p/>
+-16- <i>Remarks:</i> [&hellip;]
+</p>
+</blockquote>
+<blockquote>
+<pre>
+template&lt;class Duration, class TimeZonePtr, class charT&gt;
+struct formatter&lt;chrono::zoned_time&lt;Duration, TimeZonePtr&gt;, charT&gt;
+  : formatter&lt;chrono::<i>local-time-format-t</i>&lt;Duration&gt;, charT&gt; {
+  template&lt;class FormatContext&gt;
+    typename FormatContext::iterator
+      format(const chrono::zoned_time&lt;Duration, TimeZonePtr&gt;&amp; tp, FormatContext&amp; ctx) <ins>const</ins>;
+};
+</pre>
+</blockquote>
+<pre>
+template&lt;class FormatContext&gt;
+  typename FormatContext::iterator
+    format(const chrono::zoned_time&lt;Duration, TimeZonePtr&gt;&amp; tp, FormatContext&amp; ctx) <ins>const</ins>;
+</pre>
+<blockquote>
+<p>
+-17- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+sys_info info = tp.get_info();
+return formatter&lt;chrono::<i>local-time-format-t</i>&lt;Duration&gt;, charT&gt;::
+         format({tp.get_local_time(), &amp;info.abbrev, &amp;info.offset}, ctx);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

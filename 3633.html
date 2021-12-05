@@ -1,0 +1,166 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3633: Atomics are copy constructible and copy assignable from volatile atomics</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3633" href="lwg-active.html#3633">3633.</a> Atomics are copy constructible and copy assignable from <tt>volatile</tt> atomics</h3>
+<p><b>Section:</b> 31 <a href="https://timsong-cpp.github.io/cppwp/atomics">[atomics]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Wesley Maxey <b>Opened:</b> 2021-11-05 <b>Last modified:</b> 2021-11-06 16:38:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics">issues</a> in [atomics].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification of <tt>atomic</tt> and <tt>atomic&lt;T*&gt;</tt> (in 31.8.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic.general">[atomics.types.generic.general]</a> 
+and 31.8.5 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.pointer">[atomics.types.pointer]</a>) explicitly deletes the following functions:
+</p>
+<blockquote>
+<pre>
+atomic(const atomic&amp;) = delete;
+atomic&amp; operator=(const atomic&amp;) = delete;
+atomic&amp; operator=(const atomic&amp;) volatile = delete;
+</pre>
+</blockquote>
+<p>
+The intent is to make atomic objects not copyable, so that initializing an atomic object 
+from another atomic, or assigning an atomic object with a value from another atomic, 
+must be an explicit operation.
+<p/>
+We also explicitly support <tt>volatile</tt> objects of types that are specializations of <tt>std::atomic</tt>; 
+some of the functions that are vital for the support of volatile atomics are the following conversion operators:
+</p>
+<blockquote>
+<pre>
+operator T() const volatile noexcept; // for non-pointers
+operator T*() const volatile noexcept; // for pointers
+</pre>
+</blockquote>
+<p>
+The presence of this conversion operator means that all the statements in the following piece of code 
+compile successfully today, despite the deleted functions mentioned earlier:
+</p>
+<blockquote>
+<pre>
+volatile std::atomic&lt;int&gt; a;
+volatile std::atomic&lt;int&gt; b(a);
+std::atomic&lt;int&gt; c(a);
+b = a;
+c = a;
+</pre>
+</blockquote>
+<p>
+However, if <tt>a</tt> is not a volatile object, none of the last four lines compile.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 31.8.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.generic.general">[atomics.types.generic.general]</a>, class template <tt>atomic</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+atomic(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) volatile = delete;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 31.8.3 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.int">[atomics.types.int]</a>, class template <tt>atomic&lt;<i>integral</i>&gt;</tt> specialization 
+synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+atomic(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) volatile = delete;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 31.8.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.float">[atomics.types.float]</a>, class template <tt>atomic&lt;<i>floating-point</i>&gt;</tt> specialization 
+synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+atomic(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) volatile = delete;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 31.8.5 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.pointer">[atomics.types.pointer]</a>, class template <tt>atomic&lt;T*&gt;</tt> partial specialization 
+synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+atomic(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) = delete;
+atomic&amp; operator=(const <ins>volatile</ins> atomic&amp;) volatile = delete;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

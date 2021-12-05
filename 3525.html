@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3525" href="lwg-active.html#3525">3525.</a> <tt>uses_allocator_construction_args</tt> fails to handle types convertible to <tt>pair</tt></h3>
 <p><b>Section:</b> 20.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2021-03-12 14:32:39 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2021-12-03 00:51:29 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
@@ -183,9 +183,8 @@ return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
 Set priority to 3 following reflector poll.
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
 </p>
@@ -257,6 +256,97 @@ struct <i>pair-constructor</i> {
   U&amp; <i>u</i>;                // exposition only
 };
 </ins></pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-12-02 Tim updates PR to avoid public exposition-only members]</i></p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+<ol>
+<li><p>Edit 20.10.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 20.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>, uses-allocator construction</i>
+  [&hellip;]
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp;&amp; pr) noexcept;
+
+<ins>  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following to 20.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>:</p>
+<blockquote>
+<pre>
+<ins>  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- Let <tt><i>FUN</i></tt> be the function template:</ins>
+</p>
+<blockquote><pre><ins>
+  template&lt;class A, class B&gt;
+  void <i>FUN</i>(const pair&lt;A, B&gt;&amp;);</ins>
+</pre></blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>, and the expression <tt><i>FUN</i>(u)</tt> is not well-formed when considered as an unevaluated operand.</ins>
+<p/>
+<ins>-?- Let <tt><i>pair-constructor</i></tt> be an exposition-only class defined as follows:</ins></p>
+<blockquote><pre><ins>
+class <i>pair-constructor</i> {
+  using <i>pair-type</i> = remove_cv_t&lt;T&gt;;            // exposition only
+
+  constexpr auto <i>do-construct</i>(const <i>pair-type</i>&amp; p) const {  // exposition only
+    return make_obj_using_allocator&lt;<i>pair-type</i>&gt;(<i>alloc_</i>, p);
+  }
+  constexpr auto <i>do-construct</i>(<i>pair-type</i>&amp;&amp; p) const {  // exposition only
+    return make_obj_using_allocator&lt;<i>pair-type</i>&gt;(<i>alloc_</i>, std::move(p));
+  }
+
+  const Alloc&amp; <i>alloc_</i>;  // exposition only
+  U&amp; <i>u_</i>;                // exposition only
+
+public:
+  constexpr operator <i>pair-type</i>() const {
+    return <i>do-construct</i>(std::forward&lt;U&gt;(<i>u_</i>));
+  }
+};
+</ins></pre></blockquote>
+
+<p>
+<ins> -?- <i>Returns:</i> <tt>make_tuple(<i>pc</i>)</tt>, where <tt><i>pc</i></tt>
+is a <tt><i>pair-constructor</i></tt> object whose <tt><i>alloc_</i></tt> member is
+initialized with <tt>alloc</tt> and whose <tt><i>u_</i></tt> member is initialized with <tt>u</tt>.
+</ins>
+</p>
 </blockquote>
 </blockquote>
 </li>

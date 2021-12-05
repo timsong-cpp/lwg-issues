@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3642: move_only_function assignment operators seem to be defined suboptimal</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3642" href="lwg-active.html#3642">3642.</a> <tt>move_only_function</tt> assignment operators seem to be defined suboptimal</h3>
+<p><b>Section:</b> 20.14.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Alexander Guteniev <b>Opened:</b> 2021-11-20 <b>Last modified:</b> 2021-11-20 18:32:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+20.14.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a>/22 and 20.14.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a>/25 define the effects 
+of assignment as following:
+</p>
+<blockquote>
+<pre>
+move_only_function&amp; operator=(move_only_function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+<i>Effects:</i> Equivalent to: <tt>move_only_function(std::move(f)).swap(*this);</tt>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class F&gt; move_only_function&amp; operator=(F&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+<i>Effects:</i> Equivalent to: <tt>move_only_function(std::forward&lt;F&gt;(f)).swap(*this);</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+The assignment via <tt>swap</tt> with temporary makes the implementation to do the following:
+</p>
+<ul>
+<li><p>move out the previous target to a temporary location</p></li>
+<li><p>move in the new target</p></li>
+<li><p>finally destroy the previous target.</p></li>
+</ul>
+<p>
+As everything is <tt>noexcept</tt> here, I think it can be short cut to just:
+</p>
+<ul>
+<li><p>destroy the previous target.</p></li>
+<li><p>move in the new target</p></li>
+</ul>
+<p>
+Looks like the implementation cannot do such optimization in a generic case with small functor 
+optimization enabled and non-trivial move constructor for the new target and with non-trivial 
+destruction of the previous target, since the difference is observable.
+<p/>
+Apparently the optimization is precluded for no reason.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.14.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+move_only_function&amp; operator=(move_only_function&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-22- <i>Effects:</i> <ins>Sets the target object of <tt>this</tt> to the target object of <tt>f</tt> 
+before the assignment and leaves <tt>f</tt> in a valid state with an unspecified value.</ins><del>Equivalent to: <tt>move_only_function(std::move(f)).swap(*this);</tt></del>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class F&gt; move_only_function&amp; operator=(F&amp;&amp; f);
+</pre>
+<blockquote>
+<p>
+-25- <i>Effects:</i> Equivalent to: <tt><ins>*this = </ins>move_only_function(std::forward&lt;F&gt;(f))<del>.swap(*this)</del>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
