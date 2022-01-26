@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3638" href="lwg-active.html#3638">3638.</a> <tt>vector&lt;bool&gt;::swap(reference, reference)</tt> is useless</h3>
 <p><b>Section:</b> 22.3.12 <a href="https://timsong-cpp.github.io/cppwp/vector.bool">[vector.bool]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-11-12 <b>Last modified:</b> 2021-11-14 18:18:49 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-11-12 <b>Last modified:</b> 2022-01-22 12:39:18 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#vector.bool">active issues</a> in [vector.bool].</p>
@@ -79,6 +79,174 @@ For some reason this became a static member function of <tt>vector&lt;bool&gt;</
 <p/>
 We should restore the intended functionality, and deprecate the useless function.
 </p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+
+<li><p>Create a new subclause [vector.bool.general] below 22.3.12 <a href="https://timsong-cpp.github.io/cppwp/vector.bool">[vector.bool]</a> and move paragraphs p1-p3 
+(including the class template <tt>vector&lt;bool, Allocator&gt;</tt> partial specialization synopsis) into that 
+subclause.</p>
+</li>
+
+<li><p>Add to the synopsis in [vector.bool.general] p1 (n&eacute;e 22.3.12 <a href="https://timsong-cpp.github.io/cppwp/vector.bool">[vector.bool]</a> p1):</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// bit reference</i>
+class reference {
+  friend class vector;
+  constexpr reference() noexcept;
+public:
+  constexpr reference(const reference&amp;) = default;
+  constexpr ~reference();
+  constexpr operator bool() const noexcept;
+  constexpr reference&amp; operator=(bool x) noexcept;
+  constexpr reference&amp; operator=(const reference&amp; x) noexcept;
+  constexpr const reference&amp; operator=(bool x) const noexcept;
+  constexpr void flip() noexcept; <i>// flips the bit</i>
+  
+  <ins>friend constexpr void swap(reference x, reference y) noexcept;
+  friend constexpr void swap(reference x, bool&amp; y) noexcept;
+  friend constexpr void swap(bool&amp; x, reference y) noexcept;</ins>
+};
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Remove the static <tt>swap</tt> function from the class template <tt>vector&lt;bool, Allocator&gt;</tt> 
+partial specialization synopsis:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr void swap(vector&amp;);
+<del>constexpr static void swap(reference x, reference y) noexcept;</del>
+constexpr void flip() noexcept; <i>// flips all bits</i>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Create a new subclause [vector.bool.ref] after p3, with p4 as its first paragraph, and add after it:</p>
+
+<blockquote>
+<p>
+<ins><b>22.3.12.? Class <tt>vector&lt;bool, Allocator&gt;::reference</tt> [vector.bool.ref]</b></ins>
+<p/>
+-1- <tt>reference</tt> is a class that simulates the behavior of references of a single bit in <tt>vector&lt;bool&gt;</tt>. 
+The conversion function returns <tt>true</tt> when the bit is set, and <tt>false</tt> otherwise. The assignment 
+operators set the bit when the argument is (convertible to) <tt>true</tt> and clear it otherwise. 
+<tt>flip</tt> reverses the state of the bit.
+</p>
+<pre>
+<ins>constexpr void flip() noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> <tt>*this = !*this;</tt></ins>
+</p>
+</blockquote>
+<pre>
+ <ins>friend constexpr void swap(reference x, reference y) noexcept;
+ friend constexpr void swap(reference x, bool&amp; y) noexcept;
+ friend constexpr void swap(bool&amp; x, reference y) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Exchanges the contents of <tt>x</tt> and <tt>y</tt> as if by:</ins>
+</p>
+<blockquote><pre>
+<ins>bool b = x;
+x = y;
+y = b;</ins>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Create a new subclause [vector.bool.mem] after that, containing the paragraphs 
+describing <tt>flip()</tt> and the <tt>hash</tt> specialization:</p>
+
+<blockquote>
+<p>
+<ins><b>22.3.12.? Class <tt>vector&lt;bool, Allocator&gt;</tt> members [vector.bool.mem]</b></ins>
+</p>
+<pre>
+constexpr void flip() noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Replaces each element in the container with its complement.
+</p>
+</blockquote>
+<pre>
+ <del>constexpr static void swap(reference x, reference y) noexcept;</del>
+</pre>
+<blockquote>
+<p>
+<del>-6- <i>Effects:</i> Exchanges the contents of <tt>x</tt> and <tt>y</tt> as if by:</del>
+</p>
+<blockquote><pre>
+<del>bool b = x;
+x = y;
+y = b;</del>
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt; struct hash&lt;vector&lt;bool, Allocator&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-7- The specialization is enabled (20.14.19 <a href="https://timsong-cpp.github.io/cppwp/unord.hash">[unord.hash]</a>).
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Create a new subclause [depr.vector.bool.swap] after D.21 <a href="https://timsong-cpp.github.io/cppwp/depr.string.capacity">[depr.string.capacity]</a></p>
+
+<blockquote>
+<p>
+<ins><b>D.? Deprecated <tt>vector&lt;bool, Allocator&gt;</tt> swap [depr.vector.bool.swap]</b></ins>
+<p/>
+<ins>-?- The following member is declared in addition to those members specified in 22.3.12 <a href="https://timsong-cpp.github.io/cppwp/vector.bool">[vector.bool]</a>:</ins>
+</p>
+<pre>
+<ins>namespace std {
+  template&lt;class Allocator&gt; class vector&lt;bool, Allocator&gt; {
+  public:
+    constexpr static void swap(reference x, reference y) noexcept;
+  };
+}</ins>
+</pre>
+<pre>
+<ins>constexpr static void swap(reference x, reference y) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> <tt>swap(x, y)</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2022-01-22; Jonathan replaces <code>swap(x, y)</code> in the Annex D
+wording, following reflector discussion about lookup for <code>swap</code>
+finding itself in that context.
+]</i></p>
+
 
 
 <p><b>Proposed resolution:</b></p>
@@ -231,8 +399,13 @@ template&lt;class Allocator&gt; struct hash&lt;vector&lt;bool, Allocator&gt;&gt;
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Effects:</i> <tt>swap(x, y)</tt>.</ins>
+<ins>-?- <i>Effects:</i> Exchanges the contents of <tt>x</tt> and <tt>y</tt> as if by:</ins>
 </p>
+<blockquote><pre>
+<ins>bool b = x;
+x = y;
+y = b;</ins>
+</pre></blockquote>
 </blockquote>
 </blockquote>
 </li>

@@ -1,0 +1,382 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3662: basic_string::append/assign(NTBS, pos, n) suboptimal</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3662" href="lwg-active.html#3662">3662.</a> <tt>basic_string::append/assign(NTBS, pos, n)</tt> suboptimal</h3>
+<p><b>Section:</b> 21.3.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 21.3.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-21 <b>Last modified:</b> 2022-01-22 16:22:29 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.append">issues</a> in [string.append].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This will allocate temporary string, then copy one byte from it:
+</p>
+<blockquote>
+<pre>
+std::string s;
+s.append("a very very long string that doesn't fit in SSO buffer", 13, 1);
+</pre>
+</blockquote>
+<p>
+The problem is that there is no overload accepting an NTBS there, so it converts to a temporary string using:
+</p>
+<blockquote><pre>
+append(const basic_string&amp;, size_t, size_t = npos);
+</pre></blockquote>
+<p>
+C++17 added a new overload for a <tt>string_view</tt>:
+</p>
+<blockquote><pre>
+append(const T&amp;, size_t, size_t = npos);
+</pre></blockquote>
+<p>
+But that overload is constrained to not allow <tt>const char*</tt> arguments, so we still create a temporary string.
+<p/>
+If we're going to accept those arguments, we should do so efficiently, without forcing an unnecessary allocation.
+<p/>
+We could do better if we split the <tt>append(const T&amp;, ...)</tt> overload into:
+</p>
+<blockquote><pre>
+append(const T&amp;, size_t);
+append(const T&amp;, size_t, size_t);
+</pre></blockquote>
+<p>
+and then remove the <tt>!is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> constraint from the second 
+overload (<b>Option A</b> in the proposed resolution).
+<p/>
+Alternatively, we can leave the <tt>append(const T&amp;, size_t, size_t)</tt> overload alone and just add one 
+taking exactly the arguments used above. That seems simpler to me, and I prefer that (<b>Option B</b> in the Proposed Resolution).
+<p/>
+The same problem applies to <tt>assign("...", pos, n)</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Two mutually exclusive options are prepared, depicted below by <b>Option A</b> and 
+<b>Option B</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b>
+</p>
+
+<ol>
+<li><p>Modify 21.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/basic.string.general">[basic.string.general]</a>, class template <tt>basic_string</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 21.3.3.7 <a href="https://timsong-cpp.github.io/cppwp/string.modifiers">[string.modifiers]</a>, modifiers</i>
+[&hellip;]
+template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t);
+<ins>template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t, size_type pos);</ins>
+template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t, size_type pos, size_type n <del>= npos</del>);
+constexpr basic_string&amp; append(const charT* s, size_type n);
+[&hellip;]
+template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t);
+<ins>template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t, size_type pos);</ins>
+template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t, size_type pos, size_type n <del>= npos</del>);
+constexpr basic_string&amp; assign(const charT* s, size_type n);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t);
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(3.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</p></li>
+<li><p>(3.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+-4- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return append(sv.data(), sv.size());
+</pre></blockquote>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t, size_type pos);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i></ins>
+</p>
+<ol style="list-style-type:none">
+<li><p><ins>(?.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</ins></p></li>
+<li><p><ins>(?.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins></p></li>
+</ol>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>basic_string_view&lt;charT, traits&gt; sv = t;
+return append(sv.substr(pos));</ins>
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; append(const T&amp; t, size_type pos, size_type n <del>= npos</del>);
+</pre>
+<blockquote>
+<p>
+-5- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p><del>(5.1) &mdash;</del> <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> <del>and</del></p></li>
+<li><p><del>(5.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt></del>.</p></li>
+</ol>
+<p>
+-6- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return append(sv.substr(pos, n));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t);
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(4.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</p></li>
+<li><p>(4.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return assign(sv.data(), sv.size());
+</pre></blockquote>
+</blockquote>
+<pre>
+<ins>template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t, size_type pos);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i></ins>
+</p>
+<ol style="list-style-type:none">
+<li><p><ins>(?.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</ins></p></li>
+<li><p><ins>(?.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</ins></p></li>
+</ol>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>basic_string_view&lt;charT, traits&gt; sv = t;
+return assign(sv.substr(pos));</ins>
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t, size_type pos, size_type n <del>= npos</del>);
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p><del>(6.1) &mdash;</del> <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> <del>and</del></p></li>
+<li><p><del>(6.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt></del>.</p></li>
+</ol>
+<p>
+-7- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return assign(sv.substr(pos, n));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+<p>
+<b>Option B:</b>
+</p>
+
+<ol>
+<li><p>Modify 21.3.3.1 <a href="https://timsong-cpp.github.io/cppwp/basic.string.general">[basic.string.general]</a>, class template <tt>basic_string</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 21.3.3.7 <a href="https://timsong-cpp.github.io/cppwp/string.modifiers">[string.modifiers]</a>, modifiers</i>
+[&hellip;]
+constexpr basic_string&amp; append(const charT* s, size_type n);
+constexpr basic_string&amp; append(const charT* s);
+<ins>constexpr basic_string&amp; append(const charT* s, size_type pos, size_type n);</ins>
+constexpr basic_string&amp; append(size_type n, charT c);
+[&hellip;]
+constexpr basic_string&amp; assign(const charT* s, size_type n);
+constexpr basic_string&amp; assign(const charT* s);
+<ins>constexpr basic_string&amp; assign(const charT* s, size_type pos, size_type n);</ins>
+constexpr basic_string&amp; assign(size_type n, charT c);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr basic_string&amp; append(const charT* s, size_type n);
+</pre>
+<blockquote>
+<p>
+-7- <i>Preconditions:</i> <tt>[s, s + n)</tt> is a valid range.
+<p/>
+-8- <i>Effects:</i> Appends a copy of the range <tt>[s, s + n)</tt> to the string.
+<p/>
+-9- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr basic_string&amp; append(const charT* s);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects:</i> Equivalent to: <tt>return append(s, traits::length(s));</tt>
+</p>
+</blockquote>
+<pre>
+<ins>constexpr basic_string&amp; append(const charT* s, size_type pos, size_type n);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>return append(basic_string_view&lt;charT, traits&gt;(s).substr(pos, n));</tt></ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr basic_string&amp; assign(const charT* s, size_type n);
+</pre>
+<blockquote>
+<p>
+-8- <i>Preconditions:</i> <tt>[s, s + n)</tt> is a valid range.
+<p/>
+-9- <i>Effects:</i> Replaces the string controlled by <tt>*this</tt> with a copy of the range <tt>[s, s + n)</tt>.
+<p/>
+-10- <i>Returns:</i> <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr basic_string&amp; assign(const charT* s);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects:</i> Equivalent to: <tt>return assign(s, traits::length(s));</tt>
+</p>
+</blockquote>
+<pre>
+<ins>constexpr basic_string&amp; assign(const charT* s, size_type pos, size_type n);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects:</i> Equivalent to: <tt>return assign(basic_string_view&lt;charT, traits&gt;(s).substr(pos, n));</tt></ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

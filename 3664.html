@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3664: LWG 3392 broke std::ranges::distance(a, a+3)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3664" href="lwg-active.html#3664">3664.</a> LWG 3392 broke <tt>std::ranges::distance(a, a+3)</tt></h3>
+<p><b>Section:</b> 23.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.distance">[range.iter.op.distance]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2022-01-23 <b>Last modified:</b> 2022-01-23 17:33:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iter.op.distance">issues</a> in [range.iter.op.distance].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the use of <tt>std::ranges::distance(first, last)</tt> on a simple C array.
+This works fine with <tt>std::distance</tt>, but currently does not work with
+<tt>std::ranges::distance</tt>.
+</p>
+<blockquote>
+<pre>
+// <a href="https://godbolt.org/z/vsxbcfEv6">godbolt link</a>
+#include &lt;ranges&gt;
+#include &lt;cassert&gt;
+
+int main() {
+  int a[] = {1, 2, 3};
+  assert(std::ranges::distance(a, a+3) == 3);
+  assert(std::ranges::distance(a, a) == 0);
+  assert(std::ranges::distance(a+3, a) == -3);
+}
+</pre>
+</blockquote>
+<p>
+Before LWG <a href="3392">3392</a>, we had a single iterator-pair overload:
+</p>
+<blockquote><pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  constexpr iter_difference_t&lt;I&gt; distance(I first, S last);
+</pre></blockquote>
+<p>
+which works fine for C pointers. After LWG <a href="3392">3392</a>, we have two
+iterator-pair overloads:
+</p>
+<blockquote><pre>
+template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+  requires (!sized_sentinel_for&lt;S, I&gt;)
+    constexpr iter_difference_t&lt;I&gt; distance(I first, S last);
+
+template&lt;input_or_output_iterator I, sized_sentinel_for&lt;I&gt; S&gt;
+  constexpr iter_difference_t&lt;I&gt; distance(const I&amp; first, const S&amp; last);
+</pre></blockquote>
+<p>
+and unfortunately the one we want &mdash; <tt>distance(I first, S last)</tt> &mdash; 
+is no longer viable because [with <tt>I=int*</tt>, <tt>S=int*</tt>], we have
+<tt>sized_sentinel_for&lt;S, I&gt;</tt> and so its constraints aren't satisfied.
+So we look at the other overload [with <tt>I=int[3]</tt>, <tt>S=int[3]</tt>], but
+unfortunately its constraints aren't satisfied either, because <tt>int[3]</tt>
+is not an <tt>input_or_output_iterator</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>. 
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Thanks to Casey Carter. Notice that <tt>sentinel_for&lt;S, I&gt;</tt> 
+already implies and subsumes <tt>input_or_output_iterator&lt;I&gt;</tt>, so that constraint 
+wasn't doing anything; personally I'd prefer to remove it for symmetry (and to save the 
+environment). Otherwise you'll have people asking why one of the <tt>I</tt>'s is constrained 
+and the other isn't.] 
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 23.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 23.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.distance">[range.iter.op.distance]</a>, ranges::distance</i>
+template&lt;<ins>class</ins><del>input_or_output_iterator</del> I, sentinel_for&lt;I&gt; S&gt;
+  requires (!sized_sentinel_for&lt;S, I&gt;)
+  constexpr iter_difference_t&lt;I&gt; distance(I first, S last);
+template&lt;<ins>class</ins><del>input_or_output_iterator</del> I, sized_sentinel_for&lt;<ins>decay_t&lt;</ins>I<ins>&gt;</ins>&gt; S&gt;
+  constexpr iter_difference_t&lt;I&gt; distance(const I&amp; first, <del>const</del> S<del>&amp;</del> last);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.distance">[range.iter.op.distance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<ins>class</ins><del>input_or_output_iterator</del> I, sentinel_for&lt;I&gt; S&gt;
+  requires (!sized_sentinel_for&lt;S, I&gt;)
+  constexpr iter_difference_t&lt;I&gt; ranges::distance(I first, S last);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> <tt>[first, last)</tt> denotes a range.
+<p/>
+-2- <i>Effects:</i> Increments <tt>first</tt> until <tt>last</tt> is reached and returns the number of increments.
+</p>
+</blockquote>
+<pre>
+template&lt;<ins>class</ins><del>input_or_output_iterator</del> I, sized_sentinel_for&lt;<ins>decay_t&lt;</ins>I<ins>&gt;</ins>&gt; S&gt;
+  constexpr iter_difference_t&lt;I&gt; ranges::distance(const I&amp; first, <del>const</del> S<del>&amp;</del> last);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to: <tt>return last - first;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

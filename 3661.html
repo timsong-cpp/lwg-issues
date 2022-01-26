@@ -1,0 +1,109 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3661: constinit atomic&lt;shared_ptr&lt;T&gt;&gt; a(nullptr); should work</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3661" href="lwg-active.html#3661">3661.</a> <tt>constinit atomic&lt;shared_ptr&lt;T&gt;&gt; a(nullptr);</tt> should work</h3>
+<p><b>Section:</b> 31.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-21 <b>Last modified:</b> 2022-01-22 13:34:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+All the following are valid except for the last line:
+</p>
+<blockquote>
+<pre>
+constinit int i1{};
+constinit std::atomic&lt;int&gt; a1{};
+constinit int i2{0};
+constinit std::atomic&lt;int&gt; a2{0};
+constinit std::shared_ptr&lt;int&gt; i3{};
+constinit std::atomic&lt;std::shared_ptr&lt;int&gt;&gt; a3{};
+constinit std::shared_ptr&lt;int&gt; i4{nullptr};
+constinit std::atomic&lt;std::shared_ptr&lt;int&gt;&gt; a4{nullptr}; <span style="color:red;font-weight:bolder">// error</span>
+</pre>
+</blockquote>
+<p>
+The initializer for <tt>a4</tt> will create a <tt>shared_ptr&lt;int&gt;</tt> temporary (using the same constructor 
+as <tt>i4</tt>) but then try to use <tt>atomic(shared_ptr&lt;int&gt;)</tt> which is not <tt>constexpr</tt>.
+<p/>
+This is an unnecessary inconsistency in the API for <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt> that can 
+easily be fixed. The proposed resolution has been implemented in libstdc++.
+<p/>
+There is no need to also change <tt>atomic&lt;weak_ptr&lt;T&gt;&gt;</tt> because <tt>weak_ptr</tt> doesn't have a 
+constructor taking <tt>nullptr</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>. 
+</p>
+
+<ol>
+<li><p>Modify 31.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a>, class template partial specialization 
+<tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr atomic() noexcept;
+<ins>constexpr atomic(nullptr_t) noexcept : atomic() { }</ins>
+atomic(shared_ptr&lt;T&gt; desired) noexcept;
+atomic(const atomic&amp;) = delete;
+void operator=(const atomic&amp;) = delete;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

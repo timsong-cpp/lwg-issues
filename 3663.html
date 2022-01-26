@@ -1,0 +1,178 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3663: basic_string(const T&amp;, const Alloc&amp;) turns moves into copies</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3663" href="lwg-active.html#3663">3663.</a> <tt>basic_string(const T&amp;, const Alloc&amp;)</tt> turns moves into copies</h3>
+<p><b>Section:</b> 21.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a>, 21.3.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-21 <b>Last modified:</b> 2022-01-22 16:22:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.cons">issues</a> in [string.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This will do a copy not a move:
+</p>
+<blockquote>
+<pre>
+struct Str : std::string {
+  Str() = default;
+  Str(Str&amp;&amp; s) : std::string(std::move(s)) { }
+};
+Str s;
+Str s2(std::move(s));
+</pre>
+</blockquote>
+<p>
+The problem is that the new C++17 constructor:
+</p>
+<blockquote><pre>
+basic_string(const T&amp;, const Alloc&amp; = Alloc());
+</pre></blockquote>
+<p>
+is an exact match, but the <tt>basic_string</tt> move constructor requires a derived-to-base conversion.
+<p/>
+This is a regression since C++14, because the move constructor was called in C++14.
+<p/>
+This problem also exists for <tt>assign(const T&amp;)</tt> and <tt>operator=(const T&amp;)</tt>.
+<p/>
+We can fix this by constraining those functions with <tt>!derived_from&lt;T, basic_string&gt;</tt>, so 
+that the move constructor is the only viable function. Libstdc++ has done something very similar since 
+2017, but using <tt>!is_convertible&lt;const T*, const basic_string*&gt;</tt> instead of <tt>derived_from</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>. 
+</p>
+
+<ol>
+<li><p>Modify 21.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr explicit basic_string(const T&amp; t, const Allocator&amp; a = Allocator());
+</pre>
+<blockquote>
+<p>
+-7- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(7.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</p></li>
+<li><p><ins>(7.?) &mdash; <tt>derived_from&lt;T, basic_string&gt;</tt> is <tt>false</tt> and</ins></p></li>
+<li><p>(7.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+-8- <i>Effects:</i> Creates a variable, <tt>sv</tt>, as if by <tt>basic_string_view&lt;charT, traits&gt; sv = t;</tt> 
+and then behaves the same as <tt>basic_string(sv.data(), sv.size(), a)</tt>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; operator=(const T&amp; t);
+</pre>
+<blockquote>
+<p>
+-27- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(27.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</p></li>
+<li><p><ins>(27.?) &mdash; <tt>derived_from&lt;T, basic_string&gt;</tt> is <tt>false</tt> and</ins></p></li>
+<li><p>(27.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+-28- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return assign(sv);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr basic_string&amp; assign(const T&amp; t);
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(4.1) &mdash; <tt>is_convertible_v&lt;const T&amp;, basic_string_view&lt;charT, traits&gt;&gt;</tt> 
+is <tt>true</tt> and</p></li>
+<li><p><ins>(4.?) &mdash; <tt>derived_from&lt;T, basic_string&gt;</tt> is <tt>false</tt> and</ins></p></li>
+<li><p>(4.2) &mdash; <tt>is_convertible_v&lt;const T&amp;, const charT*&gt;</tt> is <tt>false</tt>.</p></li>
+</ol>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+basic_string_view&lt;charT, traits&gt; sv = t;
+return assign(sv.data(), sv.size());
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
