@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2022-01-31 at 18:39:43 UTC</p>
+<p><p>Revised 2022-02-05 at 13:49:10 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -29635,7 +29635,7 @@ the <i>Cpp17InputIterator</i> requirements <del>and refer to elements implicitly
 <hr>
 <h3><a name="3305" href="3305">3305.</a> <tt>any_cast&lt;void&gt;</tt></h3>
 <p><b>Section:</b> 20.8.5 <a href="https://timsong-cpp.github.io/cppwp/any.nonmembers">[any.nonmembers]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> John Shaw <b>Opened:</b> 2019-10-16 <b>Last modified:</b> 2020-02-14 06:55:06 UTC</p>
+ <b>Submitter:</b> John Shaw <b>Opened:</b> 2019-10-16 <b>Last modified:</b> 2022-02-03 10:15:29 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#any.nonmembers">active issues</a> in [any.nonmembers].</p>
@@ -29656,10 +29656,12 @@ We need to handle the <tt>T = void</tt> case, probably by just explicitly return
 
 <p><i>[2019-11 Priority to 2 during Monday issue prioritization in Belfast. There is implementation divergence here.]</i></p>
 
-<p><i>[2020-02 Discussion in Prague did not reach consensus. Status to Open.]</i></p>
+<p><i>[2020-02 LWG discussion in Prague did not reach consensus. Status to Open.]</i></p>
 
 <p>There was discussion about whether or not <tt>any_cast&lt;void&gt;(a)</tt> should be ill-formed, or return <tt>nullptr</tt>.</p>
 <p>Poll "should it return nullptr" was 0-4-5-5-1.</p>
+<p><i>[2022-02 Currently ill-formed in MSVC ("error C2338: std::any cannot contain void") and returns null pointer in libstdc++ and libc++.]</i></p>
+
 
 
 <p><b>Proposed resolution:</b></p>
@@ -35480,7 +35482,7 @@ Priority set to 2.
 <hr>
 <h3><a name="3545" href="3545">3545.</a> <tt>std::pointer_traits</tt> should be SFINAE-friendly</h3>
 <p><b>Section:</b> 20.10.3 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits">[pointer.traits]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Glen Joseph Fernandes <b>Opened:</b> 2021-04-20 <b>Last modified:</b> 2022-01-29 12:13:52 UTC</p>
+ <b>Submitter:</b> Glen Joseph Fernandes <b>Opened:</b> 2021-04-20 <b>Last modified:</b> 2022-02-05 13:04:28 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#pointer.traits">active issues</a> in [pointer.traits].</p>
@@ -35550,6 +35552,7 @@ is a class template <del>instantiation</del><ins>specialization</ins> of the for
 </blockquote>
 </li>
 </ol>
+
 
 
 
@@ -42055,6 +42058,149 @@ contains, we require implementations to use the <tt>common_type</tt> of their di
 implementation freedom to define extended integer-like types we should make provision for them 
 to be used here as well. The same issue applies to the <tt>join_with_view</tt> as proposed by
 <a href="https://wg21.link/P2441">P2441</a>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3667" href="3667">3667.</a> <tt>std::cout &lt;&lt; &amp;X::f</tt> prints <tt>1</tt></h3>
+<p><b>Section:</b> 29.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted">[ostream.formatted]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Peter Dimov <b>Opened:</b> 2022-01-31 <b>Last modified:</b> 2022-02-05 13:04:51 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+At present, the program
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+
+struct X
+{
+  void f() {}
+};
+
+int main()
+{
+  std::cout &lt;&lt; &amp;X::f;
+}
+</pre></blockquote>
+<p>
+prints <tt>1</tt>. That's because member pointers implicitly convert
+to <tt>bool</tt>, and there's <tt>operator&lt;&lt;</tt> overload for <tt>bool</tt> in
+29.7.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/ostream.inserters.arithmetic">[ostream.inserters.arithmetic]</a>.
+<p/>
+This behavior is rarely useful. In C++20, we added deleted
+overloads to prevent a similar counter-intuitive output for
+the case in which e.g. <tt>L"str"</tt> is output to <tt>std::cout</tt>,
+which used to print the pointer value using the <tt>operator&lt;&lt;</tt>
+overload for <tt>const void*</tt>.
+<p/>
+We should similarly consider adding a deleted overload for member pointers.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 29.7.5.2.1 <a href="https://timsong-cpp.github.io/cppwp/ostream.general">[ostream.general]</a>, class template <tt>basic_ostream</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  
+  template&lt;class traits&gt;
+    basic_ostream&lt;wchar_t, traits&gt;&amp;
+      operator&lt;&lt;(basic_ostream&lt;wchar_t, traits&gt;&amp;, const char16_t*) = delete;
+  template&lt;class traits&gt;
+    basic_ostream&lt;wchar_t, traits&gt;&amp;
+      operator&lt;&lt;(basic_ostream&lt;wchar_t, traits&gt;&amp;, const char32_t*) = delete;
+      
+  <ins>template&lt;class charT, class traits, class T, class C&gt;
+    basic_ostream&lt;charT, traits&gt;&amp; 
+      operator&lt;&lt;(basic_ostream&lt;charT, traits&gt;&amp;, T C::*) = delete;</ins>
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3668" href="3668">3668.</a> <tt>[recursive_]directory_iterator</tt> constructors refer to undefined <tt>options</tt></h3>
+<p><b>Section:</b> 29.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a>, 29.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-31 <b>Last modified:</b> 2022-02-05 13:29:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.dir.itr.members">issues</a> in [fs.dir.itr.members].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> p2 and 29.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> p3 refer to the <tt>options</tt> 
+parameter, but not all overloads have a parameter of that name.
+<p/>
+We need some "for the overloads with ..." wording.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3669" href="3669">3669.</a> <tt>std::filesystem</tt> operations should be observable behaviour</h3>
+<p><b>Section:</b> 4.1.2 <a href="https://timsong-cpp.github.io/cppwp/intro.abstract">[intro.abstract]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-02-03 <b>Last modified:</b> 2022-02-05 13:37:12 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Jens pointed out that 4.1.2 <a href="https://timsong-cpp.github.io/cppwp/intro.abstract">[intro.abstract]</a> p6.2 should be amended to talk about 
+"stuff done to the <tt>filesystem</tt>, e.g. <tt>mkdir</tt>". Sounds like an LWG issue that 
+needs CWG review.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3670" href="3670">3670.</a> <i>Cpp17InputIterator</i>s don't have integer-class difference types</h3>
+<p><b>Section:</b> 24.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2022-02-04 <b>Last modified:</b> 2022-02-05 13:49:10 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.iterator">issues</a> in [range.iota.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+24.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> defines 
+</p>
+<blockquote><pre>
+using iterator_category = input_iterator_tag; <i>// present only if W models incrementable</i>
+</pre></blockquote>
+<p>
+but when <tt>difference_type</tt> is an integer-class type the iterator does not meet the 
+<i>Cpp17InputIterator</i> requirements.
 </p>
 
 
