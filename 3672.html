@@ -1,0 +1,143 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3672: common_iterator::operator-&gt;() should return by value</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3672" href="lwg-active.html#3672">3672.</a> <tt>common_iterator::operator-&gt;()</tt> should return by value</h3>
+<p><b>Section:</b> 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-02-12 <b>Last modified:</b> 2022-02-14 12:56:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#common.iter.access">issues</a> in [common.iter.access].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> p5 (5.1) says that <tt>common_iterator&lt;T*, S&gt;::operator-&gt;()</tt> 
+returns <tt>std::get&lt;T*&gt;(v_)</tt> which has type <tt>T* const&amp;</tt>. That means that 
+<tt>iterator_traits::pointer</tt> is <tt>T* const&amp;</tt> as well (this was recently clarified by LWG 
+<a href="3660">3660</a>). We have an actual pointer here, why are we returning it by reference?
+<p/>
+For the three bullet points in 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> p5, the second and third return by value 
+anyway, so <tt>decltype(auto)</tt> is equivalent to <tt>auto</tt>. For the first bullet, it would make a lot 
+more sense for raw pointers to be returned by value. That leaves the case where the iterator has an 
+<tt>operator-&gt;()</tt> member, which could potentially benefit from returning by reference. But it must 
+return something that is iterator-like or pointer-like, which we usually just pass by value. Casey suggested 
+we should just change <tt>common_iterator&lt;I, S&gt;::operator-&gt;()</tt> to return by value in all cases.
+<p/>
+Libstdc++ has always returned by value, as an unintended consequence of using a union instead of 
+<tt>std::variant&lt;I, S&gt;</tt>, so that it doesn't use <tt>std::get&lt;I&gt;</tt> to return the member.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, class template <tt>common_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr decltype(auto) operator*();
+constexpr decltype(auto) operator*() const
+  requires <i>dereferenceable</i>&lt;const I&gt;;
+constexpr <del>decltype(</del>auto<del>)</del> operator-&gt;() const
+  requires <i>see below</i>;
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/common.iter.access">[common.iter.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <del>decltype(</del>auto<del>)</del> operator-&gt;() const
+  requires <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-3- The expression in the <i>requires-clause</i> is equivalent to: [&hellip;]
+<p/>
+-4- <i>Preconditions:</i> <tt>holds_alternative&lt;I&gt;(v_)</tt> is <tt>true</tt>.
+<p/>
+-5- <i>Effects:</i>
+</p>
+<ol style="list-style-type:none">
+<li><p>(5.1) &mdash; If <tt>I</tt> is a pointer type or if the expression <tt>get&lt;I&gt;(v_).operator-&gt;()</tt> 
+is well-formed, equivalent to: <tt>return get&lt;I&gt;(v_);</tt></p></li>
+<li><p>(5.2) &mdash; Otherwise, if <tt>iter_reference_t&lt;I&gt;</tt> is a reference type, equivalent to:</p>
+<blockquote><pre>
+auto&amp;&amp; tmp = *get&lt;I&gt;  (v_);
+return addressof(tmp);
+</pre></blockquote>
+</li>
+<li><p>(5.3) &mdash; Otherwise, equivalent to: <tt>return <i>proxy</i>(*get&lt;I&gt;(v_));</tt> where <tt><i>proxy</i></tt> 
+is the exposition-only class:</p>
+<blockquote><pre>
+class <i>proxy</i> {
+  iter_value_t&lt;I&gt; keep_;
+  constexpr <i>proxy</i>(iter_reference_t&lt;I&gt;&amp;&amp; x)
+    : keep_(std::move(x)) {}
+public:
+  constexpr const iter_value_t&lt;I&gt;* operator-&gt;() const noexcept {
+    return addressof(keep_);
+  }
+};
+</pre></blockquote>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
