@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3677: Is a cv-qualified pair specially handled in uses-allocator construction?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3677" href="lwg-active.html#3677">3677.</a> Is a <i>cv</i>-qualified <tt>pair</tt> specially handled in uses-allocator construction?</h3>
+<p><b>Section:</b> 20.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2022-02-16 <b>Last modified:</b> 2022-02-18 16:10:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It seems unclear whether <i>cv</i>-qualified <tt>pair</tt> specializations are considered as 
+specializations of <tt>pair</tt> in 20.10.7.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>.
+<p/>
+Currently MSVC STL only considered <i>cv</i>-unqualified pair types as such specializations, 
+while libstdc++ accept both <i>cv</i>-unqualified and <tt>const</tt>-qualified pair types as 
+such specializations. The resolution of LWG <a href="3525">3525</a> uses <tt>remove_cv_t</tt>,
+which possibly imply that the specialization of pair may be <i>cv</i>-qualified.
+<p/>
+The difference can be observed via the following program:
+</p>
+<blockquote><pre>
+#include &lt;utility&gt;
+#include &lt;memory&gt;
+#include &lt;vector&gt;
+#include &lt;cassert&gt; 
+
+template&lt;class T&gt;
+class payload_ator {
+
+  int payload{};
+    
+public:
+  payload_ator() = default;
+
+  constexpr explicit payload_ator(int n) noexcept : payload{n} {}
+
+  template&lt;class U&gt;
+  constexpr explicit payload_ator(payload_ator&lt;U&gt; a) noexcept : payload{a.payload} {}   
+
+  friend bool operator==(payload_ator, payload_ator) = default;
+
+  template&lt;class U&gt;
+  friend constexpr bool operator==(payload_ator x, payload_ator&lt;U&gt; y) noexcept
+  {
+    return x.payload == y.payload;
+  }   
+
+  using value_type = T;
+
+  constexpr T* allocate(std::size_t n) { return std::allocator&lt;T&gt;{}.allocate(n); }
+
+  constexpr void deallocate(T* p, std::size_t n) { return std::allocator&lt;T&gt;{}.deallocate(p, n); }   
+
+  constexpr int get_payload() const noexcept { return payload; }
+};
+
+bool test()
+{
+  constexpr int in_v = 42;
+  using my_pair_t = std::pair&lt;int, std::vector&lt;int, payload_ator&lt;int&gt;&gt;&gt;;
+  auto out_v = std::make_obj_using_allocator&lt;const my_pair_t&gt;(payload_ator&lt;int&gt;{in_v}).second.get_allocator().get_payload();
+  return in_v == out_v;
+}
+
+int main()
+{
+  assert(test()); // <span style="color:red;font-weight:bolder">passes only if a const-qualified pair specialization is considered as a pair specialization</span>
+}
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
