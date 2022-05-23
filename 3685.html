@@ -1,0 +1,196 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3685: In lazy_split_view, CTAD doesn't work when given an input_range input and a tiny-range pattern</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3685" href="lwg-active.html#3685">3685.</a> In <tt>lazy_split_view</tt>, CTAD doesn't work when given an <tt>input_range</tt> input and a <tt><i>tiny-range</i></tt> pattern</h3>
+<p><b>Section:</b> 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Konstantin Varlamov <b>Opened:</b> 2022-03-23 <b>Last modified:</b> 2022-05-17 11:58:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.lazy.split.view">active issues</a> in [range.lazy.split.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.view">issues</a> in [range.lazy.split.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In <tt>lazy_split_view</tt>, the deduction guide that accepts two arbitrary types wraps the arguments in 
+<tt>views::all_t</tt> (26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>):
+</p>
+<blockquote><pre>
+template&lt;class R, class P&gt;
+  lazy_split_view(R&amp;&amp;, P&amp;&amp;) -&gt; lazy_split_view&lt;views::all_t&lt;R&gt;, views::all_t&lt;P&gt;&gt;;
+</pre></blockquote>
+<p>
+When trying to use an <tt>input_range</tt> as the input, <tt>lazy_split_view</tt> requires the pattern 
+type to satisfy the exposition-only concept <tt><i>tiny-range</i></tt>. Trying to use CTAD with an 
+<tt>input_range</tt> and a <tt><i>tiny-range</i></tt> as arguments results in a compiler error, as demonstrated
+in the <a href="https://godbolt.org/z/37bs9hq1T">demo link</a>:
+</p>
+<blockquote><pre>
+// Assuming `InputRange` and `TinyRange` are valid types satisfying the
+// corresponding concepts.
+std::ranges::lazy_split_view view{InputRange(), TinyRange()}; // Compiler error
+</pre></blockquote>
+<p>
+The underlying reason is that <tt><i>tiny-range</i></tt> requires the given type to contain a static member function 
+<tt>size()</tt> that returns a number <tt>&lt;=1</tt> (26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>):
+</p>
+<blockquote><pre>
+template&lt;class R&gt;
+  concept <i>tiny-range</i> =                                          // exposition only
+    sized_range&lt;R&gt; &amp;&amp;
+    requires { typename <i>require-constant</i>&lt;remove_reference_t&lt;R&gt;::size()&gt;; } &amp;&amp;
+    (remove_reference_t&lt;R&gt;::size() &lt;= 1);
+</pre></blockquote>
+<p>
+However, when given a range, <tt>views::all_t</tt> wraps the type in a <tt>ranges::owning_view</tt>. 
+<tt>owning_view</tt> doesn't satisfy <tt><i>tiny-range</i></tt> for any template parameter because it 
+never contains the static <tt>size()</tt> function required by the concept.
+<p/>
+A general resolution might be modifying <tt>owning_view</tt> so that it satisfies <tt><i>tiny-range</i></tt> 
+when the given type is a <tt><i>tiny-range</i></tt> (that would require moving the <tt><i>tiny-range</i></tt> 
+concept from 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> to 26.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.helpers">[range.utility.helpers]</a>). A more 
+localized solution can be to change the deduction guide in <tt>lazy_split_view</tt> to avoid wrapping 
+a type satisfying <tt><i>tiny-range</i></tt> in <tt>views::all_t</tt>.
+</p>
+
+<p><i>[2022-05-17; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll. One vote for NAD.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.helpers">[range.utility.helpers]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This change effectively just moves the definitions of 
+<tt><i>require-constant</i></tt> and <tt><i>tiny-range</i></tt> from 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>
+to 26.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.helpers">[range.utility.helpers]</a>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class T, class U&gt;
+  concept <i>different-from</i> = <i>// exposition only</i>
+    !same_as&lt;remove_cvref_t&lt;T&gt;, remove_cvref_t&lt;U&gt;&gt;;
+
+<ins>template&lt;auto&gt; struct <i>require-constant</i>; <i>// exposition only</i>
+
+template&lt;class R&gt;
+concept <i>tiny-range</i> = <i>// exposition only</i>
+  sized_range&lt;R&gt; &amp;&amp;
+  requires { typename <i>require-constant</i>&lt;remove_reference_t&lt;R&gt;::size()&gt;; } &amp;&amp;
+  (remove_reference_t&lt;R&gt;::size() &lt;= 1);</ins>
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.owning.view">[range.owning.view]</a>, class template <tt>owning_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<ins>constexpr static auto size() requires <i>tiny-range</i>&lt;R&gt;
+{ return R::size(); }</ins>
+constexpr auto size() requires sized_range&lt;R&gt;
+{ return ranges::size(<i>r_</i>); }
+constexpr auto size() const requires sized_range&lt;const R&gt;
+{ return ranges::size(<i>r_</i>); }
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>, class template <tt>lazy_split_view</tt> synopsis, as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This change effectively just moves the definitions of 
+<tt><i>require-constant</i></tt> and <tt><i>tiny-range</i></tt> from 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a>
+to 26.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.helpers">[range.utility.helpers]</a>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <del>template&lt;auto&gt; struct <i>require-constant</i>; <i>// exposition only</i>
+  
+  template&lt;class R&gt;
+  concept <i>tiny-range</i> = <i>// exposition only</i>
+    sized_range&lt;R&gt; &amp;&amp;
+    requires { typename <i>require-constant</i>&lt;remove_reference_t&lt;R&gt;::size()&gt;; } &amp;&amp;
+    (remove_reference_t&lt;R&gt;::size() &lt;= 1);</del>
+    
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+             (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

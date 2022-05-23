@@ -1,0 +1,134 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3680: Constructor of move_only_function with empty ref-qualifier is over-constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3680" href="lwg-active.html#3680">3680.</a> Constructor of <tt>move_only_function</tt> with empty <tt><i>ref</i></tt>-qualifier is over-constrained</h3>
+<p><b>Section:</b> 22.10.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Zhihao Yuan <b>Opened:</b> 2022-02-27 <b>Last modified:</b> 2022-03-04 14:33:52 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.move.ctor">active issues</a> in [func.wrap.move.ctor].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.move.ctor">issues</a> in [func.wrap.move.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following test compiles and holds:
+</p>
+<blockquote><pre>
+struct X
+{
+  int operator()() &amp; { return 1; }  // #1
+  int operator()() &amp;&amp; { return 2; } // #2
+};
+
+using T = move_only_function&lt;int()&gt;;
+assert(T(X{})() == 1);
+</pre></blockquote>
+<p>
+In other words, <tt>#2</tt> is never used. But if you really remove <tt>#2</tt>, the code doesn't compile.
+<p/>
+The change was introduced between <a href="https://wg21.link/P0288R5">P0288R5</a> and <a href="https://wg21.link/P0288R6">P0288R6</a>, with 
+an intention (assumed) to require <tt>move_only_function&lt;R(Args...) <i>cv</i>&gt;</tt>
+erasing callable objects with <tt>operator()</tt> without <tt><i>ref</i></tt>-qualifiers. 
+But the actual outcome outlawed programs that were valid when using <tt>std::function</tt>.
+<p/>
+It also outlaws future programs such as
+</p>
+<blockquote><pre>
+T x = [captures](this auto&amp;) { return ...; }
+</pre></blockquote>
+<p>
+where declaring <tt>this auto&amp;&amp;</tt> without forwarding only to satisfy
+<tt>move_only_function</tt>'s constraints would be strange.
+</p>
+
+<p><i>[2022-03-04; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+Probably needs a paper for LEWG.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.10.17.4.3 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.move.ctor">[func.wrap.move.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class VT&gt;
+  static constexpr bool <i>is-callable-from</i> = <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-1- If <tt><i>noex</i></tt> is <tt>true</tt>, <tt><i>is-callable-from</i>&lt;VT&gt;</tt> is equal to:
+</p>
+<blockquote><pre>
+<del>is_nothrow_invocable_r_v&lt;R, VT <i>cv ref</i>, ArgTypes...&gt; &amp;&amp;</del>
+is_nothrow_invocable_r_v&lt;R, VT <i>inv-quals</i>, ArgTypes...&gt;
+</pre></blockquote>
+<p>
+Otherwise, <tt><i>is-callable-from</i>&lt;VT&gt;</tt> is equal to:
+</p>
+<blockquote><pre>
+<del>is_invocable_r_v&lt;R, VT <i>cv ref</i>, ArgTypes...&gt; &amp;&amp;</del>
+is_invocable_r_v&lt;R, VT <i>inv-quals</i>, ArgTypes...&gt;
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

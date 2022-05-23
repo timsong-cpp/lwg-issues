@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3698: regex_iterator and join_view don't work together very well</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3698" href="lwg-active.html#3698">3698.</a> <tt>regex_iterator</tt> and <tt>join_view</tt> don't work together very well</h3>
+<p><b>Section:</b> 32.11 <a href="https://timsong-cpp.github.io/cppwp/re.iter">[re.iter]</a>, 26.7.12 <a href="https://timsong-cpp.github.io/cppwp/range.join">[range.join]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2022-05-12 <b>Last modified:</b> 2022-05-17 11:58:16 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#re.iter">issues</a> in [re.iter].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider this example (from <a href="https://stackoverflow.com/q/72201979/2069064">StackOverflow</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;regex&gt;
+#include &lt;iostream&gt;
+
+int main() {
+  char const text[] = "Hello";
+  std::regex regex{"[a-z]"};
+
+  auto lower = std::ranges::subrange(
+        std::cregex_iterator(
+            std::ranges::begin(text),
+            std::ranges::end(text),
+            regex),
+        std::cregex_iterator{}
+    )
+    | std::views::join
+    | std::views::transform([](auto const&amp; sm) {
+        return std::string_view(sm.first, sm.second);
+    });
+
+  for (auto const&amp; sv : lower) {
+    std::cout &lt;&lt; sv &lt;&lt; '\n';
+  }
+}
+</pre></blockquote>
+<p>
+This example seems sound, having <tt>lower</tt> be a range of <tt>string_view</tt> that should refer 
+back into <tt>text</tt>, which is in scope for all this time. The <tt>std::regex</tt> object is also 
+in scope for all this time.
+<p/>
+Yet, if run this through address sanitizer, this blows up in the first call to the dereference operator 
+of the underlying <tt>transform_view</tt>'s iterator with heap-use-after-free.
+<p/>
+The problem here is ultimately that <tt>regex_iterator</tt> is a stashing iterator (it has a member 
+<tt>match_results</tt>) yet advertises itself as a <tt>forward_iterator</tt> (despite violating 
+25.3.5.5 <a href="https://timsong-cpp.github.io/cppwp/forward.iterators">[forward.iterators]</a> p6 and 25.3.4.11 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.forward">[iterator.concept.forward]</a> p3.
+<p/>
+Then, <tt>join_view</tt>'s iterator stores an outer iterator (the <tt>regex_iterator</tt>) and an 
+<tt>inner_iterator</tt> (an iterator into the container that the <tt>regex_iterator</tt> stashes). 
+Copying that iterator effectively invalidates it &mdash; since the new iterator's inner iterator will 
+refer to the old iterator's outer iterator's container. These aren't (and can't be) independent copies. 
+In this particular example, <tt>join_view</tt>'s <tt>begin</tt> iterator is copied into the 
+<tt>transform_view</tt>'s iterator, and then the original is destroyed (which owns the container that 
+the new inner iterator still points to), which causes us to have a dangling iterator.
+<p/>
+Note that the example is well-formed in libc++ because libc++ moves instead of copying an iterator, 
+which happens to work. But I can produce other non-transform-view related examples that fail.
+<p/>
+This is actually two different problems:
+</p>
+<ol>
+<li><p><tt>regex_iterator</tt> is really an input iterator, not a forward iterator. It does not meet either 
+the C++17 or the C++20 forward iterator requirements.</p></li>
+<li><p><tt>join_view</tt> can't handle stashing iterators, and would need to additionally store the outer 
+iterator in a non-propagating-cache for input ranges (similar to how it already potentially stores the 
+inner iterator in a non-propagating-cache).</p></li>
+</ol>
+<p>
+(So potentially this could be two different LWG issues, but it seems nicer to think of them together.)
+</p>
+
+<p><i>[2022-05-17; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3683: operator== for polymorphic_allocator cannot deduce template argument in common cases</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3683" href="lwg-active.html#3683">3683.</a> <tt>operator==</tt> for <tt>polymorphic_allocator</tt> cannot deduce template argument in common cases</h3>
+<p><b>Section:</b> 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.class">[mem.poly.allocator.class]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Pablo Halpern <b>Opened:</b> 2022-03-18 <b>Last modified:</b> 2022-05-17 11:57:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#mem.poly.allocator.class">issues</a> in [mem.poly.allocator.class].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In <tt>&lt;memory_resource&gt;</tt>, the equality comparison operator for <tt>pmr::polymorphic_allocator</tt> 
+is declared in namespace scope as:
+</p>
+<blockquote><pre>
+template&lt;class T1, class T2&gt;
+  bool operator==(const polymorphic_allocator&lt;T1&gt;&amp; a,
+                  const polymorphic_allocator&lt;T2&gt;&amp; b) noexcept;
+</pre></blockquote>
+<p>
+Since <tt>polymorphic_allocator</tt> is implicitly convertible from <tt>memory_resource*</tt>, 
+one would naively expect &mdash; and the author of <tt>polymorphic_allocator</tt> intended 
+&mdash; the following code to work:
+</p>
+<blockquote><pre>
+std::pmr::unsynchronized_pool_resource pool_rsrc;
+std::pmr::vector&lt;int&gt; vec(&amp;pool_rsrc); // Converts to std::pmr::polymorphic_allocator&lt;int&gt;
+[&hellip;]
+assert(vec.get_allocator() == &amp;pool_rsrc);  // (1) Compare polymorphic_allocator to memory_resource*
+</pre></blockquote>
+<p>
+Unfortunately, the line labeled (1) is ill-formed because the type <tt>T2</tt> in <tt>operator==</tt> cannot be deduced.
+<p/>
+Possible resolution 1 (PR1) is to supply a second <tt>operator==</tt>, overloaded for comparison to 
+<tt>memory_resource*</tt>:
+</p>
+<blockquote><pre>
+template&lt;class T1, class T2&gt;
+  bool operator==(const polymorphic_allocator&lt;T1&gt;&amp; a,
+                  const polymorphic_allocator&lt;T2&gt;&amp; b) noexcept;
+<ins>template&lt;class T&gt;
+  bool operator==(const polymorphic_allocator&lt;T&gt;&amp; a,
+                  memory_resource* b) noexcept;</ins>
+</pre></blockquote>
+<p>
+The rules for implicitly defined spaceship and comparison operators obviates defining <tt>operator!=</tt> 
+or <tt>operator==(b, a)</tt>. This PR would allow <tt>polymorphic_allocator</tt> to be compared for equality 
+with <tt>memory_resource*</tt>, but not with any other type that is convertible to <tt>polymorphic_allocator</tt>.
+<p/>
+Possible resolution 2 (PR2) is to replace <tt>operator==</tt> with a homogeneous version where type deduction 
+occurs only for one template parameter:
+</p>
+<blockquote><pre>
+<del>template&lt;class T1, class T2&gt;
+  bool operator==(const polymorphic_allocator&lt;T1&gt;&amp; a,
+                  const polymorphic_allocator&lt;T2&gt;&amp; b) noexcept;</del>
+<ins>template&lt;class T&gt;
+  bool operator==(const polymorphic_allocator&lt;T&gt;&amp; a,
+                  const type_identity_t&lt;polymorphic_allocator&lt;T&gt;&gt;&amp; b) noexcept;</ins>
+</pre></blockquote>
+<p>
+This version will work with any type that is convertible to <tt>polymorphic_allocator</tt>.
+<p/>
+Possible resolution 3 (PR3), the proposed resolution, below, is to add a homogeneous equality operator 
+as a "hidden friend", such that it is found by ADL only if one argument is a <tt>polymorphic_allocator</tt> 
+and the other argument is convertible to <tt>polymorphic_allocator</tt>. As with PR2, this PR will work 
+with any type that is convertible to <tt>polymorphic_allocator</tt>.
+</p>
+
+<blockquote class="note">
+<p>
+Note to reader: Proof of concept for the three possible resolutions can be seen at 
+<a href="https://godbolt.org/z/1oqG66qqe">this godbolt link</a>. Uncomment one of PR1, PR2, 
+or PR3 macros to see the effects of each PR.
+</p>
+</blockquote>
+
+<p><i>[2022-05-17; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.4.3 <a href="https://timsong-cpp.github.io/cppwp/mem.poly.allocator.class">[mem.poly.allocator.class]</a>, class template <tt>polymorphic_allocator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::pmr {
+  template&lt;class Tp = byte&gt; class polymorphic_allocator {
+    memory_resource* memory_rsrc; <i>// exposition only</i>
+
+  public:
+    using value_type = Tp;
+
+    [&hellip;]
+    memory_resource* resource() const;
+    
+    <ins><i>// friends</i>
+    friend bool operator==(const polymorphic_allocator&amp; a,
+                           const polymorphic_allocator&amp; b) noexcept {
+      return *a.resource() == *b.resource();
+    }</ins>
+  };
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

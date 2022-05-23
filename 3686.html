@@ -1,0 +1,157 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3686: In lazy_split_view, comparing a default-constructed outer-iterator or 
+inner-iterator with std::default_sentinel results in null pointer dereference</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3686" href="lwg-active.html#3686">3686.</a> In <tt>lazy_split_view</tt>, comparing a default-constructed <tt><i>outer-iterator</i></tt> or 
+<tt><i>inner-iterator</i></tt> with <tt>std::default_sentinel</tt> results in null pointer dereference</h3>
+<p><b>Section:</b> 26.7.14.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a>, 26.7.14.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Konstantin Varlamov <b>Opened:</b> 2022-03-23 <b>Last modified:</b> 2022-05-17 11:58:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The internal iterator types <tt><i>outer-iterator</i></tt> and <tt><i>inner-iterator</i></tt> of 
+<tt>lazy_split_view</tt> are default-constructible, but trying to compare a default-constructed 
+instance of either of these classes to <tt>std::default_sentinel</tt> results in null pointer 
+dereference (and, in all likelihood, a crash), as demonstrated in this 
+<a href="https://godbolt.org/z/cGs9jW1c6">demo link</a>:
+</p>
+<blockquote><pre>
+// Assuming `OuterIter` is an alias for `outer-iterator` of
+// some `lazy_split_view` instantiation.
+OuterIter o;
+o == std::default_sentinel; // Null pointer dereference
+
+InnerIter i; // Similar to `OuterIter` above.
+i == std::default_sentinel; // Null pointer dereference
+</pre></blockquote>
+<p>
+This is due to unchecked pointer access in the implementation of <tt><i>outer-iterator</i></tt> 
+(26.7.14.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> p8):
+</p>
+<blockquote><pre>
+return x.<i>current</i> == ranges::end(x.<i>parent_</i>-&gt;<i>base_</i>) &amp;&amp; !x.<i>trailing_empty_</i>;
+</pre></blockquote>
+<p>
+(<tt><i>parent_</i></tt> is null for a default-constructed iterator <tt>x</tt>, making the access 
+to <tt><i>base_</i></tt> invalid)
+<p/>
+And similarly for <tt><i>inner-iterator</i></tt> (26.7.14.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a> p7):
+</p>
+<blockquote><pre>
+auto [pcur, pend] = subrange{x.<i>i_</i>.<i>parent_</i>-&gt;<i>pattern_</i>};
+</pre></blockquote>
+<p>
+(For a default-constructed <tt><i>inner-iterator</i> x</tt>, <tt><i>i_</i></tt> is a default-constructed 
+<tt><i>outer-iterator</i></tt> member variable and <tt><i>i_</i>.<i>parent_</i></tt> is null, making the 
+access to <tt><i>pattern_</i></tt> invalid)
+<p/>
+It seems a reasonable expectation for users to expect comparing a default-constructed iterator to 
+<tt>std::default_sentinel</tt> to be a well-defined operation that returns <tt>true</tt>. Alternatively, 
+the corresponding <tt>operator==</tt> functions should add a non-normative note stating that the 
+iterator cannot be default-constructed.
+</p>
+
+<p><i>[2022-05-17; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll. Three votes for NAD.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.14.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr bool operator==(const <i>outer-iterator</i>&amp; x, default_sentinel_t);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+<ins>if (!x.<i>parent_</i>) return true;</ins>
+return x.<i>current</i> == ranges::end(x.<i>parent_</i>-&gt;<i>base_</i>) &amp;&amp; !x.<i>trailing_empty_</i>;
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+
+<li><p>Modify 26.7.14.5 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.inner">[range.lazy.split.inner]</a>, as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr bool operator==(const <i>inner-iterator</i>&amp; x, default_sentinel_t);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+<ins>if (!x.<i>i_</i>.<i>parent_</i>) return true;</ins>
+auto [pcur, pend] = subrange{x.<i>i_</i>.<i>parent_</i>-&gt;<i>pattern_</i>};
+[&hellip;]
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

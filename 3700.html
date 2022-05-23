@@ -1,0 +1,212 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3700: The const begin of the join_view family does not require InnerRng to be a range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3700" href="lwg-active.html#3700">3700.</a> The <tt>const begin</tt> of the <tt>join_view</tt> family does not require <tt><i>InnerRng</i></tt> to be a range</h3>
+<p><b>Section:</b> 26.7.12.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, 26.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.view">[range.join.with.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-05-17 <b>Last modified:</b> 2022-05-21 11:42:57 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.view">issues</a> in [range.join.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This is a follow-up of LWG <a href="3599">3599</a>.
+</p>
+<p>
+Currently, the <tt>const</tt> version of <tt>join_view::begin</tt> has the following constraints
+</p>
+<blockquote>
+<pre>
+constexpr auto begin() const
+  requires input_range&lt;const V&gt; &amp;&amp;
+           is_reference_v&lt;range_reference_t&lt;const V&gt;&gt;
+{ return <i>iterator</i>&lt;true&gt;{*this, ranges::begin(<i>base_</i>)}; }
+</pre>
+</blockquote>
+<p>
+which only requires <tt><i>InnerRng</i></tt> to be a reference type, but in some cases, <tt><i>InnerRng</i></tt> 
+may not be a <tt>range</tt>. <a href="https://godbolt.org/z/P8baTb5ee">Consider</a>
+</p>
+<blockquote>
+<pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto r = std::views::iota(0, 5)
+         | std::views::split(1);
+  auto s = std::views::single(r);
+  auto j = s | std::views::join;
+  auto f = j.front();
+}
+</pre>
+</blockquote>
+<p>
+The reference type of <tt>single_view</tt> is <tt>const split_view&amp;</tt>, which only has the non-<tt>const</tt> 
+version of <tt>begin</tt>, which will cause <tt>view_interface</tt>'s <tt>const front</tt> to be incorrectly 
+instantiated, making <tt>r.front()</tt> unnecessarily ill-formed.
+</p>
+<p>
+We should add this check for <tt>join_view</tt>'s <tt>const begin</tt>, as well as <tt>join_with_view</tt>.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.12.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, class template <tt>join_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;
+  class join_view : public view_interface&lt;join_view&lt;V&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      [&hellip;]
+    }
+    
+    constexpr auto begin() const 
+      requires input_range&lt;const V&gt; &amp;&amp;
+               <ins>input_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;</ins>
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt;
+    { return <i>iterator</i>&lt;true&gt;{*this, ranges::begin(<i>base_</i>)}; }
+    
+    constexpr auto end() {
+      [&hellip;]
+    }
+    
+    constexpr auto end() const
+      requires input_range&lt;const V&gt; &amp;&amp;
+               <ins>input_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;</ins>
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt; {
+      if constexpr (forward_range&lt;const V&gt; &amp;&amp;
+                    forward_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;
+                    common_range&lt;const V&gt; &amp;&amp;
+                    common_range&lt;range_reference_t&lt;const V&gt;&gt;)
+        return <i>iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return <i>sentinel</i>&lt;true&gt;{*this};
+    }
+  };
+  
+  [&hellip;]
+  
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.13.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.view">[range.join.with.view]</a>, class template <tt>join_with_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+
+  [&hellip;]
+
+  template&lt;input_range V, forward_range Pattern&gt;
+  requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;
+        &amp;&amp; view&lt;Pattern&gt;
+        &amp;&amp; <i>compatible-joinable-ranges</i>&lt;range_reference_t&lt;V&gt;, Pattern&gt;
+  class join_with_view : public view_interface&lt;join_with_view&lt;V, Pattern&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto begin() {
+      [&hellip;]
+    }
+    constexpr auto begin() const 
+      requires input_range&lt;const V&gt; &amp;&amp;
+               forward_range&lt;const Pattern&gt; &amp;&amp;
+               <ins>input_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;</ins>
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt; { 
+      return <i>iterator</i>&lt;true&gt;{*this, ranges::begin(<i>base_</i>)}; 
+    }
+  
+    constexpr auto end() {
+      [&hellip;]
+    }
+    constexpr auto end() const
+      requires input_range&lt;const V&gt; &amp;&amp; forward_range&lt;const Pattern&gt; &amp;&amp;
+               <ins>input_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;</ins>
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt; {
+      using InnerConstRng = range_reference_t&lt;const V&gt;;
+      if constexpr (forward_range&lt;const V&gt; &amp;&amp; forward_range&lt;InnerConstRng&gt; &amp;&amp;
+                    common_range&lt;const V&gt; &amp;&amp; common_range&lt;InnerConstRng&gt;)
+        return <i>iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return <i>sentinel</i>&lt;true&gt;{*this};
+    }
+  };
+  
+  [&hellip;]
+  
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

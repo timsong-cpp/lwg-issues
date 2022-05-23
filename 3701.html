@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3701: Make formatter&lt;remove_cvref_t&lt;const charT[N]&gt;, charT&gt; requirement explicit</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3701" href="lwg-active.html#3701">3701.</a> Make <tt>formatter&lt;remove_cvref_t&lt;const charT[N]&gt;, charT&gt;</tt> requirement explicit</h3>
+<p><b>Section:</b> 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2022-05-17 <b>Last modified:</b> 2022-05-21 12:26:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording in 22.14.5 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/20 and 22.14.5 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/25 both contain
+</p>
+<blockquote>
+<p>
+<tt>formatter&lt;remove_cvref_t&lt;T<sub><i>i</i></sub>&gt;, charT&gt;</tt> meets the <i>BasicFormatter</i> 
+requirements (22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a>) for each <tt>T<sub><i>i</i></sub></tt> in <tt>Args</tt>.
+</p>
+</blockquote>
+<p>
+The issue is that <tt>remove_cvref_t&lt;const charT[N]&gt;</tt> becomes <tt>charT[N]</tt>. 
+22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a>/2.2 requires a specialization for
+</p>
+<blockquote>
+<pre>
+template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;;
+</pre>
+</blockquote>
+<p>
+but there's no requirement to provide
+</p>
+<blockquote>
+<pre>
+ template&lt;size_t N&gt; struct formatter&lt;charT[N], charT&gt;;
+</pre>
+</blockquote>
+<p>
+There's no wording preventing library vendors from providing additional specializations. 
+So it's possible to implement the current specification but the indirect requirement is odd. 
+I noticed this while implementing a <tt>formattable</tt> concept. The concept is based on the 
+<tt>formattable</tt> concept of <a href="https://wg21.link/P2286">P2286</a> "Formatting Ranges" (This paper is targeting C++23.)
+<p/>
+It could be argued that the specialization
+</p>
+<blockquote>
+<pre>
+template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;
+</pre>
+</blockquote>
+<p>
+is not needed and should be removed from the Standard. This will be an API break. Vendors 
+can decide to keep the no longer required specialization as an extension; which would lead 
+to implementation divergence. Microsoft is already shipping this specialization as stable
+and Victor doesn't like the removal too.
+<p/>
+Therefore I only propose to add the required <tt>formatter</tt> specialization.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- Let <tt>charT</tt> be either <tt>char</tt> or <tt>wchar_t</tt>. Each specialization of 
+<tt>formatter</tt> is either enabled or disabled, as described below. Each header that declares the 
+template <tt>formatter</tt> provides the following enabled specializations:
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) &mdash; The specializations [&hellip;]</p></li>
+<li><p>(2.2) &mdash; For each <tt>charT</tt>, the string type specializations</p>
+<blockquote><pre>
+template&lt;&gt; struct formatter&lt;charT*, charT&gt;;
+template&lt;&gt; struct formatter&lt;const charT*, charT&gt;;
+<ins>template&lt;size_t N&gt; struct formatter&lt;charT[N], charT&gt;;</ins>
+template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;;
+template&lt;class traits, class Allocator&gt;
+  struct formatter&lt;basic_string&lt;charT, traits, Allocator&gt;, charT&gt;;
+template&lt;class traits&gt;
+  struct formatter&lt;basic_string_view&lt;charT, traits&gt;, charT&gt;;
+</pre></blockquote>
+</li>
+<li><p>(2.3) &mdash; [&hellip;]</p></li>
+<li><p>(2.4) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
