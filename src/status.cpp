@@ -159,11 +159,13 @@ auto lwg::get_status_priority(std::string_view stat) noexcept -> std::ptrdiff_t 
       "CD1",
       "TC1",
       "Resolved",
+      "TS",
       "TRDec",
       "NAD Editorial",
       "NAD",
       "Dup",
-      "NAD Concepts"
+      "NAD Concepts",
+      "NAD Arrays",
    };
 
 

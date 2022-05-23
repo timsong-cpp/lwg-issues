@@ -65,7 +65,7 @@ struct order_by_first_tag {
 };
 
 struct order_by_major_section {
-   explicit order_by_major_section(lwg::section_map & sections) 
+   explicit order_by_major_section(lwg::section_map & sections)
       : section_db(sections)
       {
       }
@@ -83,7 +83,7 @@ private:
 };
 
 struct order_by_section {
-   explicit order_by_section(lwg::section_map &sections) 
+   explicit order_by_section(lwg::section_map &sections)
       : section_db(sections)
       {
       }
@@ -106,7 +106,7 @@ struct order_by_status {
 
 
 struct order_by_priority {
-   explicit order_by_priority(lwg::section_map &sections) 
+   explicit order_by_priority(lwg::section_map &sections)
       : section_db(sections)
       {
       }
@@ -458,9 +458,9 @@ void report_generator::make_active(std::vector<issue> const & issues, fs::path c
    print_file_header(out, "C++ Standard Library Active Issues List");
    print_paper_heading(out, "active", lwg_issues_xml);
    out << lwg_issues_xml.get_intro("active") << '\n';
-   out << "<h2>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
+   out << "<h2 id='History'>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
    out << "<h2><a name=\"Status\"></a>Issue Status</h2>\n" << lwg_issues_xml.get_statuses() << '\n';
-   out << "<h2>Active Issues</h2>\n";
+   out << "<h2 id='Issues'>Active Issues</h2>\n";
    print_issues(out, issues, section_db, [](issue const & i) {return is_active(i.stat);} );
    print_file_trailer(out);
 }
@@ -475,8 +475,8 @@ void report_generator::make_defect(std::vector<issue> const & issues, fs::path c
    print_file_header(out, "C++ Standard Library Defect Report List");
    print_paper_heading(out, "defect", lwg_issues_xml);
    out << lwg_issues_xml.get_intro("defect") << '\n';
-   out << "<h2>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
-   out << "<h2>Defect Reports</h2>\n";
+   out << "<h2 id='History'>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
+   out << "<h2 id='Issues'>Accepted Issues</h2>\n";
    print_issues(out, issues, section_db, [](issue const & i) {return is_defect(i.stat);} );
    print_file_trailer(out);
 }
@@ -492,8 +492,8 @@ void report_generator::make_closed(std::vector<issue> const & issues, fs::path c
    print_file_header(out, "C++ Standard Library Closed Issues List");
    print_paper_heading(out, "closed", lwg_issues_xml);
    out << lwg_issues_xml.get_intro("closed") << '\n';
-   out << "<h2>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
-   out << "<h2>Closed Issues</h2>\n";
+   out << "<h2 id='History'>Revision History</h2>\n" << lwg_issues_xml.get_revisions(issues, diff_report) << '\n';
+   out << "<h2 id='Issues'>Closed Issues</h2>\n";
    print_issues(out, issues, section_db, [](issue const & i) {return is_closed(i.stat);} );
    print_file_trailer(out);
 }
@@ -563,7 +563,7 @@ out << R"(<h1>C++ Standard Library Issues Resolved Directly In [INSERT CURRENT M
 </tr>
 <tr>
 <td align="left">Reply to:</td>
-<td align="left">)" << maintainer_name << R"( &lt;<a href="mailto:)" << maintainer_email << R"(">)" 
+<td align="left">)" << maintainer_name << R"( &lt;<a href="mailto:)" << maintainer_email << R"(">)"
                                                                      << maintainer_email << R"(</a>&gt;</td>
 </tr>
 </table>
@@ -577,7 +577,7 @@ out << R"(<h1>C++ Standard Library Issues Resolved Directly In [INSERT CURRENT M
 void report_generator::set_timestamp_from_issues(std::vector<issue> const & issues){
     auto max_time = std::max_element(issues.begin(), issues.end(),
                                      [](const issue& a, const issue& b) {
-                                         return std::difftime(a.mod_timestamp, b.mod_timestamp) < 0; 
+                                         return std::difftime(a.mod_timestamp, b.mod_timestamp) < 0;
                                      })->mod_timestamp;
     build_timestamp = format_time("<p>Revised %Y-%m-%d at %H:%M:%S UTC</p>\n", max_time);
 }
@@ -607,7 +607,7 @@ out << R"(<h1>C++ Standard Library Issues to be moved in [INSERT CURRENT MEETING
 </tr>
 <tr>
 <td align="left">Reply to:</td>
-<td align="left">)" << maintainer_name << R"( &lt;<a href="mailto:)" << maintainer_email << R"(">)" 
+<td align="left">)" << maintainer_name << R"( &lt;<a href="mailto:)" << maintainer_email << R"(">)"
                                                                      << maintainer_email << R"(</a>&gt;</td>
 </tr>
 </table>
@@ -861,4 +861,3 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
    }
 }
 } // close namespace lwg
-

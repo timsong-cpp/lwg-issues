@@ -115,6 +115,15 @@ auto read_issues_from_toc(std::string const & s) -> std::vector<std::tuple<int, 
       throw std::runtime_error{"Unable to find the first (title) row"};
    }
 
+   auto extract_link_text = [&] (std::string desc) mutable {
+      i = s.find("</a>", i);
+      auto j = s.rfind('>', i);
+      if (j == std::string::npos) {
+         throw std::runtime_error{"unable to parse issue "+desc+": can't find beginning bracket"};
+      }
+      return s.substr(j+1, i-j-1);
+   };
+
    // Read all issues in table
    std::vector<std::tuple<int, std::string> > issues;
    for(;;) {
@@ -122,26 +131,15 @@ auto read_issues_from_toc(std::string const & s) -> std::vector<std::tuple<int, 
       if (i == std::string::npos) {
          break;
       }
-      i = s.find("</a>", i);
-      auto j = s.rfind('>', i);
-      if (j == std::string::npos) {
-         throw std::runtime_error{"unable to parse issue number: can't find beginning bracket"};
+      int num = std::stoi(extract_link_text("number"));
+      i += 4;
+      std::string status = extract_link_text("status");
+      if (status == "(i)") {
+        i += 4;
+        status = extract_link_text("status");
       }
-      std::istringstream instr{s.substr(j+1, i-j-1)};
-      int num;
-      instr >> num;
-      if (instr.fail()) {
-         throw std::runtime_error{"unable to parse issue number"};
-      }
-      i = s.find("</a>", i+4);
-      if (i == std::string::npos) {
-         throw std::runtime_error{"partial issue found"};
-      }
-      j = s.rfind('>', i);
-      if (j == std::string::npos) {
-         throw std::runtime_error{"unable to parse issue status: can't find beginning bracket"};
-      }
-      issues.emplace_back(num, s.substr(j+1, i-j-1));
+
+      issues.emplace_back(num, status);
    }
 
    return issues;
