@@ -1,0 +1,308 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3714: Non-single-argument constructors for range adaptors should not be explicit</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3714" href="lwg-active.html#3714">3714.</a> Non-single-argument constructors for range adaptors should not be <tt>explicit</tt></h3>
+<p><b>Section:</b> 26.7.21.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.view">[range.zip.transform.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-06-10 <b>Last modified:</b> 2022-06-11 19:34:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+All C++20 range adaptors' non-single-argument constructors are not declared as <tt>explicit</tt>, which makes 
+the following initialization well-formed:
+</p>
+<blockquote><pre>
+std::vector v{42};
+std::ranges::take_view r1 = {v, 1};
+std::ranges::filter_view r2 = {v, [](int) { return true; }};
+</pre></blockquote>
+<p>
+However, the non-single-argument constructors of C++23 range adaptors, except for <tt>join_with_view</tt>, 
+are all <tt>explicit</tt>, which makes us no longer able to
+</p>
+<blockquote><pre>
+std::ranges::chunk_view r1 = {v, 1}; // <span style="color:red;font-weight:bolder">ill-formed</span>
+std::ranges::chunk_by_view r2 = {v, [](int, int) { return true; }}; // <span style="color:red;font-weight:bolder">ill-formed</span>
+</pre></blockquote>
+<p>
+This seems unnecessary since I don't see the observable benefit of preventing this. In the standard, 
+non-single-argument constructors are rarely specified as <tt>explicit</tt> unless it is really undesirable, 
+I think the above initialization is what the user expects since it's clearly intentional, and I don't see 
+any good reason to reject it from C++23.
+</p>
+<p><i>[2022-06-11; Daniel comments]</i></p>
+
+<p>
+Another possible candidate could be 26.7.9.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.sentinel">[range.take.while.sentinel]</a>'s
+</p>
+<blockquote><pre>
+constexpr explicit <i>sentinel</i>(sentinel_t&lt;<i>Base</i>&gt; end, const Pred* pred);
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.21.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.view">[range.zip.transform.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;copy_constructible F, input_range... Views&gt;
+    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+              regular_invocable&lt;F&amp;, range_reference_t&lt;Views&gt;...&gt; &amp;&amp;
+              <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;Views&gt;...&gt;&gt;
+  class zip_transform_view : public view_interface&lt;zip_transform_view&lt;F, Views...&gt;&gt; {
+    <i>copyable-box</i>&lt;F&gt; <i>fun_</i>;                   <i>// exposition only</i>
+    zip_view&lt;Views...&gt; <i>zip_</i>;                <i>// exposition only</i>
+    [&hellip;]
+  public:
+    zip_transform_view() = default;
+
+    constexpr <del>explicit</del> zip_transform_view(F fun, Views... views);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> zip_transform_view(F fun, Views... views);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt><i>fun_</i></tt> with <tt>std::move(fun)</tt> and <tt><i>zip_</i></tt> 
+with <tt>std::move(views)...</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.23.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.view">[range.adjacent.transform.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, copy_constructible F, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; (N &gt; 0) &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt;&gt;
+  class adjacent_transform_view : public view_interface&lt;adjacent_transform_view&lt;V, F, N&gt;&gt; {
+    <i>copyable-box</i>&lt;F&gt; <i>fun_</i>;                       <i>// exposition only</i>
+    adjacent_view&lt;V, N&gt; <i>inner_</i>;                 <i>// exposition only</i>
+    [&hellip;]
+  public:
+    adjacent_transform_view() = default;
+    constexpr <del>explicit</del> adjacent_transform_view(V base, F fun);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> adjacent_transform_view(V base, F fun);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt><i>fun_</i></tt> with <tt>std::move(fun)</tt> and 
+<tt><i>inner_</i></tt> with <tt>std::move(base)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.24.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.input">[range.chunk.view.input]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;view V&gt;
+    requires input_range&lt;V&gt;
+  class chunk_view : public view_interface&lt;chunk_view&lt;V&gt;&gt; {
+    V <i>base_</i> = V();                                        <i>// exposition only</i>
+    range_difference_t&lt;V&gt; <i>n_</i> = 0;                         <i>// exposition only</i>
+    [&hellip;]
+  public:
+    chunk_view() requires default_initializable&lt;V&gt; = default;
+    constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> <tt>n &gt; 0</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
+<tt><i>n_</i></tt> with <tt>n</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.24.6 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.fwd">[range.chunk.view.fwd]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires forward_range&lt;V&gt;
+  class chunk_view&lt;V&gt; : public view_interface&lt;chunk_view&lt;V&gt;&gt; {
+    V <i>base_</i> = V();                      <i>// exposition only</i>
+    range_difference_t&lt;V&gt; <i>n_</i> = 0;       <i>// exposition only</i>
+    [&hellip;]
+  public:
+    chunk_view() requires default_initializable&lt;V&gt; = default;
+    constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions:</i> <tt>n &gt; 0</tt> is <tt>true</tt>.
+<p/>
+-2- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
+<tt><i>n_</i></tt> with <tt>n</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.slide.view">[range.slide.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;forward_range V&gt;
+    requires view&lt;V&gt;
+  class slide_view : public view_interface&lt;slide_view&lt;V&gt;&gt; {
+    V <i>base_</i> = V();                      <i>// exposition only</i>
+    range_difference_t&lt;V&gt; <i>n_</i> = 0;       <i>// exposition only</i>
+    [&hellip;]
+  public:
+    slide_view() requires default_initializable&lt;V&gt; = default;
+    constexpr <del>explicit</del> slide_view(V base, range_difference_t&lt;V&gt; n);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> slide_view(V base, range_difference_t&lt;V&gt; n);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
+<tt><i>n_</i></tt> with <tt>n</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.26.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.by.view">[range.chunk.by.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, indirect_binary_predicate&lt;iterator_t&lt;V&gt;, iterator_t&lt;V&gt;&gt; Pred&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;Pred&gt;
+  class chunk_by_view : public view_interface&lt;chunk_by_view&lt;V, Pred&gt;&gt; {
+    V <i>base_</i> = V();                                <i>// exposition only</i>
+    <i>copyable-box</i>&lt;Pred&gt; <i>pred_</i> = Pred();            <i>// exposition only</i>
+    [&hellip;]
+  public:
+    chunk_by_view() requires default_initializable&lt;V&gt; &amp;&amp; default_initializable&lt;Pred&gt; = default;
+    constexpr <del>explicit</del> chunk_by_view(V base, Pred pred);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre>
+constexpr <del>explicit</del> chunk_by_view(V base, Pred pred);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
+<tt><i>pred_</i></tt> with <tt>std::move(pred)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

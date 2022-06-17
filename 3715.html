@@ -1,0 +1,175 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3715: view_interface::empty is overconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3715" href="lwg-active.html#3715">3715.</a> <tt>view_interface::empty</tt> is overconstrained</h3>
+<p><b>Section:</b> 26.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-06-12 <b>Last modified:</b> 2022-06-12 18:22:38 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#view.interface.general">active issues</a> in [view.interface.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#view.interface.general">issues</a> in [view.interface.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>view_interface::empty</tt> has the following constraints
+</p>
+<blockquote><pre>
+constexpr bool empty() requires forward_range&lt;D&gt; {
+  return ranges::begin(<i>derived</i>()) == ranges::end(<i>derived</i>());
+}
+</pre></blockquote>
+<p>
+which seems reasonable, since we need to guarantee the equality preservation of the expression 
+<tt>ranges::begin(r)</tt>.
+<p/>
+However, this prevents a more efficient way in some cases, i.e., when <tt>D</tt> models 
+<tt>sized_range</tt>, we only need to determine whether the value of <tt>ranges::size</tt> is <tt>0</tt>.
+Since <tt>sized_range</tt> and <tt>forward_range</tt> are orthogonal to each other, this also 
+prevents any range that models <tt>sized_range</tt> but not <tt>forward_range</tt>.
+<p/>
+Consider:
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;ranges&gt;
+
+int main() {
+  auto f = std::views::iota(0, 5)
+         | std::views::filter([](int) { return true; });
+  auto r = std::views::counted(f.begin(), 4)
+         | std::views::slide(2);
+  std::cout &lt;&lt; (r.size() == 0) &lt;&lt; "\n"; // #1
+  std::cout &lt;&lt; r.empty() &lt;&lt; "\n";       // #2, <span style="color:red;font-weight:bolder">calls r.begin() == r.end()</span>
+}
+</pre></blockquote>
+<p>
+Since <tt>r</tt> models <tt>sized_range</tt>, <tt>#1</tt> will invoke <tt>slide_view::size</tt>, 
+which mainly invokes <tt>ranges::distance</tt>; However, <tt>#2</tt> invokes <tt>view_interface::empty</tt> 
+and evaluates <tt>r.begin() == r.end()</tt>, which constructs the iterator, invokes <tt>ranges::next</tt>, 
+and caches the result, which is unnecessary.
+<p/>
+Also consider:
+</p> 
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;ranges&gt;
+
+int main() {
+  auto i = std::views::istream&lt;int&gt;(std::cin);
+  auto r = std::views::counted(i.begin(), 4)
+         | std::views::chunk(2);
+  std::cout &lt;&lt; (r.size() == 0) &lt;&lt; "\n"; // #1
+  std::cout &lt;&lt; !r &lt;&lt; "\n";              // #2, equivalent to r.size() == 0
+  std::cout &lt;&lt; r.empty() &lt;&lt; "\n";       // #3, <span style="color:red;font-weight:bolder">ill-formed</span>
+}
+</pre></blockquote>
+<p>
+Since <tt>r</tt> is still <tt>sized_range</tt>, <tt>#1</tt> will invoke <tt>chunk_view::size</tt>.
+<tt>#2</tt> is also well-formed since <tt>view_interface::operator bool</tt> only requires the 
+expression <tt>ranges::empty(r)</tt> to be well-formed, which first determines the validity of 
+<tt>r.empty()</tt>, and ends up evaluating <tt>#1</tt>; However, <tt>#3</tt> is ill-formed since 
+<tt>r</tt> is not a <tt>forward_range</tt>. 
+<p/>
+Although we can still use <tt>ranges::empty</tt> to determine whether <tt>r</tt> is empty, this 
+inconsistency of the validity of <tt>!r</tt> and <tt>r.empty()</tt> is quite unsatisfactory.
+</p>
+<p>
+I see no reason to prevent <tt>view_interface::empty</tt> when <tt>D</tt> is <tt>sized_range</tt>, 
+since checking whether <tt>ranges::size(r) == 0</tt> is an intuitive way to check for empty, as 
+<tt>ranges::empty</tt> does.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class D&gt;
+    requires is_class_v&lt;D&gt; &amp;&amp; same_as&lt;D, remove_cv_t&lt;D&gt;&gt;
+  class view_interface {
+  private:
+    constexpr D&amp; <i>derived</i>() noexcept {                  <i>// exposition only</i>
+      return static_cast&lt;D&amp;&gt;(*this);
+    }
+    constexpr const D&amp; <i>derived</i>() const noexcept {      <i>// exposition only</i>
+      return static_cast&lt;const D&amp;&gt;(*this);
+    }
+
+  public:
+    constexpr bool empty() requires <ins>sized_range&lt;D&gt; ||</ins> forward_range&lt;D&gt; {
+      <ins>if constexpr (sized_range&lt;D&gt;)
+        return ranges::size(<i>derived</i>()) == 0;
+      else</ins>
+        return ranges::begin(<i>derived</i>()) == ranges::end(<i>derived</i>());
+    }
+    constexpr bool empty() const requires <ins>sized_range&lt;const D&gt; ||</ins> forward_range&lt;const D&gt; {
+      <ins>if constexpr (sized_range&lt;const D&gt;)
+        return ranges::size(<i>derived</i>()) == 0;
+      else</ins>
+        return ranges::begin(<i>derived</i>()) == ranges::end(<i>derived</i>());
+    }
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
