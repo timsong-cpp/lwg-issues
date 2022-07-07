@@ -1,0 +1,121 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3724: decay-copy should be constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3724" href="lwg-active.html#3724">3724.</a> <tt><i>decay-copy</i></tt> should be constrained</h3>
+<p><b>Section:</b> 16.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.func">[expos.only.func]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hui Xie <b>Opened:</b> 2022-06-23 <b>Last modified:</b> 2022-06-26 08:58:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#expos.only.func">issues</a> in [expos.only.func].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The spec of <tt>views::all</tt> 26.7.5.1 <a href="https://timsong-cpp.github.io/cppwp/range.all.general">[range.all.general]</a> p2 says:
+</p>
+<blockquote><p>
+Given a subexpression <tt>E</tt>, the expression <tt>views::all(E)</tt> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt><i>decay-copy</i>(E)</tt> if the decayed type of E models <tt>view</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+<p>
+If <tt>E</tt> is an lvalue move-only <tt>view</tt>, according to the spec, <tt>views::all(E)</tt> 
+would be expression-equivalent to <tt><i>decay-copy</i>(E)</tt>.
+<p/>
+However, 16.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.func">[expos.only.func]</a> p2 defines <tt><i>decay-copy</i></tt> as follows
+</p>
+<blockquote><pre>
+template&lt;class T&gt; constexpr decay_t&lt;T&gt; <i>decay-copy</i>(T&amp;&amp; v)
+    noexcept(is_nothrow_convertible_v&lt;T, decay_t&lt;T&gt;&gt;)         <i>// exposition only</i>
+  { return std::forward&lt;T&gt;(v); }
+</pre></blockquote>
+<p>
+It is unconstrained.  As a result, for the above example, <tt>views::all(E)</tt> is a well-formed 
+expression and it would only error on the template instantiation of the function body of 
+<tt><i>decay-copy</i></tt>, because <tt>E</tt> is an lvalue of move-only type and not copyable.
+<p/>
+I think this behaviour is wrong, instead, we should make <tt><i>decay-copy(E)</i></tt> ill-formed 
+if it is not copyable, so that <tt>views::all(E)</tt> can be SFINAE friendly.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 16.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.func">[expos.only.func]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The following are defined for exposition only to aid in the specification of the library:
+</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; 
+    <ins>requires convertible_to&lt;T, decay_t&lt;T&gt;&gt;</ins>
+      constexpr decay_t&lt;T&gt; decay-copy(T&amp;&amp; v)
+        noexcept(is_nothrow_convertible_v&lt;T, decay_t&lt;T&gt;&gt;) <i>// exposition only</i>
+      { return std::forward&lt;T&gt;(v); }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

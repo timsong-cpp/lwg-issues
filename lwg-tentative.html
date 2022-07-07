@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2022-06-22 at 11:10:01 UTC</p>
+<p><p>Revised 2022-07-06 at 20:36:49 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="3579" href="3579">3579.</a> Complexity guarantees for <tt>resize()</tt> and <tt>append()</tt> functions across the library</h3>
@@ -113,6 +113,147 @@ Such a paper would need to include discussion on whether
 
 
 <p><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3617" href="3617">3617.</a> <tt>function</tt>/<tt>packaged_task</tt> deduction guides and deducing <tt>this</tt></h3>
+<p><b>Section:</b> 22.10.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a>, 33.10.10.2 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2021-10-09 <b>Last modified:</b> 2022-07-01 19:45:27 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#func.wrap.func.con">active issues</a> in [func.wrap.func.con].</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.wrap.func.con">issues</a> in [func.wrap.func.con].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+With the adoption of deducing <tt>this</tt> (<a href="https://wg21.link/p0847">P0847</a>), we can now create 
+types whose call operator is an explicit object member function, which means that <tt>decltype(&amp;F::operator())</tt> 
+could have pointer-to-function type rather than pointer-to-member-function type. This means that the deduction 
+guides for <tt>std::function</tt> (22.10.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a>) and <tt>std::packaged_task</tt> 
+(33.10.10.2 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a>) will simply fail:
+</p>
+<blockquote><pre>
+struct F {
+  int operator()(this const F&amp;) { return 42; }
+};
+
+std::function g = F{}; // error: decltype(&amp;F::operator()) is not of the form R(G::*)(A...) <i>cv</i> &amp;<sub>opt</sub> noexcept<sub>opt</sub>
+</pre></blockquote>
+<p>
+We should update the deduction guides to keep them in line with the core language.
+</p>
+
+<p><i>[2021-10-14; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.10.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; function(F) -&gt; function&lt;<i>see below</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-16- <i>Constraints:</i> <tt>&amp;F::operator()</tt> is well-formed when treated as an unevaluated operand and 
+<tt>decltype(&amp;F::operator())</tt> is <ins>either</ins> of the form <tt>R(G::*)(A...) <i>cv</i> 
+&amp;<sub>opt</sub> noexcept<sub>opt</sub></tt> <ins>or of the form <tt>R(*)(G <i>cv</i> &amp;<sub>opt</sub>, A...) 
+noexcept<sub>opt</sub></tt></ins> for a <del>class</del> type <tt>G</tt>.
+<p/>
+-17- <i>Remarks:</i> The deduced type is <tt>function&lt;R(A...)&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 33.10.10.2 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; packaged_task(F) -&gt; packaged_task&lt;<i>see below</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-7- <i>Constraints:</i> <tt>&amp;F::operator()</tt> is well-formed when treated as an unevaluated operand and 
+<tt>decltype(&amp;F::operator())</tt> is <ins>either</ins> of the form <tt>R(G::*)(A...) <i>cv</i> 
+&amp;<sub>opt</sub> noexcept<sub>opt</sub></tt> <ins>or of the form <tt>R(*)(G <i>cv</i> &amp;<sub>opt</sub>, A...) 
+  noexcept<sub>opt</sub></tt></ins> for a <del>class</del> type <tt>G</tt>.
+<p/>
+-8- <i>Remarks:</i> The deduced type is <tt>packaged_task&lt;R(A...)&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-10-17; Improved wording based on Tim Song's suggestion]</i></p>
+
+
+<p><i>[2022-07-01; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.10.17.3.2 <a href="https://timsong-cpp.github.io/cppwp/func.wrap.func.con">[func.wrap.func.con]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; function(F) -&gt; function&lt;<i>see below</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-16- <i>Constraints:</i> <tt>&amp;F::operator()</tt> is well-formed when treated as an unevaluated operand and 
+<tt>decltype(&amp;F::operator())</tt> is <ins>either</ins> of the form <tt>R(G::*)(A...) <i>cv</i> 
+&amp;<sub>opt</sub> noexcept<sub>opt</sub></tt> <ins>or of the form <tt>R(*)(G, A...) noexcept<sub>opt</sub></tt></ins> 
+for a <del>class</del> type <tt>G</tt>.
+<p/>
+-17- <i>Remarks:</i> The deduced type is <tt>function&lt;R(A...)&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 33.10.10.2 <a href="https://timsong-cpp.github.io/cppwp/futures.task.members">[futures.task.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; packaged_task(F) -&gt; packaged_task&lt;<i>see below</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-7- <i>Constraints:</i> <tt>&amp;F::operator()</tt> is well-formed when treated as an unevaluated operand and 
+<tt>decltype(&amp;F::operator())</tt> is <ins>either</ins> of the form <tt>R(G::*)(A...) <i>cv</i> 
+&amp;<sub>opt</sub> noexcept<sub>opt</sub></tt> <ins>or of the form <tt>R(*)(G, A...) noexcept<sub>opt</sub></tt></ins> 
+for a <del>class</del> type <tt>G</tt>.
+<p/>
+-8- <i>Remarks:</i> The deduced type is <tt>packaged_task&lt;R(A...)&gt;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 

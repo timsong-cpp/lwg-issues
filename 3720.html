@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3720: Restrict the valid types of arg-id for width and precision in std-format-spec</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3720" href="lwg-active.html#3720">3720.</a> Restrict the valid types of <i>arg-id</i> for <i>width</i> and <i>precision</i> in <i>std-format-spec</i></h3>
+<p><b>Section:</b> 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2022-06-19 <b>Last modified:</b> 2022-06-26 09:56:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Per 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a>/7
+</p>
+<blockquote><p>
+If <tt>{ <i>arg-id<sub>opt</sub></i> }</tt> is used in a <i>width</i> or <i>precision</i>, 
+the value of the corresponding formatting argument is used in its place. If the
+corresponding formatting argument is not of integral type, or its value is negative for 
+<i>precision</i> or non-positive for <i>width</i>, an exception of type <tt>format_error</tt> 
+is thrown.
+</p></blockquote>
+<p>
+The issue is the integral type requirement. The following code is currently valid:
+</p>
+<blockquote><pre>
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', '0');
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', true);
+</pre></blockquote>
+<p>
+The output of the first example depends on the value of <tt>'0'</tt> in the implementation. 
+When a <tt>char</tt> has <tt>signed char</tt> as underlying type negative values are invalid, 
+while the same value would be valid when the underlying type is <tt>unsigned char</tt>.
+For the second example the range of a boolean is very small, so this seems not really useful.
+<p/>
+Currently libc++ rejects these two examples and MSVC STL accepts them.
+The members of the MSVC STL team, I spoke, agree these two cases should be rejected.
+<p/>
+The following integral types are rejected by both libc++ and MSVC STL:
+</p>
+<blockquote><pre>
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', L'0');
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', u'0');
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', U'0');
+std::cout &lt;&lt; std::format("{:*^{}}\n", 'a', u8'0');
+</pre></blockquote>
+<p>
+In order to accept these character types they need to meet the basic formatter 
+requirements per 22.14.5 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/20 and 22.14.5 <a href="https://timsong-cpp.github.io/cppwp/format.functions">[format.functions]</a>/25
+</p>
+<blockquote><p>
+<tt>formatter&lt;remove_cvref_t&lt;T<sub><i>i</i></sub>&gt;, charT&gt;</tt> meets the 
+<i>BasicFormatter</i> requirements (22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a>) for each 
+<tt>T<sub><i>i</i></sub></tt> in <tt>Args</tt>.
+</p></blockquote>
+<p>
+which requires adding the following enabled formatter specializations to
+22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a>.
+</p>
+<blockquote><pre>
+template&lt;&gt; struct formatter&lt;wchar_t, char&gt;;
+
+template&lt;&gt; struct formatter&lt;char8_t, charT&gt;;
+template&lt;&gt; struct formatter&lt;char16_t, charT&gt;;
+template&lt;&gt; struct formatter&lt;char32_t, charT&gt;;
+</pre></blockquote>
+<p>
+Note, that the specialization <tt>template&lt;&gt; struct formatter&lt;char, wchar_t&gt;</tt>
+is already required by the Standard.
+<p/>
+Not only do they need to be added, but it also needs to be specified how
+they behave when their value is not in the range of representable values
+for <tt>charT</tt>.
+<p/>
+Instead of requiring these specializations, I propose to go the other
+direction and limit the allowed types to signed and unsigned integers.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-7- If <tt>{ <i>arg-id<sub>opt</sub></i> }</tt> is used in a <i>width</i> or <i>precision</i>, 
+the value of the corresponding formatting argument is used in its place. If the corresponding 
+formatting argument is not of <del>integral</del><ins>signed or unsigned integer</ins> type, 
+or its value is negative for <i>precision</i> or non-positive for <i>width</i>, an exception of 
+type <tt>format_error</tt> is thrown.
+</p>
+</blockquote>
+</li>
+
+<li><p>Add a new paragraph to C.1.5 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp20.utilities">[diff.cpp20.utilities]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins><b>Affected subclause:</b> 22.14 <a href="https://timsong-cpp.github.io/cppwp/format">[format]</a></ins>
+<p/>
+<ins><b>Change:</b> Requirement changes of <i>arg-id</i> of the <i>width</i> and <i>precision</i>
+fields of <i>std-format-spec</i>. <i>arg-id</i> now requires a signed or unsigned integer type instead 
+of an integral type.</ins>
+<p/>
+<ins><b>Rationale:</b> Avoid types that are not useful and the need to specify enabled
+  formatter specializations for all character types.</ins>
+<p/>
+<ins><b>Effect on original feature:</b> Valid C++ 2020 code that passes a boolean or character type 
+as <i>arg-id</i> becomes invalid. For example:</ins>
+</p>
+<blockquote><pre>
+<ins>std::format("{:*^{}}", "", true); <i>// ill-formed, previously returned "*"</i></ins>
+</pre></blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
