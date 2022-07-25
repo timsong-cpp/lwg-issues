@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3731: zip_view and adjacent_view are underconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3731" href="lwg-active.html#3731">3731.</a> <tt>zip_view</tt> and <tt>adjacent_view</tt> are underconstrained</h3>
+<p><b>Section:</b> 26.7.20.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.view">[range.zip.view]</a>, 26.7.22.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.view">[range.adjacent.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-04 <b>Last modified:</b> 2022-07-10 09:27:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Both <tt>zip_view::<i>iterator</i></tt>'s (26.7.20.3 <a href="https://timsong-cpp.github.io/cppwp/range.zip.iterator">[range.zip.iterator]</a>) and 
+<tt>adjacent_view::<i>iterator</i></tt>'s (26.7.22.3 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.iterator">[range.adjacent.iterator]</a>) 
+<tt>operator*</tt> have similar <i>Effects:</i> elements:
+</p>
+<blockquote><pre>
+return <i>tuple-transform</i>([](auto&amp; i) -&gt; decltype(auto) { return *i; }, <i>current_</i>);
+</pre></blockquote>
+<p>
+where <tt><i>tuple-transform</i></tt> is defined as:
+</p>
+<blockquote><pre>
+template&lt;class F, class Tuple&gt;
+constexpr auto <i>tuple-transform</i>(F&amp;&amp; f, Tuple&amp;&amp; tuple) { <i>// exposition only</i>
+  return apply([&amp;]&lt;class... Ts&gt;(Ts&amp;&amp;... elements) {
+    return <i>tuple-or-pair</i>&lt;invoke_result_t&lt;F&amp;, Ts&gt;...&gt;(
+      invoke(f, std::forward&lt;Ts&gt;(elements))...
+    );
+  }, std::forward&lt;Tuple&gt;(tuple));
+}
+</pre></blockquote>
+<p>
+That is, <tt>zip_view::<i>iterator</i></tt> will invoke the <tt>operator*</tt> of each iterator of 
+<tt>Views</tt> and return a <tt>tuple</tt> containing its <tt>reference</tt>.
+<p/>
+This is not a problem when the <tt>reference</tt> of iterators is actually the reference type. However, 
+when the <tt>operator*</tt> returns a prvalue of non-movable type, <tt><i>tuple-transform</i></tt> will 
+be ill-formed since there are no suitable constructors for <tt>tuple</tt>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct NonMovable {
+  NonMovable() = default;
+  NonMovable(NonMovable&amp;&amp;) = delete;
+};
+
+auto r = std::views::iota(0, 5)
+       | std::views::transform([](int) { return NonMovable{}; });
+auto z = std::views::zip(r);
+auto f = *z.begin(); // <span style="color:red;font-weight:bolder">hard error</span>
+
+</pre></blockquote>
+<p>
+We should constrain the <tt>range_reference_t</tt> of the underlying range to be <tt>move_constructible</tt> 
+when it is not a reference type, which also solves similar issues in <tt>zip_view::<i>iterator</i></tt> and 
+<tt>adjacent_view::<i>iterator</i></tt>'s <tt>operator[]</tt> and <tt>iter_move</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  <i>// 26.7.20 <a href="https://timsong-cpp.github.io/cppwp/range.zip">[range.zip]</a>, zip view</i>
+  <ins>template&lt;class Ref&gt;
+    concept <i>tuple-constructible-reference</i> = <i>see below</i>; <i>// exposition only</i></ins>
+
+  template&lt;input_range... Views&gt;
+    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) <ins>&amp;&amp;
+             (<i>tuple-constructible-reference</i>&lt;range_reference_t&lt;Views&gt;&gt; &amp;&amp; ...)</ins>
+  class zip_view;
+
+  [&hellip;]
+
+  <i>// 26.7.22 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent">[range.adjacent]</a>, adjacent view</i>
+  template&lt;forward_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; (N &gt; 0) <ins>&amp;&amp; 
+             <i>tuple-constructible-reference</i>&lt;range_reference_t&lt;V&gt;&gt;</ins>
+  class adjacent_view;
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+
+
+<li><p>Modify 26.7.20.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.view">[range.zip.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  <ins>template&lt;class Ref&gt;
+    concept <i>tuple-constructible-reference</i> =            <i>// exposition only</i>
+      is_reference_v&lt;Ref&gt; || move_constructible&lt;Ref&gt;;</ins>
+  [&hellip;]
+  template&lt;input_range... Views&gt;
+    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) <ins>&amp;&amp;
+             (<i>tuple-constructible-reference</i>&lt;range_reference_t&lt;Views&gt;&gt; &amp;&amp; ...)</ins>
+  class zip_view : public view_interface&lt;zip_view&lt;Views...&gt;&gt; {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.22.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.view">[range.adjacent.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; (N &gt; 0) <ins>&amp;&amp; 
+             <i>tuple-constructible-reference</i>&lt;range_reference_t&lt;V&gt;&gt;</ins>
+  class adjacent_view : public view_interface&lt;adjacent_view&lt;V, N&gt;&gt; {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

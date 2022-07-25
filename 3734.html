@@ -1,0 +1,207 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3734: Inconsistency in inout_ptr and out_ptr for empty case</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3734" href="lwg-active.html#3734">3734.</a> Inconsistency in <tt>inout_ptr</tt> and <tt>out_ptr</tt> for empty case</h3>
+<p><b>Section:</b> 20.3.4.1 <a href="https://timsong-cpp.github.io/cppwp/out.ptr.t">[out.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Doug Cook <b>Opened:</b> 2022-07-11 <b>Last modified:</b> 2022-07-16 11:52:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>out_ptr</tt> and <tt>inout_ptr</tt> are inconsistent when a pointer-style function returns 
+<tt>nullptr</tt>.
+</p>
+<ul>
+<li><p><tt>out_ptr</tt> leaves the stale value in <tt>smart</tt> (not the value returned by the pointer-style function).</p></li>
+<li><p><tt>inout_ptr</tt> (as resolved by LWG <a href="3594">3594</a>) leaves <tt>nullptr</tt> in <tt>smart</tt> (the value 
+returned by the pointer-style function).</p></li>
+</ul>
+<p>
+Assume we have the following pointer-style functions that return <tt>nullptr</tt> in case of failure:
+</p>
+<blockquote><pre>
+void ReplaceSomething(/*INOUT*/ int** pp) {
+  delete *pp;
+  *pp = nullptr;
+  return; // <span style="color:red;font-weight:bolder">Failure!</span>
+} 
+
+void GetSomething(/*OUT*/ int** pp) {
+  *pp = nullptr;
+  return; // <span style="color:red;font-weight:bolder">Failure!</span>
+}
+</pre></blockquote>
+<p>
+In the scenario that led to the creation of issue LWG <a href="3594">3594</a>:
+</p>
+<blockquote><pre>
+// Before the call, inout contains a stale value.
+auto inout = std::make_unique&lt;int&gt;(1);
+ReplaceSomething(std::inout_ptr(inout));
+// (1) If ReplaceSomething failed (returned nullptr), what does inout contain?
+</pre></blockquote>
+<p>
+Assuming LWG <a href="3594">3594</a> is resolved as suggested, <tt>inout</tt> will be empty. 
+(The original <a href="https://wg21.link/N4901">N4901</a> text allows <tt>inout</tt> to be either empty or 
+to hold a pointer to already-deleted memory.) Using the resolution suggested by 
+LWG <a href="3594">3594</a>, it expands to something like the following (simplified to 
+ignore exceptions and opting to perform the <tt>release()</tt> before the 
+<tt>ReplaceSomething()</tt> operation): 
+</p>
+<blockquote><pre>
+// Before the call, inout contains a stale value.
+auto inout = std::make_unique&lt;int&gt;(1);
+int* p = inout.release();
+ReplaceSomething(&amp;p);
+if (p) {
+  inout.reset(p);
+}
+// (1) If ReplaceSomething failed (returned nullptr), inout contains nullptr.
+</pre></blockquote>
+<p>
+This behavior seems reasonable.
+<p/>
+Now consider the corresponding scenario with <tt>out_ptr</tt>:
+</p>
+<blockquote><pre>
+// Before the call, out contains a stale value.
+auto out = std::make_unique&lt;int&gt;(2);
+GetSomething(std::out_ptr(out));
+// (2) If GetSomething failed (returned nullptr), what does out contain? 
+</pre></blockquote>
+<p>
+Based on <a href="https://wg21.link/N4901">N4901</a>, <tt>out</tt> contains the stale value (from 
+<tt>make_unique</tt>), not the <tt>nullptr</tt> value returned by <tt>GetSomething()</tt>. 
+The <a href="https://wg21.link/N4901">N4901</a> model (simplified to ignore exceptions) expands to the following:
+</p>
+<blockquote><pre>
+// Before the call, out contains a stale value.
+auto out = std::make_unique&lt;int&gt;(2);
+int* p{};
+GetSomething(&amp;p);
+if (p) {
+  out.reset(p);
+}
+// (2) If GetSomething failed (returned nullptr), out contains a pointer to "2".
+</pre></blockquote>
+<p>
+This behavior seems incorrect to me. It is inconsistent with the behavior of <tt>inout_ptr</tt> 
+and it is inconsistent with my expectation that <tt>out</tt> should contain the value returned 
+by <tt>GetSomething()</tt>, even if that value is <tt>nullptr</tt>. Intuitively, I expect it to 
+behave as if the <tt>out.reset(p)</tt> were unconditional.
+<p/>
+The <tt>reset(p)</tt> is conditional as an optimization for cases where <tt>reset</tt> is 
+non-trivial. For example, <tt>shared_ptr</tt>'s <tt>reset(p)</tt> requires the allocation of 
+a control block even if <tt>p</tt> is <tt>nullptr</tt>. As such, simply making the <tt>reset</tt> 
+unconditional may be sub-optimal.
+<p/>
+I see two primary options for making <tt>out_ptr</tt>'s behavior consistent with <tt>inout_ptr</tt>:
+</p> 
+<ul>
+<li><p>Perform an unconditional <tt>out.reset()</tt> or <tt>out = Smart()</tt> in the <tt>out_ptr_t</tt> 
+constructor.</p></li>
+<li><p>Add an else clause to the if statement, containing <tt>out.reset()</tt> or <tt>out = Smart()</tt>.</p></li>
+</ul>
+<p>
+I note that these solutions do not make use of the additional <tt>args...</tt>, leaving the 
+<tt>out</tt> pointer in an empty state. This is analogous to the corresponding state in the similar 
+<tt>inout</tt> scenario where the <tt>inout</tt> pointer is left empty as a result of the call to 
+<tt>smart.release()</tt>.
+<p/>
+I favor the first resolution, freeing any existing value in the <tt>out_ptr_t</tt> constructor.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.3.4.1 <a href="https://timsong-cpp.github.io/cppwp/out.ptr.t">[out.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+explicit out_ptr_t(Smart&amp; smart, Args... args);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Initializes <tt>s</tt> with <tt>smart</tt>, <tt>a</tt> with 
+<tt>std::forward&lt;Args&gt;(args)...</tt>, and value-initializes 
+<tt>p</tt>. <ins>Then, equivalent to:</ins>
+</p>
+<ul>
+<li><ins>(6.1) &mdash;</ins><blockquote><pre><ins>s.reset();</ins></pre></blockquote>
+<p><ins>if the expression <tt>s.reset()</tt> is well-formed;</ins></p></li>
+<li><p><ins>(6.2) &mdash; otherwise,</ins></p>
+<blockquote><pre>
+<ins>s = Smart();</ins>
+</pre></blockquote>
+<p><ins>if <tt>is_constructible_v&lt;Smart&gt;</tt> is <tt>true</tt>;</ins></p></li>
+<li><p><ins>(6.3) &mdash; otherwise, the program is ill-formed.</ins></p></li>
+</ul>
+<p>
+-7- [<i>Note 2</i>: The constructor is not <tt>noexcept</tt> to allow for a variety of 
+non-terminating and safe implementation strategies. For example, an implementation can 
+allocate a <tt>shared_ptr</tt>'s internal node in the constructor and let 
+implementation-defined exceptions escape safely. The destructor can then move the allocated 
+control block in directly and avoid any other exceptions. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+
+</ol>
+
+
+
+
+
+</body>
+</html>

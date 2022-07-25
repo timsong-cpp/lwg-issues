@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3739: chunk_view::size should preserve the signedness of the size of the underlying range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3739" href="lwg-active.html#3739">3739.</a> <tt>chunk_view::size</tt> should preserve the signedness of the size of the underlying range</h3>
+<p><b>Section:</b> 26.7.24.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.input">[range.chunk.view.input]</a>, 26.7.24.6 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.fwd">[range.chunk.view.fwd]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-15 <b>Last modified:</b> 2022-07-17 12:28:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.chunk.view.input">issues</a> in [range.chunk.view.input].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the <i>Effects</i> of <tt>chunk_view::size</tt> simply returns 
+<tt><i>to-unsigned-like</i>(<i>div-ceil</i>(ranges::distance(<i>base_</i>), <i>n_</i>))</tt>, 
+where <tt><i>div-ceil</i></tt> is defined in 26.7.24.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.input">[range.chunk.view.input]</a> as:
+</p>
+<pre>
+template&lt;class I&gt;
+constexpr I <i>div-ceil</i>(I num, I denom) { // <i>exposition only</i>
+  I r = num / denom;
+  if (num % denom)
+    ++r;
+  return r;
+}
+</pre>
+<p>
+There are two problems here. First, for the const version of <tt>chunk_view::size</tt>, 
+the types of <tt>ranges::distance(<i>base_</i>)</tt> and <tt><i>n_</i></tt> are 
+<tt>range_difference_t&lt;const V&gt;</tt> and 
+<tt>range_difference_t&lt;V&gt;</tt> respectively,   and the two parameters of 
+<tt><i>div-ceil</i></tt> have the same type <tt>I</tt>.
+Given that the standard does not guarantee that <tt>V</tt> and <tt>const V</tt> must have 
+the same <tt>difference_type</tt>,   this makes the <tt><i>div-ceil</i></tt>'s template 
+deduction fail when the two are different.
+<p/>
+Second, the standard does not guarantee that <tt>ranges::size</tt> must return an 
+unsigned type, but here we use <tt><i>to-unsigned-like</i></tt> to unconditionally 
+convert the return type of <tt>chunk_view::size</tt> to an unsigned type,
+which is inconsistent with the behavior of other range adaptors such as 
+<tt>take_view</tt> and <tt>drop_view</tt>.
+<p/>
+We should try to preserve the characteristics of the <tt>range_size_t</tt> of the underlying 
+range as much as possible.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.24.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.input">[range.chunk.view.input]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr auto size() requires sized_range&lt;V&gt;;
+constexpr auto size() const requires sized_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+<pre>
+return <del><i>to-unsigned-like</i>(</del><i>div-ceil</i>(ranges::<ins>size</ins><del>distance</del>(<i>base_</i>), <ins>static_cast&lt;decltype(ranges::size(<i><i>base_</i></i>))&gt;(</ins><i>n_</i>));
+</pre>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.24.6 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.fwd">[range.chunk.view.fwd]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr auto size() requires sized_range&lt;V&gt;;
+constexpr auto size() const requires sized_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Equivalent to:
+<pre>
+return <del><i>to-unsigned-like</i>(</del><i>div-ceil</i>(ranges::<ins>size</ins><del>distance</del>(<i>base_</i>), <ins>static_cast&lt;decltype(ranges::size(<i><i>base_</i></i>))&gt;(</ins><i>n_</i>));
+</pre>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

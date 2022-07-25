@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3735: views::adjacent&lt;0&gt; should be prohibited</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3735" href="lwg-active.html#3735">3735.</a> <tt>views::adjacent&lt;0&gt;</tt> should be prohibited</h3>
+<p><b>Section:</b> 26.7.22.1 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.overview">[range.adjacent.overview]</a>, 26.7.23.1 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.overview">[range.adjacent.transform.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-13 <b>Last modified:</b> 2022-07-16 12:18:12 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>views::adjacent</tt> is very similar to <tt>views::slide</tt>, except that the window size 
+<tt>N</tt> is given at compile time.
+<p/>
+Since the case where <tt>N</tt> is <tt>0</tt> does not make sense for <tt>slide_view</tt>, 
+LWG <a href="3711">3711</a> and LWG <a href="3712">3712</a> added preconditions to the constructor and 
+removed the default constructor, respectively.
+<p/>
+But for <tt>views::adjacent</tt>, we can still specify <tt>N</tt> to be <tt>0</tt>. According to 
+the description of 26.7.22.1 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.overview">[range.adjacent.overview]</a>, 
+it will return <tt>views::empty&lt;tuple&lt;&gt;&gt;</tt> as in the case of <tt>views::zip</tt> 
+applied to an empty pack. And for <tt>views::adjacent_transform&lt;0&gt;(E, F)</tt>, it will return 
+<tt>views::zip_transform(F)</tt> and eventually return <tt>empty_view</tt> for some type.
+<p/>
+This doesn't seem reasonable to me. The reason why <tt>views::zip</tt> can return 
+<tt>views::empty&lt;tuple&lt;&gt;&gt;</tt> is that the parameter pack can indeed be empty, so 
+this still makes some sense. However, there is no meaningful sense for the word "adjacent" when 
+<tt>N</tt> is <tt>0</tt>.
+<p/>
+I don't see any observable value in allowing <tt>views::adjacent&lt;0&gt;</tt>, we should disable 
+it for consistency with <tt>views::slide</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.22.1 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.overview">[range.adjacent.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <tt>views::adjacent&lt;N&gt;</tt> denotes a range adaptor object 
+(26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given a subexpression <tt>E</tt> and a constant expression 
+<tt>N</tt>, the expression <tt>views::adjacent&lt;N&gt;(E)</tt> is expression-equivalent to:
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) &mdash; <del><tt>((void)E, auto(views::empty&lt;tuple&lt;&gt;&gt;))</tt></del><ins>I</ins><del>i</del>f 
+<tt>N</tt> is equal to <tt>0</tt>, <ins><tt>views::adjacent&lt;N&gt;(E)</tt> is ill-formed.</ins></p></li>
+<li><p>(2.2) &mdash; <ins>O</ins><del>o</del>therwise, <tt>adjacent_view&lt;views::all_t&lt;decltype((E))&gt;, N&gt;(E)</tt>.</p></li>
+</ol></blockquote>
+</li>
+
+<li><p>Modify 26.7.23.1 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.overview">[range.adjacent.transform.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <tt>views::adjacent_transform&lt;N&gt;</tt> denotes a range adaptor object 
+(26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given subexpressions <tt>E</tt> and <tt>F</tt> and a constant
+expression <tt>N</tt>:
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) &mdash; If <tt>N</tt> is equal to <tt>0</tt>, <tt>views::adjacent_transform&lt;N&gt;(E, F)</tt> 
+is <ins>ill-formed</ins><del>expression-equivalent to <tt>((void)E, views::zip_transform(F))</tt>, except that 
+the evaluations of <tt>E</tt> and <tt>F</tt> are indeterminately sequenced</del>.</p></li>
+<li><p>(2.2) &mdash; Otherwise, the expression <tt>views::adjacent_transform&lt;N&gt;(E, F)</tt> is 
+expression-equivalent to <tt>adjacent_transform_view&lt;views::all_t&lt;decltype((E))&gt;, 
+decay_t&lt;decltype((F))&gt;, N&gt;(E, F)</tt>.</p></li>
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

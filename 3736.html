@@ -1,0 +1,110 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3736: move_iterator missing disable_sized_sentinel_for specialization</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3736" href="lwg-active.html#3736">3736.</a> <tt>move_iterator</tt> missing <tt>disable_sized_sentinel_for</tt> specialization</h3>
+<p><b>Section:</b> 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-14 <b>Last modified:</b> 2022-07-16 12:31:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.synopsis">issues</a> in [iterator.synopsis].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Since <tt>reverse_iterator::operator-</tt> is not constrained, the standard adds a 
+<tt>disable_sized_sentinel_for</tt> specialization for it to avoid situations where the 
+underlying iterator can be subtracted making <tt>reverse_iterator</tt> accidentally model 
+<tt>sized_sentinel_for</tt>.
+<p/>
+However, given that <tt>move_iterator::operator-</tt> is also unconstrained and the standard 
+does not have the <tt>disable_sized_sentinel_for</tt> specialization for it, this makes 
+<tt>subrange&lt;move_iterator&lt;I&gt;, move_iterator&lt;I&gt;&gt;</tt> unexpectedly satisfy 
+<tt>sized_range</tt> and incorrectly use <tt>I::operator-</tt> to get size when <tt>I</tt> 
+can be subtracted but not modeled <tt>sized_sentinel_for&lt;I&gt;</tt>.
+<p/>
+In addition, since <a href="https://wg21.link/P2520">P2520</a> makes <tt>move_iterator</tt> no longer just <tt>input_iterator</tt>, 
+<tt>ranges::size</tt> can get the size of the range by subtracting two <tt>move_iterator</tt> pairs,
+this also makes <tt>r | views::as_rvalue</tt> may satisfy <tt>sized_range</tt> when neither <tt>r</tt> nor 
+<tt>r | views::reverse</tt> is <tt>sized_range</tt>.
+<p/>
+We should add a <tt>move_iterator</tt> version of the <tt>disable_sized_sentinel_for</tt> 
+specialization to the standard to avoid the above situation.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;class Iterator&gt;
+    constexpr move_iterator&lt;Iterator&gt; make_move_iterator(Iterator i);
+
+  <ins>template&lt;class Iterator1, class Iterator2&gt;
+      requires (!sized_sentinel_for&lt;Iterator1, Iterator2&gt;)
+    inline constexpr bool disable_sized_sentinel_for&lt;move_iterator&lt;Iterator1&gt;,
+                                                     move_iterator&lt;Iterator2&gt;&gt; = true;</ins>
+
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

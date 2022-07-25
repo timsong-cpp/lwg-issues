@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3733: ranges::to misuses cpp17-input-iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3733" href="lwg-active.html#3733">3733.</a> <tt>ranges::to</tt> misuses <tt><i>cpp17-input-iterator</i></tt></h3>
+<p><b>Section:</b> 26.5.6.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> S. B. Tam <b>Opened:</b> 2022-07-10 <b>Last modified:</b> 2022-07-10 18:25:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.utility.conv.to">active issues</a> in [range.utility.conv.to].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.utility.conv.to">issues</a> in [range.utility.conv.to].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>ranges::to</tt> uses <tt><i>cpp17-input-iterator</i>&lt;iterator_t&lt;R&gt;&gt;</tt> to check 
+whether an iterator is a <i>Cpp17InputIterator</i>, which misbehaves if there is a 
+<tt>std::iterator_traits</tt> specialization for that iterator (e.g. if the iterator is a 
+<tt>std::common_iterator</tt>).
+</p>
+<blockquote><pre>
+struct MyContainer {
+    template&lt;class Iter&gt;
+    MyContainer(Iter, Iter);
+
+    char* begin();
+    char* end();
+};
+
+auto nul_terminated = std::views::take_while([](char ch) { return ch != '\0'; });
+auto c = nul_terminated("") | std::views::common | std::ranges::to&lt;MyContainer&gt;();  // <span style="color:red;font-weight:bolder">error</span>
+</pre></blockquote>
+<p>
+I believe that <tt>ranges::to</tt> should instead use 
+<tt>derived_from&lt;typename iterator_traits&lt;iterator_t&lt;R&gt;&gt;::iterator_category, input_iterator_tag&gt;</tt>, 
+which correctly detects the iterator category of a <tt>std::common_iterator</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.6.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, input_range R, class... Args&gt; requires (!view&lt;C&gt;)
+  constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns</i>: An object of type <tt>C</tt> constructed from the elements of <tt>r</tt> in the following manner:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; If <tt>convertible_to&lt;range_reference_t&lt;R&gt;, range_value_t&lt;C&gt;&gt;</tt> is <tt>true</tt>:</p></li>
+<ol style="list-style-type: none">
+<li><p>(1.1.1) &mdash; If <tt>constructible_from&lt;C, R, Args...&gt;</tt> is <tt>true</tt>:</p>
+<blockquote><tt>C(std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</tt></blockquote></li>
+<li><p>(1.1.2) &mdash; Otherwise, if <tt>constructible_from&lt;C, from_range_t, R, Args...&gt;</tt> is <tt>true</tt>:</p>
+<blockquote><tt>C(from_range, std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</tt></blockquote></li>
+<li><p>(1.1.3) &mdash; Otherwise, if</p></li>
+<ol style="list-style-type: none">
+<li><p>(1.1.3.1) &mdash; <tt>common_range&lt;R&gt;</tt> is <tt>true</tt>,</p></li>
+<li><p>(1.1.3.2) &mdash; <tt><del><i>cpp17-input-iterator</i></del><ins>derived_from&lt;typename 
+iterator_traits</ins>&lt;iterator_t&lt;R&gt;&gt;<ins>::iterator_category, input_iterator_tag&gt;</ins></tt> 
+is <tt>true</tt>, and</p></li>
+<li><p>(1.1.3.3) &mdash; <tt>constructible_from&lt;C, iterator_t&lt;R&gt;, sentinel_t&lt;R&gt;, Args...&gt;</tt> is <tt>true</tt>:</p>
+<blockquote><tt>C(ranges::begin(r), ranges::end(r), std::forward&lt;Args&gt;(args)...)</tt></blockquote></li>
+</ol>
+<li><p>(1.1.4) &mdash; Otherwise, if</p></li>
+<ol style="list-style-type: none">
+<li><p>(1.1.4.1) &mdash; <tt>constructible_from&lt;C, Args...&gt;</tt> is <tt>true</tt>, and</p></li>
+<li><p>(1.1.4.2) &mdash; <tt><i>container-insertable</i>&lt;C, range_reference_t&lt;R&gt;&gt;</tt> is <tt>true</tt>:</p>
+<blockquote><pre>
+[&hellip;]
+</pre></blockquote></li>
+</ol>
+</ol>
+<li><p>(1.2) &mdash; Otherwise, if <tt>input_range&lt;range_reference_t&lt;R&gt;&gt;</tt> is <tt>true</tt>:</p>
+<blockquote><pre>
+to&lt;C&gt;(r | views::transform([](auto&amp;&amp; elem) {
+  return to&lt;range_value_t&lt;C&gt;&gt;(std::forward&lt;decltype(elem)&gt;(elem));
+}), std::forward&lt;Args&gt;(args)...);
+</pre></blockquote></li>
+<li><p>(1.3) &mdash; Otherwise, the program is ill-formed.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+
+</ol>
+
+
+
+
+
+</body>
+</html>
