@@ -1,0 +1,159 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3747: ranges::uninitialized_copy_n, ranges::uninitialized_move_n, and 
+ranges::destroy_n should use std::move</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3747" href="lwg-active.html#3747">3747.</a> <tt>ranges::uninitialized_copy_n</tt>, <tt>ranges::uninitialized_move_n</tt>, and 
+<tt>ranges::destroy_n</tt> should use <tt>std::move</tt></h3>
+<p><b>Section:</b> 27.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a>, 27.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a>, 27.11.9 <a href="https://timsong-cpp.github.io/cppwp/specialized.destroy">[specialized.destroy]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-28 <b>Last modified:</b> 2022-07-30 14:11:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#uninitialized.copy">issues</a> in [uninitialized.copy].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>ranges::uninitialized_copy_n</tt> has the following equivalent <i>Effects</i>:
+</p>
+<blockquote><pre>
+auto t = uninitialized_copy(counted_iterator(ifirst, n),
+                            default_sentinel, ofirst, olast);
+return {std::move(t.in).base(), t.out};
+</pre></blockquote>
+<p>
+Given that <tt>ifirst</tt> is just an <tt>input_iterator</tt> which is not guaranteed to be <tt>copyable</tt>, 
+we should move it into <tt>counted_iterator</tt>. The same goes for <tt>ranges::uninitialized_move_n</tt> 
+and <tt>ranges::destroy_n</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.11.5 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.copy">[uninitialized.copy]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>nothrow-forward-iterator</i> O, <i>nothrow-sentinel-for</i>&lt;O&gt; S&gt;
+    requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_reference_t&lt;I&gt;&gt;
+    uninitialized_copy_n_result&lt;I, O&gt;
+      uninitialized_copy_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-9- <i>Preconditions</i>: [<tt>ofirst, olast</tt>) does not overlap with <tt>ifirst +</tt> [<tt>0, n</tt>) .
+</p>
+<p>
+-10- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto t = uninitialized_copy(counted_iterator(<ins>std::move(</ins>ifirst<ins>)</ins>, n),
+                            default_sentinel, ofirst, olast);
+return {std::move(t.in).base(), t.out};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;input_iterator I, <i>nothrow-forward-iterator</i> O, <i>nothrow-sentinel-for</i>&lt;O&gt; S&gt;
+    requires constructible_from&lt;iter_value_t&lt;O&gt;, iter_rvalue_reference_t&lt;I&gt;&gt;
+    uninitialized_move_n_result&lt;I, O&gt;
+      uninitialized_move_n(I ifirst, iter_difference_t&lt;I&gt; n, O ofirst, S olast);
+}
+</pre>
+<blockquote>
+<p>
+-8- <i>Preconditions</i>: [<tt>ofirst, olast</tt>) does not overlap with <tt>ifirst +</tt> [<tt>0, n</tt>) .
+</p>
+<p>
+-9- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto t = uninitialized_move(counted_iterator(<ins>std::move(</ins>ifirst<ins>)</ins>, n),
+                            default_sentinel, ofirst, olast);
+return {std::move(t.in).base(), t.out};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.11.9 <a href="https://timsong-cpp.github.io/cppwp/specialized.destroy">[specialized.destroy]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace ranges {
+  template&lt;<i>nothrow-input-iterator</i> I&gt;
+    requires destructible&lt;iter_value_t&lt;I&gt;&gt;
+    constexpr I destroy_n(I first, iter_difference_t&lt;I&gt; n) noexcept;
+}
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+return destroy(counted_iterator(<ins>std::move(</ins>first<ins>)</ins>, n), default_sentinel).base();
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

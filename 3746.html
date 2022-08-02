@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3746: optional's spaceship with U with a type derived from optional 
+causes infinite constraint meta-recursion</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3746" href="lwg-active.html#3746">3746.</a> <tt>optional</tt>'s spaceship with <tt>U</tt> with a type derived from <tt>optional</tt> 
+causes infinite constraint meta-recursion</h3>
+<p><b>Section:</b> 22.5.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2022-07-25 <b>Last modified:</b> 2022-07-30 17:05:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.comp.with.t">issues</a> in [optional.comp.with.t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+What ends up happening is that the constraints of 
+<tt>operator&lt;=&gt;(const optional&lt;T&gt;&amp;, const U&amp;)</tt> end up 
+in <tt>three_way_comparable_with</tt>, and then in <tt><i>partially-ordered-with</i></tt>, 
+and the expressions there end up performing a conversion from <tt>U</tt> to an 
+<tt>optional</tt>, and we end up instantiating the same <tt>operator&lt;=&gt;</tt>
+again, evaluating its constraints again, until the compiler bails out.
+<p/>
+See an <a href="https://godbolt.org/z/T7f4sr8jv">online example here</a>.
+<p/>
+All implementations end up with infinite meta-recursion.
+<p/>
+The solution to the problem is to stop the meta-recursion by constraining
+the spaceship with <tt>U</tt> so that <tt>U</tt> is not publicly and unambiguously derived
+from a specialization of optional, SFINAEing that candidate out, and letting 
+22.5.6 <a href="https://timsong-cpp.github.io/cppwp/optional.relops">[optional.relops]</a>/20 perform the comparison instead.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> This proposed wording removes the only use of <tt><i>is-optional</i></tt>. ]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 22.5.2 <a href="https://timsong-cpp.github.io/cppwp/optional.syn">[optional.syn]</a>, header <tt>&lt;optional&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std {
+  <i>// 22.5.3 <a href="https://timsong-cpp.github.io/cppwp/optional.optional">[optional.optional]</a>, class template optional</i>
+  template&lt;class T&gt;
+    class optional;
+
+  <del>template&lt;class T&gt;
+    constexpr bool <i>is-optional</i> = false; <i>// exposition only</i>
+  template&lt;class T&gt;
+    constexpr bool <i>is-optional</i>&lt;optional&lt;T&gt;&gt; = true; <i>// exposition only</i></del>
+  <ins>template&lt;class T&gt;
+    concept <i>is-derived-from-optional</i> = requires(const T&amp; t) { <i>// exposition only</i>
+      []&lt;class U&gt;(const optional&lt;U&gt;&amp;){ }(t);
+    };</ins>
+  [&hellip;]
+  <i>// 22.5.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a>, comparison with T</i>
+  [&hellip;]
+  template&lt;class T, class U&gt; constexpr bool operator&gt;=(const T&amp;, const optional&lt;U&gt;&amp;);
+  template&lt;class T, class U&gt; requires (!<i>is-<ins>derived-from-</ins>optional</i>&lt;U&gt;) &amp;&amp; three_way_comparable_with&lt;T, U&gt;
+    constexpr compare_three_way_result_t&lt;T, U&gt;
+      operator&lt;=&gt;(const optional&lt;T&gt;&amp;, const U&amp;);
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.5.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class U&gt; requires (!<i>is-<ins>derived-from-</ins>optional</i>&lt;U&gt;) &amp;&amp; three_way_comparable_with&lt;T, U&gt;
+  constexpr compare_three_way_result_t&lt;T, U&gt;
+    operator&lt;=&gt;(const optional&lt;T&gt;&amp;, const U&amp;);
+</pre>
+<blockquote>
+<p>
+-25- <i>Effects:</i> Equivalent to: <tt>return x.has_value() ? *x &lt;=&gt; v : strong_ordering::less;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
