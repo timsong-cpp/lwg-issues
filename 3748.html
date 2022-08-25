@@ -1,0 +1,177 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3748: common_iterator and counted_iterator' operator- are missing cast to return type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3748" href="lwg-active.html#3748">3748.</a> <tt>common_iterator</tt> and <tt>counted_iterator</tt>' <tt>operator-</tt> are missing cast to return type</h3>
+<p><b>Section:</b> 25.5.4.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a>, 25.5.6.5 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.nav">[counted.iter.nav]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-01 <b>Last modified:</b> 2022-08-23 15:25:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Both <tt>common_iterator</tt> and <tt>counted_iterator</tt> explicitly specify that the 
+return type of their <tt>operator-</tt> is <tt>iter_difference_t&lt;I2&gt;</tt>, however, 
+given that the calculated type may be <tt>iter_difference_t&lt;I&gt;</tt>, we should do 
+an explicit conversion here since the latter is not necessarily implicitly convertible to the former:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct Y;
+
+struct X {
+  X(Y);
+  using difference_type =
+#ifdef __GNUC__
+  std::ranges::__detail::__max_diff_type;
+#elif defined(_MSC_VER)
+  std::_Signed128;
+#endif
+  int&amp; operator*() const;
+  X&amp; operator++();
+  void operator++(int);
+};
+
+struct Y {
+  using difference_type = std::ptrdiff_t;
+  int&amp; operator*() const;
+  Y&amp; operator++();
+  void operator++(int);
+};
+
+int main() {
+  std::counted_iterator&lt;Y&gt; y;
+  return std::counted_iterator&lt;X&gt;(y) - y; // <span style="color:red;font-weight:bolder">hard error in stdlibc++ and MSVC-STL</span>
+}
+</pre></blockquote>
+<p>
+<b>Daniel:</b>
+</p>
+<blockquote class="note">
+<p>
+This issue shouldn't we voted until a decision for LWG <a href="3749">3749</a> has been made, because the first part of
+it overlaps with LWG <a href="3749">3749</a>'s second part.
+</p>
+</blockquote>
+
+<p><i>[2022-08-23; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"I think <code>common_iterator</code> should <em>reject</em> iterators with
+integer-class difference types since it can't possibly achieve the design intent
+of adapting them to <i>Cpp17Iterator</i>s, so this issue should only affect
+<code>counted_iterator</code>."
+</p>
+<p>
+"If the difference types of <code>I</code> and <code>I2</code> are different
+then the <code>operator-</code> can't be used to model
+<code>sized_sentinel_for</code>,
+since <code>i - i2</code> and <code>i2 - i</code> would have different types.
+Providing <code>operator-</code> under such circumstances seems
+to be of dubious value."
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.5.4.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;sized_sentinel_for&lt;I&gt; I2, sized_sentinel_for&lt;I&gt; S2>
+  requires sized_sentinel_for&lt;S, I2&gt;
+friend constexpr iter_difference_t&lt;I2&gt; operator-(
+  const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-5- <i>Preconditions</i>: <tt>x.v_.valueless_by_exception()</tt> and <tt>y.v_.valueless_by_exception()</tt> 
+are each <tt>false</tt>.
+<p/>
+-6- <i>Returns</i>: <tt>0</tt> if <tt><i>i</i></tt> and <tt><i>j</i></tt> are each <tt>1</tt>, and otherwise 
+<ins><tt>static_cast&lt;iter_difference_t&lt;I2&gt;&gt;(</tt></ins><tt>get&lt;<i>i</i>&gt;(x.v_) - 
+get&lt;<i>j</i>&gt;(y.v_)</tt><ins><tt>)</tt></ins>, where <tt><i>i</i></tt> is <tt>x.v_.index()</tt> 
+and <tt><i>j</i></tt> is <tt>y.v_.index()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 25.5.6.5 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.nav">[counted.iter.nav]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;common_with&lt;I&gt; I2&gt;
+  friend constexpr iter_difference_t&lt;I2&gt; operator-(
+    const counted_iterator&amp; x, const counted_iterator&lt;I2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-13- <i>Preconditions</i>: <tt>x</tt> and <tt>y</tt> refer to elements of the same sequence (25.5.6.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>).
+<p/>
+-14- <i>Effects</i>: Equivalent to: <tt>return <ins>static_cast&lt;iter_difference_t&lt;I2&gt;&gt;(</ins>y.length - 
+  x.length<ins>)</ins>;</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
