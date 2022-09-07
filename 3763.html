@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3763: Should range adaptor iterators only provide iterator_category when its 
+difference_type is not an integer-class type?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3763" href="lwg-active.html#3763">3763.</a> Should range adaptor iterators only provide <tt>iterator_category</tt> when its 
+<tt>difference_type</tt> is not an integer-class type?</h3>
+<p><b>Section:</b> 26.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.iterator">[range.repeat.iterator]</a>, 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-07 08:51:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+After <a href="https://wg21.link/P2259">P2259</a>, the range adaptor' iterators only provide <tt>iterator_category</tt> member when 
+the underlying range models <tt>forward_range</tt>, which is mainly based on the premise that all valid C++20 
+forward iterators meet the C++17 input iterator requirements.
+<p/>
+However, this is not strictly correct. When the underlying range's <tt>difference_type</tt> is an integer-class 
+type, its iterator does not conform <i>Cpp17InputIterator</i>.
+<p/>
+Although <tt>iterator_traits&lt;I&gt;::iterator_category</tt> will still deduce the correct category in this 
+case since these iterators have no <tt>reference</tt> member, it might be misleading to provide these 
+incorrect member types. 
+<p/>
+Do we need to aggressively prohibit these iterators from providing <tt>iterator_category</tt> when their 
+difference type is an integer-class type?
+<p/>
+The proposed resolution makes <tt>repeat_view::<i>iterator</i></tt> conditionally provide 
+<tt>iterator_category</tt>, because it explicitly mentions <tt><i>IOTA-DIFF-T</i>(<i>index-type</i>)</tt> 
+in the definition of <tt>difference_type</tt>, which makes it consistent with LWG <a href="3670">3670</a>.
+<p/>
+It also removes the <tt>reference</tt> member type of <tt>cartesian_product_view::<i>iterator</i></tt>, 
+which prevents <tt>iterator_traits&lt;I&gt;::iterator_category</tt> from being aliased to its member 
+<tt>iterator_category</tt>, so that <tt>iterator_traits&lt;I&gt;::iterator_category</tt> will not always 
+be an <tt>input_iterator_tag</tt> when its <tt>difference_type</tt> is an integer-class type.
+<p/>
+This is also consistent with other range adaptors, as none of them have a <tt>reference</tt> member type.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to the <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.iterator">[range.repeat.iterator]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;move_constructible W, semiregular Bound = unreachable_sentinel_t&gt;
+    requires (is_object_v&lt;W> &amp;&amp; same_as&lt;W, remove_cv_t&lt;W&gt;&gt; &amp;&amp;
+              (<i>is-integer-like</i>&lt;Bound> || same_as&lt;Bound, unreachable_sentinel_t&gt;))
+  class repeat_view&lt;W, Bound>::<i>iterator</i> {
+  private:
+    using <i>index-type</i> =                  <i>// exposition only</i>
+      conditional_t&lt;same_as&lt;Bound, unreachable_sentinel_t&gt;, ptrdiff_t, Bound&gt;;
+    const W* <i>value_</i> = nullptr;          <i>// exposition only</i>
+    <i>index-type</i> <i>current_</i> = <i>index-type</i>(); <i>// exposition only</i>
+
+    constexpr explicit <i>iterator</i>(const W* value, <i>index-type</i> b = <i>index-type</i>());   <i>// exposition only</i>
+
+  public:
+    using iterator_concept = random_access_iterator_tag;
+    using iterator_category = random_access_iterator_tag;           <ins><i>// present only if difference_type</i></ins>
+                                                                    <ins><i>// is an integral type</i></ins>
+    using value_type = W;
+    using difference_type = conditional_t&lt;<i>is-signed-integer-like</i>&lt;<i>index-type</i>&gt;,
+        <i>index-type</i>,
+        <i>IOTA-DIFF-T</i>(<i>index-type</i>)>; 
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range First, forward_range... Vs&gt;
+    requires (view&lt;First&gt; &amp;&amp; ... &amp;&amp; view&lt;Vs&gt;)
+  template&lt;bool Const&gt;
+  class cartesian_product_view&lt;First, Vs...&gt;::<i>iterator</i> {
+  public:
+    using iterator_category = input_iterator_tag;
+    using iterator_concept  = <i>see below</i>;
+    using value_type = tuple&lt;range_value_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      range_value_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt;;
+    <del>using reference = tuple&lt;range_reference_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      range_reference_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt;;</del>
+    using difference_type = <i>see below</i>;
+    [&hellip;]
+  
+    constexpr <ins>auto</ins><del>reference</del> operator[](difference_type n) const
+      requires <i>cartesian-product-is-random-access</i>&lt;Const, First, Vs...&gt;;
+  
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr <ins>auto</ins><del>reference</del> operator[](difference_type n) const
+  requires <i>cartesian-product-is-random-access</i>&lt;Const, First, Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-24- <i>Effects</i>: <tt>return *((*this) + n);</tt>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

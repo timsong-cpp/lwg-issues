@@ -1,0 +1,181 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3761: cartesian_product_view::iterator::operator- should pass by reference</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3761" href="lwg-active.html#3761">3761.</a> <tt>cartesian_product_view::<i>iterator</i>::operator-</tt> should pass by reference</h3>
+<p><b>Section:</b> 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-07 08:51:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There are two problems with <tt>cartesian_product_view::<i>iterator</i>::operator-</tt>.
+<p/>
+First, <tt><i>distance-from</i></tt> is not <tt>const</tt>-qualified, which would cause 
+the common version of <tt>operator-</tt> to produce a hard error inside the function body 
+since it invokes <tt><i>distance-from</i></tt> on a const <tt><i>iterator</i></tt> object.
+<p/>
+Second, the non-common version of <tt>operator-</tt> passes <tt><i>iterator</i></tt> by value,
+which unnecessarily prohibits subtracting <tt>default_sentinel</tt> from an lvalue 
+<tt><i>iterator</i></tt> whose first underlying iterator is non-<tt>copyable</tt>.
+Even if we <tt>std::move</tt> it into <tt>operator-</tt>, the other overload will still be ill-formed
+since it returns <tt>-(i - s)</tt> which will calls <tt>i</tt>'s deleted copy constructor.
+<p/>
+The proposed resolution is to add <tt>const</tt> qualification to <tt><i>distance-from</i></tt> 
+and make the non-common version of <tt><i>iterator</i>::operator-</tt> pass by const reference. 
+Although the <tt>Tuple</tt> parameter of <tt><i>distance-from</i></tt> is guaranteed to be 
+<tt>copyable</tt>, I think it would be more appropriate to pass it by reference.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to the <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range First, forward_range... Vs&gt;
+    requires (view&lt;First&gt; &amp;&amp; ... &amp;&amp; view&lt;Vs&gt;)
+  template&lt;bool Const&gt;
+  class cartesian_product_view&lt;First, Vs...&gt;::<i>iterator</i> {
+  public:
+    [&hellip;]
+
+    friend constexpr difference_type operator-(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t)
+      requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+    friend constexpr difference_type operator-(default_sentinel_t, <ins>const</ins> <i>iterator</i><ins>&amp;</ins> i)
+      requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+
+    [&hellip;]
+  private:
+    [&hellip;]
+    
+    template&lt;class Tuple&gt;
+      constexpr difference_type <i>distance-from</i>(Tuple<ins>&amp;</ins> t) <ins>const</ins>;            <i>// exposition only</i>
+      
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;class Tuple&gt;
+  constexpr difference_type <i>distance-from</i>(Tuple<ins>&amp;</ins> t) <ins>const</ins>;
+</pre>
+<blockquote>
+<p>
+-7- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; <tt><i>scaled-size</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(ranges::size(std::get&lt;<i>N</i>&gt;(<i>parent_</i>-&gt;<i>bases_</i>)))</tt> and 
+<tt><i>scaled-size</i>(<i>N</i> + 1)</tt> if <tt><i>N</i> &lt; sizeof...(Vs)</tt>, otherwise 
+<tt>static_cast&lt;difference_type&gt;(1)</tt>;</p></li>
+<li><p>(7.2) &mdash; <tt><i>scaled-distance</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(std::get&lt;<i>N</i>&gt;(<i>current_</i>) - std::get&lt;<i>N</i>&gt;(t))</tt> and 
+<tt><i>scaled-size</i>(<i>N</i> + 1)</tt>; and</p></li>
+<li><p>(7.3) &mdash; <tt><i>scaled-sum</i></tt> be the sum of <tt><i>scaled-distance</i>(<i>N</i>)</tt> for every integer 
+<tt>0 &le; <i>N</i> &le; sizeof...(Vs)</tt>.</p></li>
+</ol>
+<p>
+-8- <i>Preconditions</i>: <tt><i>scaled-sum</i></tt> can be represented by <tt>difference_type</tt>.
+</p>
+<p>
+-9- <i>Returns</i>: <tt><i>scaled-sum</i></tt>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+friend constexpr difference_type operator-(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t)
+  requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-32- Let <tt><i>end-tuple</i></tt> be an object of a type that is a specialization of <tt>tuple</tt>, such that:
+</p>
+<ol style="list-style-type: none">
+<li><p>(32.1) &mdash; <tt>std::get&lt;0&gt;(<i>end-tuple</i>)</tt> has the same value as 
+<tt>ranges::end(std::get&lt;0&gt;(i.<i>parent_</i>-&gt;<i>bases_</i>))</tt>;</p></li>
+<li><p>(32.2) &mdash; <tt>std::get&lt;<i>N</i>&gt;(<i>end-tuple</i>)</tt> has the 
+same value as <tt>ranges::begin(std::get&lt;<i>N</i>&gt;(i.<i>parent_</i>-&gt;<i>bases_</i>))</tt> 
+for every integer <tt>1 &le; <i>N</i> &le; sizeof...(Vs)</tt>.</p></li>
+</ol>
+<p>
+-33- <i>Effects</i>: Equivalent to: <tt>return i.<i>distance-from</i>(<i>end-tuple</i>);</tt>
+</p>
+</blockquote>
+<pre>
+friend constexpr difference_type operator-(default_sentinel_t, <ins>const</ins> <i>iterator</i><ins>&amp;</ins> i)
+  requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-34- <i>Effects</i>: Equivalent to: <tt>return -(i - s);</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

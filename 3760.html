@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3760: cartesian_product_view::iterator's parent_ is never valid</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3760" href="lwg-active.html#3760">3760.</a> <tt>cartesian_product_view::<i>iterator</i></tt>'s <tt><i>parent_</i></tt> is never valid</h3>
+<p><b>Section:</b> 26.7.31 <a href="https://timsong-cpp.github.io/cppwp/range.cartesian">[range.cartesian]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-07 08:51:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>cartesian_product_view::<i>iterator</i></tt> has a pointer member <tt><i>parent_</i></tt> that points 
+to <tt>cartesian_product_view</tt>, but its constructor only accepts a <tt>tuple</tt> of iterators, which 
+makes <tt><i>parent_</i></tt> always default-initialized to <tt>nullptr</tt>.
+<p/>
+The proposed resolution is to add an aliased <tt><i>Parent</i></tt> parameter to the constructor and 
+initialize <tt><i>parent_</i></tt> with <tt>addressof</tt>, as we usually do.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to the <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.31.2 <a href="https://timsong-cpp.github.io/cppwp/range.cartesian.view">[range.cartesian.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>iterator</i>&lt;false&gt; begin()
+  requires (!<i>simple-view</i>&lt;First&gt; || ... || !<i>simple-view</i>&lt;Vs&gt;);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: Equivalent to: <tt>return <i>iterator</i>&lt;false&gt;(<ins>*this,</ins> <i>tuple-transform</i>(ranges::begin, 
+<i>bases_</i>));</tt>
+</p>
+</blockquote>  
+<pre>
+constexpr <i>iterator</i>&lt;true&gt; begin() const
+  requires (range&lt;const First&gt; &amp;&amp; ... &amp;&amp; range&lt;const Vs&gt;);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to: <tt>return <i>iterator</i>&lt;true&gt;(<ins>*this,</ins> <i>tuple-transform</i>(ranges::begin, 
+<i>bases_</i>));</tt>
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>&lt;false&gt; end()
+  requires ((!<i>simple-view</i>&lt;First&gt; || ... || !<i>simple-view</i>&lt;Vs&gt;)
+    &amp;&amp; <i>cartesian-product-is-common</i>&lt;First, Vs...&gt;);
+constexpr <i>iterator</i>&lt;true&gt; end() const
+  requires <i>cartesian-product-is-common</i>&lt;const First, const Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-4- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; <tt><i>is-const</i></tt> be <tt>true</tt> for the const-qualified overload, and <tt>false</tt> otherwise;</p></li>
+<li><p>(4.2) &mdash; <tt><i>is-empty</i></tt> be <tt>true</tt> if the expression <tt>ranges::empty(rng)</tt> is <tt>true</tt> 
+for any <tt>rng</tt> among the underlying ranges except the first one and <tt>false</tt> otherwise; and</p></li>
+<li><p>(4.3) &mdash; <tt><i>begin-or-first-end</i>(rng)</tt> be expression-equivalent to 
+<tt><i>is-empty</i> ? ranges::begin(rng) : <i>cartesian-common-arg-end</i>(rng)</tt> if <tt>rng</tt> is the first underlying range 
+and <tt>ranges::begin(rng)</tt> otherwise.</p></li>
+</ol>
+<p>
+-5- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+<i>iterator</i>&lt;<i>is-const</i>&gt; it(<ins>*this,</ins> <i>tuple-transform</i>(
+  [](auto&amp; rng){ return <i>begin-or-first-end</i>(rng); }, <i>bases_</i>));
+return it;
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range First, forward_range... Vs&gt;
+    requires (view&lt;First&gt; &amp;&amp; ... &amp;&amp; view&lt;Vs&gt;)
+  template&lt;bool Const&gt;
+  class cartesian_product_view&lt;First, Vs...&gt;::<i>iterator</i> {
+  public:
+    [&hellip;]
+
+  private:
+    <ins>using <i>Parent</i> = <i>maybe-const</i>&lt;Const, cartesian_product_view&gt;;           <i>// exposition only</i></ins>
+    <ins><i>Parent</i></ins><del><i>maybe-const</i>&lt;Const, cartesian_product_view&gt;</del>* <i>parent_</i> = nullptr; <i>// exposition only</i>
+    tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; <i>current_</i>;                   <i>// exposition only</i>
+    
+    template&lt;size_t N = sizeof...(Vs)&gt;
+      constexpr void <i>next</i>();                                             <i>// exposition only</i>
+    
+    template&lt;size_t N = sizeof...(Vs)&gt;
+      constexpr void <i>prev</i>();                                             <i>// exposition only</i>
+    
+    template&lt;class Tuple>
+      constexpr difference_type <i>distance-from</i>(Tuple t);                  <i>// exposition only</i>
+    
+    constexpr <del>explicit</del> <i>iterator</i>(<ins><i>Parent</i>&amp; parent,</ins> tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; current);                   <i>// exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr <del>explicit</del> <i>iterator</i>(<ins><i>Parent</i>&amp; parent,</ins> tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+  iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; current);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>:  Initializes <ins><tt><i>parent_</i></tt> with <tt>addressof(parent)</tt> and</ins> 
+<tt><i>current_</i></tt> with <tt>std::move(current)</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>(<i>iterator</i>&lt;!Const&gt; i) requires Const &amp;&amp;
+  (convertible_to&lt;iterator_t&lt;First&gt;, iterator_t&lt;const First&gt;&gt; &amp;&amp;
+    ... &amp;&amp; convertible_to&lt;iterator_t&lt;Vs&gt;, iterator_t&lt;const Vs&gt;&gt;);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: Initializes <ins><tt><i>parent_</i></tt> with <tt>i.<i>parent_</i></tt> and</ins> 
+<tt><i>current_</i></tt> with <tt>std::move(i.<i>current_</i>)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3767: codecvt&lt;charN_t, char8_t, mbstate_t&gt; incorrectly added to locale</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3767" href="lwg-active.html#3767">3767.</a> <tt>codecvt&lt;char<i>N</i>_t, char8_t, mbstate_t&gt;</tt> incorrectly added to locale</h3>
+<p><b>Section:</b> 30.3.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/locale.category">[locale.category]</a>, 30.4.2.5.1 <a href="https://timsong-cpp.github.io/cppwp/locale.codecvt.general">[locale.codecvt.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2022-09-05 <b>Last modified:</b> 2022-09-07 08:51:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#locale.category">issues</a> in [locale.category].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Table [tab:locale.category.facets] includes the following two facets:
+</p>
+<ul>
+<li><p><tt>codecvt&lt;char16_t, char8_t, mbstate_t&gt;</tt></p></li>
+<li><p><tt>codecvt&lt;char32_t, char8_t, mbstate_t&gt;</tt></p></li>
+</ul>
+<p>
+However, neither of those actually has anything to do with a locale and therefore 
+it doesn't make sense to dynamically register them with <tt>std::locale</tt>. 
+Instead they provide conversions between fixed encodings (UTF-8, UTF-16, UTF-32) 
+that are unrelated to locale encodings other than they may happen to coincide with 
+encodings of some locales by accident.
+<p/>
+The issue was introduced when adding <tt>codecvt&lt;char[16|32]_t, char, mbstate_t&gt;</tt> in 
+<a href="https://wg21.link/N2035">N2035</a> which gave no design rationale for using <tt>codecvt</tt> in the first 
+place. Likely it was trying to do a minimal amount of changes and copied the wording for 
+<tt>codecvt&lt;wchar_t, char, mbstate_t&gt;</tt> but unfortunately didn't consider encoding implications.
+<p/>
+<a href="https://wg21.link/P0482">P0482</a> changed <tt>char</tt> to <tt>char8_t</tt> in these facets which 
+made the issue more glaring but unfortunately, despite the breaking change, it failed to address it.
+<p/>
+Apart from an obvious design mistake this also adds a small overhead for every locale 
+construction because the implementation has to copy these pseudo-facets for no good 
+reason violating "don't pay for what you don't use" principle.
+<p/>
+A simple fix is to remove the two facets from table [tab:locale.category.facets] and make them 
+directly constructible.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to the <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 30.3.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/locale.category">[locale.category]</a>, Table 105 ([tab:locale.category.facets]) &mdash; 
+"Locale category facets" &mdash; as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 105: Locale category facets [tab:locale.category.facets]</caption>
+<tr>
+<th align="center">Category</th>
+<th align="center">Includes facets</th>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+ctype
+</td>
+
+<td>
+<tt>ctype&lt;char&gt;, ctype&lt;wchar_t&gt;<br/>
+codecvt&lt;char, char, mbstate_t&gt;<br/>
+<del>codecvt&lt;char16_t, char8_t, mbstate_t&gt;</del><br/>
+<del>codecvt&lt;char32_t, char8_t, mbstate_t&gt;</del><br/>
+codecvt&lt;wchar_t, char, mbstate_t&gt;</tt>
+</td>
+</tr>
+
+<tr>
+<td colspan="2" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Modify 30.4.2.5.1 <a href="https://timsong-cpp.github.io/cppwp/locale.codecvt.general">[locale.codecvt.general]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  template&lt;class internT, class externT, class stateT&gt;
+    class codecvt : public locale::facet, public codecvt_base {
+    public:
+      using intern_type = internT;
+      using extern_type = externT;
+      using state_type = stateT;
+
+      explicit codecvt(size_t refs = 0);
+      <ins>~codecvt();</ins>
+
+      [&hellip;]
+    protected:
+      <del>~codecvt();</del>
+      [&hellip;]
+    };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+<p/>
+-3- The specializations required in Table <del>105 [tab:locale.category.facets]</del><ins>106 [tab:locale.spec]</ins>
+(30.3.1.2.1 <a href="https://timsong-cpp.github.io/cppwp/locale.category">[locale.category]</a>) convert the implementation-defined native character set. 
+<tt>codecvt&lt;char, char, mbstate_t&gt;</tt> implements a degenerate conversion; it does not 
+convert at all. The specialization <tt>codecvt&lt;char16_t, char8_t, mbstate_t&gt;</tt> converts 
+between the UTF-16 and UTF-8 encoding forms, and the specialization 
+<tt>codecvt&lt;char32_t, char8_t, mbstate_t&gt;</tt> converts between the UTF-32 and UTF-8 encoding forms. 
+<tt>codecvt&lt;wchar_t, char, mbstate_t&gt;</tt> converts between the native character sets for ordinary 
+and wide characters. Specializations on <tt>mbstate_t</tt> perform conversion between encodings known to 
+the library implementer. Other encodings can be converted by specializing on a program-defined 
+<tt>stateT</tt> type. Objects of type <tt>stateT</tt> can contain any state that is useful to communicate 
+to or from the specialized <tt>do_in</tt> or <tt>do_out</tt> members.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
