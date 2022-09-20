@@ -1,0 +1,258 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3780: format's width estimation is too approximate and not forward compatible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3780" href="lwg-active.html#3780">3780.</a> <tt>format</tt>'s width estimation is too approximate and not forward compatible</h3>
+<p><b>Section:</b> 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Corentin Jabot <b>Opened:</b> 2022-09-15 <b>Last modified:</b> 2022-09-18 10:00:36 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For the purpose of width estimation, <tt>format</tt> considers ranges of codepoints initially 
+derived from an implementation of <tt>wcwidth</tt> with modifications (see <a href="https://wg21.link/P1868R1">P1868R1</a>).
+<p/>
+This however present a number of challenges:
+</p>
+<blockquote>
+<ul>
+<li><p>From a reading of the spec, it is not clear how these ranges were selected.</p></li>
+<li><p>Poor forward compatibility with future Unicode versions. The list will become less and 
+less meaningful overtime or require active maintenance at each Unicode release (which 
+we have not done for Unicode 14 already).</p></li>
+<li><p>Some of these codepoints are unassigned or otherwise reserved, which is another 
+forward compatibility concern.</p></li>
+</ul>
+</blockquote>
+<p>
+Instead, we propose to
+</p>
+<blockquote>
+<ul>
+<li><p>Rely on <a href="https://www.unicode.org/reports/tr11/">UAX-11</a> for most of the codepoints)</p></li>
+<li><p>Grand-father specific and fully assigned, blocks of codepoints to support additional pictograms 
+per the original intent of the paper and existing practices. We add the name of these blocks 
+in the wording for clarity.</p></li>
+</ul>
+</blockquote>
+<p>
+Note that per UAX-11
+</p>
+<blockquote>
+<ul>
+<li><p>Most emojis are considered <tt>East_Asian_Width="W"</tt></p></li>
+<li><p>By design, <tt>East_Asian_Width="W"</tt> includes specific unassigned ranges,
+which should always be treated as Wide.</p></li>
+</ul>
+</blockquote>
+<p>
+This change:
+</p>
+<blockquote>
+<ul>
+<li><p>Considers 8477 extra codepoints as having a width 2 (as of Unicode 15) (mostly Tangut Ideographs)</p></li>
+<li><p>Change the width of 85 unassigned code points from 2 to 1</p></li>
+<li><p>Change the width of 8 codepoints (in the range <tt>U+3248 CIRCLED NUMBER TEN ON BLACK SQUARE</tt> 
+&hellip; <tt>U+324F CIRCLED NUMBER EIGHTY ON BLACK SQUARE</tt>) from 2 to 1, because it seems 
+questionable to make an exception for those without input from Unicode</p></li>
+</ul>
+</blockquote>
+
+<p>
+For the following code points, the estimated width used to be 1, and is 2 after the suggested change:
+</p>
+<ul>
+<li><p>U+231A WATCH .. U+231B HOURGLASS</p></li>
+<li><p>U+23E9 BLACK RIGHT-POINTING DOUBLE TRIANGLE .. U+23EC BLACK DOWN-POINTING DOUBLE TRIANGLE</p></li>
+<li><p>U+23F0 ALARM CLOCK</p></li>
+<li><p>U+23F3 HOURGLASS WITH FLOWING SAND</p></li>
+<li><p>U+25FD WHITE MEDIUM SMALL SQUARE .. U+25FE BLACK MEDIUM SMALL SQUARE</p></li>
+<li><p>U+2614 UMBRELLA WITH RAIN DROPS .. U+2615 HOT BEVERAGE</p></li>
+<li><p>U+2648 ARIES .. U+2653 PISCES </p></li>
+<li><p>U+267F WHEELCHAIR SYMBOL</p></li>
+<li><p>U+2693 ANCHOR</p></li>
+<li><p>U+26A1 HIGH VOLTAGE SIGN</p></li>
+<li><p>U+26AA MEDIUM WHITE CIRCLE .. U+26AB MEDIUM BLACK CIRCLE</p></li>
+<li><p>U+26BD SOCCER BALL .. U+26BE BASEBALL</p></li>
+<li><p>U+26C4 SNOWMAN WITHOUT SNOW .. U+26C5 SUN BEHIND CLOUD</p></li>
+<li><p>U+26CE OPHIUCHUS</p></li>
+<li><p>U+26D4 NO ENTRY</p></li>
+<li><p>U+26EA CHURCH</p></li>
+<li><p>U+26F2 FOUNTAIN .. U+26F3 FLAG IN HOLE</p></li>
+<li><p>U+26F5 SAILBOAT</p></li>
+<li><p>U+26FA TENT</p></li>
+<li><p>U+26FD FUEL PUMP</p></li>
+<li><p>U+2705 WHITE HEAVY CHECK MARK</p></li>
+<li><p>U+270A RAISED FIST .. U+270B RAISED HAND</p></li>
+<li><p>U+2728 SPARKLES</p></li>
+<li><p>U+274C CROSS MARK</p></li>
+<li><p>U+274E NEGATIVE SQUARED CROSS MARK</p></li>
+<li><p>U+2753 BLACK QUESTION MARK ORNAMENT .. U+2755 WHITE EXCLAMATION MARK ORNAMENT</p></li>
+<li><p>U+2757 HEAVY EXCLAMATION MARK SYMBOL</p></li>
+<li><p>U+2795 HEAVY PLUS SIGN .. U+2797 HEAVY DIVISION SIGN</p></li>
+<li><p>U+27B0 CURLY LOOP</p></li>
+<li><p>U+27BF DOUBLE CURLY LOOP</p></li>
+<li><p>U+2B1B BLACK LARGE SQUARE .. U+2B1C WHITE LARGE SQUARE</p></li>
+<li><p>U+2B50 WHITE MEDIUM STAR</p></li>
+<li><p>U+2B55 HEAVY LARGE CIRCLE</p></li>
+<li><p>U+A960 HANGUL CHOSEONG TIKEUT-MIEUM .. U+A97C HANGUL CHOSEONG SSANGYEORINHIEUH</p></li>
+<li><p>U+16FE0 TANGUT ITERATION MARK .. U+16FE4 KHITAN SMALL SCRIPT FILLER</p></li>
+<li><p>U+16FF0 VIETNAMESE ALTERNATE READING MARK CA .. U+16FF1 VIETNAMESE ALTERNATE READING MARK NHAY</p></li>
+<li><p>U+17000 TANGUT IDEOGRAPH-# .. U+187F7 TANGUT IDEOGRAPH-#</p></li>
+<li><p>U+18800 TANGUT COMPONENT-001 .. U+18CD5 KHITAN SMALL SCRIPT CHARACTER-#</p></li>
+<li><p>U+18D00 TANGUT IDEOGRAPH-# .. U+18D08 TANGUT IDEOGRAPH-#</p></li>
+<li><p>U+1AFF0 KATAKANA LETTER MINNAN TONE-2 .. U+1AFF3 KATAKANA LETTER MINNAN TONE-5</p></li>
+<li><p>U+1AFF5 KATAKANA LETTER MINNAN TONE-7 .. U+1AFFB KATAKANA LETTER MINNAN NASALIZED TONE-5</p></li>
+<li><p>U+1AFFD KATAKANA LETTER MINNAN NASALIZED TONE-7 .. U+1AFFE KATAKANA LETTER MINNAN NASALIZED TONE-8</p></li>
+<li><p>U+1B000 KATAKANA LETTER ARCHAIC E .. U+1B122 KATAKANA LETTER ARCHAIC WU</p></li>
+<li><p>U+1B132 HIRAGANA LETTER SMALL KO</p></li>
+<li><p>U+1B150 HIRAGANA LETTER SMALL WI .. U+1B152 HIRAGANA LETTER SMALL WO</p></li>
+<li><p>U+1B155 KATAKANA LETTER SMALL KO</p></li>
+<li><p>U+1B164 KATAKANA LETTER SMALL WI .. U+1B167 KATAKANA LETTER SMALL N</p></li>
+<li><p>U+1B170 NUSHU CHARACTER-# .. U+1B2FB NUSHU CHARACTER-#</p></li>
+<li><p>U+1F004 MAHJONG TILE RED DRAGON</p></li>
+<li><p>U+1F0CF PLAYING CARD BLACK JOKER</p></li>
+<li><p>U+1F18E NEGATIVE SQUARED AB</p></li>
+<li><p>U+1F191 SQUARED CL .. U+1F19A SQUARED VS</p></li>
+<li><p>U+1F200 SQUARE HIRAGANA HOKA .. U+1F202 SQUARED KATAKANA SA</p></li>
+<li><p>U+1F210 SQUARED CJK UNIFIED IDEOGRAPH-624B .. U+1F23B SQUARED CJK UNIFIED IDEOGRAPH-914D</p></li>
+<li><p>U+1F240 TORTOISE SHELL BRACKETED CJK UNIFIED IDEOGRAPH-672C .. U+1F248 TORTOISE SHELL BRACKETED CJK UNIFIED IDEOGRAPH-6557</p></li>
+<li><p>U+1F250 CIRCLED IDEOGRAPH ADVANTAGE .. U+1F251 CIRCLED IDEOGRAPH ACCEPT</p></li>
+<li><p>U+1F260 ROUNDED SYMBOL FOR FU .. U+1F265 ROUNDED SYMBOL FOR CAI</p></li>
+<li><p>U+1F680 ROCKET .. U+1F6C5 LEFT LUGGAGE</p></li>
+<li><p>U+1F6CC SLEEPING ACCOMMODATION</p></li>
+<li><p>U+1F6D0 PLACE OF WORSHIP .. U+1F6D2 SHOPPING TROLLEY</p></li>
+<li><p>U+1F6D5 HINDU TEMPLE .. U+1F6D7 ELEVATOR</p></li>
+<li><p>U+1F6DC WIRELESS .. U+1F6DF RING BUOY</p></li>
+<li><p>U+1F6EB AIRPLANE DEPARTURE .. U+1F6EC AIRPLANE ARRIVING</p></li>
+<li><p>U+1F6F4 SCOOTER .. U+1F6FC ROLLER SKATE</p></li>
+<li><p>U+1F7E0 LARGE ORANGE CIRCLE .. U+1F7EB LARGE BROWN SQUARE</p></li>
+<li><p>U+1F7F0 HEAVY EQUALS SIGN</p></li>
+<li><p>U+1FA70 BALLET SHOES .. U+1FA7C CRUTCH</p></li>
+<li><p>U+1FA80 YO-YO .. U+1FA88 FLUTE</p></li>
+<li><p>U+1FA90 RINGED PLANET .. U+1FABD WING</p></li>
+<li><p>U+1FABF GOOSE .. U+1FAC5 PERSON WITH CROWN</p></li>
+<li><p>U+1FACE MOOSE .. U+1FADB PEA POD</p></li>
+<li><p>U+1FAE0 MELTING FACE .. U+1FAE8 SHAKING FACE</p></li>
+<li><p>U+1FAF0 HAND WITH INDEX FINGER AND THUMB CROSSED .. U+1FAF8 RIGHTWARDS PUSHING HAND</p></li>
+</ul>
+<p>
+For the following code points, the estimated width used to be 2, and is 1 after the suggested change:
+</p>
+<ul>
+<li><p>U+2E9A</p></li>
+<li><p>U+2EF4 .. U+2EFF</p></li>
+<li><p>U+2FD6 .. U+2FEF</p></li>
+<li><p>U+2FFC .. U+2FFF</p></li>
+<li><p>U+3040</p></li>
+<li><p>U+3097 .. U+3098</p></li>
+<li><p>U+3100 .. U+3104</p></li>
+<li><p>U+3130</p></li>
+<li><p>U+318F</p></li>
+<li><p>U+31E4 .. U+31EF</p></li>
+<li><p>U+321F</p></li>
+<li><p>U+A48D .. U+A48F</p></li>
+<li><p>U+A4C7 .. U+A4CF</p></li>
+<li><p>U+FE53</p></li>
+<li><p>U+FE67</p></li>
+<li><p>U+FE6C .. U+FE6F</p></li>
+<li><p>U+FF00</p></li>
+<li><p>U+3248 CIRCLED NUMBER TEN ON BLACK SQUARE .. U+324F CIRCLED NUMBER EIGHTY ON BLACK SQUARE</p></li>
+</ul>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-12- For a string in a Unicode encoding, implementations should estimate the width of a string as the sum of
+estimated widths of the first code points in its extended grapheme clusters. The extended grapheme clusters
+of a string are defined by UAX #29. The estimated width of the following code points is 2:
+</p>
+<ol style="list-style-type: none">
+<li><p><del>(12.1) &mdash; U+1100 &ndash; U+115F</del></p></li>
+<li><p><del>(12.2) &mdash; U+2329 &ndash; U+232A</del></p></li>
+<li><p><del>(12.3) &mdash; U+2E80 &ndash; U+303E</del></p></li>
+<li><p><del>(12.4) &mdash; U+3040 &ndash; U+A4CF</del></p></li>
+<li><p><del>(12.5) &mdash; U+AC00 &ndash; U+D7A3</del></p></li>
+<li><p><del>(12.6) &mdash; U+F900 &ndash; U+FAFF</del></p></li>
+<li><p><del>(12.7) &mdash; U+FE10 &ndash; U+FE19</del></p></li>
+<li><p><del>(12.8) &mdash; U+FE30 &ndash; U+FE6F</del></p></li>
+<li><p><del>(12.9) &mdash; U+FF00 &ndash; U+FF60</del></p></li>
+<li><p><del>(12.10) &mdash; U+FFE0 &ndash; U+FFE6</del></p></li>
+<li><p><del>(12.11) &mdash; U+1F300 &ndash; U+1F64F</del></p></li>
+<li><p><del>(12.12) &mdash; U+1F900 &ndash; U+1F9FF</del></p></li>
+<li><p><del>(12.13) &mdash; U+20000 &ndash; U+2FFFD</del></p></li>
+<li><p><del>(12.14) &mdash; U+30000 &ndash; U+3FFFD</del></p></li>
+<li><p><ins>(?.1) &mdash; Any code point with the <tt>East_Asian_Width="W"</tt> or <tt>East_Asian_Width="F"</tt> 
+Derived Extracted Property as described by UAX #44</ins></p></li>
+<li><p><ins>(?.2) &mdash; U+4DC0 &ndash; U+4DFF (Yijing Hexagram Symbols)</ins></p></li>
+<li><p><ins>(?.3) &mdash; U+1F300 &ndash; U+1F5FF (Miscellaneous Symbols and Pictographs)</ins></p></li>
+<li><p><ins>(?.4) &mdash; U+1F900 &ndash; U+1F9FF (Supplemental Symbols and Pictographs)</ins></p></li>
+</ol>
+<p>
+The estimated width of other code points is 1.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

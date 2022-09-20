@@ -1,0 +1,155 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3779: ranges::fold_* can unintentionally const_cast and reinterpret_cast</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3779" href="lwg-active.html#3779">3779.</a> <tt>ranges::fold_*</tt> can unintentionally <tt>const_cast</tt> and <tt>reinterpret_cast</tt></h3>
+<p><b>Section:</b> 27.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Nicole Mazzuca <b>Opened:</b> 2022-09-15 <b>Last modified:</b> 2022-09-17 15:36:52 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In the <i>Effects</i> element of <tt>ranges::fold_right</tt>, we get the following code:
+</p>
+<blockquote><pre>
+using U = decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;;
+if (first == last)
+  return U(std::move(init)); // <span style="color:red;font-weight:bolder">functional-style C cast</span>
+[&hellip;]
+</pre></blockquote>
+<p>
+Given the following function object:
+</p>
+<blockquote><pre>
+struct Second {
+  static char* operator()(const char*, char* rhs) {
+    return rhs;
+  }
+};
+</pre></blockquote>
+<p>
+calling <tt>fold_right</tt> as:
+</p>
+<blockquote><pre>
+char* p = fold_right(views::empty&lt;char*&gt;, "Hello", Second{});
+</pre></blockquote>
+<p>
+initializes <tt>p</tt> with <tt>const_cast&lt;char*&gt;("Hello")</tt>.
+<p/>
+The same problem exists in <tt>fold_left_with_iter</tt>, and thus in <tt>fold_left</tt>.
+<p/>
+One can get the <tt>reinterpret_cast</tt> behavior by replacing <tt>const char*</tt> with 
+<tt>unsigned long long</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 27.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S, class T,
+         <i>indirectly-binary-right-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr auto ranges::fold_right(I first, S last, T init, F f);
+template&lt;bidirectional_range R, class T,
+         <i>indirectly-binary-right-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr auto ranges::fold_right(R&amp;&amp; r, T init, F f);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+using U = decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;;
+if (first == last)
+  return <ins>static_cast&lt;</ins>U<ins>&gt;</ins>(std::move(init));
+I tail = ranges::next(first, last);
+U accum = invoke(f, *--tail, std::move(init));
+while (first != tail)
+  accum = invoke(f, *--tail, std::move(accum));
+return accum;
+</pre></blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T,
+         <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr <i>see below</i> ranges::fold_left_with_iter(I first, S last, T init, F f);
+template&lt;input_range R, class T, <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr <i>see below</i> ranges::fold_left_with_iter(R&amp;&amp; r, T init, F f);
+</pre>
+<blockquote>
+<p>
+-6- Let <tt>U</tt> be <tt>decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;</tt>.
+<p/>
+-7- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return {std::move(first), <ins>static_cast&lt;</ins>U<ins>&gt;</ins>(std::move(init))};
+U accum = invoke(f, std::move(init), *first);
+for (++first; first != last; ++first)
+  accum = invoke(f, std::move(accum), *first);
+return {std::move(first), std::move(accum)};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

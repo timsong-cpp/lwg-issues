@@ -1,0 +1,282 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3776: Avoid parsing format-spec if it is not present or empty</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3776" href="lwg-active.html#3776">3776.</a> Avoid parsing <i>format-spec</i> if it is not present or empty</h3>
+<p><b>Section:</b> 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2022-08-28 <b>Last modified:</b> 2022-09-17 11:30:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#formatter.requirements">active issues</a> in [formatter.requirements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#formatter.requirements">issues</a> in [formatter.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A format string 22.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/format.string.general">[format.string.general]</a>/1 has an optional
+<i>format-specifier</i> replacement field. If this field is not present, the
+current wording makes it clear the intention is to call parse when a
+formatting argument use a handle class 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a>/19
+</p>
+<blockquote>
+<p>
+<i>Effects</i>: Initializes <tt>ptr_</tt> with <tt>addressof(val)</tt> and <tt>format_</tt> with
+</p>
+<blockquote><pre>
+   [](basic_format_parse_context&lt;char_type&gt;&amp; parse_ctx,
+      Context&amp; format_ctx, const void* ptr) {
+     typename Context::template formatter_type&lt;TD&gt; f;
+     parse_ctx.advance_to(f.parse(parse_ctx));
+     format_ctx.advance_to(f.format(*const_cast&lt;TQ*&gt;(static_cast&lt;const TD*>(ptr)),
+                                    format_ctx));
+  }
+</pre>
+</blockquote>
+</blockquote>
+<p>
+For other types it is implied by [tab:formatter.basic]
+</p>
+<blockquote>
+<p>
+Formats <tt>u</tt> according to the specifiers stored in <tt>*this</tt>, writes the
+output to <tt>fc.out()</tt>, and returns an iterator past the end of the output
+range. The output shall only depend on <tt>u</tt>, <tt>fc.locale()</tt>, <tt>fc.arg(n)</tt> for
+any value <tt>n</tt> of type <tt>size_t</tt>, and the range <tt>[pc.begin(), pc.end())</tt> from
+the last call to <tt>f.parse(pc)</tt>.
+</p>
+</blockquote>
+<p>
+(Similar wording is used in [tab:formatter])
+<p/>
+Before the <tt>parse</tt> function is called it is known whether or not a
+<i>format-spec</i> is present. It seems wasteful to call a function that is
+known not to parse anything. Therefore I propose to make the call
+optional.
+<p/>
+This change is only observable for formatter specializations using the
+<tt>handle</tt> class, for the formatter specializations in
+22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> the change has no observable effect.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Given character type <tt>charT</tt>, output iterator type <tt>Out</tt>, and formatting argument type 
+<tt>T</tt>, in Table 74 and Table 75:
+<p/>
+[&hellip;]
+<p/>
+<tt>pc.begin()</tt> points to the beginning of the <i>format-spec</i> (22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) 
+of the replacement field being formatted in the format string. If <i>format-spec</i> is 
+<ins>not present or</ins> empty then either <tt>pc.begin() == pc.end()</tt> or <tt>*pc.begin() == '}'</tt>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify <i>BasicFormatter</i> requirements [tab:formatter.basic] as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 74: <i>BasicFormatter</i> requirements [tab:formatter.basic]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>f.format(u, fc)</tt>
+</td>
+<td>
+<tt>FC::iterator</tt>
+</td>
+<td>
+Formats <tt>u</tt> according to the specifiers stored in<br/>
+<tt>*this</tt>, writes the output to <tt>fc.out()</tt>, and returns<br/>
+an iterator past the end of the output range.<br/>
+The output shall only depend on <tt>u</tt>, <tt>fc.locale()</tt>,<br/>
+<tt>fc.arg(n)</tt> for any value <tt>n</tt> of type <tt>size_t</tt>, and<br/>
+the range <tt>[pc.begin(), pc.end())</tt> from the last<br/>
+call to <tt>f.parse(pc)</tt>. <ins>When the <i>format-spec</i><br/>
+(22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) is not present or empty<br/> 
+the call to <tt>f.parse(pc)</tt> is omitted.</ins>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify <i>Formatter</i> requirements [tab:formatter] as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 75: <i>Formatter</i> requirements [tab:formatter]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td>
+<tt>f.format(t, fc)</tt>
+</td>
+<td>
+<tt>FC::iterator</tt>
+</td>
+<td>
+Formats <tt>t</tt> according to the specifiers stored in<br/>
+<tt>*this</tt>, writes the output to <tt>fc.out()</tt>, and returns<br/>
+an iterator past the end of the output range.<br/>
+The output shall only depend on <tt>t</tt>, <tt>fc.locale()</tt>,<br/>
+<tt>fc.arg(n)</tt> for any value <tt>n</tt> of type <tt>size_t</tt>, and<br/>
+the range <tt>[pc.begin(), pc.end())</tt> from the last<br/>
+call to <tt>f.parse(pc)</tt>. <ins>When the <i>format-spec</i><br/>
+(22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) is not present or empty<br/> 
+the call to <tt>f.parse(pc)</tt> is omitted.</ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-16- The class <tt>handle</tt> allows formatting an object of a user-defined type.
+</p>
+<blockquote><pre>
+namespace std {
+  template&lt;class Context&gt;
+  class basic_format_arg&lt;Context&gt;::handle {
+    const void* ptr_;                                          // <i>exposition only</i>
+    void (*format_)(basic_format_parse_context&lt;char_type&gt;<del>&amp;</del><ins>*</ins>,
+                    Context&amp;, const void*);                    // <i>exposition only</i>
+
+    template&lt;class T&gt; explicit handle(T&amp;&amp; val) noexcept;       // <i>exposition only</i>
+
+    friend class basic_format_arg&lt;Context&gt;;                    // <i>exposition only</i>
+
+  public:
+    void format(basic_format_parse_context&lt;char_type&gt;&amp;, Context&amp; ctx) const;
+  };
+}
+</pre></blockquote>
+<pre>
+template&lt;class T&gt; explicit handle(T&amp;&amp; val) noexcept;
+</pre>
+<blockquote>
+<p>
+-17- [&hellip;]
+<p/>
+-18- [&hellip;]
+<p/>
+-19- <i>Effects</i>: Initializes <tt>ptr_</tt> with <tt>addressof(val)</tt> and <tt>format_</tt> with
+</p>
+<blockquote><pre>
+[](basic_format_parse_context&lt;char_type&gt;<del>&amp;</del><ins>*</ins> parse_ctx,
+   Context&amp; format_ctx, const void* ptr) {
+  typename Context::template formatter_type&lt;TD&gt; f;
+  <ins>if (parse_ctx)</ins> parse_ctx<del>.</del><ins>-&gt;</ins>advance_to(f.parse(<ins>*</ins>parse_ctx));
+  format_ctx.advance_to(f.format(*const_cast&lt;TQ*&gt;(static_cast&lt;const TD*&gt;(ptr)),
+                                 format_ctx));
+}
+</pre></blockquote>
+</blockquote>
+<pre>
+void format(basic_format_parse_context&lt;char_type&gt;&amp; parse_ctx, Context&amp; format_ctx) const;
+</pre>
+<blockquote>
+<p>
+-20- <i>Effects</i>: <ins>If the <i>format-spec</i> (22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) is not present or empty,
+equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>format_(nullptr, format_ctx, ptr_);</ins>
+</pre></blockquote>
+<p>
+<ins>otherwise, e</ins><del>E</del>quivalent to:
+</p>
+<blockquote><pre>
+format_(<ins>addressof(</ins>parse_ctx<ins>)</ins>, format_ctx, ptr_);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

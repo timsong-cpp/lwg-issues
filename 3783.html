@@ -1,0 +1,143 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3783: views::common may not be a range adaptor object</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3783" href="lwg-active.html#3783">3783.</a> <tt>views::common</tt> may not be a range adaptor object</h3>
+<p><b>Section:</b> 25.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, 25.5.5.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-18 <b>Last modified:</b> 2022-09-18 13:46:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#common.iterator">issues</a> in [common.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P2325R3">P2325R3</a> makes <tt>input_or_output_iterator</tt> no longer require <tt>default_initializable</tt>, 
+which means that the template parameter <tt>I</tt> of <tt>common_iterator</tt> no longer requires 
+<tt>default_initializable</tt>.
+<p/>
+In this case, since <tt>common_iterator</tt> itself cannot be default-constructed, it can never be a valid 
+sentinel even if it can be compared to itself. Furthermore, this also makes <tt>views::common</tt> return a 
+non-<tt>range</tt> even if it is well-formed (<a href="https://godbolt.org/z/dn4c7M57W">online example</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+
+int main() {
+  std::vector&lt;int&gt; v;
+  auto r = std::views::counted(std::back_inserter(v), 3);
+  auto cr = r | std::views::common;
+  static_assert(std::ranges::range&lt;decltype(cr)&gt;); // <span style="color:red;font-weight:bolder">failed</span>
+}
+</pre></blockquote>
+<p>
+which causes <tt>views::common</tt> to be unable to convert a <tt>range</tt> into a <tt>view</tt>, 
+making it not a valid range adaptor.
+<p/>
+I think <tt>common_iterator</tt> should always be <tt>default_initializable</tt>, 
+which makes it eligible to be a legitimate sentinel.
+<p/>
+The proposed resolution provides a default constructor for <tt>common_iterator</tt> when <tt>I</tt> is 
+not <tt>default_initializable</tt>, in which case constructs the <tt>variant</tt> with an alternative type 
+of <tt>S</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, class template <tt>common_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; &amp;&amp; copyable&lt;I&gt;)
+  class common_iterator {
+  public:
+    constexpr common_iterator() requires default_initializable&lt;I&gt; = default;
+    <ins>constexpr common_iterator();</ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.5.5.3 <a href="https://timsong-cpp.github.io/cppwp/common.iter.const">[common.iter.const]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr common_iterator();</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Initializes <tt>v_</tt> as if by <tt>v_{in_place_type&lt;S&gt;}</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+constexpr common_iterator(I i);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt>v_</tt> as if by <tt>v_{in_place_type&lt;I&gt;, std::move(i)}</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
