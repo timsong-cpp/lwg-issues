@@ -1,0 +1,140 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3787: ranges::to's template parameter C should not be a reference type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3787" href="lwg-active.html#3787">3787.</a> <tt>ranges::to</tt>'s template parameter <tt>C</tt> should not be a reference type</h3>
+<p><b>Section:</b> 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a>, 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-25 <b>Last modified:</b> 2022-09-25 17:08:29 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.utility.conv.to">active issues</a> in [range.utility.conv.to].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.utility.conv.to">issues</a> in [range.utility.conv.to].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It doesn't make sense for the template parameter <tt>C</tt> of <tt>ranges::to</tt> be a reference, 
+which allows us to write something like <tt>ranges::to&lt;vector&lt;int&gt;&amp;&amp;&gt;(std::move(v))</tt> or
+<tt>ranges::to&lt;const vector&lt;int&gt;&amp;&amp;&gt;(v)</tt>, we should forbid this.
+<p/>
+The proposed resolution constrains the template parameter <tt>C</tt> to be object type to conform to 
+its description: "The range conversion functions construct an object (usually a container) from a range".
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;compare&gt;              // <i>see 17.12.1 <a href="https://timsong-cpp.github.io/cppwp/compare.syn">[compare.syn]</a></i>
+#include &lt;initializer_list&gt;     // <i>see 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+#include &lt;iterator&gt;             // <i>see 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a></i>
+
+namespace std::ranges {
+  [&hellip;]
+  // <i>26.5.7 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv">[range.utility.conv]</a>, range conversions</i>
+  template&lt;class C, input_range R, class... Args&gt; requires <ins>is_object_v&lt;C&gt; &amp;&amp;</ins> (!view&lt;C&gt;)
+    constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);                                          // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, input_range R, class... Args&gt;
+    constexpr auto to(R&amp;&amp; r, Args&amp;&amp;... args);                                       // <i>freestanding</i>
+  template&lt;class C, class... Args&gt; requires <ins>is_object_v&lt;C&gt; &amp;&amp;</ins> (!view&lt;C&gt;)
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, class... Args&gt;
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, input_range R, class... Args&gt; requires <ins>is_object_v&lt;C&gt; &amp;&amp;</ins> (!view&lt;C&gt;)
+constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns</i>: An object of type <tt>C</tt> constructed from the elements of <tt>r</tt> in the following manner:
+</p>
+[&hellip;]
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, class... Args&gt; requires <ins>is_object_v&lt;C&gt; &amp;&amp;</ins> (!view&lt;C&gt;)
+  constexpr auto to(Args&amp;&amp;... args);
+template&lt;template&lt;class...&gt; class C, class... Args>
+  constexpr auto to(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns</i>: A range adaptor closure object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>) <tt>f</tt> 
+that is a perfect forwarding call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>) with the following properties:
+</p>
+[&hellip;]
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

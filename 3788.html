@@ -1,0 +1,96 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3788: jthread::operator=(jthread&amp;&amp;) postconditions are unimplementable under self-assignment</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3788" href="lwg-active.html#3788">3788.</a> <tt>jthread::operator=(jthread&amp;&amp;)</tt> postconditions are unimplementable under self-assignment</h3>
+<p><b>Section:</b> 33.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/thread.jthread.cons">[thread.jthread.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Nicole Mazzuca <b>Opened:</b> 2022-09-22 <b>Last modified:</b> 2022-09-25 17:38:36 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In the <i>Postconditions</i> element of <tt>jthread&amp; jthread::operator=(jthread&amp;&amp;)</tt> 
+(33.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/thread.jthread.cons">[thread.jthread.cons]</a> p13), we have the following:
+</p>
+<blockquote><p>
+<i>Postconditions</i>: <tt>x.get_id() == id()</tt>, and <tt>get_id()</tt> returns the value of
+<tt>x.get_id()</tt> prior to the assignment. <tt>ssource</tt> has the value of <tt>x.ssource</tt> 
+prior to the assignment and <tt>x.ssource.stop_possible()</tt> is <tt>false</tt>.
+</p></blockquote>
+<p>
+Assume <tt>j</tt> is a joinable <tt>jthread</tt>. Then, <tt>j = std::move(j);</tt> results in the following post-conditions:
+</p>
+<ul>
+<li><p>Let <tt>old_id = j.get_id()</tt> (and since <tt>j</tt> is joinable, <tt>old_id != id()</tt>)</p></li>
+<li><p>Since <tt>x.get_id() == id()</tt>, <tt>j.get_id() == id()</tt></p></li>
+<li><p>Since <tt>get_id() == old_id</tt>, <tt>j.get_id() == old_id</tt></p></li>
+<li><p>Thus, <tt>id() == j.get_id() == old_id</tt>, and <tt>old_id != id()</tt>, which is a contradiction.</p></li>
+</ul>
+<p>
+One can see that these postconditions are therefore unimplementable.
+<p/>
+Two standard libraries &ndash; the MSVC STL and libstdc++ &ndash; currently implement <tt>jthread</tt>.
+<p/>
+The MSVC STL chooses to follow the letter of the <i>Effects</i> element, which results in unfortunate behavior.
+It first <tt>request_stop()</tt>s, then <tt>join()</tt>s; then, it assigns the values over. This results in
+<tt>j.get_id() == id()</tt> &ndash; this means that <tt>std::swap(j, j)</tt> stops and joins <tt>j</tt>.
+<p/>
+libstdc++ chooses instead to implement this move assignment operator via the move-swap idiom.
+This results in <tt>j.get_id() == old_id</tt>, and <tt>std::swap(j, j)</tt> is a no-op.
+<p/>
+It is the opinion of the issue writer that libstdc++'s choice is the correct one, and should be
+taken into the standard.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

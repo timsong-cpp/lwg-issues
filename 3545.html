@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3545" href="lwg-active.html#3545">3545.</a> <tt>std::pointer_traits</tt> should be SFINAE-friendly</h3>
 <p><b>Section:</b> 20.2.3 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits">[pointer.traits]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Glen Joseph Fernandes <b>Opened:</b> 2021-04-20 <b>Last modified:</b> 2022-02-23 11:07:28 UTC</p>
+ <b>Submitter:</b> Glen Joseph Fernandes <b>Opened:</b> 2021-04-20 <b>Last modified:</b> 2022-09-27 14:59:18 UTC</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#pointer.traits">active issues</a> in [pointer.traits].</p>
@@ -92,9 +92,8 @@ No objection to unanimous consent for Jonathan's suggestion to make
 <code>element_type</code>. Jonathan to provide a paper.
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/n4885">N4885</a>.
 </p>
@@ -125,6 +124,124 @@ is a class template <del>instantiation</del><ins>specialization</ins> of the for
 </blockquote>
 </li>
 </ol>
+</blockquote>
+
+<p><i>[2022-09-27; Jonathan provides new wording]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.</p>
+
+<ol>
+<li>
+<p>Modify 20.2.3.1 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.general">[pointer.traits.general]</a> as indicated:</p>
+
+<blockquote>
+<p>-1-
+The class template <tt>pointer_traits</tt> supplies a uniform interface to
+certain attributes of pointer-like types.
+</p>
+
+<blockquote><pre>
+namespace std {
+  template&lt;class Ptr&gt; struct pointer_traits {
+    <del>using pointer         = Ptr;</del>
+    <del>using element_type    = <i>see below</i>;</del>
+    <del>using difference_type = <i>see below</i>;</del>
+
+    <del>template&lt;class U&gt; using rebind = <i>see below</i>;</del>
+    <del>static pointer pointer_to(<i>see below</i> r);</del>
+
+    <ins><i>see below</i></ins>;
+  };
+
+  template&lt;class T&gt; struct pointer_traits&lt;T*&gt; {
+    using pointer         = T*;
+    using element_type    = T;
+    using difference_type = ptrdiff_t;
+
+    template&lt;class U&gt; using rebind = U*;
+    static constexpr pointer pointer_to(<i>see below</i> r) noexcept;
+  };
+}
+</pre></blockquote>
+
+</blockquote>
+</li>
+
+<li>
+<p>Modify 20.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.types">[pointer.traits.types]</a> as indicated:</p>
+
+<blockquote>
+
+<p><ins>-?-
+The definitions in this subclause make use of the following
+exposition-only class template and concept:
+</ins></p>
+<blockquote><pre><ins>
+template&lt;class T&gt;
+struct <i>ptr-traits-elem</i> <i>// exposition only</i>
+{ };
+
+template&lt;class T&gt; requires requires { typename T::element_type; }
+struct <i>ptr-traits-elem</i>&lt;T&gt;
+{ using type = typename T::element_type; };
+
+template&lt;template&lt;class...&gt; class SomePointer, class T, class... Args&gt;
+requires (!requires { typename SomePointer&lt;T, Args...&gt;::element_type; })
+struct <i>ptr-traits-elem</i>&lt;SomePointer&lt;T, Args...&gt;&gt;
+{ using type = T; };
+
+template&lt;class Ptr&gt;
+  concept <i>has-elem-type</i> = <i>// exposition only</i>
+    requires { typename <i>ptr-traits-elem</i>&lt;Ptr&gt;::type; }
+</ins></pre></blockquote>
+
+<p><ins>-?-
+If <tt>Ptr</tt> satisfies <tt><i>has-elem-type</i></tt>,
+a specialization <tt>pointer_traits&lt;Ptr&gt;</tt> generated from the
+<tt>pointer_traits</tt> primary template has the members described in
+20.2.3.2 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.types">[pointer.traits.types]</a> and 20.2.3.3 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.functions">[pointer.traits.functions]</a>;
+otherwise, such a specialization has no members by any of the names described
+in those subclauses or in 20.2.3.4 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.optmem">[pointer.traits.optmem]</a>.
+</ins></p>
+
+<pre>using element_type = <del><i>see below</i></del> <ins>typename <i>ptr-traits-elem</i>&lt;Ptr&gt;::type</ins>;</pre>
+<blockquote>
+<p><del>-1- <i>Type</i>: <tt>Ptr::element_type</tt> if the <i>qualified-id</i>
+<tt>Ptr::element_type</tt> is valid and denotes a type (13.10.3 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>);
+otherwise, <tt>T</tt> if <tt>Ptr</tt> is a class template instantiation of the
+form <tt>SomePointer&lt;T, Args&gt;</tt>, where <tt>Args</tt> is zero or more
+type arguments; otherwise, the
+specialization is ill-formed.</del>
+</p>
+</blockquote>
+<pre>using difference_type = <i>see below</i>;</pre>
+<blockquote>
+<p>-2-
+<i>Type</i>: <tt>Ptr::difference_type</tt> if the <i>qualified-id</i>
+<tt>Ptr::difference_type</tt> is valid and denotes a type (13.10.3 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>);
+otherwise, <tt>ptrdiff_t</tt>.
+</p>
+</blockquote>
+<pre>template&lt;class U&gt; using rebind = <i>see below</i>;</pre>
+<blockquote>
+<p>-3-
+<i>Alias template</i>: <tt>Ptr::rebind&lt;U&gt;</tt> if the <i>qualified-id</i>
+<tt>Ptr::rebind&lt;U&gt;</tt> is valid and denotes a type (13.10.3 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>);
+otherwise, <tt>SomePointer&lt;U, Args&gt;</tt> if <tt>Ptr</tt> is a class template instantiation of the
+form <tt>SomePointer&lt;T, Args&gt;</tt>, where <tt>Args</tt> is zero or more
+type arguments; otherwise, the instantiation of <tt>rebind</tt> is ill-formed.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
 
 
 

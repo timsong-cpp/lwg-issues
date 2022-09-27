@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2022-09-19 at 05:40:40 UTC</p>
+<td align="left"><p>Revised 2022-09-27 at 14:59:18 UTC</p>
 </td>
 </tr>
 <tr>
@@ -967,6 +967,355 @@ if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
 
 
 <hr>
+<h3><a name="3629" href="3629">3629.</a> <code>make_error_code</code> and <code>make_error_condition</code> are customization points</h3>
+<p><b>Section:</b> 19.5 <a href="https://timsong-cpp.github.io/cppwp/syserr">[syserr]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-10-31 <b>Last modified:</b> 2022-09-23 15:42:06 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#syserr">issues</a> in [syserr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The rule in 16.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/contents">[contents]</a> means that the calls to
+<code>make_error_code</code> in 19.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.constructors">[syserr.errcode.constructors]</a>
+and 19.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.modifiers">[syserr.errcode.modifiers]</a> are required to call
+<code>std::make_error_code</code>,
+which means program-defined error codes do not work.
+The same applies to the <code>make_error_condition</code> calls in
+19.5.5.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcondition.constructors">[syserr.errcondition.constructors]</a> and
+19.5.5.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcondition.modifiers">[syserr.errcondition.modifiers]</a>.
+</p>
+
+<p>
+They need to use ADL.
+This is what all known implementations (including Boost.System) do.
+</p>
+
+<p><i>[2022-01-29; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 19.5.2 <a href="https://timsong-cpp.github.io/cppwp/system.error.syn">[system.error.syn]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1-
+The value of each <code>enum errc</code> constant shall be the same as the
+value of the <code>&lt;cerrno&gt;</code> macro shown in the above synopsis.
+Whether or not the <code>&lt;system_error&gt;</code> implementation exposes
+the <code>&lt;cerrno&gt;</code> macros is unspecified.
+</p>
+
+<p>
+<ins>
+-?-
+Invocations of <code>make_error_code</code> and
+<code>make_error_condition</code> shown in subclause 19.5 <a href="https://timsong-cpp.github.io/cppwp/syserr">[syserr]</a>
+select a function to call via overload resolution (12.2 <a href="https://timsong-cpp.github.io/cppwp/over.match">[over.match]</a>)
+on a candidate set that includes the lookup set found by
+argument dependent lookup (6.5.4 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.argdep">[basic.lookup.argdep]</a>).
+</ins>
+</p>
+
+<p>
+-2-
+The <code>is_error_code_enum</code> and <code>is_error_condition_enum</code>
+templates may be specialized for program-defined types to indicate that such
+types are eligible for <code>class error_code</code> and
+<code>class error_condition</code> implicit conversions, respectively.
+</p>
+
+<p>
+<ins>
+<em>[Note 1:</em>
+Conversions from such types are done by program-defined overloads of
+<code>make_error_code</code> and <code>make_error_condition</code>,
+found by ADL. <em>&mdash;end note]</em>
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2022-08-25; Jonathan Wakely provides improved wording]</i></p>
+
+<p>
+Discussed in LWG telecon and decided on new direction:
+<ul>
+<li>Add <code>make_error_code</code> and <code>make_error_condition</code>
+to 16.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/contents">[contents]</a> as done for <code>swap</code>.
+Describe form of lookup used for them.</li>
+<li>Respecify <code>error_code</code> and <code>error_condition</code>
+constructors in terms of "<i>Effects</i>: Equivalent to" so that the
+requirements on program-defined overloads found by ADL are implied by those
+effects.</li>
+</ul>
+</p>
+
+<p><i>[2022-09-07; Jonathan Wakely revises wording]</i></p>
+
+
+<p>
+Discussed in LWG telecon. Decided to change "established as-if by performing
+unqualified name lookup and argument-dependent lookup"
+to simply "established as-if by performing argument-dependent lookup".
+</p>
+<p>
+This resolves the question of whether <tt>std::make_error_code(errc)</tt>,
+<tt>std::make_error_code(io_errc)</tt>, etc. should be visible to the
+unqualified name lookup. This affects whether a program-defined type that
+specializes <tt>is_error_code_enum</tt> but doesn't provide an overload of
+<tt>make_error_code</tt> should find the overloads in namespace <tt>std</tt>
+and consider them for overload resolution, via implicit conversion to
+<tt>std::errc</tt>, <tt>std::io_errc</tt>, etc.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ul>
+<li><p>Modify 16.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/contents">[contents]</a> as indicated:</p>
+
+<blockquote>
+<p>-3-
+Whenever an unqualified name other than <code>swap</code><ins>,
+<code>make_error_code</code>, or <code>make_error_condition</code></ins>
+is used in the specification of a declaration <code>D</code> in
+17 <a href="https://timsong-cpp.github.io/cppwp/support">[support]</a> through 33 <a href="https://timsong-cpp.github.io/cppwp/thread">[thread]</a> or D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a>,
+its meaning is established as-if by performing unqualified name lookup
+(6.5.3 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.unqual">[basic.lookup.unqual]</a>) in the context of <code>D</code>.
+</p>
+
+<p>
+[<i>Note 1</i>:
+Argument-dependent lookup is not performed.
+&mdash; <i>end note</i>]
+</p>
+
+<p>
+Similarly, the meaning of a <i>qualified-id</i> is established as-if by
+performing qualified name lookup (6.5.5 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.qual">[basic.lookup.qual]</a>)
+in the context of <code>D</code>.
+</p>
+
+<p>
+[<i>Example 1</i>:
+The reference to <code>is_array_v</code> in the specification of
+<code>std::to_array</code> (24.3.7.6 <a href="https://timsong-cpp.github.io/cppwp/array.creation">[array.creation]</a>)
+refers to <code>::std::is_array_v</code>.
+&mdash; <i>end example</i>]
+</p>
+
+<p>
+[<i>Note 2</i>:
+Operators in expressions (12.2.2.3 <a href="https://timsong-cpp.github.io/cppwp/over.match.oper">[over.match.oper]</a>)
+are not so constrained; see 16.4.6.4 <a href="https://timsong-cpp.github.io/cppwp/global.functions">[global.functions]</a>.
+&mdash; <i>end note</i>]
+</p>
+
+<p>
+The meaning of the unqualified name <code>swap</code> is established
+in an overload resolution context for swappable values
+(16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>).
+<ins>
+The meanings of the unqualified names
+<code>make_error_code</code> and <code>make_error_condition</code>
+are established as-if by performing
+argument-dependent lookup (6.5.4 <a href="https://timsong-cpp.github.io/cppwp/basic.lookup.argdep">[basic.lookup.argdep]</a>).
+</ins>
+</p>
+
+</blockquote>
+</li>
+
+<li><p>Modify 19.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.constructors">[syserr.errcode.constructors]</a> as indicated:</p>
+
+<blockquote>
+<pre>error_code() noexcept;</pre>
+<p>
+<del>
+-1- <i>Postconditions</i>:
+<code>val_ == 0</code> and <code>cat_ == &amp;system_category()</code>.
+</del>
+<br/>
+<ins>
+-1- <i>Effects</i>:
+Initializes <code>val_</code> with <code>0</code>
+and <code>cat_</code> with <code>&amp;system_category()</code>.
+</ins>
+</p>
+
+<pre>error_code(int val, const error_category&amp; cat) noexcept;</pre>
+<p>
+<del>
+-2- <i>Postconditions</i>:
+<code>val_ == val</code> and <code>cat_ == &amp;cat</code>.
+</del>
+<br/>
+<ins>
+-2- <i>Effects</i>:
+Initializes <code>val_</code> with <code>val</code>
+and <code>cat_</code> with <code>&amp;cat</code>.
+</ins>
+</p>
+
+<pre>template&lt;class ErrorCodeEnum&gt;
+  error_code(ErrorCodeEnum e) noexcept;</pre>
+<p>-3- <i>Constraints</i>:
+<code>is_error_code_enum_v&lt;ErrorCodeEnum&gt;</code> is <code>true</code>.
+</p>
+<p>
+<del>
+-4- <i>Postconditions</i>:
+<code>*this == make_error_code(e)</code>.
+</del>
+<br/>
+<ins>
+-4- <i>Effects</i>: Equivalent to:
+</ins>
+<blockquote><pre><ins>error_code ec = make_error_code(e);
+assign(ec.value(), ec.category());
+</ins></pre></blockquote>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 19.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcode.modifiers">[syserr.errcode.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>template&lt;class ErrorCodeEnum&gt;
+  error_code&amp; operator=(ErrorCodeEnum e) noexcept;</pre>
+<p>-2- <i>Constraints</i>:
+<code>is_error_code_enum_v&lt;ErrorCodeEnum&gt;</code> is <code>true</code>.
+</p>
+<p>
+<del>
+-3- <i>Postconditions</i>:
+<code>*this == make_error_code(e)</code>.
+</del>
+<br/>
+<ins>
+-3- <i>Effects</i>: Equivalent to:
+</ins>
+<blockquote><pre><ins>error_code ec = make_error_code(e);
+assign(ec.value(), ec.category());
+</ins></pre></blockquote>
+</p>
+<p>
+-4- <i>Returns</i>: <code>*this</code>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 19.5.5.2 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcondition.constructors">[syserr.errcondition.constructors]</a> as indicated:</p>
+
+<blockquote>
+<pre>error_condition() noexcept;</pre>
+<p>
+<del>
+-1- <i>Postconditions</i>:
+<code>val_ == 0</code> and <code>cat_ == &amp;generic_category()</code>.
+</del>
+<br/>
+<ins>
+-1- <i>Effects</i>:
+Initializes <code>val_</code> with <code>0</code>
+and <code>cat_</code> with <code>&amp;generic_category()</code>.
+</ins>
+</p>
+
+<pre>error_condition(int val, const error_category&amp; cat) noexcept;</pre>
+<p>
+<del>
+-2- <i>Postconditions</i>:
+<code>val_ == val</code> and <code>cat_ == &amp;cat</code>.
+</del>
+<br/>
+<ins>
+-2- <i>Effects</i>:
+Initializes <code>val_</code> with <code>val</code>
+and <code>cat_</code> with <code>&amp;cat</code>.
+</ins>
+</p>
+
+<pre>template&lt;class ErrorConditionEnum&gt;
+  error_condition(ErrorConditionEnum e) noexcept;</pre>
+<p>-3- <i>Constraints</i>:
+<code>is_error_condition_enum_v&lt;ErrorConditionEnum&gt;</code> is <code>true</code>.
+</p>
+<p>
+<del>
+-4- <i>Postconditions</i>:
+<code>*this == make_error_condition(e)</code>.
+</del>
+<br/>
+<ins>
+-4- <i>Effects</i>: Equivalent to:
+</ins>
+<blockquote><pre><ins>error_condition ec = make_error_condition(e);
+assign(ec.value(), ec.category());
+</ins></pre></blockquote>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 19.5.5.3 <a href="https://timsong-cpp.github.io/cppwp/syserr.errcondition.modifiers">[syserr.errcondition.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>template&lt;class ErrorConditionEnum&gt;
+  error_condition&amp; operator=(ErrorConditionEnum e) noexcept;</pre>
+<p>-2- <i>Constraints</i>:
+<code>is_error_condition_enum_v&lt;ErrorConditionEnum&gt;</code> is <code>true</code>.
+</p>
+<p>
+<del>
+-3- <i>Postconditions</i>:
+<code>*this == make_error_condition(e)</code>.
+</del>
+<br/>
+<ins>
+-3- <i>Effects</i>: Equivalent to:
+</ins>
+<blockquote><pre><ins>error_condition ec = make_error_condition(e);
+assign(ec.value(), ec.category());
+</ins></pre></blockquote>
+</p>
+<p>
+-4- <i>Returns</i>: <code>*this</code>.
+</p>
+</blockquote>
+
+</li>
+
+</ul>
+
+
+
+
+
+
+<hr>
 <h3><a name="3636" href="3636">3636.</a> <tt>formatter&lt;T&gt;::format</tt> should be <tt>const</tt>-qualified</h3>
 <p><b>Section:</b> 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
  <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2021-11-11 <b>Last modified:</b> 2022-08-24 18:56:41 UTC</p>
@@ -1235,6 +1584,90 @@ return formatter&lt;chrono::<i>local-time-format-t</i>&lt;Duration&gt;, charT&gt
          format({tp.get_local_time(), &amp;info.abbrev, &amp;info.offset}, ctx);
 </pre></blockquote>
 </blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3646" href="3646">3646.</a> <tt>std::ranges::view_interface::size</tt> returns a signed type</h3>
+<p><b>Section:</b> 26.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2021-11-29 <b>Last modified:</b> 2022-09-23 14:31:54 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#view.interface.general">active issues</a> in [view.interface.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#view.interface.general">issues</a> in [view.interface.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+According to 26.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a>, <tt>view_interface::size</tt> returns 
+the difference between the sentinel and the beginning iterator, which always has a 
+signed-integer-like type. However, IIUC the decision that a <tt>size</tt> member function 
+should return an unsigned type by default was made when adopting <a href="https://wg21.link/P1227R2">P1227R2</a>, 
+and the relative changes of the ranges library were done in <a href="https://wg21.link/P1523R1">P1523R1</a>. 
+I don't know why <tt>view_interface::size</tt> was unchanged, while <tt>ranges::size</tt> 
+returns an unsigned type in similar situations (26.3.10 <a href="https://timsong-cpp.github.io/cppwp/range.prim.size">[range.prim.size]</a> (2.5)).
+<p/>
+If we want to change <tt>views_interface::size</tt> to return an unsigned type, the both 
+overloads should be changed as below:
+</p>
+<blockquote><pre>
+constexpr auto size() requires forward_range&lt;D&gt; &amp;&amp;
+  sized_sentinel_for&lt;sentinel_t&lt;D&gt;, iterator_t&lt;D&gt;&gt; {
+    return <i>to-unsigned-like</i>(ranges::end(<i>derived</i>()) - ranges::begin(<i>derived</i>()));
+  }
+constexpr auto size() const requires forward_range&lt;const D&gt; &amp;&amp;
+  sized_sentinel_for&lt;sentinel_t&lt;const D&gt;, iterator_t&lt;const D&gt;&gt; {
+    return <i>to-unsigned-like</i>(ranges::end(<i>derived</i>()) - ranges::begin(<i>derived</i>()));
+  }
+</pre></blockquote>
+
+<p><i>[2022-01-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+<p><i>[2022-06-22; Reflector poll]</i></p>
+
+<p>
+LEWG poll approved the proposed resolution
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll in July 2022.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/view.interface.general">[view.interface.general]</a>, class template <tt>view_interface</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr auto size() requires forward_range&lt;D&gt; &amp;&amp;
+  sized_sentinel_for&lt;sentinel_t&lt;D&gt;, iterator_t&lt;D&gt;&gt; {
+    return <ins><i>to-unsigned-like</i>(</ins>ranges::end(<i>derived</i>()) - ranges::begin(<i>derived</i>())<ins>)</ins>;
+  }
+constexpr auto size() const requires forward_range&lt;const D&gt; &amp;&amp;
+  sized_sentinel_for&lt;sentinel_t&lt;const D&gt;, iterator_t&lt;const D&gt;&gt; {
+    return <ins><i>to-unsigned-like</i>(</ins>ranges::end(<i>derived</i>()) - ranges::begin(<i>derived</i>())<ins>)</ins>;
+  }
+[&hellip;]
+</pre>
 </blockquote>
 </li>
 
@@ -2132,6 +2565,925 @@ constexpr explicit expected(in_place_t) noexcept;
 
 </ol>
 
+
+
+
+
+
+<hr>
+<h3><a name="3755" href="3755">3755.</a> <tt><i>tuple-for-each</i></tt> can call user-defined <tt>operator,</tt></h3>
+<p><b>Section:</b> 26.7.23.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.view">[range.zip.view]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Nicole Mazzuca  <b>Opened:</b> 2022-08-26 <b>Last modified:</b> 2022-09-25 06:15:22 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.zip.view">active issues</a> in [range.zip.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.zip.view">issues</a> in [range.zip.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The specification for <tt><i>tuple-for-each</i></tt> is:
+</p>
+
+<blockquote><pre>
+template&lt;class F, class Tuple&gt;
+constexpr auto <i>tuple-for-each</i>(F&amp;&amp; f, Tuple&amp;&amp; t) { <i>// exposition only</i>
+  apply([&amp;]&lt;class... Ts&gt;(Ts&amp;&amp;... elements) {
+    (invoke(f, std::forward&lt;Ts&gt;(elements)), ...);
+  }, std::forward&lt;Tuple&gt;(t));
+}
+</pre></blockquote>
+
+<p>Given</p>
+
+<blockquote><pre>
+struct Evil {
+  void operator,(Evil) {
+        abort();
+    }
+};
+</pre></blockquote>
+
+<p>
+and <tt>tuple&lt;int, int&gt; t</tt>, then
+<tt><i>tuple-for-each</i>([](int) { return Evil{}; }, t)</tt>,
+the program will (unintentionally) abort.
+</p>
+
+<p>
+It seems likely that our <tt>Evil</tt>'s <tt>operator,</tt>
+should not be called.
+</p>
+
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+<p>
+Feedback from one reviewer:
+</p>
+<blockquote>
+<p>
+"NAD. This exposition-only facility is only used with things that return <tt>void</tt>. 
+As far as I know, users can't define <tt>operator,</tt> for <tt>void</tt>.
+If I see the <tt>void</tt> cast, I don't need to audit the uses or be concerned that 
+we'll add a broken use in the future."
+</p>
+</blockquote>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p> This wording is relative to the forthcoming C++23 CD. </p>
+
+<ul>
+<li>
+<p>
+Modify 26.7.5 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.tuple">[range.adaptor.tuple]</a> as indicated:
+</p>
+
+<blockquote><pre>
+template&lt;class F, class Tuple&gt;
+constexpr auto <i>tuple-for-each</i>(F&amp;&amp; f, Tuple&amp;&amp; t) { <i>// exposition only</i>
+  apply([&amp;]&lt;class... Ts&gt;(Ts&amp;&amp;... elements) {
+    (<ins>static_cast&lt;void&gt;(</ins>invoke(f, std::forward&lt;Ts&gt;(elements))<ins>)</ins>, ...);
+  }, std::forward&lt;Tuple&gt;(t));
+}
+</pre></blockquote>
+
+</li>
+</ul>
+
+
+
+
+
+
+<hr>
+<h3><a name="3757" href="3757">3757.</a> What's the effect of <tt>std::forward_like&lt;void&gt;(x)</tt>?</h3>
+<p><b>Section:</b> 22.2.4 <a href="https://timsong-cpp.github.io/cppwp/forward">[forward]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2022-08-24 <b>Last modified:</b> 2022-09-23 15:12:25 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#forward">issues</a> in [forward].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently the return type of <tt>std::forward_like</tt> is specified by the following bullet:
+</p>
+<blockquote>
+<p>
+&mdash; Let <tt>V</tt> be
+</p>
+<blockquote><pre>
+<i>OVERRIDE_REF</i>(T&amp;&amp;, <i>COPY_CONST</i>(remove_reference_t&lt;T&gt;, remove_reference_t&lt;U&gt;))
+</pre></blockquote>
+</blockquote>
+<p>
+where <tt>T&amp;&amp;</tt> is not always valid, e.g. it's invalid when <tt>T</tt> is <tt>void</tt>.
+<p/>
+A strait forward reading may suggest that there is a hard error when <tt>T</tt> is not referenceable 
+(which is currently implemented in MSVC STL), but this seems not clarified. It is unclear to me whether 
+the intent is that hard error, substitution failure, or no error is caused when <tt>T&amp;&amp;</tt> is invalid.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.2.4 <a href="https://timsong-cpp.github.io/cppwp/forward">[forward]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class U&gt;
+  [[nodiscard]] constexpr auto forward_like(U&amp;&amp; x) noexcept -> <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+<ins><i>Mandates</i>: <tt>T</tt> is a referenceable type (3.46 <a href="https://timsong-cpp.github.io/cppwp/defns.referenceable">[defns.referenceable]</a>).</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3759" href="3759">3759.</a> <tt>ranges::rotate_copy</tt> should use <tt>std::move</tt></h3>
+<p><b>Section:</b> 27.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.rotate">[alg.rotate]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-25 <b>Last modified:</b> 2022-09-23 15:09:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.rotate">issues</a> in [alg.rotate].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The range version of <tt>ranges::rotate_copy</tt> directly passes the <tt>result</tt> to the 
+iterator-pair version. Since the type of <tt>result</tt> only models <tt>weakly_incrementable</tt> 
+and may not be copied, we should use <tt>std::move</tt> here.
+</p>
+
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.7.11 <a href="https://timsong-cpp.github.io/cppwp/alg.rotate">[alg.rotate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;forward_range R, weakly_incrementable O&gt;
+  requires indirectly_copyable&lt;iterator_t&lt;R&gt;, O&gt;
+  constexpr ranges::rotate_copy_result&lt;borrowed_iterator_t&lt;R&gt;, O&gt;
+    ranges::rotate_copy(R&amp;&amp; r, iterator_t&lt;R&gt; middle, O result);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: Equivalent to:
+<blockquote><pre>
+return ranges::rotate_copy(ranges::begin(r), middle, ranges::end(r), <ins>std::move(</ins>result<ins>)</ins>);
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3760" href="3760">3760.</a> <tt>cartesian_product_view::<i>iterator</i></tt>'s <tt><i>parent_</i></tt> is never valid</h3>
+<p><b>Section:</b> 26.7.31 <a href="https://timsong-cpp.github.io/cppwp/range.cartesian">[range.cartesian]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-23 15:00:17 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>cartesian_product_view::<i>iterator</i></tt> has a pointer member <tt><i>parent_</i></tt> that points 
+to <tt>cartesian_product_view</tt>, but its constructor only accepts a <tt>tuple</tt> of iterators, which 
+makes <tt><i>parent_</i></tt> always default-initialized to <tt>nullptr</tt>.
+<p/>
+The proposed resolution is to add an aliased <tt><i>Parent</i></tt> parameter to the constructor and 
+initialize <tt><i>parent_</i></tt> with <tt>addressof</tt>, as we usually do.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.31.2 <a href="https://timsong-cpp.github.io/cppwp/range.cartesian.view">[range.cartesian.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>iterator</i>&lt;false&gt; begin()
+  requires (!<i>simple-view</i>&lt;First&gt; || ... || !<i>simple-view</i>&lt;Vs&gt;);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: Equivalent to: <tt>return <i>iterator</i>&lt;false&gt;(<ins>*this,</ins> <i>tuple-transform</i>(ranges::begin, 
+<i>bases_</i>));</tt>
+</p>
+</blockquote>  
+<pre>
+constexpr <i>iterator</i>&lt;true&gt; begin() const
+  requires (range&lt;const First&gt; &amp;&amp; ... &amp;&amp; range&lt;const Vs&gt;);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to: <tt>return <i>iterator</i>&lt;true&gt;(<ins>*this,</ins> <i>tuple-transform</i>(ranges::begin, 
+<i>bases_</i>));</tt>
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>&lt;false&gt; end()
+  requires ((!<i>simple-view</i>&lt;First&gt; || ... || !<i>simple-view</i>&lt;Vs&gt;)
+    &amp;&amp; <i>cartesian-product-is-common</i>&lt;First, Vs...&gt;);
+constexpr <i>iterator</i>&lt;true&gt; end() const
+  requires <i>cartesian-product-is-common</i>&lt;const First, const Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-4- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; <tt><i>is-const</i></tt> be <tt>true</tt> for the const-qualified overload, and <tt>false</tt> otherwise;</p></li>
+<li><p>(4.2) &mdash; <tt><i>is-empty</i></tt> be <tt>true</tt> if the expression <tt>ranges::empty(rng)</tt> is <tt>true</tt> 
+for any <tt>rng</tt> among the underlying ranges except the first one and <tt>false</tt> otherwise; and</p></li>
+<li><p>(4.3) &mdash; <tt><i>begin-or-first-end</i>(rng)</tt> be expression-equivalent to 
+<tt><i>is-empty</i> ? ranges::begin(rng) : <i>cartesian-common-arg-end</i>(rng)</tt> if <tt>rng</tt> is the first underlying range 
+and <tt>ranges::begin(rng)</tt> otherwise.</p></li>
+</ol>
+<p>
+-5- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+<i>iterator</i>&lt;<i>is-const</i>&gt; it(<ins>*this,</ins> <i>tuple-transform</i>(
+  [](auto&amp; rng){ return <i>begin-or-first-end</i>(rng); }, <i>bases_</i>));
+return it;
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range First, forward_range... Vs&gt;
+    requires (view&lt;First&gt; &amp;&amp; ... &amp;&amp; view&lt;Vs&gt;)
+  template&lt;bool Const&gt;
+  class cartesian_product_view&lt;First, Vs...&gt;::<i>iterator</i> {
+  public:
+    [&hellip;]
+
+  private:
+    <ins>using <i>Parent</i> = <i>maybe-const</i>&lt;Const, cartesian_product_view&gt;;           <i>// exposition only</i></ins>
+    <ins><i>Parent</i></ins><del><i>maybe-const</i>&lt;Const, cartesian_product_view&gt;</del>* <i>parent_</i> = nullptr; <i>// exposition only</i>
+    tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; <i>current_</i>;                   <i>// exposition only</i>
+    
+    template&lt;size_t N = sizeof...(Vs)&gt;
+      constexpr void <i>next</i>();                                             <i>// exposition only</i>
+    
+    template&lt;size_t N = sizeof...(Vs)&gt;
+      constexpr void <i>prev</i>();                                             <i>// exposition only</i>
+    
+    template&lt;class Tuple>
+      constexpr difference_type <i>distance-from</i>(Tuple t);                  <i>// exposition only</i>
+    
+    constexpr <del>explicit</del> <i>iterator</i>(<ins><i>Parent</i>&amp; parent,</ins> tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+      iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; current);                   <i>// exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr <del>explicit</del> <i>iterator</i>(<ins><i>Parent</i>&amp; parent,</ins> tuple&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, First&gt;&gt;,
+  iterator_t&lt;<i>maybe-const</i>&lt;Const, Vs&gt;&gt;...&gt; current);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>:  Initializes <ins><tt><i>parent_</i></tt> with <tt>addressof(parent)</tt> and</ins> 
+<tt><i>current_</i></tt> with <tt>std::move(current)</tt>.
+</p>
+</blockquote>
+<pre>
+constexpr <i>iterator</i>(<i>iterator</i>&lt;!Const&gt; i) requires Const &amp;&amp;
+  (convertible_to&lt;iterator_t&lt;First&gt;, iterator_t&lt;const First&gt;&gt; &amp;&amp;
+    ... &amp;&amp; convertible_to&lt;iterator_t&lt;Vs&gt;, iterator_t&lt;const Vs&gt;&gt;);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: Initializes <ins><tt><i>parent_</i></tt> with <tt>i.<i>parent_</i></tt> and</ins> 
+<tt><i>current_</i></tt> with <tt>std::move(i.<i>current_</i>)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3761" href="3761">3761.</a> <tt>cartesian_product_view::<i>iterator</i>::operator-</tt> should pass by reference</h3>
+<p><b>Section:</b> 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-23 15:18:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There are two problems with <tt>cartesian_product_view::<i>iterator</i>::operator-</tt>.
+<p/>
+First, <tt><i>distance-from</i></tt> is not <tt>const</tt>-qualified, which would cause 
+the common version of <tt>operator-</tt> to produce a hard error inside the function body 
+since it invokes <tt><i>distance-from</i></tt> on a const <tt><i>iterator</i></tt> object.
+<p/>
+Second, the non-common version of <tt>operator-</tt> passes <tt><i>iterator</i></tt> by value,
+which unnecessarily prohibits subtracting <tt>default_sentinel</tt> from an lvalue 
+<tt><i>iterator</i></tt> whose first underlying iterator is non-<tt>copyable</tt>.
+Even if we <tt>std::move</tt> it into <tt>operator-</tt>, the other overload will still be ill-formed
+since it returns <tt>-(i - s)</tt> which will calls <tt>i</tt>'s deleted copy constructor.
+<p/>
+The proposed resolution is to add <tt>const</tt> qualification to <tt><i>distance-from</i></tt> 
+and make the non-common version of <tt><i>iterator</i>::operator-</tt> pass by const reference. 
+Although the <tt>Tuple</tt> parameter of <tt><i>distance-from</i></tt> is guaranteed to be 
+<tt>copyable</tt>, I think it would be more appropriate to pass it by reference.
+</p>
+
+<p><i>[2022-09-08]</i></p>
+
+<p>
+As suggested by Tim Song, the originally submitted proposed wording has been refined to use
+<tt>const Tuple&amp;</tt> instead of <tt>Tuple&amp;</tt>.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range First, forward_range... Vs&gt;
+    requires (view&lt;First&gt; &amp;&amp; ... &amp;&amp; view&lt;Vs&gt;)
+  template&lt;bool Const&gt;
+  class cartesian_product_view&lt;First, Vs...&gt;::<i>iterator</i> {
+  public:
+    [&hellip;]
+
+    friend constexpr difference_type operator-(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t)
+      requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+    friend constexpr difference_type operator-(default_sentinel_t, <ins>const</ins> <i>iterator</i><ins>&amp;</ins> i)
+      requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+
+    [&hellip;]
+  private:
+    [&hellip;]
+    
+    template&lt;class Tuple&gt;
+      constexpr difference_type <i>distance-from</i>(<ins>const</ins> Tuple<ins>&amp;</ins> t) <ins>const</ins>;            <i>// exposition only</i>
+      
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;class Tuple&gt;
+  constexpr difference_type <i>distance-from</i>(<ins>const</ins> Tuple<ins>&amp;</ins> t) <ins>const</ins>;
+</pre>
+<blockquote>
+<p>
+-7- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; <tt><i>scaled-size</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(ranges::size(std::get&lt;<i>N</i>&gt;(<i>parent_</i>-&gt;<i>bases_</i>)))</tt> and 
+<tt><i>scaled-size</i>(<i>N</i> + 1)</tt> if <tt><i>N</i> &lt; sizeof...(Vs)</tt>, otherwise 
+<tt>static_cast&lt;difference_type&gt;(1)</tt>;</p></li>
+<li><p>(7.2) &mdash; <tt><i>scaled-distance</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(std::get&lt;<i>N</i>&gt;(<i>current_</i>) - std::get&lt;<i>N</i>&gt;(t))</tt> and 
+<tt><i>scaled-size</i>(<i>N</i> + 1)</tt>; and</p></li>
+<li><p>(7.3) &mdash; <tt><i>scaled-sum</i></tt> be the sum of <tt><i>scaled-distance</i>(<i>N</i>)</tt> for every integer 
+<tt>0 &le; <i>N</i> &le; sizeof...(Vs)</tt>.</p></li>
+</ol>
+<p>
+-8- <i>Preconditions</i>: <tt><i>scaled-sum</i></tt> can be represented by <tt>difference_type</tt>.
+</p>
+<p>
+-9- <i>Returns</i>: <tt><i>scaled-sum</i></tt>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+friend constexpr difference_type operator-(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t)
+  requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-32- Let <tt><i>end-tuple</i></tt> be an object of a type that is a specialization of <tt>tuple</tt>, such that:
+</p>
+<ol style="list-style-type: none">
+<li><p>(32.1) &mdash; <tt>std::get&lt;0&gt;(<i>end-tuple</i>)</tt> has the same value as 
+<tt>ranges::end(std::get&lt;0&gt;(i.<i>parent_</i>-&gt;<i>bases_</i>))</tt>;</p></li>
+<li><p>(32.2) &mdash; <tt>std::get&lt;<i>N</i>&gt;(<i>end-tuple</i>)</tt> has the 
+same value as <tt>ranges::begin(std::get&lt;<i>N</i>&gt;(i.<i>parent_</i>-&gt;<i>bases_</i>))</tt> 
+for every integer <tt>1 &le; <i>N</i> &le; sizeof...(Vs)</tt>.</p></li>
+</ol>
+<p>
+-33- <i>Effects</i>: Equivalent to: <tt>return i.<i>distance-from</i>(<i>end-tuple</i>);</tt>
+</p>
+</blockquote>
+<pre>
+friend constexpr difference_type operator-(default_sentinel_t, <ins>const</ins> <i>iterator</i><ins>&amp;</ins> i)
+  requires <i>cartesian-is-sized-sentinel</i>&lt;Const, sentinel_t, First, Vs...&gt;;
+</pre>
+<blockquote>
+<p>
+-34- <i>Effects</i>: Equivalent to: <tt>return -(i - s);</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3762" href="3762">3762.</a> <tt>generator::<i>iterator</i>::operator==</tt> should pass by reference</h3>
+<p><b>Section:</b> 26.8.6 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.iterator">[coro.generator.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-27 <b>Last modified:</b> 2022-09-23 15:10:34 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>generator::<i>iterator</i>::operator==</tt> passes <tt><i>iterator</i></tt> by value.
+Given that <tt><i>iterator</i></tt> is a move-only type, this makes it impossible for 
+<tt>generator</tt> to model <tt>range</tt>, since <tt>default_sentinel</tt> cannot be compared 
+to the <tt><i>iterator</i></tt> of <tt>const</tt> lvalue and is not eligible to be its sentinel.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.8.6 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.iterator">[coro.generator.iterator]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Ref, class V, class Allocator&gt;
+  class generator&lt;Ref, V, Allocator&gt;::<i>iterator</i> {
+  public:
+    using value_type = <i>value</i>;
+    using difference_type = ptrdiff_t;
+
+    <i>iterator</i>(<i>iterator</i>&amp;&amp; other) noexcept;
+    <i>iterator</i>&amp; operator=(<i>iterator</i>&amp;&amp; other) noexcept;
+    
+    <i>reference</i> operator*() const noexcept(is_nothrow_copy_constructible_v&lt;<i>reference</i>&gt;);
+    <i>iterator</i>&amp; operator++();
+    void operator++(int);
+
+    friend bool operator==(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t);
+
+  private:
+    coroutine_handle&lt;promise_type&gt; <i>coroutine_</i>; <i>// exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+friend bool operator==(<ins>const</ins> <i>iterator</i><ins>&amp;</ins> i, default_sentinel_t);
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>: Equivalent to: <tt>return i.<i>coroutine_</i>.done();</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3764" href="3764">3764.</a> <tt>reference_wrapper::operator()</tt> should propagate <tt>noexcept</tt></h3>
+<p><b>Section:</b> 22.10.6.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap.invoke">[refwrap.invoke]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Zhihao Yuan <b>Opened:</b> 2022-08-31 <b>Last modified:</b> 2022-09-25 06:07:46 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#refwrap.invoke">issues</a> in [refwrap.invoke].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following assertion does not hold, making
+the type less capable than the function pointers.
+</p>
+<blockquote><pre>
+void f() noexcept;
+
+std::reference_wrapper fn = f;
+static_assert(std::is_nothrow_invocable_v&lt;decltype(fn)&gt;);
+</pre></blockquote>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+<p>
+Already implemented in MSVC and libstdc++.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.10.6.1 <a href="https://timsong-cpp.github.io/cppwp/refwrap.general">[refwrap.general]</a>, class template <tt>reference_wrapper</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+<i>// 22.10.6.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap.invoke">[refwrap.invoke]</a>, invocation</i>
+template&lt;class... ArgTypes&gt;
+  constexpr invoke_result_t&lt;T&amp;, ArgTypes...&gt; operator()(ArgTypes&amp;&amp;...) const 
+    <ins>noexcept(is_nothrow_invocable_v&lt;T&amp;, ArgTypes...&gt;)</ins>;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 22.10.6.5 <a href="https://timsong-cpp.github.io/cppwp/refwrap.invoke">[refwrap.invoke]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class... ArgTypes&gt;
+  constexpr invoke_result_t&lt;T&amp;, ArgTypes...&gt;
+    operator()(ArgTypes&amp;&amp;... args) const <ins>noexcept(is_nothrow_invocable_v&lt;T&amp;, ArgTypes...&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <tt>T</tt> is a complete type.
+<p/>
+-2- <i>Returns</i>: <tt><i>INVOKE</i>(get(), std::forward&lt;ArgTypes&gt;(args)...)</tt>. (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>)
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3765" href="3765">3765.</a> <tt>const_sentinel</tt> should be constrained</h3>
+<p><b>Section:</b> 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, 25.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.alias">[const.iterators.alias]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-03 <b>Last modified:</b> 2022-09-23 15:10:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.synopsis">active issues</a> in [iterator.synopsis].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.synopsis">issues</a> in [iterator.synopsis].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current standard does not have any constraints on <tt>const_sentinel</tt> template parameters, 
+which makes it possible to pass almost any type of object to <tt>make_const_sentinel</tt>.
+It would be more appropriate to constrain the type to meet the minimum requirements of the 
+sentinel type such as <tt>semiregular</tt> as <tt>move_sentinel</tt> does.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;compare&gt;              <i>// see 17.12.1 <a href="https://timsong-cpp.github.io/cppwp/compare.syn">[compare.syn]</a></i>
+#include &lt;concepts&gt;             <i>// see 18.3 <a href="https://timsong-cpp.github.io/cppwp/concepts.syn">[concepts.syn]</a></i>
+
+namespace std {
+  [&hellip;]
+  
+  <i>// 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a>, constant iterators and sentinels</i>
+  <i>// 25.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.alias">[const.iterators.alias]</a>, alias templates</i>
+  [&hellip;]
+  template&lt;input_iterator I&gt;
+    using const_iterator = <i>see below</i>;                                               // <i>freestanding</i>
+  template&lt;<ins>semiregular</ins><del>class</del> S&gt;
+    using const_sentinel = <i>see below</i>;                                               // <i>freestanding</i>
+
+  [&hellip;]
+  template&lt;input_iterator I&gt;
+    constexpr const_iterator&lt;I&gt; make_const_iterator(I it) { return it; }            // <i>freestanding</i>
+
+  template&lt;<ins>semiregular</ins><del>class</del> S&gt;
+    constexpr const_sentinel&lt;S&gt; make_const_sentinel(S s) { return s; }              // <i>freestanding</i>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.alias">[const.iterators.alias]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<ins>semiregular</ins><del>class</del> S&gt;
+  using const_sentinel = <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-2- <i>Result</i>: If <tt>S</tt> models <tt>input_iterator</tt>, <tt>const_iterator&lt;S&gt;</tt>. Otherwise, <tt>S</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3771" href="3771">3771.</a> [fund.ts.v3] remove binders typedefs from <code>function</code></h3>
+<p><b>Section:</b> 99 [fund.ts.v3::func.wrap.func.overview] <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2022-09-12 <b>Last modified:</b> 2022-09-23 15:29:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p><b>Addresses: fund.ts.v3</b></p>
+<p>
+The LFTSv3 bases its specification for <code>experimental::function</code>
+on <code>std::function</code> in the C++20 standard.
+However, the wording was largely copied over from LFTSv2 which based its
+wording on the C++14 standard.
+</p>
+<p>
+For C++17, we removed the conditionally defined typedefs for the legacy binders
+API, but this removal was not reflected in the TS.  We are now left with a
+specification referring to unknown types, <tt>T1</tt> and <tt>T2</tt>.
+</p>
+<p>
+ These typedefs should be excised to match the referenced standard.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after ten votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4920">N4920</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify the synopsis in 99 [fund.ts.v3::func.wrap.func.overview]
+as indicated:</p>
+
+<blockquote><pre>
+namespace std {
+  namespace experimental::inline fundamentals_v3 {
+
+    template&lt;class&gt; class function; <i>// undefined</i>
+
+    template&lt;class R, class... ArgTypes&gt;
+    class function&lt;R(ArgTypes...)&gt; {
+    public:
+      using result_type = R;
+      <del>using argument_type = T1;</del>
+      <del>using first_argument_type T1;</del>
+      <del>using second_argument_type = T2;</del>
+
+      using allocator_type = erased_type;
+
+      // ...
+  }
+}
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3773" href="3773">3773.</a> <tt>views::zip_transform</tt> still requires <tt>F</tt> to be <tt>copy_constructible</tt> when empty pack</h3>
+<p><b>Section:</b> 26.7.24.1 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.overview">[range.zip.transform.overview]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-12 <b>Last modified:</b> 2022-09-23 15:27:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+After <a href="https://wg21.link/P2494R2">P2494R2</a>, range adaptors only require callable to be
+<tt>move_constructible</tt>, however, for <tt>views::zip_transform</tt>,
+when empty pack, it still requires callable to be <tt>copy_constructible</tt>.
+We should relax this requirement, too.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 26.7.24.1 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.overview">[range.zip.transform.overview]</a> as indicated:</p>
+<blockquote>
+<p>
+-2- The name <tt>views::zip_transform</tt> denotes a customization point object
+(16.3.3.3.6 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>). 
+Let <tt>F</tt> be a subexpression,
+and let <tt>Es...</tt> be a pack of subexpressions.
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) — If <tt>Es</tt> is an empty pack, let <tt>FD</tt> be <tt>decay_t&lt;decltype((F))&gt;</tt>.</p></li>
+<ol style="list-style-type:none">
+<li><p>(2.1.1) — If <tt><ins>move_constructible</ins><del>copy_constructible</del>&lt;FD&gt; &amp;&amp; regular_invocable&lt;FD&amp;&gt;</tt> is <tt>false</tt>, or if <tt>decay_t&lt;invoke_result_t&lt;FD&amp;&gt;&gt;</tt> is not an object type, <tt>views::zip_transform(F, Es...)</tt> is ill-formed.</p></li>
+<li><p>(2.1.2) — Otherwise, the expression <tt>views::zip_transform(F, Es...)</tt> is expression-equivalent to</p>
+<pre>
+      ((void)F, auto(views::empty&lt;decay_t&lt;invoke_result_t&lt;FD&amp;&gt;&gt;&gt;))</pre>
+</li>
+</ol>
+<li><p>(2.2) — Otherwise, the expression <tt>views::zip_transform(F, Es...)</tt> is expression-equivalent to <tt>zip_transform_view(F, Es...)</tt>.</p></li>
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3774" href="3774">3774.</a> <tt>&lt;flat_set&gt;</tt> should include <tt>&lt;compare&gt;</tt></h3>
+<p><b>Section:</b> 24.6.5 <a href="https://timsong-cpp.github.io/cppwp/flat.set.syn">[flat.set.syn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2022-09-12 <b>Last modified:</b> 2022-09-23 15:28:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This was originally
+<a href="https://github.com/cplusplus/draft/pull/5789">editorial PR #5789</a>
+which is considered not-editorial.
+</p>
+ 
+<p>
+<code>std::flat_set</code> and <code>std::flat_multiset</code>
+have <code>operator&lt;=&gt;</code>
+so <code>&lt;compare&gt;</code> should be included in the corresponding header,
+in the spirit of LWG <a href="3330">3330</a>.
+<code>#include &lt;compare&gt;</code> is also missing in the adopted paper
+<a href="https://wg21.link/P1222R4">P1222R4</a>.
+</p>
+
+<p><i>[2022-09-23; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.</p>
+
+<ol>
+<li>
+<p>Modify the synopsis in 24.6.5 <a href="https://timsong-cpp.github.io/cppwp/flat.set.syn">[flat.set.syn]</a> as indicated:</p>
+
+<blockquote><pre>
+<ins>#include &lt;compare&gt;              <i>// see 17.12.1 <a href="https://timsong-cpp.github.io/cppwp/compare.syn">[compare.syn]</a></i></ins>
+#include &lt;initializer_list&gt;     <i>// see 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+</pre></blockquote>
+</li>
+</ol>
 
 
 
