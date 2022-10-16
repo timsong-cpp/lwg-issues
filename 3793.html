@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3793: Requirements for some algorithms' Size template parameters are unclear</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3793" href="lwg-active.html#3793">3793.</a> Requirements for some algorithms' <tt>Size</tt> template parameters are unclear</h3>
+<p><b>Section:</b> 27.6.5 <a href="https://timsong-cpp.github.io/cppwp/alg.foreach">[alg.foreach]</a>, 27.6.15 <a href="https://timsong-cpp.github.io/cppwp/alg.search">[alg.search]</a>, 27.7.1 <a href="https://timsong-cpp.github.io/cppwp/alg.copy">[alg.copy]</a>, 27.7.6 <a href="https://timsong-cpp.github.io/cppwp/alg.fill">[alg.fill]</a>, 27.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.generate">[alg.generate]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2022-10-05 <b>Last modified:</b> 2022-10-12 14:34:35 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.foreach">issues</a> in [alg.foreach].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Algorithms <tt>std::for_each_n</tt>, <tt>std::search_n</tt>, <tt>std::copy_n</tt>, 
+<tt>std::fill_n</tt>, and <tt>std::generate_n</tt> have similar requirements for the 
+<tt>Size</tt> template parameter in <i>Mandates</i>, requiring <tt>Size</tt> to be 
+convertible to an integral type.
+<p/>
+However, it is currently underspecified to which integral type <tt>Size</tt> is 
+converted before further operations. There is implementation divergence:
+</p>
+<blockquote>
+<ul>
+<li><p><a href="https://github.com/gcc-mirror/gcc/blob/df4c584c567263fdcd57d8376f24f29477a892b2/libstdc%2B%2B-v3/include/bits/stl_algobase.h#L1005-L1052">libstdc++</a> 
+and <a href="https://github.com/llvm/llvm-project/blob/3e97e9423742b8ad07358d01b63ffbedde23b2a4/libcxx/include/__utility/convert_to_integral.h#L24-L68">libc++</a> 
+use an overload set to determine the target type, and</p></li>
+<li><p><a href="https://github.com/microsoft/STL/blob/65aab97a8e75e7ba409002e518ed799006dfb285/stl/inc/xutility#L352-L353">MSVC STL</a> 
+simply chooses <tt>std::ptrdiff_t</tt> when <tt>Size</tt> is not an integral 
+type.</p></li>
+</ul>
+</blockquote>
+<p>
+It is also notable that when the conversion from the source type to integral types 
+is sufficiently ambiguous, none of these implementations accepts such a source type.
+<p/>
+For example, currently the following program <a href="https://godbolt.org/z/KdK9dqWco">is rejected by all 
+mainstream implementations</a>.
+</p>
+<blockquote><pre>
+#include &lt;algorithm&gt;
+#include &lt;cstdio&gt;
+
+struct BadFrom {
+  operator short() const { return 1; }
+  operator unsigned short() const { return 1; }
+};
+
+int main()
+{
+  int arr[42]{};
+  std::for_each_n(arr, BadFrom{}, [&amp;arr](int i)
+  {
+    std::printf("%d\n", i);
+  });
+}
+</pre></blockquote>
+<p>
+I think libc++'s strategy make the most sense. But is it really intended to support using a 
+floating-point type or a class type as <tt>Size</tt>?
+<p/>
+<b>Daniel:</b>
+<p/>
+The conversion from class type was indeed intended, see the original wording for LWG
+<a href="3213">3213</a>, which was transferred to <a href="https://wg21.link/P1718R2">P1718R2</a>.
+<p/>
+See also LWG <a href="3439">3439</a> for a similar underspecified situation for template parameter 
+<tt>Distance</tt> and for the underspecified <tt>Size</tt> template parameter in
+various <tt>uninitialized_*_n</tt> and <tt>destroy_n</tt> algorithms in 
+27.11.2 <a href="https://timsong-cpp.github.io/cppwp/special.mem.concepts">[special.mem.concepts]</a>.
+<p/>
+<tt>ranges::destroy_n</tt> has the luxury to simply require <tt>iter_difference_t&lt;I&gt;</tt>.
+</p>
+
+<p><i>[2022-10-12; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

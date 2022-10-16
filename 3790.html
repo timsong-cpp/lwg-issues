@@ -1,0 +1,166 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3790: P1467 accidentally changed nexttoward's signature</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3790" href="lwg-active.html#3790">3790.</a> P1467 accidentally changed <tt>nexttoward</tt>'s signature</h3>
+<p><b>Section:</b> 28.7.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> David Olsen <b>Opened:</b> 2022-09-30 <b>Last modified:</b> 2022-10-15 10:57:29 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#cmath.syn">active issues</a> in [cmath.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmath.syn">issues</a> in [cmath.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P1467">P1467</a> (Extended floating-point types), which was adopted for C++23 at the July plenary, 
+has a typo (which is entirely my fault) that no one noticed during wording review.  The changes to the 
+<tt>&lt;cmath&gt;</tt> synopsis in the paper included changing this:
+</p>
+<blockquote><pre>
+constexpr float nexttoward(float x, long double y);       // see [library.c]
+constexpr double nexttoward(double x, long double y);
+constexpr long double nexttoward(long double x, long double y);   // see [library.c]
+</pre></blockquote>
+<p>
+to this:
+</p>
+<blockquote><pre>
+constexpr <i>floating-point-type</i> nexttoward(<i>floating-point-type</i> x, <i>floating-point-type</i> y);
+</pre></blockquote>
+<p>
+That changed the second parameter of <tt>nexttoward</tt> from always being <tt>long double</tt> to being 
+<tt><i>floating-point-type</i></tt>, which matches the type of the first parameter.
+<p/>
+The change is obviously incorrect. The purpose of the changes to <tt>&lt;cmath&gt;</tt> was to add overloads 
+of the functions for extended floating-point types, not to change any existing signatures.
+</p>
+
+<p><i>[2022-10-10; Reflector poll]</i></p>
+
+<p>
+Set priority to 1 after reflector poll. Discussion during prioritization
+revolved around whether to delete <code>nexttoward</code> for new FP types
+or just restore the C++20 signatures, which might accept the new types via
+implicit conversions (and so return a different type, albeit with the same
+representation and same set of values).
+</p>
+<p>
+"When the first argument to <code>nexttoward</code> is an extended
+floating-point type that doesn't have the same representation as a standard
+floating-point type, such as <code>std::float16_t</code>,
+<code>std::bfloat16_t</code>, or <code>std::float128_t</code> (on some systems),
+the call to <code>nexttoward</code> is ambiguous and ill-formed,
+so the unexpected return type is not an issue.
+Going through the extra effort of specifying '= delete' for
+<code>nexttoward</code> overloads that have extended floating-point arguments
+is a solution for a problem that doesn't really exist."
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 28.7.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a>, header <tt>&lt;cmath&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+constexpr <i>floating-point-type</i> nexttoward(<i>floating-point-type</i> x, <del><i>floating-point-type</i></del><ins>long double</ins> y);
+constexpr float nexttowardf(float x, long double y);
+constexpr long double nexttowardl(long double x, long double y);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2022-10-04; David Olsen comments and provides improved wording]</i></p>
+
+<p>
+C23 specifies variants of most of the functions in <tt>&lt;math.h&gt;</tt> for the <tt>_FloatN</tt> types 
+(which are C23's equivalent of C++23's <tt>std::floatN_t</tt> types). But it does not specify those variants 
+for <tt>nexttoward</tt>.
+<p/>
+Based on what C23 is doing, I think it would be reasonable to leave <tt>nexttoward</tt>'s signature unchanged 
+from C++20. There would be no requirement to provide overloads for extended floating-point types, only for 
+the standard floating-point types. Instead of explicitly deleting the overloads with extended floating-point 
+types, we can just never declare them in the first place.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 28.7.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a>, header <tt>&lt;cmath&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<ins>constexpr float nexttoward(float x, long double y);</ins>
+<ins>constexpr double nexttoward(double x, long double y);</ins>
+<ins>constexpr long double nexttoward(long double x, long double y);</ins>
+<del>constexpr <i>floating-point-type</i> nexttoward(<i>floating-point-type</i> x, <i>floating-point-type</i> y);</del>
+constexpr float nexttowardf(float x, long double y);
+constexpr long double nexttowardl(long double x, long double y);
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

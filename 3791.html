@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3791: join_view::iterator::operator-- may be ill-formed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3791" href="lwg-active.html#3791">3791.</a> <tt>join_view::<i>iterator</i>::operator--</tt> may be ill-formed</h3>
+<p><b>Section:</b> 26.7.14.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-30 <b>Last modified:</b> 2022-10-12 14:36:37 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.join.iterator">active issues</a> in [range.join.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.iterator">issues</a> in [range.join.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>join_view::<i>iterator</i>::operator--</tt> has the following <i>Effects</i>:
+</p>
+<blockquote><pre>
+if (<i>outer_</i> == ranges::end(<i>parent_</i>-><i>base_</i>))
+  <i>inner_</i> = ranges::end(*--<i>outer_</i>);
+while (<i>inner_</i> == ranges::begin(*<i>outer_</i>))
+  <i>inner_</i> = ranges::end(*--<i>outer_</i>);
+--<i>inner_</i>;
+return *this;
+</pre></blockquote>
+<p>
+which uses <tt>ranges::end(*--<i>outer_</i>)</tt> to get the sentinel of the inner range.
+However, <tt>*--<i>outer_</i></tt> may return an rvalue reference to a non-borrowed range, 
+in which case calling <tt>ranges::end</tt> will be ill-formed,
+<a href="https://godbolt.org/z/s4bxTWfqv">for example</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+
+int main() {
+  std::vector&lt;std::vector&lt;int&gt;&gt; v;
+  auto r = v | std::views::transform([](auto&amp; x) -&gt; auto&amp;&amp; { return std::move(x); })
+             | std::views::join;
+  auto e = --r.end(); // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+<p>
+The proposed resolution uses a temporary reference to bind <tt>*--<i>outer_</i></tt>, so that 
+<tt>ranges::end</tt> is always invoked on an lvalue range, which is consistent with the behavior of 
+<tt>join_with_view::<i>iterator</i>::operator--</tt>.
+</p>
+
+<p><i>[2022-10-12; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"Could introduce an <code>as_lvalue</code> lambda (like
+<code>auto as_lvalue = []&lt;class T&gt;(T&amp;&amp; x) -&gt; T&amp; { return (T&amp;)x; };</code>) and use it throughout."
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.14.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.iterator">[range.join.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>iterator</i>&amp; operator--()
+  requires <i>ref-is-glvalue</i> &amp;&amp; bidirectional_range&lt;<i>Base</i>&gt; &amp;&amp;
+           bidirectional_range&lt;range_reference_t&lt;<i>Base</i>&gt;&gt; &amp;&amp;
+           common_range&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+</blockquote>
+<p>
+-13- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+if (<i>outer_</i> == ranges::end(<i>parent_</i>-><i>base_</i>)) <ins>{
+  auto&amp;&amp; inner = *--<i>outer_</i>;</ins>
+  <i>inner_</i> = ranges::end(<ins>inner</ins><del>*--<i>outer_</i></del>);
+<ins>}</ins>
+while (<ins>true</ins><del><i>inner_</i> == ranges::begin(*<i>outer_</i>)</del>) <ins>{
+  if (auto&amp;&amp; tmp = *<i>outer_</i>; <i>inner_</i> == ranges::begin(tmp)) {
+    auto&amp;&amp; inner = *--<i>outer_</i>;</ins>
+    <i>inner_</i> = ranges::end(<ins>inner</ins><del>*--<i>outer_</i></del>);
+  <ins>} else {
+    break;
+  }
+}</ins>
+--<i>inner_</i>;
+return *this;
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
