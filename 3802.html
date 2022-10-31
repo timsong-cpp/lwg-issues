@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3802: flat_foo allocator-extended constructors lack move semantics</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3802" href="lwg-active.html#3802">3802.</a> <tt>flat_<i>foo</i></tt> allocator-extended constructors lack move semantics</h3>
+<p><b>Section:</b> 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/flat.map">[flat.map]</a>, 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap">[flat.multimap]</a>, 24.6.11 <a href="https://timsong-cpp.github.io/cppwp/flat.set">[flat.set]</a>, 24.6.12 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset">[flat.multiset]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2022-10-25 <b>Last modified:</b> 2022-10-29 11:17:50 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#flat.map">active issues</a> in [flat.map].</p>
+<p><b>View all other</b> <a href="lwg-index.html#flat.map">issues</a> in [flat.map].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Compare 24.6.7.2 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons">[priqueue.cons]</a>'s overload set
+</p>
+<blockquote><pre>
+priority_queue(const Compare&amp;, const Container&amp;);
+priority_queue(const Compare&amp;, Container&amp;&amp;);
+template&lt;class Alloc&gt; priority_queue(const Compare&amp;, const Container&amp;, const Alloc&amp;);
+template&lt;class Alloc&gt; priority_queue(const Compare&amp;, Container&amp;&amp;, const Alloc&amp;);
+</pre></blockquote>
+<p>
+against 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/flat.map">[flat.map]</a>'s overload set
+</p>
+<blockquote><pre>
+flat_map(key_container_type, mapped_container_type);
+template&lt;class Allocator&gt; flat_map(const key_container_type&amp;, const mapped_container_type&amp;, const Allocator&amp; a);
+</pre></blockquote>
+<p>
+I see two issues here:
+</p>
+<ol style="list-style-type: none">
+<li><p>(A) The allocator-extended ctor of <tt>flat_map</tt> always copies the <tt>key_container</tt> and <tt>value_container</tt>, 
+when it should be move-enabled.</p></li>
+<li><p>(B) Almost certainly the <tt>Allocator</tt> parameter should be named <tt>Alloc</tt> instead, and there should be a 
+separate "Constructors with allocators" section with wording similar to 24.6.7.3 <a href="https://timsong-cpp.github.io/cppwp/priqueue.cons.alloc">[priqueue.cons.alloc]</a> explaining that 
+these ctors don't participate in overload resolution unless 
+<tt>uses_allocator_v&lt;KeyContainer, Alloc&gt; &amp;&amp; uses_allocator_v&lt;MappedContainer, Alloc&gt;</tt>.</p></li>
+</ol>
+<p>
+I suggest this overload set to replace the two overloads above:
+</p>
+<blockquote><pre>
+flat_map(key_container_type, mapped_container_type);
+template&lt;class Alloc&gt; flat_map(const key_container_type&amp;, const mapped_container_type&amp;, const Alloc&amp; a);
+template&lt;class Alloc&gt; flat_map(const key_container_type&amp;, mapped_container_type&amp;&amp;, const Alloc&amp; a);
+template&lt;class Alloc&gt; flat_map(key_container_type&amp;&amp;, const mapped_container_type&amp;, const Alloc&amp; a);
+template&lt;class Alloc&gt; flat_map(key_container_type&amp;&amp;, mapped_container_type&amp;&amp;, const Alloc&amp; a);
+</pre></blockquote>
+<p>
+This preserves the apparent assumption that <tt>KeyContainer(std::move(kc))</tt> is always efficient but 
+<tt>KeyContainer(std::move(kc), otheralloc)</tt> might not be. Similar wording changes would have to be made to all the 
+<tt>flat_<i>foo</i></tt> containers.
+<p/>
+Tony Table:
+</p>
+<blockquote><pre>
+template&lt;class T, class Comp = std::less&lt;T&gt;, class Container = std::pmr::vector&lt;T&gt;&gt;
+using pmr_flat_set = std::flat_set&lt;T, Comp, Container&gt;;
+
+std::pmr::vector&lt;pmr_flat_set&lt;int&gt;&gt; vs;
+std::pmr::vector&lt;int&gt; data = {1,2,3};
+
+vs.reserve(1);
+vs.emplace_back(std::move(data));
+  // constructs-in-place with the argument list (std::move(data), get_allocator())
+  // BEFORE: copies (causes heap traffic)
+  // AFTER: moves (no heap traffic)
+</pre></blockquote>
+
+
+<p><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

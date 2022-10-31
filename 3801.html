@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3801: cartesian_product_view::iterator::distance-from ignores the size of last underlying range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3801" href="lwg-active.html#3801">3801.</a> <tt>cartesian_product_view::<i>iterator</i>::<i>distance-from</i></tt> ignores the size of last underlying range</h3>
+<p><b>Section:</b> 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2022-10-25 <b>Last modified:</b> 2022-10-28 12:47:16 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ranges.cartesian.iterator">active issues</a> in [ranges.cartesian.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ranges.cartesian.iterator">issues</a> in [ranges.cartesian.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The helper <tt><i>scaled-size</i>(<i>N</i>)</tt> from the wording for <a href="https://wg21.link/P2374R4">P2374R4</a>'s
+<tt>cartesian_product_view::<i>iterator</i>::<i>distance-from</i></tt> is recursively 
+specified as:
+</p>
+<blockquote>
+<p>
+Let <tt><i>scaled-size</i>(<i>N</i>)</tt> be the product of
+<tt>static_cast&lt;difference_type&gt;(ranges::size(std::get&lt;<i>N</i>&gt;(<i>parent_</i>-&gt;<i>bases_</i>)))</tt>
+and <tt><i>scaled-size</i>(<i>N</i> + 1)</tt> if <tt><i>N</i> &lt; sizeof...(Vs)</tt>, otherwise
+<tt>static_cast&lt;difference_type&gt;(1)</tt>;
+</p>
+</blockquote>
+<p>
+Intuitively, <tt><i>scaled-size</i>(<i>N</i>)</tt> is the size of the cartesian product of all
+but the first <tt><i>N</i></tt> underlying ranges. Thus <tt><i>scaled-size</i>(sizeof...(Vs))</tt> 
+ought to just yield the size of the last underlying range (since there are
+<tt>1 + sizeof...(Vs)</tt> underlying ranges), but according to this definition it
+yields <tt>1</tt>. Similarly at the other extreme, <tt><i>scaled-size</i>(0)</tt> should yield
+the product of the sizes of all the underlying ranges, but it instead yields that of all but 
+the last underlying range.
+<p/>
+For <tt>cartesian_product_view</tt>s of two or more underlying ranges, this
+causes the relevant <tt>operator-</tt> overloads to compute wrong distances, e.g.
+</p>
+<blockquote><pre>
+int x[] = {1, 2, 3};
+auto v = views::cartesian_product(x, x);
+auto i = v.begin() + 5;  // *i == {2, 3}
+assert(*i == tuple{2, 3});
+assert(i - v.begin() == 5); // fails, expects 3, because:
+// scaled-sum = scaled-distance(0) + scaled-distance(1)
+//            = ((1 - 0) * scaled-size(1)) + ((2 - 0) * scaled-size(2))
+//            = 1 + 2 instead of 3 + 2
+</pre></blockquote>
+<p>
+The recursive condition should probably use <tt>&lt;=</tt> instead of <tt>&lt;</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Tuple&gt;
+  constexpr difference_type <i>distance-from</i>(Tuple t);
+</pre>
+<blockquote>
+<p>
+-7- Let:
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; <tt><i>scaled-size</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(ranges::size(std::get&lt;<i>N</i>&gt;(<i>parent_</i>-&gt;<i>bases_</i>)))</tt> 
+and <tt><i>scaled-size</i>(<i>N</i> + 1)</tt> if <tt><i>N</i> <ins>&le;</ins><del>&lt;</del> sizeof...(Vs)</tt>, otherwise 
+<tt>static_cast&lt;difference_type&gt;(1)</tt>;</p></li>
+<li><p>(7.2) &mdash; <tt><i>scaled-distance</i>(<i>N</i>)</tt> be the product of 
+<tt>static_cast&lt;difference_type&gt;(std::get&lt;<i>N</i>&gt;(<i>current_</i>) - std::get&lt;<i>N</i>&gt;(t))</tt> 
+and <tt><i>scaled-size</i>(<i>N</i> + 1)</tt>; and</p></li>
+<li><p>(7.3) &mdash; <tt><i>scaled-sum</i></tt> be the sum of <tt><i>scaled-distance</i>(<i>N</i>)</tt> for every 
+integer <tt>0 &le; N &le; sizeof...(Vs)</tt>.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3796: movable-box as member should use default-initialization instead of copy-initialization</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3796" href="lwg-active.html#3796">3796.</a> <tt><i>movable-box</i></tt> as member should use default-initialization instead of copy-initialization</h3>
+<p><b>Section:</b> 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a>, 26.7.29.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.by.view">[range.chunk.by.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-10-20 <b>Last modified:</b> 2022-10-22 16:39:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.repeat.view">active issues</a> in [range.repeat.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.repeat.view">issues</a> in [range.repeat.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the member variable <tt><i>value_</i></tt> of <tt>repeat_view</tt> is initialized with the following expression:
+</p>
+<blockquote><pre>
+<i>movable-box</i>&lt;W&gt; <i>value_</i> = W();
+</pre></blockquote>
+<p>
+which will result in the following unexpected error in <a href="https://godbolt.org/z/jK7djP6GT">libstdc++</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  std::ranges::repeat_view&lt;int&gt; r; // <span style="color:red;font-weight:bolder">error: could not convert '0' from 'int' to 'std::ranges::__detail::__box&lt;int&gt;'</span>
+}
+</pre></blockquote>
+<p>
+This is because the single-argument constructors of the simple version of <tt><i>movable-box</i></tt> in libstdc++ 
+are declared as <tt>explicit</tt>, which is different from the conditional <tt>explicit</tt> declared by the 
+<tt>optional</tt>'s constructor, resulting in no visible conversion between those two types.
+<p/>
+For MSVC-STL, the simple version of <tt><i>movable-box</i></tt> does not provide a single-argument constructor, 
+so this form of initialization will also produce a hard error.
+</p>
+<p>
+This may be a bug of existing implementations, but we don't need such "copy-initialization", the default-constructed 
+<tt><i>movable-box</i></tt> already value-initializes the underlying type.
+<p/>
+Simply using default initialization, as most other range adaptors do, guarantees consistency, which also 
+eliminates extra move construction.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;move_constructible W, semiregular Bound = unreachable_sentinel_t&gt;
+    requires (is_object_v&lt;W&gt; &amp;&amp; same_as&lt;W, remove_cv_t&lt;W&gt;&gt; &amp;&amp;
+              (<i>is-integer-like</i>&lt;Bound&gt; || same_as&lt;Bound, unreachable_sentinel_t&gt;))
+   class repeat_view : public view_interface&lt;repeat_view&lt;W, Bound&gt;&gt; {
+   private:
+     // <i>26.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.iterator">[range.repeat.iterator]</a>, class repeat_view::<i>iterator</i></i>
+     struct <i>iterator</i>;                            // <i>exposition only</i>
+
+     <i>movable-box</i>&lt;W&gt; <i>value_</i><del> = W()</del>;                // <i>exposition only, see 26.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.move.wrap">[range.move.wrap]</a></i>
+     Bound <i>bound_</i> = Bound();                     // <i>exposition only</i>
+     [&hellip;]
+   };
+   [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.29.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.by.view">[range.chunk.by.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, indirect_binary_predicate&lt;iterator_t&lt;V&gt;, iterator_t&lt;V&gt;&gt; Pred&gt;
+    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;Pred&gt;
+  class chunk_by_view : public view_interface&lt;chunk_by_view&lt;V, Pred&gt;&gt; {
+    V <i>base_</i> = V();                                          // <i>exposition only</i>
+    <i>movable-box</i>&lt;Pred&gt; <i>pred_</i><del> = Pred()</del>;                       // <i>exposition only</i>
+
+    // <i>26.7.29.3 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.by.iter">[range.chunk.by.iter]</a></i>, <i>class</i> chunk_by_view::<i>iterator</i>
+    class <i>iterator</i>;                                         // <i>exposition only</i>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

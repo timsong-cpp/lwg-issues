@@ -1,0 +1,203 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3797: elements_view insufficiently constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3797" href="lwg-active.html#3797">3797.</a> <tt>elements_view</tt> insufficiently constrained</h3>
+<p><b>Section:</b> 26.7.22.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hui Xie <b>Opened:</b> 2022-10-21 <b>Last modified:</b> 2022-10-22 16:40:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.elements.view">issues</a> in [range.elements.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This issue came up when I tried to integrate the C++23 changes to tuple-like into <tt>ranges::elements_view</tt> 
+in libc++. Given the following test:
+</p>
+<blockquote><pre>
+Using SubRange = ranges::subrange&lt;MoveOnlyIter, Sent&gt;;
+std::vector&lt;SubRange&gt; srs = ...;  // a vector of subranges
+for(auto&amp;&amp; iter : srs | views::elements&lt;0&gt;){
+}
+</pre></blockquote>
+<p>
+The above code results in a hard error in deciding the <tt>iterator_category</tt> (The base is a random access range 
+so it should exist). The immediate hard error complains that the following expression is invalid. 
+</p>
+<blockquote><pre>
+std::get&lt;N&gt;(*current_);
+</pre></blockquote>
+<p>
+Note that even if <tt>iterator_category</tt> does not complain, it will complain later when we dereference the iterator.
+<p/>
+Here are the declarations of the "get" overloads for <tt>subrange</tt>:
+</p>
+<blockquote><pre>
+template&lt;size_t N, class I, class S, subrange_kind K&gt;
+  requires ((N == 0 &amp;&amp; copyable&lt;I&gt;) || N == 1)
+  constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+
+template&lt;size_t N, class I, class S, subrange_kind K&gt;
+  requires (N &lt; 2)
+  constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+</pre></blockquote>
+<p>
+Note that the first overload requires <tt>copyable&lt;I&gt;</tt> which is <tt>false</tt> and 
+the second overload requires an rvalue, which is also not the case. So we don't have a valid "get" in this case.
+<p/>
+But why does <tt>elements_view</tt> allow the instantiation in the first place? Let's look at its requirements:
+</p>
+<blockquote><pre>
+template&lt;class T, size_t N&gt;
+  concept <i>returnable-element</i> =                  <i>// exposition only</i>
+    is_reference_v&lt;T&gt; || move_constructible&lt;tuple_element_t&lt;N, T&gt;&gt;;
+
+template&lt;input_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; has-tuple-element&lt;range_value_t&lt;V&gt;, N&gt; &amp;&amp;
+             <i>has-tuple-element</i>&lt;remove_reference_t&lt;range_reference_t&lt;V&gt;&gt;, N&gt; &amp;&amp;
+             <i>returnable-element</i>&lt;range_reference_t&lt;V&gt;, N&gt;
+  class elements_view;
+</pre></blockquote>
+<p>
+It passed the "<tt>is_reference_v&lt;range_reference_t&lt;V&gt;&gt;</tt>" requirement, because it is 
+"<tt>subrange&amp;</tt>". Here the logic has an assumption: if the tuple-like is a reference, 
+then we can always "<tt>get</tt>" and return a reference. This is not the case for <tt>subrange</tt>. 
+<tt>subrange</tt>'s <tt>get</tt> always return by value.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Three mutually exclusive options are prepared, depicted below by <b>Option A</b>, 
+<b>Option B</b>, and <b>Option C</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b> Properly disallow this case (preferred solution)
+</p>
+
+<ol>
+<li><p>Modify 26.7.22.2 <a href="https://timsong-cpp.github.io/cppwp/range.elements.view">[range.elements.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;class T, size_t N&gt;
+  concept <i>returnable-element</i> =              <i>// exposition only</i>
+    <ins>requires { std::get&lt;N&gt;(declval&lt;T&gt;()); } &amp;&amp;</ins>
+    is_reference_v&lt;T&gt; || move_constructible&lt;tuple_element_t&lt;N, T&gt;&gt;;  
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+<p>
+<b>Option B:</b> Relax <tt>subrange</tt>'s <tt>get</tt> to have more overloads. Since <tt>subrange</tt>'s 
+non-<tt>const begin</tt> unconditionally moves the iterator (even for lvalue-reference), 
+</p>
+<blockquote><pre>
+[[nodiscard]] constexpr I begin() requires (!copyable&lt;I&gt;);
+Effects: Equivalent to: return std::move(<i>begin_</i>);
+</pre></blockquote>
+<p>
+if we add more <tt>get</tt> overloads, it would work. The non-const lvalue-ref overload would work 
+(and it also moves because non-<tt>const</tt> lvalue begin moves). This solution would make another way
+to let <tt>subrange</tt>'s iterator in moved-from state, which is not good.
+</p>
+
+<ol>
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std::ranges {
+  [&hellip;]
+
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires ((N == 0 &amp;&amp; copyable&lt;I&gt;) || N == 1)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp; r);
+
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp;&amp; r);
+    
+  <ins>template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires ((N == 0 &amp;&amp; constructible_from&lt;I, const I&amp;&amp;&gt;) || N == 1)
+    constexpr auto get(const subrange&lt;I, S, K&gt;&amp;&amp; r);
+  
+  template&lt;size_t N, class I, class S, subrange_kind K&gt;
+    requires (N &lt; 2)
+    constexpr auto get(subrange&lt;I, S, K&gt;&amp; r);</ins>
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+<p>
+<b>Option C:</b> Make <tt>subrange</tt>'s get to return by reference. This seems to significantly 
+change the <tt>subrange</tt>'s tuple protocol, which is not ideal.
+</p>
+
+
+
+
+
+
+</body>
+</html>
