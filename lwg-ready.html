@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2022-11-06 at 19:39:36 UTC</p>
+<td align="left"><p>Revised 2022-11-07 at 17:58:25 UTC</p>
 </td>
 </tr>
 <tr>
@@ -2238,6 +2238,214 @@ and <tt><i>bound_</i></tt> with <tt>bound</tt>.
 
 
 <hr>
+<h3><a name="3600" href="3600">3600.</a> Making <tt>istream_iterator</tt> copy constructor trivial is an ABI break</h3>
+<p><b>Section:</b> 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-09-23 <b>Last modified:</b> 2022-11-07 13:21:06 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#istream.iterator.cons">issues</a> in [istream.iterator.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Libstdc++ never implemented this change made between C++03 and C++11 (by <a href="https://wg21.link/n2994">N2994</a>):
+</p>
+24.6.1.1 [istream.iterator.cons] p3:
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&lt;T,charT,traits,Distance&gt;&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects:</i> Constructs a copy of <tt>x</tt>. If <tt>T</tt> is a literal type, then this constructor shall 
+be a trivial copy constructor.
+</p>
+</blockquote>
+</blockquote>
+<p>
+This breaks our ABI, as it changes the argument passing convention for the type, meaning this function segfaults 
+if compiled with today's libstdc++ and called from one that makes the triviality change:
+</p>
+<blockquote><pre>
+#include &lt;iterator&gt;
+#include &lt;istream&gt;
+
+int f(std::istream_iterator&lt;int&gt; i)
+{
+  return *i++;
+}
+</pre></blockquote>
+<p>
+As a result, it's likely that libstdc++ will never implement the change.
+<p/>
+There is no reason to require this constructor to be trivial. It was required for C++0x at one point, so the type 
+could be literal, but that is not true in the current language. We should strike the requirement, to reflect reality. 
+MSVC and libc++ are free to continue to define it as defaulted (and so trivial when appropriate) but we should not 
+require it from libstdc++. The cost of an ABI break is not worth the negligible benefit from making it trivial.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+istream_iterator(const istream_iterator&amp; x) = default;
+</pre>
+<blockquote>
+<p>
+-5- <i>Postconditions:</i> <tt>in_stream == x.in_stream</tt> is <tt>true</tt>.
+<p/>
+<del>-6- <i>Remarks:</i> If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>true</tt>, 
+then this constructor is trivial.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2021-09-30; Jonathan revises wording after reflector discussion]</i></p>
+
+<p>
+A benefit of triviality is that it is constexpr, want to preserve that.
+</p>
+
+<p><i>[2021-10-14; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/n4892">N4892</a>.
+</p>
+
+<ol>
+<li><p>Modify the class synopsis in 25.6.2.1 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.general">[istream.iterator.general]</a>
+as indicated:</p>
+<blockquote>
+<pre>
+constexpr istream_iterator();
+constexpr istream_iterator(default_sentinel_t);
+istream_iterator(istream_type&amp; s);
+<ins>constexpr</ins> istream_iterator(const istream_iterator&amp; x)<del> = default</del>;
+~istream_iterator() = default;
+istream_iterator&amp; operator=(const istream_iterator&amp;) = default;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+  <ins>constexpr</ins> istream_iterator(const istream_iterator&amp; x)<del> = default</del>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Postconditions:</i> <tt>in_stream == x.in_stream</tt> is <tt>true</tt>.
+</p>
+<p>
+-6- <i>Remarks:</i> <del>If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>true</tt>, 
+then this constructor is trivial.</del>
+<ins>If the initializer <tt>T(x.value)</tt> in the declaration
+<tt>auto val = T(x.value);</tt>
+is a constant initializer ([expr.const]),
+  then this constructor is a constexpr constructor.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2022-10-12; Jonathan provides improved wording]</i></p>
+
+<p>
+Discussed on the reflector September 2021.
+</p>
+
+<p><i>[2022-10-13; Jonathan revises wording to add a noexcept-specifier]</i></p>
+
+
+
+<p><i>[2022-11-07; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify the class synopsis in 25.6.2.1 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.general">[istream.iterator.general]</a>
+as indicated:</p>
+<blockquote>
+<pre>
+constexpr istream_iterator();
+constexpr istream_iterator(default_sentinel_t);
+istream_iterator(istream_type&amp; s);
+<ins>constexpr</ins> istream_iterator(const istream_iterator&amp; x) <ins>noexcept(<i>see below</i>)</ins><del> = default</del>;
+~istream_iterator() = default;
+istream_iterator&amp; operator=(const istream_iterator&amp;) = default;
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/istream.iterator.cons">[istream.iterator.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+  <ins>constexpr</ins> istream_iterator(const istream_iterator&amp; x) <ins>noexcept(<i>see below</i>)</ins><del> = default</del>;
+</pre>
+<blockquote>
+<p>
+<del>
+-5- <i>Postconditions:</i> <tt>in_stream == x.in_stream</tt> is <tt>true</tt>.
+</del>
+</p>
+<p>
+<ins>
+-?- <i>Effects:</i> Initializes <tt>in_stream</tt> with <tt>x.in_stream</tt>
+and initializes <tt>value</tt> with <tt>x.value</tt>.
+</ins>
+</p>
+<p>
+-6- <i>Remarks:</i> <del>If <tt>is_trivially_copy_constructible_v&lt;T&gt;</tt> is <tt>true</tt>,
+then this constructor is trivial.</del>
+<ins>
+An invocation of this constructor may be used in a core constant expression
+if and only if the initialization of <tt>value</tt> from <tt>x.value</tt>
+is a constant subexpression ([defns.const.subexpr]).
+The exception specification is equivalent to
+<tt>is_nothrow_copy_constructible_v&lt;T&gt;</tt>.
+</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
 <h3><a name="3629" href="3629">3629.</a> <code>make_error_code</code> and <code>make_error_condition</code> are customization points</h3>
 <p><b>Section:</b> 19.5 <a href="https://timsong-cpp.github.io/cppwp/syserr">[syserr]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2021-10-31 <b>Last modified:</b> 2022-09-23 15:42:06 UTC</p>
@@ -3326,87 +3534,6 @@ constexpr take_view(V base, range_difference_t&lt;V&gt; count);
 
 
 <hr>
-<h3><a name="3742" href="3742">3742.</a> <tt>deque::prepend_range</tt> needs to permute</h3>
-<p><b>Section:</b> 24.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2022-07-16 <b>Last modified:</b> 2022-08-23 15:24:34 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#sequence.reqmts">active issues</a> in [sequence.reqmts].</p>
-<p><b>View all other</b> <a href="lwg-index.html#sequence.reqmts">issues</a> in [sequence.reqmts].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-When the range to be inserted is neither bidirectional nor sized, it's simpler to prepend 
-elements one at a time, and then reverse the prepended elements. When the range to be 
-inserted is neither forward nor sized, I believe this approach is necessary to implement 
-<tt>prepend_range</tt> at all &mdash; there is no way to determine the length of the range 
-modulo the block size of the <tt>deque</tt> ahead of time so as to insert the new elements 
-in the proper position.
-<p/>
-The container requirements do not allow <tt>prepend_range</tt> to permute elements in a 
-<tt>deque</tt>. I believe we <em>must</em> allow permutation when the range is neither 
-forward nor sized, and we <em>should</em> allow permutation when the range is not bidirectional 
-to allow implementations the freedom to make a single pass through the range.
-</p>
-
-<p><i>[2022-07-17; Daniel comments]</i></p>
-
-<p>
-The below suggested wording follows the existing style used in the specification of <tt>insert</tt>
-and <tt>insert_range</tt>, for example. Unfortunately, this existing practice violates the usual
-wording style that a <i>Cpp17XXX</i> requirement shall be <em>met</em> and that we should better
-say that "lvalues of type <tt>T</tt> are swappable (16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>)" to 
-be clearer about the specific swappable context. A separate editorial issue will be reported to take
-care of this problem.
-</p>
-
-<p><i>[2022-08-23; Reflector poll]</i></p>
-
-<p>
-Set status to Tentatively Ready after five votes in favour during reflector poll.
-</p>
-
-
-
-<p><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
-</p>
-
-<ol>
-<li><p>Modify 24.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> as indicated:</p>
-
-<blockquote>
-<pre>
-a.prepend_range(rg)
-</pre>
-<blockquote>
-<p>
--94- <i>Result:</i> <tt>void</tt>
-<p/>
--95- <i>Preconditions:</i> <tt>T</tt> is <i>Cpp17EmplaceConstructible</i> into <tt>X</tt> 
-from <tt>*ranges::begin(rg)</tt>. <ins>For <tt>deque</tt>, <tt>T</tt> is also 
-<tt>Cpp17MoveInsertable</tt> into <tt>X</tt>, <i>Cpp17MoveConstructible</i>, 
-<i>Cpp17MoveAssignable</i>, and swappable (16.4.4.3 <a href="https://timsong-cpp.github.io/cppwp/swappable.requirements">[swappable.requirements]</a>).</ins>
-<p/>
--96- <i>Effects:</i> Inserts copies of elements in <tt>rg</tt> before <tt>begin()</tt>. 
-Each iterator in the range <tt>rg</tt> is dereferenced exactly once.
-<p/>
-[<i>Note 3</i>: The order of elements in <tt>rg</tt> is not reversed. &mdash; <i>end note</i>]
-<p/>
--97- <i>Remarks:</i> Required for <tt>deque</tt>, <tt>forward_list</tt>, and <tt>list</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
 <h3><a name="3743" href="3743">3743.</a> <tt>ranges::to</tt>'s <tt>reserve</tt> may be ill-formed</h3>
 <p><b>Section:</b> 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
  <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-21 <b>Last modified:</b> 2022-08-23 15:24:34 UTC</p>
@@ -3919,6 +4046,8 @@ Set status to Tentatively Ready after 10 votes in favour during reflector poll.
  <b>Submitter:</b> Ben Craig <b>Opened:</b> 2022-08-23 <b>Last modified:</b> 2022-11-06 19:39:36 UTC</p>
 <p><b>Priority: </b>2
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#freestanding.entity">active issues</a> in [freestanding.entity].</p>
+<p><b>View all other</b> <a href="lwg-index.html#freestanding.entity">issues</a> in [freestanding.entity].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
@@ -6044,6 +6173,143 @@ This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 </blockquote>
 </li>
 </ol>
+
+
+
+
+
+<hr>
+<h3><a name="3795" href="3795">3795.</a> Self-move-assignment of <tt>std::future</tt> and <tt>std::shared_future</tt> have unimplementable postconditions</h3>
+<p><b>Section:</b> 33.10.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a>, 33.10.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2022-10-19 <b>Last modified:</b> 2022-11-07 13:20:11 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#futures.unique.future">issues</a> in [futures.unique.future].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The move assignment operators of <tt>std::future</tt> and <tt>std::shared_future</tt> have their postconditions specified as below:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+<i>Postconditions</i>:
+</p>
+<ul>
+<li><p><tt>valid()</tt> returns the same value as <tt>rhs.valid()</tt> returned prior to the assignment.</p></li>
+<li><p><tt>rhs.valid() == false</tt>.</p></li>
+</ul>        
+</blockquote>
+<p>
+It can be found that when <tt>*this</tt> and <tt>rhs</tt> is the same object and <tt>this-&gt;valid()</tt> 
+is <tt>true</tt> before the assignment, the postconditions can't be achieved.
+<p/>
+Mainstream implementations (libc++, libstdc++, msvc stl) currently implement such self-move-assignment as no-op, 
+which doesn't meet the requirements in the <i>Effects:</i> element. As discussed in LWG <a href="3788">3788</a>, I think 
+we should say self-move-assignment has no effects for these types.
+</p>
+
+<p><i>[2022-11-01; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+<p><i>[2022-11-01; Jonathan provides wording]</i></p>
+
+
+
+<p><i>[2022-11-07; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 33.10.7 <a href="https://timsong-cpp.github.io/cppwp/futures.unique.future">[futures.unique.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+future&amp; operator=(future&amp;&amp; rhs) noexcept;
+</pre></blockquote>
+<blockquote>
+<p>-11- <i>Effects</i>:
+<ins>
+If <tt>addressof(rhs) == this</tt> is <tt>true</tt>, there are no effects.
+Otherwise:
+</ins>
+<ol style="list-style-type: none">
+<li>(11.1) &mdash; Releases any shared state (33.10.5 <a href="https://timsong-cpp.github.io/cppwp/futures.state">[futures.state]</a>).</li>
+<li>(11.2) &mdash; move assigns the contents of <tt>rhs</tt> to <tt>*this</tt>.</li>
+</ol>
+</p>
+<p> -12- <i>Postconditions</i>:
+<ol style="list-style-type: none">
+<li>(12.1) &mdash; <tt>valid()</tt> returns the same value as <tt>rhs.valid()</tt> prior to the assignment.</li>
+<li>(12.2) &mdash; <ins>If <tt>addressof(rhs) == this</tt> is <tt>false</tt>,</ins> <tt>rhs.valid() == false</tt>.</li>
+</ol>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 33.10.8 <a href="https://timsong-cpp.github.io/cppwp/futures.shared.future">[futures.shared.future]</a> as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+shared_future&amp; operator=(shared_future&amp;&amp; rhs) noexcept;
+</pre></blockquote>
+<blockquote>
+<p>-13- <i>Effects</i>:
+<ins>
+If <tt>addressof(rhs) == this</tt> is <tt>true</tt>, there are no effects.
+Otherwise:
+</ins>
+<ol style="list-style-type: none">
+<li>(13.1) &mdash; Releases any shared state (33.10.5 <a href="https://timsong-cpp.github.io/cppwp/futures.state">[futures.state]</a>).</li>
+<li>(13.2) &mdash; move assigns the contents of <tt>rhs</tt> to <tt>*this</tt>.</li>
+</ol>
+</p>
+<p> -14- <i>Postconditions</i>:
+<ol style="list-style-type: none">
+<li>(14.1) &mdash; <tt>valid()</tt> returns the same value as <tt>rhs.valid()</tt> returned prior to the assignment.</li>
+<li>(14.2) &mdash; <ins>If <tt>addressof(rhs) == this</tt> is <tt>false</tt>,</ins> <tt>rhs.valid() == false</tt>.</li>
+</ol>
+</p>
+</blockquote>
+
+<blockquote><pre>
+shared_future&amp; operator=(const shared_future&amp; rhs) noexcept;
+</pre></blockquote>
+<blockquote>
+<p>-15- <i>Effects</i>:
+<ins>
+If <tt>addressof(rhs) == this</tt> is <tt>true</tt>, there are no effects.
+Otherwise:
+</ins>
+<ol style="list-style-type: none">
+<li>(15.1) &mdash; Releases any shared state (33.10.5 <a href="https://timsong-cpp.github.io/cppwp/futures.state">[futures.state]</a>).</li>
+<li>(15.2) &mdash; assigns the contents of <tt>rhs</tt> to <tt>*this</tt>.
+<p>[<i>Note 3</i>: As a result, <tt>*this</tt> refers to the same shared state
+as <tt>rhs</tt> (if any). &mdash; <i>end note</i>]</p>
+</li>
+</ol>
+</p>
+<p> -16- <i>Postconditions</i>:
+<tt>valid() == rhs.valid()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 
