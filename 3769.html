@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3769" href="lwg-active.html#3769">3769.</a> <tt>basic_const_iterator::operator==</tt> causes infinite constraint recursion</h3>
 <p><b>Section:</b> 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-05 <b>Last modified:</b> 2022-09-25 06:07:46 UTC</p>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-05 <b>Last modified:</b> 2022-11-05 14:03:55 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -99,7 +99,8 @@ Set priority to 1 after reflector poll.
 
 
 
-<p><b>Proposed resolution:</b></p>
+<strong>Previous resolution from Hewill [SUPERSEDED]:</strong>
+<blockquote class="note">
 <p>
 This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 </p>
@@ -168,6 +169,201 @@ namespace std {
 <blockquote>
 <p>
 -25- <i>Effects</i>: Equivalent to: <tt>return x - y.<i>current_</i>;</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2022-11-04; Tomasz comments and improves proposed wording]</i></p>
+
+
+<p>
+Initially, LWG requested an investigation of alternative resolutions that would avoid using member functions for the affected operators.
+Later, it was found that in addition to <tt>==</tt>/<tt>-</tt>, all comparison operators (<tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt>, <tt>&lt;=&gt;</tt>) are affected by same problem for the calls
+with <tt>basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;</tt> and <tt>int*</tt> as arguments, i.e. <tt>totally_ordered_with&lt;basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;, int*&gt;</tt>
+causes infinite recursion in constraint checking.
+</p>
+
+<p>
+The new resolution, change all of the friends overloads for operators <tt>==</tt>, <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt>, <tt>&lt;=&gt;</tt> and <tt>-</tt> that accept <tt>basic_const_iterator</tt> as lhs, to <tt>const</tt> member functions.
+This change is applied to homogeneous <tt>(basic_const_iterator, basic_const_iterator)</tt> for consistency.
+For the overload of <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt> and <tt>-</tt> that accepts <tt>(I, basic_const_iterator)</tt> we declared them as friends and consistently constrain them with <tt><i>not-const-iterator</i></tt>.
+Finally, its put (now member) <tt>operator<tt>&lt;=&gt;</tt>(I)</tt> in the block with other heterogeneous overloads in the synopsis.	
+</p>
+
+<p>
+The use of member functions addresses issues, because:
+<ul>	
+<li>it disallows conversion to <tt>basic_const_iterator</tt> in the left-hand side of op, i.e. eliminates issues for <tt>(sized_)sentinel_for&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</tt> and <tt>totally_ordered&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</tt></li>
+<li>member functions (in contrast to friends) are not found by ADL, so we do not get multiple candidates for <tt>basic_const_iterator&lt;basic_const_iterator&lt;S&gt;&gt;</tt>, so we address recursion for nested iterators</li>
+</ul>
+</p>
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.iterator">[const.iterators.iterator]</a>, class template <tt>basic_const_iterator</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class I&gt;
+    concept <i>not-a-const-iterator</i> = <i>see below</i>;
+
+  template&lt;input_iterator Iterator&gt;
+  class basic_const_iterator {
+    Iterator <i>current_</i> = Iterator();
+    using <i>reference</i> = iter_const_reference_t&lt;Iterator&gt;;         // <i>exposition only</i>
+  
+  public:
+    [&hellip;]
+    template&lt;sentinel_for&lt;Iterator&gt; S&gt;
+      <del>friend</del> constexpr bool operator==(<del>const basic_const_iterator&amp; x, </del>const S&amp; s) <ins>const</ins>;
+	  
+    <del>friend</del> constexpr bool operator&lt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt;;
+    <del>friend</del> constexpr bool operator&gt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt;;
+    <del>friend</del> constexpr bool operator&lt;=(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt;;
+    <del>friend</del> constexpr bool operator&gt;=(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt;;
+    <del>friend</del> constexpr auto operator&lt;=&gt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; three_way_comparable&lt;Iterator&gt;;
+
+    template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    <del>friend</del> constexpr bool operator&lt;(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    <del>friend</del> constexpr bool operator&gt;(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    <del>friend</del> constexpr bool operator&lt;=(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    <del>friend</del> constexpr bool operator&gt;=(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    <ins>template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    constexpr auto operator&lt;=&gt;(const I&amp; y) const
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt; &amp;&amp;
+   	       three_way_comparable_with&lt;Iterator, I&gt;;</ins>
+    template&lt;<i>not-a-const-iterator</i> I&gt;
+    friend constexpr bool operator&lt;(const I&amp; y, const basic_const_iterator&amp; x)
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>not-a-const-iterator</i> I&gt;
+    friend constexpr bool operator&gt;(const I&amp; y, const basic_const_iterator&amp; x)
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>not-a-const-iterator</i> I&gt;
+    friend constexpr bool operator&lt;=(const I&amp; y, const basic_const_iterator&amp; x)
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    template&lt;<i>not-a-const-iterator</i> I&gt;
+    friend constexpr bool operator&gt;=(const I&amp; y, const basic_const_iterator&amp; x)
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+    <del>template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+    friend constexpr auto operator&lt;=&gt;(const basic_const_iterator&amp; x, const I&amp; y)
+      requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt; &amp;&amp;
+      	       three_way_comparable_with&lt;Iterator, I&gt;;</del>
+
+
+    [&hellip;]
+    template&lt;sized_sentinel_for&lt;Iterator&gt; S&gt;
+      <del>friend</del> constexpr difference_type operator-(<del>const basic_const_iterator&amp; x, </del>const S&amp; y) <ins>const</ins>;
+    template&lt;<ins><i>not-a-const-iterator</i></ins><del>sized_sentinel_for&lt;Iterator&gt;</del> S&gt;
+      requires <ins>sized_sentinel_for</ins><del><i>different-from</i></del>&lt;S, <ins>Iterator</ins><del>basic_const_iterator</del>&gt;
+      friend constexpr difference_type operator-(const S&amp; x, const basic_const_iterator&amp; y);
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.ops">[const.iterators.ops]</a> as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;sentinel_for&lt;Iterator&gt; S&gt;
+  <del>friend</del> constexpr bool operator==(<del>const basic_const_iterator&amp; x, </del>const S&amp; s) <ins>const</ins>;
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> == s;</tt>
+</p>
+</blockquote>
+<pre>
+<del>friend</del> constexpr bool operator&lt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt;;
+<del>friend</del> constexpr bool operator&gt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt;;
+<del>friend</del> constexpr bool operator&lt;=(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt;;
+<del>friend</del> constexpr bool operator&gt;=(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt;;
+<del>friend</del> constexpr auto operator&lt;=&gt;(<del>const basic_const_iterator&amp; x, </del>const basic_const_iterator&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; three_way_comparable&lt;Iterator&gt;;
+</pre>
+<blockquote>
+<p>
+-17- Let <i>op</i> be the operator.
+</p>
+<p>
+-18- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> <i>op</i> y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+<del>friend</del> constexpr bool operator&lt;(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+<del>friend</del> constexpr bool operator&gt;(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+<del>friend</del> constexpr bool operator&lt;=(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+<del>friend</del> constexpr bool operator&gt;=(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt;;
+template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
+<del>friend</del> constexpr auto operator&lt;=&gt;(<del>const basic_const_iterator&amp; x, </del>const I&amp; y) <ins>const</ins>
+  requires random_access_iterator&lt;Iterator&gt; &amp;&amp; totally_ordered_with&lt;Iterator, I&gt; &amp;&amp;
+  	       three_way_comparable_with&lt;Iterator, I&gt;;
+</pre>
+<blockquote>
+<p>
+-19- Let <tt><i>op</i></tt> be the operator.
+</p>
+<p>
+-20- <i><del>Returns</del><ins>Effects</ins></i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> <i>op</i> y;</tt>
+</p>
+</blockquote>
+
+[&hellip;]
+<pre>
+template&lt;sized_sentinel_for&lt;Iterator&gt; S&gt;
+  <del>friend</del> constexpr difference_type operator-(<del>const basic_const_iterator&amp; x, </del>const S&amp; y) <ins>const</ins>;
+</pre>
+<blockquote>
+<p>
+-24- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> - y;</tt>
+</p>
+</blockquote>
+<pre>
+template&lt;<ins><i>not-a-const-iterator</i></ins><del>sized_sentinel_for&lt;Iterator&gt;</del> S&gt;
+  requires <ins>sized_sentinel_for</ins><del><i>different-from</i></del>&lt;S, <ins>Iterator</ins><del>basic_const_iterator</del>&gt;
+  friend constexpr difference_type operator-(const S&amp; x, const basic_const_iterator&amp; y);
+</pre>
+<blockquote>
+<p>
+-25- <i>Effects</i>: Equivalent to: <tt>return x - y.<i>current_</i>;</tt>
 </p>
 </blockquote>
 </blockquote>

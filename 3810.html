@@ -1,0 +1,127 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3810: CTAD for std::basic_format_args</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3810" href="lwg-active.html#3810">3810.</a> CTAD for <tt>std::basic_format_args</tt></h3>
+<p><b>Section:</b> 22.14.8.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-11-03 <b>Last modified:</b> 2022-11-05 16:47:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.args">issues</a> in [format.args].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It seems desirable for this should work:
+</p>
+<blockquote><pre>
+auto args_store = std::make_format_args&lt;C&gt;(1,2,3);
+// &hellip;
+std::basic_format_args args = args_store;
+</pre></blockquote>
+<p>
+i.e. CTAD should deduce the <tt>Context</tt> argument from the <tt><i>fmt-store-args</i>&lt;C, int, int, int&gt;</tt> 
+object returned by <tt>make_format_args</tt>.
+<p/>
+Another example (from Tomasz Kami&nacute;ski):
+<p/>
+Given:
+</p>
+<blockquote><pre>
+template&lt;typename Context&gt;
+void foo(basic_format_args&lt;Context&gt; c);
+
+foo(make_format_args&lt;SomeContext&gt;(&hellip;)); // won't work
+foo(basic_format_args(make_format_args&lt;SomeContext&gt;(&hellip;))); // should work
+</pre></blockquote>
+<p>
+Since <tt><i>fmt-store-args</i></tt> is exposition-only, it's not entirely clear that it must have 
+exactly the form shown in 22.14.8.2 <a href="https://timsong-cpp.github.io/cppwp/format.arg.store">[format.arg.store]</a>. E.g. maybe it can have different template arguments, 
+or could be a nested type defined inside <tt>basic_format_args</tt>. I don't know how much of the exposition-only 
+spec is actually required for conformance. If CTAD is already intended to be required, it's a bit subtle.
+<p/>
+If we want the CTAD to work (and I think it's nice if it does) we could make that explicit by adding a deduction guide.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.14.8.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Context&gt;
+  class basic_format_args {
+    size_t size_;                           <i>// exposition only</i>
+    const basic_format_arg&lt;Context&gt;* data_; <i>// exposition only</i>
+
+  public:
+    basic_format_args() noexcept;
+
+    template&lt;class... Args&gt;
+      basic_format_args(const <i>format-arg-store</i>&lt;Context, Args...&gt;&amp; store) noexcept;
+
+    basic_format_arg&lt;Context&gt; get(size_t i) const noexcept;
+  };
+  
+  <ins>template&lt;class Context, class... Args&gt;
+    basic_format_args(<i>format-arg-store</i>&lt;Context, Args...&gt;) -&gt; basic_format_args&lt;Context&gt;;</ins>
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
