@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3819: reference_meows_from_temporary should not use is_meowible</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3819" href="lwg-active.html#3819">3819.</a> <tt>reference_<i>meow</i>s_from_temporary</tt> should not use <tt>is_<i>meow</i>ible</tt></h3>
+<p><b>Section:</b> 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2022-11-08 <b>Last modified:</b> 2022-11-08 19:03:31 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The intent of <a href="https://wg21.link/P2255R2">P2255R2</a> is for the <tt>reference_<i>meow</i>s_from_temporary</tt> traits 
+to fully support cases where a prvalue is used as the source. Unfortunately the wording fails 
+to do so because it tries to use the <tt>is_<i>meow</i>ible</tt> traits to say 
+"the initialization is well-formed", but those traits only consider initialization from xvalues, 
+not prvalues. For example, given:
+</p>
+<blockquote>
+<pre>
+struct U {
+  U();
+  U(U&amp;&amp;) = delete;
+};
+
+struct T {
+  T(U);
+};
+</pre>
+</blockquote>
+<p>
+<tt>reference_constructs_from_temporary_v&lt;const T&amp;, U&gt;</tt> should be true, but is currently defined as <tt>false</tt>. 
+We need to spell out the "is well-formed" condition directly.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The note is already repeated every time we talk about "immediate context".]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 21.3.3 <a href="https://timsong-cpp.github.io/cppwp/meta.type.synop">[meta.type.synop]</a>, Table 46 ([tab:meta.unary.prop]) &mdash; 
+"Type property predicates" &mdash; as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 46: Type property predicates [tab:meta.unary.prop]</caption>
+<tr>
+<th align="center">Template</th>
+<th align="center">Condition</th>
+<th align="center">Preconditions</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>template&lt;class T, class U&gt;<br/>
+struct reference_constructs_from_temporary;</tt>
+</td>
+
+<td>
+<del><tt>conjunction_v&lt;is_reference&lt;T&gt;, is_constructible&lt;T, U&gt;&gt;</tt> is
+<tt>true</tt></del><ins><tt>T</tt> is a reference type</ins>,
+and the initialization <tt>T t(<i>VAL</i>&lt;U&gt;);</tt> <ins>is well-formed and</ins> binds <tt>t</tt> to a
+temporary object whose lifetime is extended (6.7.7 <a href="https://timsong-cpp.github.io/cppwp/class.temporary">[class.temporary]</a>).
+<ins>Access checking is performed as if in a context unrelated to <tt>T</tt> and <tt>U</tt>. 
+Only the validity of the immediate context of the variable initialization is considered. 
+[<i>Note ?:</i> The initialization can result in effects such as the instantiation of class template 
+specializations and function template specializations, the generation of implicitly-defined functions, 
+and so on. Such effects are not in the "immediate context" and can result in the program being ill-formed.
+<i>&mdash; end note]</i></ins>
+</td>
+
+<td>
+<tt>T</tt> and <tt>U</tt> shall be complete types, <i>cv</i> <tt>void</tt>, or arrays of unknown bound.
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>template&lt;class T, class U&gt;<br/>
+struct reference_converts_from_temporary;</tt>
+</td>
+
+<td>
+<del><tt>conjunction_v&lt;is_reference&lt;T&gt;, is_convertible&lt;U, T&gt;&gt;</tt> is
+<tt>true</tt></del><ins><tt>T</tt> is a reference type</ins>, and the initialization
+<tt>T t = <i>VAL</i>&lt;U&gt;;</tt> <ins>is well-formed and</ins> binds <tt>t</tt> to a
+temporary object whose lifetime is extended (6.7.7 <a href="https://timsong-cpp.github.io/cppwp/class.temporary">[class.temporary]</a>).
+<ins>Access checking is performed as if in a context unrelated to <tt>T</tt> and <tt>U</tt>. 
+Only the validity of the immediate context of the variable initialization is considered. 
+[<i>Note ?:</i> The initialization can result in effects such as the instantiation of class template 
+specializations and function template specializations, the generation of implicitly-defined functions, 
+and so on. Such effects are not in the "immediate context" and can result in the program being ill-formed.
+<i>&mdash; end note]</i></ins>
+</td>
+
+<td>
+<tt>T</tt> and <tt>U</tt> shall be complete types, <i>cv</i> <tt>void</tt>, or arrays of unknown bound.
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3820: cartesian_product_view::iterator::prev is not quite right</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3820" href="lwg-active.html#3820">3820.</a> <tt>cartesian_product_view::<i>iterator</i>::<i>prev</i></tt> is not quite right</h3>
+<p><b>Section:</b> 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-11-08 <b>Last modified:</b> 2022-11-08 19:04:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ranges.cartesian.iterator">active issues</a> in [ranges.cartesian.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ranges.cartesian.iterator">issues</a> in [ranges.cartesian.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>cartesian_product_view::<i>iterator</i>::<i>prev</i></tt> has the following <i>Effects</i>:
+</p>
+<blockquote><pre>
+auto&amp; it = std::get&lt;N&gt;(<i>current_</i>);
+if (it == ranges::begin(std::get&lt;N&gt;(<i>parent_</i>-><i>bases_</i>))) {
+  it = <i>cartesian-common-arg-end</i>(std::get&lt;N&gt;(<i>parent_</i>-&gt;<i>bases_</i>));
+  if constexpr (N &gt; 0) {
+    <i>prev</i>&lt;N - 1&gt;();
+  }
+}
+--it;
+</pre></blockquote>
+<p>
+which decrements the underlying iterator one by one using recursion. 
+However, when <tt>N == 0</tt>, it still detects if the first iterator has reached the beginning and assigns it to 
+the end, which is not only unnecessary, but also causes <tt><i>cartesian-common-arg-end</i></tt> to be applied to 
+the first range, making it ill-formed in some cases, <a href="https://godbolt.org/z/Pd6bYnP1G">for example</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto r = std::views::cartesian_product(std::views::iota(0));
+  r.begin() += 3; // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+<p>
+This is because, for the first range, <tt>cartesian_product_view::<i>iterator</i>::operator+=</tt> only requires 
+it to model <tt>random_access_range</tt>.
+However, when <tt>x</tt> is negative, this function will call <tt><i>prev</i></tt> and indirectly calls 
+<tt><i>cartesian-common-arg-end</i></tt>, since the latter constrains its argument to satisfy 
+<tt><i>cartesian-product-common-arg</i></tt>, that is, <tt>common_range&lt;R&gt; || (sized_range&lt;R&gt; &amp;&amp; 
+random_access_range&lt;R&gt;)</tt>, which is not the case for the unbounded <tt>iota_view</tt>, resulting in a 
+hard error in <tt><i>prev</i></tt>'s function body.
+<p/>
+The proposed resolution changes the position of the <tt>if constexpr</tt> so that we just decrement the first 
+iterator and nothing else.
+</p>
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.31.3 <a href="https://timsong-cpp.github.io/cppwp/ranges.cartesian.iterator">[ranges.cartesian.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;size_t N = sizeof...(Vs)&gt;
+  constexpr void <i>prev</i>();
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects</i>: Equivalent to:
+</p>
+<pre>
+auto&amp; it = std::get&lt;N&gt;(<i>current_</i>);
+<ins>if constexpr (N > 0) {</ins>
+  if (it == ranges::begin(std::get&lt;N&gt;(<i>parent_</i>-><i>bases_</i>))) {
+    it = <i>cartesian-common-arg-end</i>(std::get&lt;N&gt;(<i>parent_</i>-&gt;<i>bases_</i>));
+    <del>if constexpr (N &gt; 0) {</del>
+      <i>prev</i>&lt;N - 1&gt;();
+    <del>}</del>
+  }
+<ins>}</ins>
+--it;
+</pre>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

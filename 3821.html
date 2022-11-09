@@ -1,0 +1,159 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3821: uses_allocator_construction_args should have overload for pair-like</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3821" href="lwg-active.html#3821">3821.</a> <tt>uses_allocator_construction_args</tt> should have overload for <i><tt>pair-like</tt></i></h3>
+<p><b>Section:</b> 20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2022-11-08 <b>Last modified:</b> 2022-11-08 21:18:17 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#allocator.uses.construction">active issues</a> in [allocator.uses.construction].</p>
+<p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P2165R4">P2165R4</a> added a <tt><i>pair-like</i></tt> constructor to 
+<tt>std::pair</tt> but didn't add a corresponding <tt>uses_allocator_construction_args</tt> overload. 
+It was in <a href="https://wg21.link/P2165R3">P2165R3</a> but incorrectly removed during the small group review.
+<p/>
+Without LWG <a href="3525">3525</a>, not having the overload would have caused emplacing a <tt><i>pair-like</i></tt> into a 
+<tt>pmr::vector&lt;pair&gt;</tt> to be outright ill-formed. 
+<p/>
+With that issue's resolution, in cases where the constructor is not explicit we would create a temporary pair 
+and then do uses-allocator construction using its pieces, and it still won't work when the constructor is explicit.
+<p/>
+We should just do this properly.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+<ol>
+<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  <i>// 20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>, uses-allocator construction</i>
+  [&hellip;]
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    pair&lt;U, V&gt;&amp;&amp; pr) noexcept;
+
+  template&lt;class T, class Alloc, class U, class V&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc,
+                                                    const pair&lt;U, V&gt;&amp;&amp; pr) noexcept;
+<ins>  template&lt;class T, class Alloc, <i>pair-like</i> P&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, P&amp;&amp; p) noexcept;</ins>
+    
+  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Add the following to 20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>:</p>
+<blockquote>
+<pre>
+<ins>  template&lt;class T, class Alloc, <i>pair-like</i> P&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, P&amp;&amp; p) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>.</ins>
+<p/>
+<ins>-?- <i>Effects:</i> Equivalent to:</ins>
+</p>
+<blockquote><pre><ins>
+return uses_allocator_construction_args&lt;T&gt;(alloc, piecewise_construct,
+                                            forward_as_tuple(get&lt;0&gt;(std::forward&lt;P&gt;(p))),
+                                            forward_as_tuple(get&lt;1&gt;(std::forward&lt;P&gt;(p))));
+</ins></pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Edit 20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> p17:</p>
+<blockquote>
+<pre>
+  template&lt;class T, class Alloc, class U&gt;
+    constexpr auto uses_allocator_construction_args(const Alloc&amp; alloc, U&amp;&amp; u) noexcept;
+</pre>
+<blockquote>
+<p>
+-16- Let <tt><i>FUN</i></tt> be the function template:
+</p>
+<blockquote><pre>
+  template&lt;class A, class B&gt;
+  void <i>FUN</i>(const pair&lt;A, B&gt;&amp;);
+</pre></blockquote>
+<p>
+-17- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>, 
+<ins><tt>P</tt> does not satisfy <i><tt>pair-like</tt></i>,</ins>
+and the expression <tt><i>FUN</i>(u)</tt> is not well-formed when considered as an unevaluated operand.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
