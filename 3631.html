@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3631" href="lwg-active.html#3631">3631.</a> <tt>basic_format_arg(T&amp;&amp;)</tt> should use <tt>remove_cvref_t&lt;T&gt;</tt> throughout</h3>
 <p><b>Section:</b> 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-11-03 <b>Last modified:</b> 2022-10-19 17:35:24 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-11-03 <b>Last modified:</b> 2022-11-10 02:57:00 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#format.arg">active issues</a> in [format.arg].</p>
@@ -140,9 +140,8 @@ replace all unary constructor overloads with a single constructor that works
 for any formattable type.
 </p>
 
-
-
-<p><b>Proposed resolution:</b></p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 
 <p>
 This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
@@ -290,7 +289,7 @@ is well-formed, otherwise <tt>false</tt>,</del>
 <li><p>&mdash; (17.3)
 <tt>TQ</tt> be <tt>const TD</tt> if
 <del><tt><i>const-formattable</i></tt> is <tt>true</tt></del>
-<ins><tt>const TD</tt> satisifes <tt>formattable&lt;char_type&gt;</tt></ins>
+<ins><tt>const TD</tt> satisfies <tt>formattable&lt;char_type&gt;</tt></ins>
 and <tt>TD</tt> otherwise.
 </p></li>
 </ol>
@@ -317,6 +316,223 @@ Initializes <tt>ptr_</tt> with <tt>addressof(val)</tt> and <tt>format_</tt> with
 </blockquote>
 </li>
 </ol>
+
+</blockquote>
+
+<p><i>[2022-11-10; Jonathan provides improved wording]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formattable">[format.formattable]</a> as indicated:</p>
+
+<p>
+-1- Let <tt><i>fmt-iter-for</i>&lt;charT&gt;</tt> be an unspecified type that models
+<tt>output_iterator&lt;const charT&amp;&gt;</tt> (25.3.4.10 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.output">[iterator.concept.output]</a>).
+</p>
+
+<blockquote><pre><ins>
+  template&lt;class T, class Context,
+           class Formatter = typename Context::template formatter_type&lt;remove_const_t&lt;T&gt;&gt;&gt;
+    concept <i>formattable-with</i> =         <i>// exposition only</i>
+      semiregular&lt;Formatter&gt; &amp;&amp;
+        requires (Formatter&amp; f, const Formatter&amp; cf, T&amp;&amp; t, Context fc,
+                 basic_format_parse_context&lt;typename Context::char_type&gt; pc)
+       {
+         { f.parse(pc) } -&gt; same_as&lt;typename decltype(pc)::iterator&gt;;
+         { cf.format(t, fc) } -&gt; same_as&lt;typename Context::iterator&gt;;
+       };</ins>
+
+template&lt;class T, class charT&gt;
+  concept formattable =
+<del>    semiregular&lt;formatter&lt;remove_cvref_t&lt;T&gt;, charT&gt;&gt; &amp;&amp;
+    requires(formatter&lt;remove_cvref_t&lt;T&gt;, charT&gt; f,
+             const formatter&lt;remove_cvref_t&lt;T&gt;, charT&gt; cf,
+             T t,
+             basic_format_context&lt;<i>fmt-iter-for</i>&lt;charT&gt;, charT&gt; fc,
+             basic_format_parse_context&lt;charT&gt; pc) {
+        { f.parse(pc) } -&gt; same_as&lt;basic_format_parse_context&lt;charT&gt;::iterator&gt;;
+        { cf.format(t, fc) } -&gt; same_as&lt;<i>fmt-iter-for</i>&lt;charT&gt;&gt;;
+    };</del>
+    <ins>= <i>formattable-with</i>&lt;remove_reference_t&lt;T>, basic_format_context&lt;<i>fmt-iter-for</i>&lt;charT&gt;&gt;&gt;;</ins>
+</pre></blockquote>
+
+</li>
+
+<li><p>Modify 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; explicit basic_format_arg(T&amp;<del>&amp;</del> v) noexcept;
+</pre>
+<blockquote>
+<p>
+-4- <i>Constraints:</i>
+<ins><tt>T</tt> satisfies <tt><i>formattable-with</i>&lt;Context&gt;</tt>.</ins>
+<del>The template specialization</del>
+</p>
+<blockquote><pre><del>
+typename Context::template formatter_type&lt;remove_cvref_t&lt;T&gt;&gt;
+</del></pre></blockquote>
+<p><del>
+meets the <i>BasicFormatter</i> requirements (22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a>). The extent to 
+which an implementation determines that the specialization meets the <i>BasicFormatter</i> 
+requirements is unspecified, except that as a minimum the expression
+</del></p>
+<blockquote><pre><del>
+typename Context::template formatter_type&lt;remove_cvref_t&lt;T&gt;&gt;()
+  .format(declval&lt;T&amp;&gt;(), declval&lt;Context&amp;&gt;())
+</del></pre></blockquote>
+<p><del>
+shall be well-formed when treated as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>).
+</del></p>
+<p><ins>-?- <i>Preconditions</i>:
+If <tt>decay_t&lt;T&gt;</tt> is <tt>char_type*</tt> or <tt>const char_type*</tt>,
+<tt>static_cast&lt;const char_type*&gt;(v)</tt> points to a NTCTS
+(3.37 <a href="https://timsong-cpp.github.io/cppwp/defns.ntcts">[defns.ntcts]</a>).</ins>
+</p>
+<p>
+-5- <i>Effects:</i>
+<ins>Let <tt>TD</tt> be <tt>remove_const_t&lt;T&gt;</tt>.</ins>
+</p>
+<ol style="list-style-type:none">
+<li><p>(5.1) &mdash; if <tt>T<ins>D</ins></tt> is <tt>bool</tt> or <tt>char_type</tt>, initializes <tt>value</tt> with <tt>v</tt>;</p></li>
+<li><p>(5.2) &mdash; otherwise, if <tt>T<ins>D</ins></tt> is <tt>char</tt> and <tt>char_type</tt> is <tt>wchar_t</tt>, 
+initializes <tt>value</tt> with <tt>static_cast&lt;wchar_t&gt;(v)</tt>;</p></li>
+<li><p>(5.3) &mdash; otherwise, if <tt>T<ins>D</ins></tt> is a signed integer type (6.8.2 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>) and 
+<tt>sizeof(T<ins>D</ins>) &lt;= sizeof(int)</tt>, initializes <tt>value</tt> with <tt>static_cast&lt;int&gt;(v)</tt>;</p></li>
+<li><p>(5.4) &mdash; otherwise, if <tt>T<ins>D</ins></tt> is an unsigned integer type and <tt>sizeof(T<ins>D</ins>) &lt;= sizeof(unsigned int)</tt>, 
+initializes <tt>value</tt> with <tt>static_cast&lt;unsigned int&gt;(v)</tt>;</p></li>
+<li><p>(5.5) &mdash; otherwise, if <tt>T<ins>D</ins></tt> is a signed integer type and <tt>sizeof(T<ins>D</ins>) &lt;= sizeof(long long int)</tt>, 
+initializes <tt>value</tt> with <tt>static_cast&lt;long long int&gt;(v)</tt>;</p></li>
+<li><p>(5.6) &mdash; otherwise, if <tt>T<ins>D</ins></tt> is an unsigned integer type and <tt>sizeof(T<ins>D</ins>) &lt;= sizeof(unsigned long long int)</tt>, initializes <tt>value</tt> with <tt>static_cast&lt;unsigned long long int&gt;(v)</tt>;</p></li>
+
+<li><p><ins>(5.?) &mdash; otherwise, if <tt>TD</tt> is a standard floating-point type, initializes <tt>value</tt> with <tt>v</tt>;</ins></p></li>
+
+<li><p><ins>(5.?) &mdash; otherwise, if <tt>TD</tt> is a specialization of
+<tt>basic_string_view</tt> or <tt>basic_string</tt> and <tt>TD::value_type</tt> is <tt>char_type</tt>, initializes <tt>value</tt> with <tt>basic_string_view&lt;char_type&gt;(v.data(), v.size())</tt>;</ins></p></li>
+
+<li><p><ins>(5.?) &mdash; otherwise, if <tt>decay_t&lt;TD&gt;</tt> is <tt>char_type*</tt> or <tt>const char_type*</tt>, initializes <tt>value</tt> with <tt>static_cast&lt;const char_type*&gt;(v)</tt>;</ins></p></li>
+
+<li><p><ins>(5.?) &mdash; otherwise, if <tt>is_void_v&lt;remove_pointer_t&lt;TD&gt;&gt;</tt> is <tt>true</tt> or <tt>is_null_pointer_v&lt;TD&gt;</tt> is <tt>true</tt>, initializes <tt>value</tt> with <tt>static_cast&lt;const void*&gt;(v)</tt>;</ins></p></li>
+
+<li><p>(5.7) &mdash; otherwise, initializes <tt>value</tt> with <tt>handle(v)</tt>.</p></li>
+</ol>
+<p><ins>-?- [<i>Note</i>: Constructing <tt>basic_format_arg</tt> from a pointer
+to a member is ill-formed unless the user provides an enabled specialization
+of <tt>formatter</tt> for that pointer to member type. &mdash; <i>end note</i>]
+</ins></p>
+</blockquote>
+
+<pre><del>
+explicit basic_format_arg(float n) noexcept;
+explicit basic_format_arg(double n) noexcept;
+explicit basic_format_arg(long double n) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-6- <i>Effects</i>: Initializes <tt>value</tt> with <tt>n</tt>.</del></p>
+</blockquote>
+
+<pre><del>
+explicit basic_format_arg(const char_type* s) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-7- <i>Preconditions</i>: <tt>s</tt> points to a NTCTS (3.37 <a href="https://timsong-cpp.github.io/cppwp/defns.ntcts">[defns.ntcts]</a>).</del></p>
+<p><del>-8- <i>Effects</i>: Initializes <tt>value</tt> with <tt>s</tt>.</del></p>
+</blockquote>
+
+<pre><del>
+template&lt;class traits&gt;>
+  explicit basic_format_arg(basic_string_view&lt;char_type, traits&gt; s) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-9- <i>Effects</i>: Initializes <tt>value</tt> with <tt>basic_string_view&lt;char_type&gt;(s.data(), s.size())</tt>.</del></p>
+</blockquote>
+
+<pre><del>
+template&lt;class traits, class Allocator&gt;>
+  explicit basic_format_arg(
+    const basic_string&lt;char_type, traits, Allocator&gt;&amp; s) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-10- <i>Effects</i>: Initializes <tt>value</tt> with <tt>basic_string_view&lt;char_type&gt;(s.data(), s.size())</tt>.</del></p>
+</blockquote>
+
+<pre><del>
+explicit basic_format_arg(nullptr_t) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-11- <i>Effects</i>: Initializes <tt>value</tt> with <tt>static_cast&lt;const void*&gt;(nullptr)</tt>.</del></p>
+</blockquote>
+
+<pre><del>
+template&lt;class T&gt; explicit basic_format_arg(T* p) noexcept;
+</del></pre>
+<blockquote>
+<p><del>-12- <i>Constraints</i>: <tt>is_void_v&lt;T&gt;</tt> is <tt>true</tt>.</del></p>
+<p><del>-13- <i>Effects</i>: Initializes <tt>value</tt> with <tt>p</tt>.</del></p>
+<p><del>-14- <i>[Note</i>: Constructing <tt>basic_format_arg</tt> from a pointer
+to a member is ill-formed unless the user provides an enabled specialization
+of <tt>formatter</tt> for that pointer to member type. &mdash; <i>end note]</i>
+</del></p>
+</blockquote>
+
+</blockquote>
+</li>
+
+<li><p>Modify 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a> p17 and p18 as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt; explicit handle(T&amp;<del>&amp;</del> v) noexcept;
+</pre>
+<blockquote>
+<p>-17- Let</p>
+<ol style="list-style-type:none">
+<li><p>&mdash; (17.1)
+<tt>TD</tt> be <tt>remove_<del>cvref</del><ins>const</ins>_t&lt;T&gt;</tt>,
+</p></li>
+<li><p><del>&mdash; (17.2)
+<tt><i>const-formattable</i></tt> be <tt>true</tt> if
+<tt>typename Context::template formatter_type&lt;TD&gt;().format(declval&lt;const TD&amp;&gt;(), declval&lt;Context&amp;&gt;())</tt>
+is well-formed, otherwise <tt>false</tt>,</del>
+</p></li>
+<li><p>&mdash; (17.3)
+<tt>TQ</tt> be <tt>const TD</tt> if
+<del><tt><i>const-formattable</i></tt> is <tt>true</tt></del>
+<ins><tt>const TD</tt> satisfies <tt><i>formattable-with</i>&lt;Context&gt;</tt></ins>
+and <tt>TD</tt> otherwise.
+</p></li>
+</ol>
+<p>-18- <i>Mandates</i>:
+<del><tt><i>const-formattable</i>
+|| !is_const_v&lt;remove_reference_t&lt;T&gt;&gt;</tt> is <tt>true</tt>.</del>
+<ins><tt>TQ</tt> satisfies <tt><i>formattable-with</i>&lt;Context&gt;</tt>.</ins>
+</p>
+<p>-19- <i>Effects</i>:
+Initializes <tt>ptr_</tt> with <tt>addressof(val)</tt> and <tt>format_</tt> with
+<blockquote><pre>
+[](basic_format_parse_context&lt;char_type&gt;&amp; parse_ctx,
+   Context&amp; format_ctx, const void* ptr) {
+  typename Context::template formatter_type&lt;TD&gt; f;
+  parse_ctx.advance_to(f.parse(parse_ctx));
+  format_ctx.advance_to(f.format(*const_cast&lt;TQ*&gt;(static_cast&lt;const TD*&gt;(ptr)),
+                                 format_ctx));
+}
+</pre></blockquote>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 

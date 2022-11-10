@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2022-11-09 at 01:07:36 UTC</p>
+<td align="left"><p>Revised 2022-11-10 at 18:02:30 UTC</p>
 </td>
 </tr>
 <tr>
@@ -243,33 +243,55 @@ This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 
 
 <hr>
-<h3><a name="3818" href="3818">3818.</a> Exposition-only concepts are not described in library intro</h3>
-<p><b>Section:</b> 16.3.3 <a href="https://timsong-cpp.github.io/cppwp/conventions">[conventions]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2022-11-08 <b>Last modified:</b> 2022-11-08 23:01:49 UTC</p>
+<h3><a name="3822" href="3822">3822.</a> Avoiding normalization in <tt>filesystem::weakly_canonical</tt></h3>
+<p><b>Section:</b> 31.12.13.40 <a href="https://timsong-cpp.github.io/cppwp/fs.op.weakly.canonical">[fs.op.weakly.canonical]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> US <b>Opened:</b> 2022-11-08 <b>Last modified:</b> 2022-11-09 21:37:08 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View all other</b> <a href="lwg-index.html#fs.op.weakly.canonical">issues</a> in [fs.op.weakly.canonical].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-This is the resolution for <b><a href="https://github.com/cplusplus/nbballot/issues/435">GB-074</a></b>.
+This addresses NB comment
+<b><a href="https://github.com/cplusplus/nbballot/issues/448">US-60-125</a></b>
+(31.12.13.40 <a href="https://timsong-cpp.github.io/cppwp/fs.op.weakly.canonical">[fs.op.weakly.canonical]</a> Avoiding normalization)
 </p>
 
 <p>
-The comment is:
+NB comment: "Implementations cannot avoid normalization because arbitrary file system 
+changes may have occurred since any previous call. Proposed change:
+Remove the paragraph."
 </p>
 
-<blockquote>
+<p><i>[Kona 2022-11-07; LWG review]</i></p>
+
 <p>
-16.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.func">[expos.only.func]</a> introduces exposition-only function templates. 16.3.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.types">[expos.only.types]</a> introduces
-exposition-only types. 16.3.3.5 <a href="https://timsong-cpp.github.io/cppwp/objects.within.classes">[objects.within.classes]</a> introduces exposition-only private members.
-<p/>
-There is nothing about exposition-only concepts, despite them being used extensively in the library clauses.
-<p/>
-The same problem exists for exposition-only variable templates.
+Discussion revolved around two different interpretations of the <i>Remarks</i>:
+<ul>
+<li>
+It's normative recommendation for <tt>path</tt> objects to cache some kind of
+flag that indicates they are in a normalized form, which would be checked in
+<tt>weakly_canonical</tt> to avoid normalizing again. This is the interpretation
+assumed by the NB comment, which correctly notes that such caching would be
+unreliable.
+</li>
+<li>
+It's an optimization hint to implementors that they should not normalize the
+result if each component has been canonicalized one-by-one. That is, when
+canonicalizing <tt>"/a/b/c"</tt> by incrementally building up canonicalized 
+components, if the entire path exists then the result will already have been
+normalized and should not be normalized again explicitly.
+</li>
+</ul>
 </p>
-</blockquote>
+<p>
+For the first interpretation, the recommendation is a bad recommendation and
+should be removed as suggested by the comment. For the second interpretation,
+we don't need to give hints to implementors about not doing unnecessary work;
+they already know they shouldn't do that. Either way, it should go.
+</p>
 
-<p><i>[Kona 2022-11-08; Move to Immediate status]</i></p>
+<p><i>[Kona 2022-11-09; Move to Immediate]</i></p>
 
 
 
@@ -280,46 +302,186 @@ This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 </p>
 
 <ol>
-<li><p>Modify 16.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.func">[expos.only.func]</a> as indicated, changing the stable name:</p>
+<li><p>Modify 31.12.13.40 <a href="https://timsong-cpp.github.io/cppwp/fs.op.weakly.canonical">[fs.op.weakly.canonical]</a> as indicated:</p>
 
+<blockquote><pre>
+path filesystem::weakly_canonical(const path&amp; p);
+path filesystem::weakly_canonical(const path&amp; p, error_code&amp; ec);
+</pre>
 <blockquote>
-<p>
-<b>16.3.3.2 Exposition-only <del>functions</del><ins>entities</ins> [expos.only.<del>func</del><ins>entity</ins>]</b>
-<p/>
--1- Several <del>function templates</del><ins>entities</ins> defined in 17 <a href="https://timsong-cpp.github.io/cppwp/support">[support]</a> 
-through 33 <a href="https://timsong-cpp.github.io/cppwp/thread">[thread]</a> and D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> are only defined for the purpose of exposition. 
-The declaration of such <del>a function</del><ins>an entity</ins> is followed by a comment ending in <i>exposition only</i>.
+<p>-1- <i>Effects</i>: Using <tt>status(p)</tt> or <tt>status(p, ec)</tt>,
+respectively, to determine existence, return a path composed by
+<tt>operator/=</tt> from the result of calling <tt>canonical()</tt> with
+a path argument composed of the leading elements of <tt>p</tt> that exist,
+if any, followed by the elements of <tt>p</tt> that do not exist, if any.
+For the first form, <tt>canonical()</tt> is called without an <tt>error_code</tt> argument.
+For the second form, <tt>canonical()</tt> is called with <tt>ec</tt> as an
+<tt>error_code</tt> argument, and <tt>path()</tt> is returned at the first
+error occurrence, if any.
 </p>
+<p>-2- <i>Postconditions</i>: The returned path is in normal form
+(31.12.6.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.generic">[fs.path.generic]</a>).</p>
+<p> -3- <i>Returns</i>: <tt>p</tt> with symlinks resolved and the result
+normalized (31.12.6.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.generic">[fs.path.generic]</a>).</p>
+<p>-4- <i>Throws</i>: As specified in 31.12.5 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.</p>
+<p><del>-5- <i>Remarks</i>: Implementations should avoid unnecessary
+normalization such as when <tt>canonical</tt> has already been called
+on the entirety of <tt>p</tt>.</del>
+</p>
+</blockquote>
 </blockquote>
 </li>
+</ol>
 
-<li><p>Strike 16.3.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/expos.only.types">[expos.only.types]</a> as redundant:</p>
+
+
+
+
+
+<hr>
+<h3><a name="3823" href="3823">3823.</a> Unnecessary precondition for <tt>is_aggregate</tt></h3>
+<p><b>Section:</b> 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Tomasz Kamiński <b>Opened:</b> 2022-11-09 <b>Last modified:</b> 2022-11-09 21:37:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This is resolution of <b><a href="https://github.com/cplusplus/nbballot/issues/449">GB-090</a></b>
+(21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> Unnecessary precondition for <tt>is_aggregate</tt>).
+</p>
+
+<p>
+The precondition for <tt>is_aggregate</tt> is "<tt>remove_all_extents_t&lt;T&gt;</tt> shall be a complete type 
+or <i>cv</i> <tt>void</tt>." This means that <tt>is_aggregate_v&lt;Incomplete[2]&gt;</tt> is undefined, but 
+an array is always an aggregate, we don't need a complete element type to know that.	
+</p>
+
+<p>
+Historically the <tt>is_aggregate</tt> was introduced by LWG <a href="2911">2911</a> as part of the resolution of the NB comments.
+The comment proposed to introduce this trait with requirement "<tt>remove_all_extents_t&lt;T&gt;</tt> shall 
+be a complete type, an array type, or (possibly <i>cv</i>-qualified) <tt>void</tt>.",
+that is close to resolution proposed in this issue.
+According to notes this was simplified during review, after realizing that <tt>remove_all_extents_t&lt;T&gt;</tt> 
+is never an array type.
+</p>
+
+<p><i>[Kona 2022-11-09; Move to Immediate]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.3.3 <a href="https://timsong-cpp.github.io/cppwp/meta.type.synop">[meta.type.synop]</a>, Table 46 ([tab:meta.unary.prop]) &mdash;
+"Type property predicates" &mdash; as indicated:</p>
 
 <blockquote>
-<p>
-<del><b>16.3.3.3.2 Exposition-only types [expos.only.types]</b></del>
-<p/>
+<table border="1">
+<caption>Table 48: Type property predicates [tab:meta.unary.prop]</caption>
+<tr>
+<th align="center">Template</th>
+<th align="center">Condition</th>
+<th align="center">Preconditions</th>
+</tr>
 
-<del>-1- Several types defined in 17 <a href="https://timsong-cpp.github.io/cppwp/support">[support]</a> through 33 <a href="https://timsong-cpp.github.io/cppwp/thread">[thread]</a> and D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> 
-are defined for the purpose of exposition. The declaration of such a type is followed by a 
-comment ending in <i>exposition only</i>.</del>
-<p/>
-<del><i>[Example 1:</i></del>
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>template&lt;class T, class U&gt;<br/>
+struct is_aggregate;</tt>
+</td>
+
+<td>
+<tt>T</tt> is an aggregate type (9.4.2 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.aggr">[dcl.init.aggr]</a>)	
+</td>
+
+<td>
+<tt><del>remove_all_extents_t&lt;</del>T<del>&gt;</del></tt> shall be <ins>an array type,</ins> 
+a complete type<ins>,</ins> or <i>cv</i> <tt>void</tt>.
+</td>
+</tr>
+
+</table>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3824" href="3824">3824.</a> Number of <tt>bind</tt> placeholders is underspecified</h3>
+<p><b>Section:</b> 22.10.15.5 <a href="https://timsong-cpp.github.io/cppwp/func.bind.place">[func.bind.place]</a> <b>Status:</b> <a href="lwg-active.html#Immediate">Immediate</a>
+ <b>Submitter:</b> Tomasz Kamiński <b>Opened:</b> 2022-11-09 <b>Last modified:</b> 2022-11-09 21:37:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View all other</b> <a href="lwg-index.html#func.bind.place">issues</a> in [func.bind.place].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Immediate">Immediate</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This is resolution of <b><a href="https://github.com/cplusplus/nbballot/issues/437">GB-95</a></b>
+(22.10.15.5 <a href="https://timsong-cpp.github.io/cppwp/func.bind.place">[func.bind.place]</a> Number of <tt>bind</tt> placeholders is underspecified).
+</p>
+
+<p>
+22.10.2 <a href="https://timsong-cpp.github.io/cppwp/functional.syn">[functional.syn]</a> and 22.10.15.5 <a href="https://timsong-cpp.github.io/cppwp/func.bind.place">[func.bind.place]</a> both contain a comment that says 
+"M is the implementation-defined number of placeholders". 
+There is no wording anywhere to say that there is any such number, only that comment.
+</p>
+
+<p><i>[Kona 2022-11-09; Move to Immediate]</i></p>
+
+
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.10.15.5 <a href="https://timsong-cpp.github.io/cppwp/func.bind.place">[func.bind.place]</a> as indicated:</p>
+
 <blockquote>
 <pre>
-<del>namespace std {
-  extern "C" using <i>some-handler</i> = int(int, void*, double);  // exposition only
-}</del>
+namespace std::placeholders {
+  <i>// M is the <del>implementation-defined</del> number of placeholders</i>
+  <i>see below</i> _1;
+  <i>see below</i> _2;
+              .
+              .
+              .
+  <i>see below</i> _M;
+}
 </pre>
-</blockquote>
-
+<blockquote>
 <p>
-<del>The type placeholder <i><tt>some-handler</tt></i> can now be used to specify a 
-function that takes a callback parameter with C language linkage. 
-<i>&mdash; end example]</i></del>
+<ins>-?- The number <code>M</code> of placeholders is implementation-defined.</ins>
+</p>
+<p>
+-1- All placeholder types meet the <i>Cpp17DefaultConstructible</i> and <i>Cpp17CopyConstructible</i> requirements, 
+and their default constructors and copy/move constructors are constexpr functions that do not throw exceptions.
+It is implementation-defined whether placeholder types meet the <i>Cpp17CopyAssignable</i> requirements, but if so, 
+their copy assignment operators are constexpr functions that do not throw exceptions.
 </p>
 </blockquote>
+</blockquote>
+
 </li>
 </ol>
 

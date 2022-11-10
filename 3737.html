@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3737" href="lwg-active.html#3737">3737.</a> <tt>take_view::<i>sentinel</i></tt> should provide <tt>operator-</tt></h3>
 <p><b>Section:</b> 26.7.10.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.sentinel">[range.take.sentinel]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-15 <b>Last modified:</b> 2022-08-23 15:25:16 UTC</p>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-07-15 <b>Last modified:</b> 2022-11-09 21:30:35 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.take.sentinel">issues</a> in [range.take.sentinel].</p>
@@ -77,9 +77,9 @@ and b) I’d like to see an implementation (maybe it’s in MSVC?)
 to be sure there isn’t a negative interaction we’re not thinking of."
 </p>
 
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 
-
-<p><b>Proposed resolution:</b></p>
 <p>
 This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
 </p>
@@ -176,6 +176,101 @@ friend constexpr range_difference_t&lt;<i>maybe-const</i>&lt;OtherConst, V&gt;&g
 <ins>-?- <i>Effects:</i> Equivalent to: <tt>return -(y - x);</tt></ins>
 </p>
 </blockquote>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+<p><i>[2022-11-09 Tim updates wording following LWG discussion]</i></p>
+
+<p>
+This case is only possible if the source view is not a <tt>sized_range</tt>, yet its 
+iterator/sentinel types model <tt>sized_sentinel_for</tt> (typically when source
+is an input range). In such a case we should just have <tt>begin</tt> compute
+the correct size so that <tt>end</tt> can just return <tt>default_sentinel</tt>.
+</p>
+
+
+<p><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+<ol>
+<li><p>Modify 26.7.10.2 <a href="https://timsong-cpp.github.io/cppwp/range.take.view">[range.take.view]</a>, class template <tt>take_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+  class take_view : public view_interface&lt;take_view&lt;V&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+    constexpr auto begin() requires (!<i>simple-view</i>&lt;V&gt;) {
+      if constexpr (sized_range&lt;V&gt;) {
+        if constexpr (random_access_range&lt;V&gt;) {
+          return ranges::begin(<i>base_</i>);
+        } else {
+          auto sz = range_difference_t&lt;V&gt;(size());
+          return counted_iterator(ranges::begin(<i>base_</i>), sz);
+        }
+      }<ins> else if constexpr (sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;) {
+        auto it = ranges::begin(<i>base_</i>);
+        auto sz = std::min(<i>count_</i>, ranges::end(<i>base_</i>) - it);
+        return counted_iterator(std::move(it), sz);
+      }</ins> else {
+        return counted_iterator(ranges::begin(<i>base_</i>), <i>count_</i>);
+      }
+    }
+
+    constexpr auto begin() const requires range&lt;const V&gt; {
+      if constexpr (sized_range&lt;const V&gt;) {
+        if constexpr (random_access_range&lt;const V&gt;) {
+          return ranges::begin(<i>base_</i>);
+        } else {
+          auto sz = range_difference_t&lt;const V&gt;(size());
+          return counted_iterator(ranges::begin(<i>base_</i>), sz);
+        }
+      }<ins> else if constexpr (sized_sentinel_for&lt;sentinel_t&lt;const V&gt;, iterator_t&lt;const V&gt;&gt;) {
+        auto it = ranges::begin(<i>base_</i>);
+        auto sz = std::min(<i>count_</i>, ranges::end(<i>base_</i>) - it);
+        return counted_iterator(std::move(it), sz);
+      }</ins> else {
+        return counted_iterator(ranges::begin(<i>base_</i>), <i>count_</i>);
+      }
+    }
+
+    constexpr auto end() requires (!<i>simple-view</i>&lt;V&gt;) {
+      if constexpr (sized_range&lt;V&gt;) {
+        if constexpr (random_access_range&lt;V&gt;)
+          return ranges::begin(<i>base_</i>) + range_difference_t&lt;V&gt;(size());
+        else
+          return default_sentinel;
+      }<ins> else if constexpr (sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;) {
+        return default_sentinel;
+      }</ins> else {
+        return sentinel&lt;false&gt;{ranges::end(<i>base_</i>)};
+      }
+    }
+
+    constexpr auto end() const requires range&lt;const V&gt; {
+      if constexpr (sized_range&lt;const V&gt;) {
+        if constexpr (random_access_range&lt;const V&gt;)
+          return ranges::begin(<i>base_</i>) + range_difference_t&lt;const V&gt;(size());
+        else
+          return default_sentinel;
+      }<ins> else if constexpr (sized_sentinel_for&lt;sentinel_t&lt;const V&gt;, iterator_t&lt;const V&gt;&gt;) {
+        return default_sentinel;
+      }</ins> else {
+        return sentinel&lt;true&gt;{ranges::end(<i>base_</i>)};
+      }
+    }
+    
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
 </blockquote>
 </li>
 </ol>
