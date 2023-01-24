@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3853: basic_const_iterator&lt;volatile int*&gt;::operator-&gt; is ill-formed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3853" href="lwg-active.html#3853">3853.</a> <tt>basic_const_iterator&lt;volatile int*&gt;::operator-&gt;</tt> is ill-formed</h3>
+<p><b>Section:</b> 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-06 <b>Last modified:</b> 2023-01-09 18:56:43 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#const.iterators">active issues</a> in [const.iterators].</p>
+<p><b>View all other</b> <a href="lwg-index.html#const.iterators">issues</a> in [const.iterators].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>basic_const_iterator::operator-&gt;</tt> constrains the value type
+of the underlying iterator to be only the <i>cv</i>-unqualified type of its reference type, 
+which is true for raw pointers.
+</p>
+<p>
+However, since it also explicitly specifies returning a pointer to a <tt>const</tt> value type,
+this will cause a hard error when the value type is actually <tt>volatile</tt>-qualified:
+</p>
+<blockquote>
+<pre>
+std::basic_const_iterator&lt;volatile int*&gt; it;
+auto* p = it.operator-&gt;(); // <span style="color:red;font-weight:bolder">invalid conversion from 'volatile int*' to 'const int*'</span>
+</pre>
+</blockquote>
+<p>
+The proposed resolution changes the return type from <tt>const value_type*</tt>
+to <tt>const auto*</tt>,
+which makes it deduce the correct type in the above example,
+i.e. <tt>const volatile int*</tt>.
+</p>
+
+
+<p id="res-3853"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class I&gt;
+    concept <i>not-a-const-iterator</i> = <i>see below</i>;
+
+  template&lt;input_iterator Iterator&gt;
+  class basic_const_iterator {
+    Iterator <i>current_</i> = Iterator();                             // <i>exposition only</i>
+    using <i>reference</i> = iter_const_reference_t&lt;Iterator&gt;;         // <i>exposition only</i>
+  
+  public:
+    [&hellip;]
+    constexpr <i>reference</i> operator*() const;
+    constexpr const <ins>auto</ins><del>value_type</del>* operator-&gt;() const
+       requires is_lvalue_reference_v&lt;iter_reference_t&lt;Iterator&gt;&gt; &amp;&amp;
+                same_as&lt;remove_cvref_t&lt;iter_reference_t&lt;Iterator&gt;&gt;, value_type&gt;;
+    [&hellip;]
+  };
+}
+</pre>
+[&hellip;]
+<pre>
+constexpr const <ins>auto</ins><del>value_type</del>* operator-&gt;() const
+  requires is_lvalue_reference_v&lt;iter_reference_t&lt;Iterator&gt;&gt; &amp;&amp;
+           same_as&lt;remove_cvref_t&lt;iter_reference_t&lt;Iterator&gt;&gt;, value_type&gt;;
+</pre>
+<p>
+-7- <i>Returns</i>: If <tt>Iterator</tt> models <tt>contiguous_iterator</tt>, <tt>to_address(<i>current_</i>)</tt>; otherwise, 
+<tt>addressof(*<i>current_</i>)</tt>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

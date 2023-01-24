@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3855: tiny-range is not quite right</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3855" href="lwg-active.html#3855">3855.</a> <tt><i>tiny-range</i></tt> is not quite right</h3>
+<p><b>Section:</b> 26.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-07 <b>Last modified:</b> 2023-01-14 12:28:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.lazy.split.view">active issues</a> in [range.lazy.split.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.view">issues</a> in [range.lazy.split.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>lazy_split_view</tt> supports input range when the element of the pattern is less than or equal to 1. 
+In order to ensure this condition at compile time, <tt><i>tiny-range</i></tt> constrains the type <tt>R</tt> to model 
+<tt>sized_range</tt> and requires <tt>(remove_reference_t&lt;R&gt;::size() &lt;= 1)</tt> to be a constant expression.
+<p/>
+However, modeling a <tt>sized_range</tt> does not guarantee that <tt>ranges::size</tt> will be evaluated by <tt>R::size()</tt>.
+For example, when <tt>disable_sized_range&lt;R&gt;</tt> is specialized to <tt>true</tt> or <tt>R::size()</tt> returns a non-integer-like type, 
+<tt>ranges::size</tt> can still compute the size by subtracting the iterator-sentinel pair when both satisfy <tt>sized_sentinel_for</tt>.
+<p/>
+Since the <tt>lazy_split_view</tt>'s iterator uses <tt>R::size()</tt> to get the constant value of the pattern, 
+we must ensure that this is indeed how <tt>ranges::size</tt> is calculated. Also, I think we can simplify 
+<tt><i>tiny-range</i></tt> with <tt>bool_constant</tt> in a way similar to LWG <a href="3150">3150</a>, which removes the 
+introduction of <tt><i>require-constant</i></tt>.
+</p>
+
+
+<p id="res-3855"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.16.2 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.view">[range.lazy.split.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  <del>template&lt;auto&gt; struct <i>require-constant</i>; <i>// exposition only</i></del>
+
+  <del>template&lt;class R&gt;
+  concept <i>tiny-range</i> = <i>// exposition only</i>
+     sized_range&lt;R&gt; &amp;&amp;
+     requires { typename <i>require-constant</i>&lt;remove_reference_t&lt;R&gt;::size()&gt;; } &amp;&amp;
+     (remove_reference_t&lt;R&gt;::size() &lt;= 1);</del>
+   
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+             (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  class lazy_split_view : public view_interface&lt;lazy_split_view&lt;V, Pattern&gt;&gt; {
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<pre><ins>
+template&lt;class R&gt;
+concept <i>tiny-range</i> = <i>// exposition only</i>
+   sized_range&lt;R&gt; &amp;&amp;
+   requires { requires bool_constant&lt;(remove_reference_t&lt;R&gt;::size() &lt;= 1)&gt;::value; };
+</ins></pre>
+<blockquote>
+<p><ins>
+-?- Given an lvalue <tt>r</tt> of type <tt>remove_reference_t&lt;R&gt;</tt>, <tt>R</tt> models <tt><i>tiny-range</i></tt> only if
+<tt>ranges::size(r)</tt> is evaluated by <tt>remove_reference_t&lt;R&gt;::size()</tt>.
+</ins></p>
+</blockquote>
+<pre>
+constexpr lazy_split_view(V base, Pattern pattern);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: : Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt>, and <tt><i>pattern_</i></tt> with 
+<tt>std::move(pattern)</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

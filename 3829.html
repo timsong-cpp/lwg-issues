@@ -1,0 +1,179 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3829: as_rvalue_view::end should improve non-common case</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3829" href="lwg-active.html#3829">3829.</a> <tt>as_rvalue_view::end</tt> should improve non-common case</h3>
+<p><b>Section:</b> 26.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.view">[range.as.rvalue.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-11-13 <b>Last modified:</b> 2022-11-30 10:08:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, when the underlying range is not a common range, <tt>as_rvalue_view::begin</tt> and <tt>end</tt> return 
+<tt>move_iterator</tt> and <tt>move_sentinel</tt> respectively, this seems reasonable since <tt>move_sentinel</tt> 
+is a sentinel adaptor introduced by C++20 specifically for comparison with <tt>move_iterator</tt>.
+<p/>
+However, in the case where the sentinel type of the underlying type is an input iterator, this may lead to some 
+performance issues, <a href="https://godbolt.org/z/8KGdqzzTK">consider</a>:
+</p>  
+<blockquote><pre>
+#include &lt;list&gt;
+#include &lt;ranges&gt;
+  
+int main() {
+  std::list&lt;std::tuple&lt;int&amp;&gt;&gt; l;
+  auto k = std::move(l) | std::views::keys;
+  auto s = std::ranges::subrange(std::cbegin(k), std::end(k));
+  (void) std::ranges::next(s.begin(), s.end()); // <span style="color:red;font-weight:bolder">constant time</span>
+  auto r = s | std::views::as_rvalue;
+  (void) std::ranges::next(r.begin(), r.end()); // <span style="color:red;font-weight:bolder">linear time</span>
+}
+</pre></blockquote>
+<p>
+The above <tt>subrange</tt> is constructed by the <tt>elements_view::<i>iterator</i>&lt;true&gt;</tt> and 
+<tt>elements_view::<i>iterator</i>&lt;false&gt;</tt> pair, and since the former can be assigned by the latter, 
+when we use <tt>ranges::next</tt> to increment the <tt>begin</tt> of <tt>s</tt> to its <tt>end</tt>, the 
+<tt>assignable_from</tt> branch will be executed, so we get a constant-time complexity.
+<p/>
+However, when we apply <tt>views::as_rvalue</tt> to <tt>s</tt>, the <tt>as_rvalue_view::end</tt> will go 
+into the non-common branch and return <tt>move_sentinel</tt>. And because <tt>move_iterator</tt> cannot be 
+assigned by <tt>move_sentinel</tt>, <tt>ranges::next</tt> will successively increment the <tt>begin</tt> of <tt>s</tt> 
+until its end, we get the linear-time complexity this time.
+<p/>
+I think it is more appropriate to return <tt>move_iterator</tt> for the above case, as this preserves the 
+assignability, but also preserves the iterator operability that the original sentinel type has.
+<p/>
+Another benefit of doing this is that when the sentinel type of underlying range can be subtracted from its 
+iterator type but does not model <tt>sized_sentinel_for</tt>, returning different <tt>move_iterator</tt> makes 
+them still subtractable, because its <tt>operator-</tt> only constrain the <tt>x.base() - y.base()</tt> being 
+well-formed.
+<p/>
+This also solves the issue of <tt>as_rvalue_view</tt> being a valid type but does not model a <tt>range</tt> in 
+some cases, <a href="https://godbolt.org/z/GM5sMarqP">for example</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  std::move_iterator&lt;int*&gt; i;
+  std::move_iterator&lt;const int*&gt; ci;
+  std::ranges::subrange s(i, ci);
+  std::ranges::as_rvalue_view r(s); // not failed
+  static_assert(std::ranges::range&lt;decltype(r)&gt;); // <span style="color:red;font-weight:bolder">failed</span>
+}
+</pre></blockquote>
+<p>
+This is because currently, <tt>as_rvalue_view</tt> does not explicitly specify the template parameters of the returned 
+<tt>move_iterator</tt> and <tt>move_sentinel</tt>, so based on CTAD, its <tt>begin</tt> will return 
+<tt>move_iterator(move_iterator(...))</tt> which is still <tt>move_iterator&lt;int*&gt;</tt>, and its <tt>end</tt> will 
+return <tt>move_sentinel&lt;move_iterator&lt;const int*&gt;&gt;</tt>. Those two types are not comparable, so <tt>r</tt> 
+does not constitute a valid <tt>range</tt>.
+<p/>
+The proposed resolution is to return  <tt>move_iterator</tt> when the sentinel type of the underlying range models 
+<tt>input_iterator</tt>.
+</p>
+
+<p><i>[2022-11-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"NAD, these examples seem entirely contrived. If not NAD, don't need the
+<tt>common_range</tt> check if we are checking that the sentinel models
+<tt>input_iterator</tt>."
+</p>
+
+
+
+<p id="res-3829"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.view">[range.as.rvalue.view]</a> as indicated:</p>
+
+<blockquote><pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires input_range&lt;V&gt;
+  class as_rvalue_view : public view_interface&lt;as_rvalue_view&lt;V&gt;&gt; {
+    [&hellip;]
+    constexpr auto begin() requires (!<i>simple-view</i>&lt;V&gt;)
+    { return move_iterator(ranges::begin(base_)); }
+    constexpr auto begin() const requires range&lt;const V&gt;
+    { return move_iterator(ranges::begin(base_)); }
+ 
+    constexpr auto end() requires (!<i>simple-view</i>&lt;V&gt;) {
+      if constexpr (common_range&lt;V&gt; <ins>|| input_iterator&lt;sentinel_t&lt;V&gt;&gt;</ins>) {
+        return move_iterator(ranges::end(base_));
+      } else {
+        return move_sentinel(ranges::end(base_));
+      }
+    }
+    constexpr auto end() const requires range&lt;const V&gt; {
+      if constexpr (common_range&lt;const V&gt; <ins>|| input_iterator&lt;sentinel_t&lt;const V&gt;&gt;</ins>) {
+        return move_iterator(ranges::end(base_));
+      } else {
+        return move_sentinel(ranges::end(base_));
+      }
+    }
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

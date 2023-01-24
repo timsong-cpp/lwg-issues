@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3856: Unclear which conversion specifiers are valid for each chrono type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3856" href="lwg-active.html#3856">3856.</a> Unclear which conversion specifiers are valid for each chrono type</h3>
+<p><b>Section:</b> 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tam S. B. <b>Opened:</b> 2023-01-14 <b>Last modified:</b> 2023-01-15 10:43:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>/3:
+<blockquote>
+If the formatted object does not contain the information the conversion
+specifier refers to, an exception of type <tt>format_error</tt> is thrown.
+</blockquote>
+
+29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>/6:
+<blockquote>
+If the type being formatted does not contain the information that the format
+flag needs, an exception of type <tt>format_error</tt> is thrown.
+</blockquote>
+</p>
+
+<p>
+It's unclear how to determine if a type contain the needed information,
+and implementations diverge.
+</p>
+
+<p>
+For example, consider
+</p>
+<blockquote><pre>
+#include &lt;chrono&gt;
+#include &lt;format&gt;
+
+auto f(std::chrono::month_day_last mdl) {
+  return std::format("{:%j}", mdl);
+}
+</pre></blockquote>
+<p>
+Both libstdc++ and libc++ produce a compile-time error, claiming that the
+argument does not contain the information, while MSVC STL throws
+<tt>format_error</tt> at run time unless <tt>mdl</tt> is `January/last`,
+in which case the function returns "031".
+</p>
+<p>
+Another interesting case is <code>format("{:%d}", mdl)</code> where the value
+can be printed for all months <i>except</i> February, which requires a year
+to know how many days it has.
+</p>
+
+<p>
+A related example from Jonathan Wakely:
+</p>
+<blockquote><pre>
+std::chrono::weekday_indexed wdi(Monday, 7);  // 7th Monday in the month
+assert( ! wdi.ok() );
+assert( wdi.weekday().ok() );
+std::format("{:%a}", wdi);
+</pre></blockquote>
+<p>
+For <tt>%a</tt> the required information is "a valid weekday",
+and arguably this does contain a valid weekday.
+On the other hand, there's no 7th Monday, so this isn't valid.
+Should this throw or not?
+</p>
+<p>
+This was discussed by LWG and Howard Hinnant summarized the intended behaviour as:
+<blockquote>
+"The intention of 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>/6 is to address things like
+formatting a <tt>duration</tt> with <tt>%F</tt>. A <tt>duration</tt> doesn't contain
+the calendrical information that <tt>%F</tt> requires (year, month, day).
+Ditto for using <tt>%a</tt> (weekday name) with a <tt>year</tt>.
+It is meant to address mismatching <i>types</i> and flags,
+and not meant to address <i>values</i>."
+</blockquote>
+</p>
+<p>
+The type <tt>chrono::weekday</tt> does contain the information needed to print
+a weekday. A specific invalid value doesn't change that.
+The type <tt>chrono::month_day_last</tt> does not contain the information
+needed to print the day of the year.
+A specific value where the day can be known doesn't change that.
+The day of month is more interesting, and might need more discussion.
+</p>
+<p>
+Jonathan proposed adding more examples to clarify the intention that only the
+type matters, and not the value. There is some redundancy between p3 and p6.
+Referring to "the formatted object" in p3 seems unclear.
+Saying "type" as in p6 is better.
+But p6 refers to "format flag" which is not defined,
+whereas p3 uses "conversion specifier" (defined at the start of that paragraph).
+The two uses of "flag" in p6 look like remnants from the earlier <tt>chrono::format</tt> 
+feature that was replaced by integration with <tt>std::format</tt>.
+</p>
+
+
+
+<p id="res-3856"><b>Proposed resolution:</b></p>
+<p>
+</p>
+
+
+
+
+
+</body>
+</html>

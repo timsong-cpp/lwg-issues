@@ -1,0 +1,152 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3836: std::expected&lt;bool, E1&gt; conversion constructor expected(const expected&lt;U, G&gt;&amp;) 
+should take precedence over expected(U&amp;&amp;) with operator bool</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3836" href="lwg-active.html#3836">3836.</a> <tt>std::expected&lt;bool, E1&gt;</tt> conversion constructor <tt>expected(const expected&lt;U, G&gt;&amp;)</tt> 
+should take precedence over <tt>expected(U&amp;&amp;)</tt> with operator <tt>bool</tt></h3>
+<p><b>Section:</b> 22.8.6.2 <a href="https://timsong-cpp.github.io/cppwp/expected.object.ctor">[expected.object.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hui Xie <b>Opened:</b> 2022-11-30 <b>Last modified:</b> 2023-01-06 14:40:19 UTC</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The issue came up when implementing <tt>std::expected</tt> in libc++. Given the following example:
+</p>
+<blockquote><pre>
+struct BaseError{};
+struct DerivedError : BaseError{};
+
+std::expected&lt;int, DerivedError&gt; e1(5);  
+std::expected&lt;int, BaseError&gt; e2(e1);  // <span style="color:green;font-weight:bold">e2 holds 5</span>
+</pre></blockquote>
+<p>
+In the above example, <tt>e2</tt> is constructed with the conversion constructor
+</p>
+<blockquote><pre>
+expected::expected(const expected&lt;U, G&gt;&amp;)
+</pre></blockquote>
+<p>
+and the value <tt>5</tt> is correctly copied into <tt>e2</tt> as expected.
+<p/>
+However, if we change the type from <tt>int</tt> to <tt>bool</tt>, the behaviour is very surprising.
+</p>
+<blockquote><pre>
+std::expected&lt;bool, DerivedError&gt; e1(false);
+std::expected&lt;bool, BaseError&gt; e2(e1);  // <span style="color:red;font-weight:bolder">e2 holds true</span>
+</pre></blockquote>
+<p>
+In this example <tt>e2</tt> is constructed with
+</p>
+<blockquote><pre>
+expected::expected(U&amp;&amp;)
+</pre></blockquote>
+<p>
+together with
+</p>
+<blockquote><pre>
+expected::operator bool() const
+</pre></blockquote>
+<p>
+Instead of copying <tt>e1</tt>'s "<tt>false</tt>" into <tt>e2</tt>, it uses <tt>operator bool</tt>, which returns 
+<tt>true</tt> in this case and <tt>e2</tt> would hold "<tt>true</tt>" instead.
+<p/>
+This is surprising behaviour given how inconsistent between <tt>int</tt> and <tt>bool</tt>.
+<p/>
+The reason why the second example uses a different overload is that the constructor 
+<tt>expected(const expected&lt;U, G&gt;&amp; rhs);</tt> has the following constraint
+(22.8.6.2 <a href="https://timsong-cpp.github.io/cppwp/expected.object.ctor">[expected.object.ctor]</a> p17):
+</p>
+<blockquote>
+<ol style="list-style-type: none">
+<li><p>(17.3) &mdash; <tt>is_constructible_v&lt;T, expected&lt;U, G&gt;&amp;&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.4) &mdash; <tt>is_constructible_v&lt;T, expected&lt;U, G&gt;&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.5) &mdash; <tt>is_constructible_v&lt;T, const expected&lt;U, G&gt;&amp;&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.6) &mdash; <tt>is_constructible_v&lt;T, const expected&lt;U, G&gt;&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.7) &mdash; <tt>is_convertible_v&lt;expected&lt;U, G&gt;&amp;, T&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.8) &mdash; <tt>is_convertible_v&lt;expected&lt;U, G&gt;&amp;&amp;, T&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.9) &mdash; <tt>is_convertible_v&lt;const expected&lt;U, G&gt;&amp;, T&gt;</tt> is <tt>false</tt>; and</p></li>
+<li><p>(17.10) &mdash; <tt>is_convertible_v&lt;const expected&lt;U, G&gt;&amp;&amp;, T&gt;</tt> is <tt>false</tt>; and</p></li>
+</ol>
+</blockquote>
+<p>
+Since <tt>T</tt> is <tt>bool</tt> in the second example, and <tt>bool</tt> can be constructed <tt>from</tt> 
+<tt>std::expected</tt>, this overload will be removed. and the overload that takes <tt>U&amp;&amp;</tt> will be selected.
+<p/>
+I would suggest to special case <tt>bool</tt>, i.e.
+</p>
+<ul>
+<li><p>(The above 8 constraints); or</p></li>
+<li><p><tt>is_same_v&lt;remove_cv_t&lt;T&gt;, bool&gt;</tt> is <tt>true</tt></p></li>
+</ul>
+<p>
+And we need to make sure this overload and the overload that takes <tt>expected(U&amp;&amp;)</tt> be mutually exclusive.
+</p>
+
+<p><i>[2023-01-06; Reflector poll]</i></p>
+
+<p>
+Set priority to 1 after reflector poll.
+</p>
+<p>
+There was a mix of votes for P1 and P2 but also one for NAD
+("The design of forward/repack construction for expected matches optional,
+when if the stored value can be directly constructed, we use that.").
+<code>std::optional&lt;bool&gt;</code> is similarly affected.
+Any change should consider the effects on
+<code>expected&lt;expected&lt;&gt;&gt;</code> use cases.
+</p>
+
+
+
+<p id="res-3836"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

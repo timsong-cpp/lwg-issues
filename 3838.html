@@ -1,0 +1,134 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3838: The last specialization of  incrementable_traits is under-constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3838" href="lwg-active.html#3838">3838.</a> The last specialization of  <tt>incrementable_traits</tt> is under-constrained</h3>
+<p><b>Section:</b> 25.3.2.1 <a href="https://timsong-cpp.github.io/cppwp/incrementable.traits">[incrementable.traits]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-12-07 <b>Last modified:</b> 2023-01-06 16:33:44 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#incrementable.traits">active issues</a> in [incrementable.traits].</p>
+<p><b>View all other</b> <a href="lwg-index.html#incrementable.traits">issues</a> in [incrementable.traits].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The last specialization of <tt>incremental_traits</tt> requires that the result obtained 
+by subtracting two objects of type <tt>const T</tt> must model <tt>integral</tt>, 
+then apply <tt>make_signed_t</tt> to it as the difference type of type <tt>T</tt>.
+<p/>
+However, since <tt>bool</tt> also models <tt>integral</tt>, but is not a valid template argument 
+for <tt>make_signed_t</tt>, we should ban such cases to avoid unnecessary hard errors 
+(<a href="https://godbolt.org/z/bbTz1xh89">online example</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct Bool { 
+  bool operator-(Bool) const; 
+};
+
+template&lt;class T&gt;
+concept can_iota_view = requires(T t) { std::ranges::iota_view(t); };
+
+static_assert(!can_iota_view&lt;Bool&gt;); // <span style="color:red;font-weight:bolder">hard error</span>
+</pre></blockquote>
+
+<p><i>[2022-12-13; Minor wording improvements after LWG reflector discussion]</i></p>
+
+<p>
+Remove <tt>remove_cv_t</tt> within <tt><i>nonbool-integral</i></tt>, because <tt>bool</tt> prvalues cannot be <i>cv</i>-qualified.
+</p>
+
+<p><i>[2023-01-06; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"I would prefer to place the new checks directly in the <i>requires-clause</i>
+instead of introducing <i><tt>nonbool-integral</tt></i>."
+</p>
+
+
+
+<p id="res-3838"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.3.2.1 <a href="https://timsong-cpp.github.io/cppwp/incrementable.traits">[incrementable.traits]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  <ins>template&lt;class T&gt;
+    concept <i>nonbool-integral</i> = integral&lt;T&gt; &amp;&amp; !same_as&lt;T, bool&gt;;         // <i>exposition only</i></ins>
+  
+  template&lt;class T&gt; struct incrementable_traits { };
+  
+  [&hellip;]
+
+  template&lt;class T&gt;
+    requires (!requires { typename T::difference_type; } &amp;&amp;
+              requires(const T&amp; a, const T&amp; b) { { a - b } -&gt; <ins><i>nonbool-integral</i></ins><del>integral</del>; })
+  struct incrementable_traits&lt;T&gt; {
+    using difference_type = make_signed_t&lt;decltype(declval&lt;T&gt;() - declval&lt;T&gt;())&gt;;
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

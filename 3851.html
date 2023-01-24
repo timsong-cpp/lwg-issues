@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3851: chunk_view::inner-iterator missing custom iter_move and iter_swap</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3851" href="lwg-active.html#3851">3851.</a> <tt>chunk_view::<i>inner-iterator</i></tt> missing custom <tt>iter_move</tt> and <tt>iter_swap</tt></h3>
+<p><b>Section:</b> 26.7.27.5 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.inner.iter">[range.chunk.inner.iter]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-06 <b>Last modified:</b> 2023-01-06 15:51:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For the input version of <tt>chunk_view</tt>,
+its <tt><i>inner-iterator</i>::operator*()</tt> simply 
+dereferences the underlying input iterator.
+However, there are no customized <tt>iter_move</tt> and <tt>iter_swap</tt>
+overloads for the <tt><i>inner-iterator</i></tt>,
+which prevents customized behavior when applying <tt>views::chunk</tt>
+to a range whose iterator type is a proxy iterator,
+<a href="https://godbolt.org/z/ETh5o6GYj">for example</a>:
+</p>
+<pre>
+    #include &lt;algorithm&gt;
+    #include &lt;cassert&gt;
+    #include &lt;ranges&gt;
+    #include &lt;sstream&gt;
+    #include &lt;vector&gt;
+
+    int main() {
+      auto ints = std::istringstream{"0 1 2 3 4"};
+      std::vector&lt;std::string&gt; vs{"the", "quick", "brown", "fox"};
+      auto r = std::views::zip(vs, std::views::istream&lt;int&gt;(ints))
+              | std::views::chunk(2)
+              | std::views::join;
+      std::vector&lt;std::tuple&lt;std::string, int&gt;&gt; res;
+      std::ranges::copy(std::move_iterator(r.begin()), std::move_sentinel(r.end()), 
+                        std::back_inserter(res));
+      assert(vs.front().empty()); // <span style="color:red;font-weight:bolder">assertion failed</span>
+    }
+</pre>
+<p>
+<tt>zip</tt> iterator has a customized <tt>iter_move</tt> behavior,
+but since there is no <tt>iter_move</tt> specialization for
+<tt><i>inner-iterator</i></tt>,
+when we try to move elements in <tt>chunk_view</tt>,
+<tt>move_iterator</tt> will fallback to use the default implementation of
+<tt>iter_move</tt>, making <tt>string</tt>s not moved as expected
+from the original <tt>vector</tt> but copied instead.
+</p>
+
+
+<p id="res-3851"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.27.5 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.inner.iter">[range.chunk.inner.iter]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires input_range&lt;V&gt;
+  class chunk_view&lt;V&gt;::<i>inner-iterator</i> {
+    chunk_view* <i>parent_</i>;                                                <i>// exposition only</i>
+
+    constexpr explicit <i>inner-iterator</i>(chunk_view&amp; parent) noexcept;     <i>// exposition only</i>
+
+  public:
+    [&hellip;]
+    friend constexpr difference_type operator-(default_sentinel_t y, const <i>inner-iterator</i>&amp; x)
+      requires sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;;
+    friend constexpr difference_type operator-(const <i>inner-iterator</i>&amp; x, default_sentinel_t y)
+      requires sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;;
+
+<ins>    friend constexpr range_rvalue_reference_t&lt;V&gt; iter_move(const <i>inner-iterator</i>&amp; i)
+      noexcept(noexcept(ranges::iter_move(*i.<i>parent_</i>-><i>current_</i>)));
+
+    friend constexpr void iter_swap(const <i>inner-iterator</i>&amp; x, const <i>inner-iterator</i>&amp; y)
+      noexcept(noexcept(ranges::iter_swap(*x.<i>parent_</i>-><i>current_</i>, *y.<i>parent_</i>-><i>current_</i>)))
+      requires indirectly_swappable&lt;iterator_t&lt;V&gt;&gt;;</ins>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre><ins>friend constexpr range_rvalue_reference_t&lt;V&gt; iter_move(const <i>inner-iterator</i>&amp; i)
+  noexcept(noexcept(ranges::iter_move(*i.<i>parent_</i>-><i>current_</i>)));</ins>
+</pre>
+<blockquote>
+<p>
+<ins>
+-?- <i>Effects:</i> Equivalent to: <tt>return ranges::iter_move(*i.<i>parent_</i>-><i>current_</i>);</tt>
+</ins>
+</p>
+</blockquote>
+<pre><ins>friend constexpr void iter_swap(const <i>inner-iterator</i>&amp; x, const <i>inner-iterator</i>&amp; y)
+  noexcept(noexcept(ranges::iter_swap(*x.<i>parent_</i>-><i>current_</i>, *y.<i>parent_</i>-><i>current_</i>)))
+  requires indirectly_swappable&lt;iterator_t&lt;V&gt;&gt;;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>
+-?- <i>Effects:</i> Equivalent to: <tt>ranges::iter_swap(*x.<i>parent_</i>-><i>current_</i>, *y.<i>parent_</i>-><i>current_</i>)</tt>.
+</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3840: filesystem::u8path should be undeprecated</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3840" href="lwg-active.html#3840">3840.</a> <tt>filesystem::u8path</tt> should be undeprecated</h3>
+<p><b>Section:</b> D.25 <a href="https://timsong-cpp.github.io/cppwp/depr.fs.path.factory">[depr.fs.path.factory]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
+ <b>Submitter:</b> Daniel Krügler <b>Opened:</b> 2022-12-10 <b>Last modified:</b> 2023-01-06 14:40:19 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#depr.fs.path.factory">issues</a> in [depr.fs.path.factory].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>filesystem::u8path</tt> function became deprecated with the adoption of
+<a href="https://wg21.link/P0482R6">P0482R6</a>, but the rationale for that change is rather thin:
+</p>
+<blockquote><p>
+"The C++ standard must improve support for UTF-8 by removing the existing barriers that 
+result in redundant tagging of character encodings, non-generic UTF-8 specific workarounds 
+like <tt>u8path</tt>."
+</p></blockquote>
+<p>
+The <tt>u8path</tt> function is still useful if my original string source is a <tt>char</tt> 
+sequence and I <em>do know</em> that the encoding of this sequence is UTF-8. 
+<p/>
+The deprecation note suggests that one should use <tt>std::u8string</tt> instead, which costs me 
+an additional transformation and doesn't work without <tt>reinterpret_cast</tt>.
+<p/>
+Even in the presence of <tt>char8_t</tt>, legacy code bases often are still ABI-bound to <tt>char</tt>. 
+In the future we may solve this problem using the tools provided by <a href="https://wg21.link/P2626">P2626</a> instead, 
+but right now this is not part of the standard and it wasn't at the time when <tt>u8path</tt> became 
+deprecated. 
+This is in my opinion a good reason to undeprecate <tt>u8path</tt> <em>now</em> and decide later on the 
+appropriate time to deprecate it again (if it really turns out to be obsolete by alternative
+functionality).
+<p/>
+Billy O'Neal provides a concrete example where the current deprecation status causes pain:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Example: <a 
+href="https://github.com/microsoft/vcpkg-tool/blob/c8b580319539ded6028f09ba710db68534ab0148/src/vcpkg/base/files.cpp#L21-L45">
+vcpkg-tool files.cpp#L21-L45</a>
+<p/>
+Before p0482, we could just call <tt>std::u8path</tt> and it would do the right thing on both 
+POSIX and Windows. After compilers started implementing '20, we have to make assumptions about 
+the correct 'internal' <tt>std::path</tt> encoding because there is no longer a way to arrive to 
+<tt>std::path</tt> with a <tt>char</tt> buffer that we know is UTF-8 encoded and get the correct results.
+<p/>
+It's one of the reasons we completely ripped out use of <tt>std::filesystem</tt> on most platforms 
+from vcpkg, so you won't see this in current sources.
+</p>
+</blockquote>
+
+<p><i>[2023-01-06; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll. Set status to LEWG.
+</p>
+
+
+
+<p id="res-3840"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Restore the <tt>u8path</tt> declarations to 31.12.4 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header 
+<tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::filesystem {
+  // <i>31.12.6 <a href="https://timsong-cpp.github.io/cppwp/fs.class.path">[fs.class.path]</a>, paths</i>
+  class path;
+
+  // <i>31.12.6.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.nonmember">[fs.path.nonmember]</a>, path non-member functions</i>
+  void swap(path&amp; lhs, path&amp; rhs) noexcept;
+  size_t hash_value(const path&amp; p) noexcept;
+  
+  <ins>// <i>[fs.path.factory], path factory functions</i></ins>
+  <ins>template&lt;class Source&gt;
+    path u8path(const Source&amp; source);
+  template&lt;class InputIterator&gt;
+    path u8path(InputIterator first, InputIterator last);</ins>
+
+  // <i>31.12.7 <a href="https://timsong-cpp.github.io/cppwp/fs.class.filesystem.error">[fs.class.filesystem.error]</a>, filesystem errors</i>
+  class filesystem_error;
+[&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Restore the previous sub-clause [fs.path.factory] by copying the contents of 
+D.25 <a href="https://timsong-cpp.github.io/cppwp/depr.fs.path.factory">[depr.fs.path.factory]</a> to a new sub-clause [fs.path.factory] between 
+31.12.6.8 <a href="https://timsong-cpp.github.io/cppwp/fs.path.nonmember">[fs.path.nonmember]</a> and 31.12.6.9 <a href="https://timsong-cpp.github.io/cppwp/fs.path.hash">[fs.path.hash]</a> and without <i>Note 1</i>
+as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: As additional stylistic adaption we replace the obsolete <i>Requires</i> 
+element by a <i>Preconditions</i> element plus a <i>Mandates</i> element (similar to that of
+31.12.6.5.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.construct">[fs.path.construct]</a> p5). 
+<p/>
+As a second stylistic improvement we convert the
+now more unusual "if [&hellip;]; otherwise" construction in bullets by "Otherwise, if [&hellip;]"
+constructions.]
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+<ins><b>? Factory functions [fs.path.factory]</b></ins>
+</p>
+<pre>
+<ins>template&lt;class Source&gt;
+  path u8path(const Source&amp; source);
+template&lt;class InputIterator&gt;
+  path u8path(InputIterator first, InputIterator last);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates:</i> The value type of <tt>Source</tt> and <tt>InputIterator</tt> is <tt>char</tt>
+or <tt>char8_t</tt>.</ins>
+<p/>
+<ins>-?- <i>Preconditions:</i> The <tt>source</tt> and <tt>[first, last)</tt> sequences are UTF-8 encoded.</ins>
+<p/>
+<ins>-?- <i>Returns:</i></ins>
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If <tt>value_type</tt> is <tt>char</tt> and the current native narrow encoding 
+(31.12.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.type.cvt">[fs.path.type.cvt]</a>) is UTF-8, return <tt>path(source)</tt> or <tt>path(first, last)</tt>.</ins></p></li>
+<li><p><ins>(?.2) &mdash; Otherwise, if <tt>value_type</tt> is <tt>wchar_t</tt> and the native wide encoding is UTF-16, 
+or if <tt>value_type</tt> is <tt>char16_t</tt> or <tt>char32_t</tt>, convert <tt>source</tt> or <tt>[first, last)</tt> 
+to a temporary, <tt>tmp</tt>, of type <tt>string_type</tt> and return <tt>path(tmp)</tt>.</ins></p></li>
+<li><p><ins>(?.3) &mdash; Otherwise, convert <tt>source</tt> or <tt>[first, last)</tt> to a temporary, <tt>tmp</tt>, 
+of type <tt>u32string</tt> and return <tt>path(tmp)</tt>.</ins></p></li>
+</ol>
+<p>
+<ins>-?- <i>Remarks:</i> Argument format conversion (31.12.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/fs.path.fmt.cvt">[fs.path.fmt.cvt]</a>) applies to the arguments 
+for these functions. How Unicode encoding conversions are performed is unspecified.</ins>
+<p/>
+<ins>-?- [<i>Example 1</i>: A string is to be read from a database that is encoded in UTF-8, and used to create a directory
+using the native encoding for filenames:</ins>
+</p>
+<blockquote><pre>
+<ins>namespace fs = std::filesystem;
+std::string utf8_string = read_utf8_data();
+fs::create_directory(fs::u8path(utf8_string));</ins>
+</pre></blockquote>
+<p>
+<ins>For POSIX-based operating systems with the native narrow encoding set to UTF-8, no encoding or type
+conversion occurs.</ins>
+<p/>
+<ins>For POSIX-based operating systems with the native narrow encoding not set to UTF-8, a conversion to UTF-32
+occurs, followed by a conversion to the current native narrow encoding. Some Unicode characters may have no
+native character set representation.</ins>
+<p/>
+<ins>For Windows-based operating systems a conversion from UTF-8 to UTF-16 occurs. &mdash; <i>end example</i>]</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Delete sub-clause D.25 <a href="https://timsong-cpp.github.io/cppwp/depr.fs.path.factory">[depr.fs.path.factory]</a> in its entirety.</p>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

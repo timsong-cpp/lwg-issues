@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3846: iota_view::iterator::operator- is overconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3846" href="lwg-active.html#3846">3846.</a> <tt>iota_view::<i>iterator</i>::operator-</tt> is overconstrained</h3>
+<p><b>Section:</b> 26.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-06 <b>Last modified:</b> 2023-01-06 14:59:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.iterator">issues</a> in [range.iota.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, two <tt>iota_view::<i>iterator</i></tt>s can be subtracted
+only when the underlying <tt>W</tt> type models <tt><i>advanceable</i></tt>, 
+where <tt><i>advanceable</i></tt> consists of a series of syntactic and semantic
+requirements similar to the <tt>random_access_iterator</tt> concept.
+</p>
+<p>
+However, when <tt>W</tt> is an C++20 iterator type, whether it provides
+subtraction is irrelevant to its iterator category. 
+In such cases, still requiring <tt>W</tt> to support a series of random access
+iterator-like operations seems too restrictive. Consider:
+</p>
+<pre>
+    #include &lt;list&gt;
+    #include &lt;ranges&gt;
+
+    int main() {
+      std::list l{1, 2, 3, 4, 5};
+      auto it = std::counted_iterator(l.begin(), l.size());
+      auto r = std::views::iota(it, std::next(it, 3));
+      auto sz = r.size();           // 3 as expected
+      auto d = r.end() - r.begin(); // <span style="color:red;font-weight:bolder">error: no match for 'operator-'</span>
+    }
+</pre>
+<p>
+We can get the correct size of <tt>iota_view</tt> by subtracting two
+<tt>counted_iterator</tt>s, 
+but we cannot subtract two <tt>iota_view::<i>iterator</i></tt>s to get their
+difference, even though the underlying <tt>counted_iterator</tt> already models
+<tt>sized_sentinel_for</tt> for itself, which is not satisfactory.
+</p>
+<p>
+I think we should relax the constraints of
+<tt>iota_view::<i>iterator</i>::operator-</tt> to allow the above case,
+which also makes it compatible with <tt>iota_view::<i>sentinel</i>::operator-</tt>.
+</p>
+
+
+<p id="res-3846"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.iota.iterator">[range.iota.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;weakly_incrementable W, semiregular Bound&gt;
+    requires <i>weakly-equality-comparable-with</i>&lt;W, Bound&gt; &amp;&amp; copyable&lt;W&gt;
+  struct iota_view&lt;W, Bound&gt;::<i>iterator</i> {
+  private:
+    W <i><i>value_</i></i> = W();             <i>// exposition only</i>
+  public:
+    […]
+    friend constexpr <i>iterator</i> operator-(<i>iterator</i> i, difference_type n)
+      requires <i>advanceable</i>&lt;W&gt;;
+    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires <i>advanceable</i>&lt;W&gt; <ins>|| sized_sentinel_for&lt;W, W&gt;</ins>;
+  };
+}
+</pre>
+</blockquote>
+[…]
+<pre>
+friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  requires <i>advanceable</i>&lt;W&gt; <ins>|| sized_sentinel_for&lt;W, W&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-23- <i>Effects:</i> Equivalent to:
+<pre>
+  using D = difference_type;
+  if constexpr (<i>is-integer-like</i>&lt;W&gt;) {
+    if constexpr (<i>is-signed-integer-like</i>&lt;W&gt;)
+      return D(D(x.<i>value_</i>) - D(y.<i>value_</i>));
+    else
+      return (y.<i>value_</i> &gt; x.<i>value_</i>)
+        ? D(-D(y.<i>value_</i> - x.<i>value_</i>))
+        : D(x.<i>value_</i> - y.<i>value_</i>);
+  } else {
+    return x.<i>value_</i> - y.<i>value_</i>;
+  }
+</pre>
+</p></blockquote>
+</blockquote></li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

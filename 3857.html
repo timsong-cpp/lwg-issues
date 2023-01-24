@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3857: basic_string_view should allow explicit conversion when only traits vary</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3857" href="lwg-active.html#3857">3857.</a> <tt>basic_string_view</tt> should allow explicit conversion when only traits vary</h3>
+<p><b>Section:</b> 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2023-01-10 <b>Last modified:</b> 2023-01-15 10:43:21 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.view.cons">issues</a> in [string.view.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>basic_string_view</tt> has a constructor that converts appropriate contiguous ranges to <tt>basic_string_view</tt>. 
+This constructor accepts an argument by forwarding reference (<tt>R&amp;&amp;</tt>), and has several constraints 
+including that specified in 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a>/12.6: 
+</p>
+<blockquote><p>
+if the <i>qualified-id</i> <tt>remove_reference_t&lt;R&gt;::traits_type</tt> is valid and denotes a type, 
+<tt>is_same_v&lt;remove_reference_t&lt;R&gt;::traits_type, traits&gt;</tt> is <tt>true</tt>. 
+</p></blockquote>
+<p>
+This constraint prevents conversions from <tt>basic_string_view&lt;C, T1&gt;</tt> and <tt>basic_string&lt;C, T1, A&gt;</tt> 
+to <tt>basic_string_view&lt;C, T2&gt;</tt>. Preventing such seemingly semantic-affecting conversions from happening 
+implicitly was a good idea, but since the constructor was changed to be explicit it no longer seems necessary to 
+forbid these conversions. If a user wants to convert a <tt>basic_string_view&lt;C, T2&gt;</tt> to 
+<tt>basic_string_view&lt;C, T1&gt;</tt> with <tt>static_cast&lt;basic_string_view&lt;C, T1&gt;&gt;(meow)</tt>
+instead of by writing out <tt>basic_string_view&lt;C, T1&gt;{meow.data(), meow.size()}</tt> that seems fine to me.
+Indeed, if we think conversions like this are so terribly dangerous we probably shouldn't be performing them ourselves 
+in 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a>/9 and 22.14.8.1 <a href="https://timsong-cpp.github.io/cppwp/format.arg">[format.arg]</a>/10.
+</p>
+
+
+<p id="res-3857"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R&gt;
+  constexpr explicit basic_string_view(R&amp;&amp; r);
+</pre>
+<blockquote>
+<p>
+-11- Let <tt>d</tt> be an lvalue of type <tt>remove_cvref_t&lt;R&gt;</tt>.
+<p/>
+-12- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(12.1) &mdash; <tt>remove_cvref_t&lt;R&gt;</tt> is not the same type as <tt>basic_string_view</tt>,</p></li>
+<li><p>(12.2) &mdash; <tt>R</tt> models <tt>ranges::contiguous_range</tt> and <tt>ranges::sized_range</tt>,</p></li>
+<li><p>(12.3) &mdash; <tt>is_same_v&lt;ranges::range_value_t&lt;R&gt;, charT&gt;</tt> is <tt>true</tt>,</p></li>
+<li><p>(12.4) &mdash; <tt>is_convertible_v&lt;R, const charT*&gt;</tt> is <tt>false</tt>, <ins>and</ins></p></li>
+<li><p>(12.5) &mdash; <tt>d.operator ::std::basic_string_view&lt;charT, traits&gt;()</tt> is not a valid expression<del>, and</del><ins>.</ins></p></li>
+<li><p><del>(12.6) &mdash; if the <i>qualified-id</i> <tt>remove_reference_t&lt;R&gt;::traits_type</tt> is valid and denotes a type, 
+<tt>is_same_v&lt;remove_reference_t&lt;R&gt;::traits_type, traits&gt;</tt> is <tt>true</tt>.</del></p></li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

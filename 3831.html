@@ -1,0 +1,314 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3831: Two-digit formatting of negative year is ambiguous</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3831" href="lwg-active.html#3831">3831.</a> Two-digit formatting of negative <tt>year</tt> is ambiguous</h3>
+<p><b>Section:</b> 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>, 29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matt Stephanson <b>Opened:</b> 2022-11-18 <b>Last modified:</b> 2022-11-30 10:08:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+An <a href="https://github.com/microsoft/STL/issues/3166">issue</a> has been identified regarding the two-digit 
+formatting of negative years according to Table [tab:time.format.spec] (29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>):
+</p>
+<blockquote><pre>
+cout &lt;&lt; format("{:%y} ", 1976y)  // "76"
+     &lt;&lt; format("{:%y}", -1976y); // also "76"?
+</pre></blockquote>
+<p>
+The relevant wording is
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+The last two decimal digits of the year. If the result is a single digit it is prefixed by <tt>0</tt>. 
+The modified command <tt>%Oy</tt> produces the locale's alternative representation. The modified command 
+<tt>%Ey</tt> produces the locale's alternative representation of offset from <tt>%EC</tt> (year only).
+</p>
+</blockquote> 
+<p>
+MSVC STL treats the regular modified form symmetrically. Just as <tt>%Ey</tt> is the offset from 
+<tt>%EC</tt>, so <tt>%y</tt> is the offset from <tt>%C</tt>, which is itself "[t]he year divided by 100 
+using <em>floored division</em>." (emphasis added). Because -1976 is the 24th year of the -20th century, 
+the above code will print "76 24" using MSVC STL. However, many users expect, and 
+<a href="https://github.com/llvm/llvm-project/blob/8f3f15c1a208932689a8bdef22d6ca3d4c3408c5/libcxx/include/__chrono/formatter.h#L238-L240">libc++</a> 
+gives, a result based on the literal wording, "76 76".
+<p/>
+<a href="https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/functions/strftime.html">IEEE 1003.1-2008 strftime</a>
+expects the century to be nonnegative, but the glibc implementation 
+<a href="https://godbolt.org/z/1jYoeYT9d">prints 24</a> for -1976. My own opinion is that this is the 
+better result, because it consistently interprets <tt>%C</tt> and <tt>%y</tt> as the quotient and remainder 
+of floored division by 100.
+<p/>
+Howard Hinnant, coauthor of the original 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> wording in <a href="https://wg21.link/P0355">P0355</a> adds:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+On the motivation for this design it is important to remember a few things:
+</p>
+<ul>
+<li><p>POSIX <tt>strftime</tt>/<tt>strptime</tt> doesn't handle negative years in this department, so this is an 
+opportunity for an extension in functionality.</p></li>
+<li><p>This is a formatting/parsing issue, as opposed to a computational issue. This means that human readability 
+of the string syntax is the most important aspect. Computational simplicity takes a back seat (within reason).</p></li>
+<li><p><tt>%C</tt> can't be truncated division, otherwise the years [-99, -1] would map to the same century as the years 
+[0, 99]. So floored division is a pretty easy and obvious solution.</p></li>
+<li><p><tt>%y</tt> is obvious for non-negative years: The last two decimal digits, or <tt>y % 100</tt>.</p></li>
+</ul>
+<p>
+This leaves how to represent negative years with <tt>%y</tt>. I can think of 3 options:
+</p>
+<ol>
+<li><p>Use the last two digits without negating:  -1976 &rarr; 76.</p></li>
+<li><p>Use the last two digits and negate it:     -1976 &rarr; -76.</p></li>
+<li><p>Use floored modulus arithmetic:            -1976 &rarr; 24.</p></li>
+</ol>
+<p>
+The algorithm to convert <tt>%C</tt> and <tt>%y</tt> into a year is not important to the client because these are both 
+strings, not integers. The client will do it with <tt>parse</tt>, not <tt>100*C + y</tt>.
+<p/>
+I discounted solution 3 as not sufficiently obvious. If the output for -1976 was 23, the human reader wouldn't 
+immediately know that this is off by 1. The reader is expecting the POSIX spec:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+the last two digits of the year as a decimal number [00,99].
+</p></blockquote>
+<p>
+24 just doesn't cut it.
+<p/>
+That leaves solution 1 or 2. I discounted solution 2 because having the negative in 2 places (the <tt>%C</tt> and <tt>%y</tt>) 
+seemed overly complicated and more error prone. The negative sign need only be in one place, and it has to be in 
+<tt>%C</tt> to prevent ambiguity.
+<p/>
+That leaves solution 1. I believe this is the solution for an extension of the POSIX spec to negative years with the 
+property of least surprise to the client. The only surprise is in <tt>%C</tt>, not <tt>%y</tt>, and the surprise in 
+<tt>%C</tt> seems unavoidable.
+</p></blockquote>
+
+<p><i>[2022-11-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>A few votes for priority 2. Might need to go to LEWG.</p>
+
+
+
+<p id="res-3831"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Two mutually exclusive options are prepared, depicted below by <b>Option A</b> and 
+<b>Option B</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b> This is Howard Hinnant's choice (3)
+</p>
+
+<ol>
+<li><p>Modify 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>, Table [tab:time.format.spec] as indicated:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 102 &mdash; Meaning of conversion specifiers  [tab:time.format.spec]</caption>
+<tr style="text-align:center">
+<th>Specifier</th>
+<th>Replacement</th>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td><tt>%y</tt></td>
+<td>The <del>last two decimal digits of the year</del><ins>remainder after dividing the year by 100 using floored division</ins>.<br/>
+If the result is a single digit it is prefixed by <tt>0</tt>.<br/>
+The modified command <tt>%Oy</tt> produces the locale's alternative representation. The<br/>
+modified command <tt>%Ey</tt> produces the locale's alternative representation of offset from<br/>
+<tt>%EC</tt> (year only).</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+
+<li><p>Modify 29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a>, Table [tab:time.parse.spec] as indicated:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 103 &mdash; Meaning of <tt>parse</tt> flags  [tab:time.parse.spec]</caption>
+<tr style="text-align:center">
+<th>Flag</th>
+<th>Parsed value</th>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td><tt>%y</tt></td>
+<td>The <del>last two decimal digits of the year</del><ins>remainder after dividing the year by 100 using floored division</ins>.<br/> 
+If the century is not otherwise specified (e.g.<br/>
+with <tt>%C</tt>), values in the range [<tt>69</tt>, <tt>99</tt>] are presumed to refer to the years 1969 to 1999,<br/>
+and values in the range [<tt>00</tt>, <tt>68</tt>] are presumed to refer to the years 2000 to 2068. The<br/>
+modified command <tt>%<i>N</i> y</tt> specifies the maximum number of characters to read. If <i>N</i> is<br/>
+not specified, the default is 2. Leading zeroes are permitted but not required. The<br/>
+modified commands <tt>%Ey</tt> and <tt>%Oy</tt> interpret the locale's alternative representation.</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+</ol>
+
+<p>
+<b>Option B:</b> This is Howard Hinnant's choice (1)
+</p>
+
+<ol>
+<li><p>Modify 29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>, Table [tab:time.format.spec] as indicated:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 102 &mdash; Meaning of conversion specifiers  [tab:time.format.spec]</caption>
+<tr style="text-align:center">
+<th>Specifier</th>
+<th>Replacement</th>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td><tt>%y</tt></td>
+<td>The last two decimal digits of the year<ins>, regardless of the sign of the year</ins>.<br/>
+If the result is a single digit it is prefixed by <tt>0</tt>.<br/>
+The modified command <tt>%Oy</tt> produces the locale's alternative representation. The<br/>
+modified command <tt>%Ey</tt> produces the locale's alternative representation of offset from<br/>
+<tt>%EC</tt> (year only).<br/>
+<ins>[<i>Example ?:</i> <tt>cout &lt;&lt; format("{:%C %y}", -1976y);</tt> prints <tt>-20 76</tt>. &mdash; <i>end example</i>]</ins>
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+
+<li><p>Modify 29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a>, Table [tab:time.parse.spec] as indicated:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 103 &mdash; Meaning of <tt>parse</tt> flags  [tab:time.parse.spec]</caption>
+<tr style="text-align:center">
+<th>Flag</th>
+<th>Parsed value</th>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+<tr>
+<td><tt>%y</tt></td>
+<td>The last two decimal digits of the year<ins>, regardless of the sign of the year</ins>.<br/> 
+If the century is not otherwise specified (e.g.<br/>
+with <tt>%C</tt>), values in the range [<tt>69</tt>, <tt>99</tt>] are presumed to refer to the years 1969 to 1999,<br/>
+and values in the range [<tt>00</tt>, <tt>68</tt>] are presumed to refer to the years 2000 to 2068. The<br/>
+modified command <tt>%<i>N</i> y</tt> specifies the maximum number of characters to read. If <i>N</i> is<br/>
+not specified, the default is 2. Leading zeroes are permitted but not required. The<br/>
+modified commands <tt>%Ey</tt> and <tt>%Oy</tt> interpret the locale's alternative representation.<br/>
+<ins>[<i>Example ?:</i> <tt>year y; istringstream{"-20 76"} &gt;&gt; parse("%3C %y", y);</tt> results in<br/> 
+<tt>y == -1976y</tt>. &mdash; <i>end example</i>]</ins>
+</td>
+</tr>
+<tr>
+<td colspan="2" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3852: join_with_view::iterator's iter_move and iter_swap should be conditionally noexcept</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3852" href="lwg-active.html#3852">3852.</a> <tt>join_with_view::<i>iterator</i></tt>'s <tt>iter_move</tt> and <tt>iter_swap</tt> should be conditionally <tt>noexcept</tt></h3>
+<p><b>Section:</b> 26.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.iterator">[range.join.with.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-06 <b>Last modified:</b> 2023-01-06 15:58:55 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In order to preserve room for optimization, the standard always tries to
+propagate the <tt>noexcept</tt> specification of custom
+<tt>iter_move</tt>/<tt>iter_swap</tt> for different iterators.
+</p>
+<p>But for <tt>join_with_view::<i>iterator</i></tt>,
+these two specializations are the only ones in the standard that do not have
+a <tt>noexcept</tt> specification.
+This is because both invoke <tt>visit</tt> in the function body,
+and <tt>visit</tt> may throw an exception when the <tt>variant</tt>
+does not hold a value.
+</p>
+<p>
+However, implementors are not required to follow the standard practice.
+Since the <tt>join_with_view::<i>iterator</i></tt>'s <tt>variant</tt> member
+only contains two alternative types, both libstdc++ and MSVC-STL avoid
+heavyweight <tt>visit</tt> calls by simply using multiple if statements.
+This means that it is still possible to add a conditional <tt>noexcept</tt>
+specification to these overloads, and there is already a precedent in the
+standard, namely <tt>common_iterator</tt>.
+All we need to do is add a <i>Preconditions</i>.
+</p>
+
+
+<p id="res-3852"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.15.3 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.iterator">[range.join.with.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V, forward_range Pattern&gt;
+  requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;
+        &amp;&amp; view&lt;Pattern&gt; &amp;&amp; <i>compatible-joinable-ranges</i>&lt;range_reference_t&lt;V&gt;, Pattern&gt;
+  template&lt;bool Const&gt;
+  class join_with_view&lt;V, Pattern&gt;::<i>iterator</i> {
+    [&hellip;]
+    <i>Parent</i>* <i>parent_</i> = nullptr;                                          <i>// exposition only</i>
+    <i>OuterIter</i> <i>outer_it_</i> = <i>OuterIter()</i>;                                  <i>// exposition only</i>
+    variant&lt;<i>PatternIter</i>, <i>InnerIter</i>&gt; <i>inner_it_</i>;                          <i>// exposition only</i>
+    [&hellip;]
+  public:
+    [&hellip;]
+    friend constexpr decltype(auto) iter_move(const <i>iterator</i>&amp; x) <ins>noexcept(<i>see below</i>);</ins> <del>{
+      using rvalue_reference = common_reference_t&lt;
+        iter_rvalue_reference_t&lt;<i>InnerIter</i>&gt;,
+        iter_rvalue_reference_t&lt;<i>PatternIter</i>&gt;&gt;;
+      return visit&lt;rvalue_reference&gt;(ranges::iter_move, x.<i>inner_it_</i>);
+    }</del>
+
+    friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept(<i>see below</i>)</ins>
+      requires indirectly_swappable&lt;<i>InnerIter</i>, <i>PatternIter</i>&gt;<ins>;</ins><del>{
+      visit(ranges::iter_swap, x.<i>inner_it_</i>, y.<i>inner_it_</i>);
+    }</del>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre><ins>friend constexpr decltype(auto) iter_move(const <i>iterator</i>&amp; x) noexcept(<i>see below</i>);</ins>
+</pre>
+<blockquote>
+<p>
+<ins>
+-?- Let <tt><i>rvalue_reference</i></tt> be: 
+</ins>
+<pre>
+<ins>  common_reference_t&lt;iter_rvalue_reference_t&lt;<i>InnerIter</i>&gt;, iter_rvalue_reference_t&lt;<i>PatternIter</i>&gt;&gt;
+</ins></pre>
+</p>
+<p>
+<ins>
+-?- <i>Preconditions</i>: <tt>x.<i>inner_it_</i>.valueless_by_exception()</tt> is <tt>false</tt>.
+</ins>
+</p>
+<p>
+<ins>
+-?- <i>Effects</i>: Equivalent to: <tt>return visit&lt;<i>rvalue_reference</i>&gt;(ranges::iter_move, x.<i>inner_it_</i>);</tt>
+</ins>
+</p>
+<p>
+<ins>
+-?- <i>Remarks</i>: The exception specification is equivalent to:
+</ins>
+<pre>
+<ins>  noexcept(ranges::iter_move(declval&lt;const <i>InnerIter&</i>&gt;())) &amp;&amp;
+  noexcept(ranges::iter_move(declval&lt;const <i>PatternIter</i>&&gt;())) &amp;&amp;
+  is_nothrow_convertible_v&lt;iter_rvalue_reference_t&lt;<i>InnerIter</i>&gt;, <i>rvalue_reference</i>&gt; &amp;&amp;
+  is_nothrow_convertible_v&lt;iter_rvalue_reference_t&lt;<i>PatternIter</i>&gt;, <i>rvalue_reference</i>&gt;
+</ins></pre>
+</p>
+</blockquote>
+<pre><ins>friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) noexcept(<i>see below</i>)
+  requires indirectly_swappable&lt;<i>InnerIter</i>, <i>PatternIter</i>&gt;;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>
+-?- <i>Preconditions</i>: <tt>x.<i>inner_it_</i>.valueless_by_exception()</tt> and <tt>y.<i>inner_it_</i>.valueless_by_exception()</tt> are each <tt>false</tt>.
+</ins>
+</p>
+<p>
+<ins>
+-?- <i>Effects</i>: Equivalent to: <tt>visit(ranges::iter_swap, x.<i>inner_it_</i>, y.<i>inner_it_</i>)</tt>.
+</ins>
+</p>
+<p>
+<ins>
+-?- <i>Remarks</i>: The exception specification is equivalent to:
+</ins>
+<pre>
+<ins>  noexcept(ranges::iter_swap(declval&lt;const <i>InnerIter</i>&&gt;(), declval&lt;const <i>InnerIter</i>&&gt;())) &amp;&amp;
+  noexcept(ranges::iter_swap(declval&lt;const <i>PatternIter</i>&&gt;(), declval&lt;const <i>PatternIter</i>&&gt;()))</ins></pre>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

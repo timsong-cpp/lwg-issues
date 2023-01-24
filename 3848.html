@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3848: adjacent_view, adjacent_transform_view and slide_view missing base accessor</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3848" href="lwg-active.html#3848">3848.</a> <tt>adjacent_view</tt>, <tt>adjacent_transform_view</tt> and <tt>slide_view</tt> missing <tt>base</tt> accessor</h3>
+<p><b>Section:</b> 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.view">[range.adjacent.view]</a>, 26.7.26.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.view">[range.adjacent.transform.view]</a>, 26.7.28.2 <a href="https://timsong-cpp.github.io/cppwp/range.slide.view">[range.slide.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-06 <b>Last modified:</b> 2023-01-06 15:18:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Like most range adaptors, these three views accept a single range
+and store it as a member variable. 
+However, they do not provide a <tt>base()</tt> member function for accessing
+the underlying range, which seems like an oversight.
+</p>
+
+
+<p id="res-3848"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.view">[range.adjacent.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; (N &gt; 0)
+  class adjacent_view : public view_interface&lt;adjacent_view&lt;V, N&gt;&gt; {
+    V <i>base_</i> = V();                      <i>// exposition only</i>
+    [&hellip;]
+  public:
+    adjacent_view() requires default_initializable&lt;V&gt; = default;
+    constexpr explicit adjacent_view(V base);
+
+    <ins>constexpr V base() const &amp; requires copy_constructible&lt;V&gt; { return <i>base_</i>; }</ins>
+    <ins>constexpr V base() &amp;&amp; { return std::move(<i>base_</i>); }</ins>
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Modify 26.7.26.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.view">[range.adjacent.transform.view]</a> as indicated:</p>
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;forward_range V, move_constructible F, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; (N &gt; 0) &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
+             regular_invocable&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt; &amp;&amp;
+             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt;&gt;
+  class adjacent_transform_view : public view_interface&lt;adjacent_transform_view&lt;V, F, N&gt;&gt; {
+    <i>movable-box</i>&lt;F&gt; <i>fun_</i>;                        <i>// exposition only</i>
+    adjacent_view&lt;V, N&gt; <i>inner_</i>;                 <i>// exposition only</i>
+
+    using <i>InnerView</i> = adjacent_view&lt;V, N&gt;;      <i>// exposition only</i>
+    [&hellip;]
+  public:
+    adjacent_transform_view() = default;
+    constexpr explicit adjacent_transform_view(V base, F fun);
+
+    <ins>constexpr V base() const &amp; requires copy_constructible&lt;<i>InnerView</i>&gt; { return <i>inner_</i>.base(); }</ins>
+    <ins>constexpr V base() &amp;&amp; { return std::move(<i>inner_</i>).base(); }</ins>
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Modify 26.7.28.2 <a href="https://timsong-cpp.github.io/cppwp/range.slide.view">[range.slide.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;forward_range V&gt;
+    requires view&lt;V&gt;
+  class slide_view : public view_interface&lt;slide_view&lt;V&gt;&gt; {
+    V <i>base_</i>;                            <i>// exposition only</i>
+    range_difference_t&lt;V&gt; <i>n_</i>;           <i>// exposition only</i>
+    [&hellip;]
+  public:
+    constexpr explicit slide_view(V base, range_difference_t&lt;V&gt; n);
+
+    <ins>constexpr V base() const &amp; requires copy_constructible&lt;V&gt; { return <i>base_</i>; }</ins>
+    <ins>constexpr V base() &amp;&amp; { return std::move(<i>base_</i>); }</ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+  </blockquote>
+  </blockquote>
+  </li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

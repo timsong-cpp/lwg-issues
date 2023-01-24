@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3668" href="lwg-active.html#3668">3668.</a> <tt>[recursive_]directory_iterator</tt> constructors refer to undefined <tt>options</tt></h3>
 <p><b>Section:</b> 31.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a>, 31.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-31 <b>Last modified:</b> 2022-03-04 14:33:52 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2022-01-31 <b>Last modified:</b> 2022-12-18 18:57:33 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#fs.dir.itr.members">issues</a> in [fs.dir.itr.members].</p>
@@ -56,7 +56,7 @@
 31.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> p2 and 31.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> p3 refer to the <tt>options</tt> 
 parameter, but not all overloads have a parameter of that name.
 <p/>
-We need some "for the overloads with ..." wording.
+We need some "for the overloads with &hellip;" wording.
 </p>
 
 <p><i>[2022-03-04; Reflector poll]</i></p>
@@ -65,9 +65,165 @@ We need some "for the overloads with ..." wording.
 Set priority to 3 after reflector poll.
 </p>
 
+<p><i>[2022-12-18; Daniel comments and provides wording]</i></p>
+
+<p>
+It seems to me that we should differentiate the problems of <tt>directory_iterator</tt> and 
+<tt>recursive_directory_iterator</tt> regarding the constructors that don't provide any <tt>options</tt> arguments
+at least from a logical point of view:
+<p/>
+From the existing <i>Postconditions:</i> element of <tt>recursive_directory_iterator</tt> we can at least
+guess that the intention of the existing wording is that these suppose to reflect that the effective options within 
+the <i>Effects:</i> element are also equal to <tt>directory_options::none</tt>. 
+But for <tt>directory_iterator</tt> we don't have any options "getter" nor <i>Postconditions</i> from deducing 
+the intent. 
+<p/>
+Fortunately, existing implementations (I looked at the current V2 2022 library and libstdc++ implementation) 
+seem to behave already as if <tt>directory_options::none</tt> is set for the affected constructors for both 
+iterator types.
+<p/>
+Note that this issue here has some wording overlap with the the proposed wording of LWG <a href="2708">2708</a>,
+I'm therefore using the exact wording form currently suggested there. If LWG would like to change this form (e.g.
+by using the word "overload" instead of "signature") this should also be done in that other issue to reduce possible
+merge conflicts. Note that the here suggested form using "signature" <em>has</em> existing practice in other places
+of Clause 31.12 <a href="https://timsong-cpp.github.io/cppwp/filesystems">[filesystems]</a>, so I recommend keeping that form.
+</p>
 
 
-<p><b>Proposed resolution:</b></p>
+<p id="res-3668"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 31.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i><br/>
+(1) The proposed wording form takes care to use the same wording form used in LWG <a href="2708">2708</a> 
+for <tt>recursive_directory_iterator</tt> at the time of writing.<br/>
+(2) We don't need similar wording for the default constructor because this creates
+an end iterator and there exist no way for the user to observe the effects of
+<tt>directory_options</tt> for such an iterator value.
+]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+directory_iterator() noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Constructs the end iterator.
+</p>
+</blockquote>
+<pre>
+explicit directory_iterator(const path&amp; p);
+directory_iterator(const path&amp; p, directory_options options);
+directory_iterator(const path&amp; p, error_code&amp; ec);
+directory_iterator(const path&amp; p, directory_options options, error_code&amp; ec);
+</pre>
+<blockquote>
+<p>
+<ins>-?- For the signatures with no parameter <tt>options</tt>, let <tt>options</tt> be
+<tt>directory_options::none</tt>.</ins>
+<p/>
+-2- <i>Effects</i>: For the directory that <tt>p</tt> resolves to, constructs an iterator for the first element in a sequence of
+<tt>directory_entry</tt> elements representing the files in the directory, if any; otherwise the end iterator.
+However, if
+</p>
+<blockquote><pre>
+(options &amp; directory_options::skip_permission_denied) != directory_options::none
+</pre></blockquote>
+<p>
+and construction encounters an error indicating that permission to access <tt>p</tt> is denied, constructs the
+end iterator and does not report an error.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 31.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i><br/>
+(1) The proposed wording form takes care to be in sync with the wording form
+used in LWG <a href="2708">2708</a> at the time of writing. This issue here doesn't
+touch the wording for the <tt>options</tt> function though, and leaves any changes 
+to LWG <a href="2708">2708</a>, because these changes don't seem essential to solve
+the issue here.<br/>
+(2) We don't need similar wording for the default constructor because this creates
+an end iterator and from 31.12.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr.general">[fs.class.rec.dir.itr.general]</a> p2 we can
+conclude that user code has no way to determine the effective <tt>directory_options</tt> value
+of this iterator value (interestingly p15 quoted below can be read to apply here as well,
+but 31.12.12.1 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr.general">[fs.class.rec.dir.itr.general]</a> p2 seems to be very prohibitive and
+LWG <a href="2708">2708</a> is going to solve this special case as well).<br/>
+(3) We easily simplify the wording of p3 as shown below, because the "scope" of the
+introductory new paragraph includes the <i>Postconditions:</i> element. But similar to
+the arguments provided in (1) we don't wish to introduce merge conflicts with the 
+LWG <a href="2708">2708</a> wording and therefore intentionally leave any changes of p3 to
+that issue.
+]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+recursive_directory_iterator() noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Constructs the end iterator.
+</p>
+</blockquote>
+<pre>
+explicit recursive_directory_iterator(const path&amp; p);
+recursive_directory_iterator(const path&amp; p, directory_options options);
+recursive_directory_iterator(const path&amp; p, directory_options options, error_code&amp; ec);
+recursive_directory_iterator(const path&amp; p, error_code&amp; ec);
+</pre>
+<blockquote>
+<p>
+<ins>-?- For the signatures with no parameter <tt>options</tt>, let <tt>options</tt> be
+<tt>directory_options::none</tt>.</ins>
+<p/>
+-2- <i>Effects</i>: Constructs an iterator representing the first entry in the directory to which 
+<tt>p</tt> resolves, if any; otherwise, the end iterator.
+However, if
+</p>
+<blockquote><pre>
+(options &amp; directory_options::skip_permission_denied) != directory_options::none
+</pre></blockquote>
+<p>
+and construction encounters an error indicating that permission to access <tt>p</tt> is denied, constructs the
+end iterator and does not report an error.
+<p/>
+-3- <i>Postconditions</i>: <tt>options() == options</tt> for the signatures with a <tt>directory_options</tt> argument,
+otherwise <tt>options() == directory_options::none</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+directory_options options() const;
+</pre>
+<blockquote>
+<p>
+-15- <i>Returns</i>: The value of the argument passed to the constructor for the <tt>options</tt> parameter, if present,
+otherwise <tt>directory_options::none</tt>.
+<p/>
+-16- <i>Throws</i>: Nothing.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 

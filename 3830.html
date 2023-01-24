@@ -1,0 +1,140 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3830: reverse_view should not cache when ranges::next has constant time complexity</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3830" href="lwg-active.html#3830">3830.</a> <tt>reverse_view</tt> should not cache when <tt>ranges::next</tt> has constant time complexity</h3>
+<p><b>Section:</b> 26.7.20.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-11-14 <b>Last modified:</b> 2022-11-30 10:08:16 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.reverse.view">issues</a> in [range.reverse.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In order to ensure that <tt>begin</tt> has an amortized constant time, when the underlying range is not a 
+common range, <tt>reverse_view</tt> always caches the result of <tt>ranges::next</tt>.
+<p/>
+However, for some non-common ranges, incrementing its <tt>begin</tt> to <tt>end</tt> still guarantees constant time, 
+for example:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+#include &lt;list&gt;
+
+int main() {
+  std::vector v{42};
+  auto x = std::ranges::subrange(std::counted_iterator(v.begin(), 1), std::default_sentinel)
+         | std::views::reverse;
+  (void) x.begin(); // <span style="color:red;font-weight:bolder">still caches end iterator in MSVC-STL</span>
+
+  std::list l{42};
+  auto y = std::ranges::subrange(l.cbegin(), l.end())
+         | std::views::reverse;
+  (void) y.begin(); // <span style="color:red;font-weight:bolder">still caches end iterator in both libstdc++ and MSVC-STL</span>
+}
+</pre></blockquote>
+<p>
+In the above example, although neither <tt>subrange</tt> is a common range, applying <tt>ranges::next</tt> 
+to their iterator-sentinel pairs is still constant time, in this case, there's no need to introduce a cache for 
+<tt>reverse_view</tt> to store the results. We shouldn't pay for things we don't need to use.
+</p>
+
+<p><i>[2022-11-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"NAD as specified, the <i>Remarks</i> don't need to be precise, they already
+allow caching to be omitted if not needed. But we could still enable const
+overloads of <tt>begin</tt> for cases like these."
+</p>
+<p>
+"NAD, no need to complicate constraints for such contrived examples.
+We don't care about random access, sized, non-common ranges like the first case.
+Any change here should be a paper covering all adaptors, not a piecemeal issue."
+</p>
+
+
+
+<p id="res-3830"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.7.20.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin();
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns</i>:
+</p>
+<blockquote><pre>
+make_reverse_iterator(ranges::next(ranges::begin(<i>base_</i>), ranges::end(<i>base_</i>)))
+</pre></blockquote>
+<p>
+-3- <i>Remarks</i>: In order to provide the amortized constant time complexity required by the <tt>range</tt> concept, 
+this function caches the result within the <tt>reverse_view</tt> for use on subsequent calls <ins>when both 
+<tt>assignable_from&lt;I&amp;, S&gt;</tt> and <tt>random_access_iterator&lt;I&gt; &amp;&amp; 
+sized_sentinel_for&lt;S, I&gt;</tt> are <tt>false</tt>, where <tt>I</tt> is <tt>iterator_t&lt;V&gt;</tt> and 
+<tt>S</tt> is <tt>sentinel_t&lt;V&gt;</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3833: Remove specialization template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3833" href="lwg-active.html#3833">3833.</a> Remove specialization <tt>template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;</tt></h3>
+<p><b>Section:</b> 22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2022-11-27 <b>Last modified:</b> 2022-11-30 10:08:16 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.formatter.spec">active issues</a> in [format.formatter.spec].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.formatter.spec">issues</a> in [format.formatter.spec].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In the past I discussed with Victor and Charlie to remove
+</p>
+<blockquote><pre>
+template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;;
+</pre></blockquote>
+<p>
+Charlie disliked that since MSVC STL already shipped it and Victor
+mentioned it was useful. Instead of proposing to remove the
+specialization in LWG <a href="3701">3701</a> ("Make <tt>formatter&lt;remove_cvref_t&lt;const charT[N]&gt;, charT&gt;</tt> 
+requirement explicit") I proposed to keep it. It's unused but it doesn't hurt. 
+<p/>
+That was until <a href="https://wg21.link/P2585R0">P2585R0</a> "Improve default container formatting". This paper makes it no 
+longer possible to instantiate this specialization. See 
+<a href="https://godbolt.org/z/bqjhhaexx">here for an example</a> and a possible work-around.
+<p/>
+The relevant wording is 22.14.1 <a href="https://timsong-cpp.github.io/cppwp/format.syn">[format.syn]</a>:
+</p>
+<blockquote><pre>
+template&lt;class R&gt;
+  constexpr <i>unspecified</i> format_kind = <i>unspecified</i>;
+
+template&lt;ranges::input_range R&gt;
+    requires same_as&lt;R, remove_cvref_t&lt;R&gt;&gt;
+  constexpr range_format format_kind&lt;R&gt; = <i>see below</i>;
+</pre></blockquote>
+<p>
+combined with  22.14.7.1 <a href="https://timsong-cpp.github.io/cppwp/format.range.fmtkind">[format.range.fmtkind]</a> p1:
+</p>
+<blockquote><p>
+A program that instantiates the primary template of <tt>format_kind</tt> is
+ill-formed.
+</p></blockquote>
+<p>
+The issue is that <tt>const charT[N]</tt> does not satisfy the requirement
+<tt>same_as&lt;R, remove_cvref_t&lt;R&gt;&gt;</tt>. So it tries to instantiate the primary
+template, which is ill-formed.
+<p/>
+I see two possible solutions:
+</p>
+<ol>
+<li><p><em>Removing</em> the specialization</p>
+<blockquote><pre>
+template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;;
+</pre></blockquote></li>
+<li><p><em>Adding</em> a specialization</p>
+<blockquote><pre>
+template&lt;class charT, size_t N&gt;
+  constexpr range_format format_kind&lt;const charT[N]&gt; =
+    range_format::disabled;
+</pre></blockquote></li>
+</ol>
+<p>
+I discussed this issue privately and got no objection for solution 1,
+therefore I propose to take that route. Implementations can still
+implement solution 2 as an extension until they are ready to ship an
+API/ABI break.
+</p>
+
+<p><i>[2022-11-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+<p>
+"Rationale is not really convincing why the first option is the right one."
+</p>
+<p>
+"The point is not that we would need to add a format_kind specialization,
+it is that the specialization is inconsistent with the design of <tt>formatter</tt>,
+which is supposed to be instantiated only for cv-unqualified non-reference types."
+</p>
+
+
+
+<p id="res-3833"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- Let <tt>charT</tt> be either <tt>char</tt> or <tt>wchar_t</tt>. Each specialization 
+of <tt>formatter</tt> is either enabled or disabled, as described below. A 
+<i>debug-enabled</i> specialization of <tt>formatter</tt> additionally provides a public, constexpr,
+non-static member function <tt>set_debug_format()</tt> which modifies the state of the <tt>formatter</tt> 
+to be as if the type of the <i>std-format-spec</i> parsed by the last call to <tt>parse</tt> were <tt>?</tt>. 
+Each header that declares the template <tt>formatter</tt> provides the following enabled specializations:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; The debug-enabled specializations [&hellip;]</p></li>
+<li><p>(2.2) &mdash; For each <tt>charT</tt>, the debug-enabled string type specializations</p>
+<blockquote><pre>
+template&lt;&gt; struct formatter&lt;charT*, charT&gt;;
+template&lt;&gt; struct formatter&lt;const charT*, charT&gt;;
+template&lt;size_t N&gt; struct formatter&lt;charT[N], charT&gt;;
+<del>template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;;</del>
+template&lt;class traits, class Allocator&gt;
+  struct formatter&lt;basic_string&lt;charT, traits, Allocator&gt;, charT&gt;;
+template&lt;class traits&gt;
+  struct formatter&lt;basic_string_view&lt;charT, traits&gt;, charT&gt;;
+</pre></blockquote></li>
+<li><p>(2.3) &mdash; [&hellip;]</p></li>
+<li><p>(2.4) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+</li>
+
+<li><p>Add a new paragraph to C.1.8 <a href="https://timsong-cpp.github.io/cppwp/diff.cpp20.utilities">[diff.cpp20.utilities]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins><b>Affected subclause</b>: 22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a></ins>
+<p/>
+<ins><b>Change</b>: Remove the <tt>formatter</tt> specialization
+<tt>template&lt;size_t N&gt; struct formatter&lt;const charT[N], charT&gt;</tt>.</ins>
+<p/>
+<ins><b>Rationale</b>: The <tt>formatter</tt> specialization was not used in the Standard library.
+Keeping the specialization well-formed required an additional <tt>format_kind</tt>
+specialization.</ins>
+<p/>
+<ins><b>Effect on original feature</b>: Valid C++ 2020 code that instantiated the removed
+specialization is now ill-formed.</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
