@@ -145,6 +145,60 @@ auto read_issues_from_toc(std::string const & s) -> std::vector<std::tuple<int, 
    return issues;
 }
 
+namespace {
+   // A struct the captures the context of an error.
+   struct Context
+   {
+      Context(const std::string& txt, std::size_t pos) : text(txt), pos(pos)
+      { }
+
+      std::string_view text;
+      std::size_t pos;
+
+      // Display the context in a convenient form.
+      friend std::ostream& operator<<(std::ostream& os, const Context& ctx)
+      {
+         auto text = ctx.text;
+         auto pos = ctx.pos;
+         auto bol = text.rfind('\n', pos);
+         if (bol != text.npos)
+         {
+            text.remove_prefix(bol + 1);
+            pos -= bol + 1;
+         }
+
+         std::string_view prefix, suffix;
+
+         // We want the context to fit within this field width.
+         const size_t maxwidth = 80;
+
+         if (pos > (maxwidth - 10))
+         {
+            // Need to trim the start of the context.
+            size_t len = maxwidth / 2;
+            if (pos > len)
+            {
+               // This puts the error at the centre of the field.
+               auto drop = (pos / len - 1) * len + (pos % len);
+               text.remove_prefix(drop);
+               pos -= drop;
+               prefix = "[...] ";
+            }
+         }
+
+         auto eol = text.find('\n', pos);
+         if (eol > 80)
+         {
+            // Need to trim the end of the context.
+            suffix = " [...]";
+            eol = 72;
+         }
+         os << '\n' << prefix << text.substr(0, eol) << suffix
+            << '\n' << std::string(pos + prefix.size(), ' ') << "^\n";
+         return os;
+      }
+   };
+}
 
 // ============================================================================================================
 
@@ -152,17 +206,73 @@ void format_issue_as_html(lwg::issue & is,
                           std::vector<lwg::issue>::iterator first_issue,
                           std::vector<lwg::issue>::iterator last_issue,
                           lwg::section_map & section_db) {
+
+   std::vector<std::string> tag_stack; // stack of open XML tags as we parse
+
+   // Used by fix_tags to report errors.
+   auto fail = [&is] (std::string_view reason, const Context& ctx) {
+      std::ostringstream err;
+      err << reason << " in issue " << is.num << ":\n";
+      err << ctx;
+      throw std::runtime_error{err.str()};
+   };
+
+   // Used by fix_tags to report errors for XML that is not well-formed.
+   auto fail_mismatched_tag = [&] (std::string_view closing_tag, const Context& ctx) {
+      std::ostringstream err;
+      err << "Mismatched tags in issue " << is.num << ".  ";
+      if (tag_stack.empty()) {
+         err << "Had no open tag.";
+      }
+      else {
+         err << "Open tag was " << tag_stack.back() << '.';
+      }
+      err << "  Closing tag was " << closing_tag << ":\n";
+      err << ctx;
+      throw std::runtime_error{err.str()};
+   };
+
+   // Return the content of a quoted attribute, e.g. ref="[stable.name]"
+   auto get_attribute_value = [&fail](std::string elem_name, std::string_view data, const Context& ctx) {
+      auto k = data.find('\"');
+      if (k != data.npos) {
+         ++k;
+         auto l = data.find('\"', k);
+         if (l != data.npos) {
+            return data.substr(k, l - k);
+         }
+      }
+      fail("Missing '\"' in <" + elem_name + '>', ctx);
+
+      // Can't put [[noreturn]] on a lambda until C++23,
+      // so we get warnings about a missing return here.
+#if __cpp_lib_unreachable
+      std::unreachable();
+#else
+      return std::string_view{};
+#endif
+   };
+
+   // Check whether the character following a '<' is well-formed.
+   // It has to be an opening or closing tag like <foo> or </foo>
+   // or the start of a comment like <!--.
+   auto start_element_or_comment = [](char c) {
+      return std::isalpha(c) || c == '/' || c == '!';
+   };
+
+
    // Reformat the issue text for the specified 'is' as valid HTML, replacing all the issue-list
    // specific XML markup as appropriate:
    //   tag             replacement
    //   ---             -----------
    //   iref            internal reference to another issue, replace with an anchor tag to that issue
    //   sref            section-tag reference, replace with formatted tag and section-number
-   //   paper           paper reference (PXXXX, PXXXXRX, NXXXX); replace with a wg21.link to the paper
+   //   paper           paper reference (PXXXX, PXXXXRX, DXXXX, DXXXXRX, NXXXX); replace with a wg21.link to the paper
    //   discussion      <p><b>Discussion:</b></p>CONTENTS
    //   resolution      <p><b>Proposed resolution:</b></p>CONTENTS
    //   rationale       <p><b>Rationale:</b></p>CONTENTS
    //   duplicate       tags are erased, leaving just CONTENTS
+   //   superseded       <p><strong>Previous resolution [SUPERSEDED]:</strong></p> and enclose in a note.
    //   note            <p><i>[NOTE CONTENTS]</i></p>
    //   !--             comments are simply erased
    //
@@ -177,19 +287,19 @@ void format_issue_as_html(lwg::issue & is,
    // are closed.
 
    auto fix_tags = [&](std::string &s) {
-   int issue_num = is.num;     // current issue number for the issue being formatted
-   std::vector<std::string> tag_stack;   // stack of open XML tags as we parse
-   std::ostringstream er;      // stream to format error messages
 
-   // cannot rewrite as range-based for-loop as the string 's' is modified within the loop
-   for (std::string::size_type i{0}; i < s.size(); ++i) {
-      if (s[i] == '<') {
+      // Loop over the input looking for '< characters.
+      // Cannot rewrite as range-based for-loop as the string 's' is modified within the loop.
+      for (auto i = s.find('<'); i < s.size(); i = s.find('<', i+1)) {
+         Context context{s, i};
+
+         if (!start_element_or_comment(s[i+1])) {
+            fail("Unescaped '<'", context);
+         }
+
          auto j = s.find('>', i);
          if (j == std::string::npos) {
-            er.clear();
-            er.str("");
-            er << "missing '>' in issue " << issue_num;
-            throw std::runtime_error{er.str()};
+            fail("Missing '>'", context);
          }
 
          std::string tag;
@@ -199,10 +309,7 @@ void format_issue_as_html(lwg::issue & is,
          }
 
          if (tag.empty()) {
-             er.clear();
-             er.str("");
-             er << "unexpected <> in issue " << issue_num;
-             throw std::runtime_error{er.str()};
+            fail("Unexpected <>", context);
          }
 
          if (tag[0] == '/') { // closing tag
@@ -210,43 +317,27 @@ void format_issue_as_html(lwg::issue & is,
              if (tag == "issue"  or  tag == "revision") {
                 s.erase(i, j-i + 1);
                 --i;
-                return;
+                break;;
              }
 
              if (tag_stack.empty()  or  tag != tag_stack.back()) {
-                er.clear();
-                er.str("");
-                er << "mismatched tags in issue " << issue_num;
-                if (tag_stack.empty()) {
-                   er << ".  Had no open tag.";
-                }
-                else {
-                   er << ".  Open tag was " << tag_stack.back() << ".";
-                }
-                er << "  Closing tag was " << tag;
-                throw std::runtime_error{er.str()};
+                fail_mismatched_tag(tag, context);
              }
 
              tag_stack.pop_back();
-             if (tag == "discussion") {
+             if (tag == "discussion" or tag == "resolution" or tag == "rationale" or tag == "duplicate") {
                  s.erase(i, j-i + 1);
                  --i;
              }
-             else if (tag == "resolution") {
-                 s.erase(i, j-i + 1);
-                 --i;
-             }
-             else if (tag == "rationale") {
-                 s.erase(i, j-i + 1);
-                 --i;
-             }
-             else if (tag == "duplicate") {
-                 s.erase(i, j-i + 1);
-                 --i;
+             else if (tag == "superseded") {
+                 std::string_view r = "</blockquote>\n";
+                 s.replace(i, j-i + 1, r);
+                 i += r.size() - 1;
              }
              else if (tag == "note") {
-                 s.replace(i, j-i + 1, "]</i></p>\n");
-                 i += 9;
+                 std::string_view r = "]</i></p>\n";
+                 s.replace(i, j-i + 1, r);
+                 i += r.size() - 1;
              }
              else {
                  i = j;
@@ -255,34 +346,17 @@ void format_issue_as_html(lwg::issue & is,
              continue;
          }
 
-         if (s[j-1] == '/') { // self-contained tag: sref, iref, paper
+         if (s[j-1] == '/') { // self-closing tag: sref, iref, paper
+
+            std::string_view attrs(s);
+            attrs.remove_prefix(i);
 
             // format section references
             if (tag == "sref") {
-               static const
-               auto report_missing_quote = [](std::ostringstream & er, unsigned num) {
-                  er.clear();
-                  er.str("");
-                  er << "missing '\"' in sref in issue " << num;
-                  throw std::runtime_error{er.str()};
-               };
-
-               std::string r;
-               auto k = s.find('\"', i+5);
-               if (k >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-
-               auto l = s.find('\"', k+1);
-               if (l >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-
-               ++k;
                lwg::section_tag tag;
                tag.prefix = is.doc_prefix;
-               r = s.substr(k, l-k);
-               tag.name = r.substr(1, r.size() - 2);
+               auto section_name = get_attribute_value("sref", attrs, context);
+               tag.name = section_name.substr(1, section_name.size() - 2);
 
                // heuristic: if the name is not found using the doc_prefix, try
                // using no prefix (i.e. the C++ standard itself)
@@ -300,7 +374,7 @@ void format_issue_as_html(lwg::issue & is,
                }
 
                j -= i - 1;
-               r = lwg::format_section_tag_as_link(section_db, tag);
+               std::string r = lwg::format_section_tag_as_link(section_db, tag);
                s.replace(i, j, r);
                i += r.size() - 1;
                continue;
@@ -308,41 +382,19 @@ void format_issue_as_html(lwg::issue & is,
 
             // format issue references
             else if (tag == "iref") {
-               static const
-               auto report_missing_quote = [](std::ostringstream & er, unsigned num) {
-                  er.clear();
-                  er.str("");
-                  er << "missing '\"' in iref in issue " << num;
-                  throw std::runtime_error{er.str()};
-               };
-
-               auto k = s.find('\"', i+5);
-               if (k >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-               auto l = s.find('\"', k+1);
-               if (l >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-
-               ++k;
-               std::string r{s.substr(k, l-k)};
-               std::istringstream temp{r};
+               std::string r{get_attribute_value("iref", attrs, context)};
                int num;
-               temp >> num;
-               if (temp.fail()) {
-                  er.clear();
-                  er.str("");
-                  er << "bad number in iref in issue " << issue_num;
-                  throw std::runtime_error{er.str()};
+               {
+                  std::istringstream temp{r};
+                  temp >> num;
+                  if (temp.fail()) {
+                     fail("Bad number in <iref>", context);
+                  }
                }
 
                auto n = std::lower_bound(first_issue, last_issue, num, lwg::order_by_issue_number{});
                if (n == last_issue  or  n->num != num) {
-                  er.clear();
-                  er.str("");
-                  er << "could not find issue " << num << " for iref in issue " << issue_num;
-                  throw std::runtime_error{er.str()};
+                  fail("Could not find issue " + r + " for <iref>", context);
                }
 
                if (!tag_stack.empty()  and  tag_stack.back() == "duplicate") {
@@ -360,42 +412,19 @@ void format_issue_as_html(lwg::issue & is,
                continue;
             }
             else if (tag == "paper") {
-               static const
-               auto report_missing_quote = [](std::ostringstream & er, unsigned num) {
-                  er.clear();
-                  er.str("");
-                  er << "missing '\"' in <paper> in issue " << num;
-                  throw std::runtime_error{er.str()};
-               };
-
-               std::string r;
-               auto k = s.find('\"', i+6);
-               if (k >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-
-               auto l = s.find('\"', k+1);
-               if (l >= j) {
-                  report_missing_quote(er, issue_num);
-               }
-
-               ++k;
-               auto paper_number = s.substr(k, l-k);
-               static const std::regex acceptable_numbers("N\\d+|P\\d+R\\d+|P\\d+", std::regex::icase);
+               std::string paper_number{get_attribute_value("paper", attrs, context)};
+               static const std::regex acceptable_numbers(R"(N\d+|[DP]\d+R\d+|[DP]\d+)", std::regex::icase);
 
                if (!std::regex_match(paper_number, acceptable_numbers)) {
-                  er.clear();
-                  er.str("");
-                  er << "Invalid paper number '" << paper_number
-                     << "' in issue " << issue_num;
-                  throw std::runtime_error{er.str()};
+                  fail("Invalid paper number '" + paper_number + "'", context);
                }
 
                // normalize paper numbers to use uppercase
-               std::transform(paper_number.begin(), paper_number.end(), paper_number.begin(), ::toupper);
+               std::transform(paper_number.begin(), paper_number.end(), paper_number.begin(),
+                     [] (unsigned char c) { return std::toupper(c); });
 
                j -= i - 1;
-               r = "<a href=\"https://wg21.link/" + paper_number + "\">" + paper_number + "</a>";
+               std::string r = "<a href=\"https://wg21.link/" + paper_number + "\">" + paper_number + "</a>";
                s.replace(i, j, r);
                i += r.size() - 1;
                continue;
@@ -406,24 +435,37 @@ void format_issue_as_html(lwg::issue & is,
 
          tag_stack.push_back(tag);
          if (tag == "discussion") {
-             s.replace(i, j-i + 1, "<p><b>Discussion:</b></p>");
-             i += 24;
+             std::string_view r = "<p><b>Discussion:</b></p>";
+             s.replace(i, j-i + 1, r);
+             i += r.size() - 1;
          }
          else if (tag == "resolution") {
-             s.replace(i, j-i + 1, "<p><b>Proposed resolution:</b></p>");
-             i += 33;
+             std::ostringstream os;
+             os << "<p id=\"res-" << is.num << "\"><b>Proposed resolution:</b></p>";
+             auto r = os.str();
+             s.replace(i, j-i + 1, r);
+             i += r.length() - 1;
          }
          else if (tag == "rationale") {
-             s.replace(i, j-i + 1, "<p><b>Rationale:</b></p>");
-             i += 23;
+             std::string_view r = "<p><b>Rationale:</b></p>";
+             s.replace(i, j-i + 1, r);
+             i += r.size() - 1;
          }
          else if (tag == "duplicate") {
              s.erase(i, j-i + 1);
              --i;
          }
          else if (tag == "note") {
-             s.replace(i, j-i + 1, "<p><i>[");
-             i += 6;
+             std::string_view r = "<p><i>[";
+             s.replace(i, j-i + 1, r);
+             i += r.size() - 1;
+         }
+         else if (tag == "superseded") {
+             std::string_view r =
+                 "<p><strong>Previous resolution [SUPERSEDED]:</strong></p>\n"
+                 "<blockquote class=\"note\">\n";
+             s.replace(i, j-i + 1, r);
+             i += r.size() - 1;
          }
          else if (tag == "!--") {
              tag_stack.pop_back();
@@ -436,12 +478,12 @@ void format_issue_as_html(lwg::issue & is,
              i = j;
          }
       }
-   }
+      if (!tag_stack.empty())
+         throw std::runtime_error("Unclosed tag <" + tag_stack.back() + "> in issue " + std::to_string(is.num));
    };
 
    fix_tags(is.text);
    fix_tags(is.resolution);
-
 }
 
 
@@ -758,7 +800,7 @@ int main(int argc, char* argv[]) {
 
       if (revhist) {
          std::cout << "\n<revision tag=\"" << lwg_issues_xml.get_revision() << "\">\n"
-            << lwg_issues_xml.get_title() << '\n';
+            << lwg_issues_xml.get_date()  << ' ' << lwg_issues_xml.get_title() << '\n';
          print_current_revisions(std::cout, old_issues, new_issues);
          std::cout << "</revision>\n";
          return 0;
