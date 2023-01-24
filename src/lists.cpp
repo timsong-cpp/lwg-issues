@@ -158,12 +158,11 @@ void format_issue_as_html(lwg::issue & is,
    //   ---             -----------
    //   iref            internal reference to another issue, replace with an anchor tag to that issue
    //   sref            section-tag reference, replace with formatted tag and section-number
-   //   paper           paper reference (PXXXX, PXXXXRX, DXXXX, DXXXXRX, NXXXX); replace with a wg21.link to the paper
+   //   paper           paper reference (PXXXX, PXXXXRX, NXXXX); replace with a wg21.link to the paper
    //   discussion      <p><b>Discussion:</b></p>CONTENTS
    //   resolution      <p><b>Proposed resolution:</b></p>CONTENTS
    //   rationale       <p><b>Rationale:</b></p>CONTENTS
    //   duplicate       tags are erased, leaving just CONTENTS
-   //   superseded       <p><strong>Previous resolution [SUPERSEDED]:</strong></p> and enclose in a note.
    //   note            <p><i>[NOTE CONTENTS]</i></p>
    //   !--             comments are simply erased
    //
@@ -245,15 +244,9 @@ void format_issue_as_html(lwg::issue & is,
                  s.erase(i, j-i + 1);
                  --i;
              }
-             else if (tag == "superseded") {
-                 std::string_view r = "</blockquote>\n";
-                 s.replace(i, j-i + 1, r);
-                 i += r.size() - 1;
-             }
              else if (tag == "note") {
-                 std::string_view r = "]</i></p>\n";
-                 s.replace(i, j-i + 1, r);
-                 i += r.size() - 1;
+                 s.replace(i, j-i + 1, "]</i></p>\n");
+                 i += 9;
              }
              else {
                  i = j;
@@ -388,7 +381,7 @@ void format_issue_as_html(lwg::issue & is,
 
                ++k;
                auto paper_number = s.substr(k, l-k);
-               static const std::regex acceptable_numbers(R"(N\d+|[DP]\d+R\d+|[DP]\d+)", std::regex::icase);
+               static const std::regex acceptable_numbers("N\\d+|P\\d+R\\d+|P\\d+", std::regex::icase);
 
                if (!std::regex_match(paper_number, acceptable_numbers)) {
                   er.clear();
@@ -413,37 +406,24 @@ void format_issue_as_html(lwg::issue & is,
 
          tag_stack.push_back(tag);
          if (tag == "discussion") {
-             std::string_view r = "<p><b>Discussion:</b></p>";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
+             s.replace(i, j-i + 1, "<p><b>Discussion:</b></p>");
+             i += 24;
          }
          else if (tag == "resolution") {
-             std::ostringstream os;
-             os << "<p id=\"res-" << is.num << "\"><b>Proposed resolution:</b></p>";
-             auto r = os.str();
-             s.replace(i, j-i + 1, r);
-             i += r.length() - 1;
+             s.replace(i, j-i + 1, "<p><b>Proposed resolution:</b></p>");
+             i += 33;
          }
          else if (tag == "rationale") {
-             std::string_view r = "<p><b>Rationale:</b></p>";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
+             s.replace(i, j-i + 1, "<p><b>Rationale:</b></p>");
+             i += 23;
          }
          else if (tag == "duplicate") {
              s.erase(i, j-i + 1);
              --i;
          }
          else if (tag == "note") {
-             std::string_view r = "<p><i>[";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
-         }
-         else if (tag == "superseded") {
-             std::string_view r =
-                 "<p><strong>Previous resolution [SUPERSEDED]:</strong></p>\n"
-                 "<blockquote class=\"note\">\n";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
+             s.replace(i, j-i + 1, "<p><i>[");
+             i += 6;
          }
          else if (tag == "!--") {
              tag_stack.pop_back();
@@ -778,7 +758,7 @@ int main(int argc, char* argv[]) {
 
       if (revhist) {
          std::cout << "\n<revision tag=\"" << lwg_issues_xml.get_revision() << "\">\n"
-            << lwg_issues_xml.get_date()  << ' ' << lwg_issues_xml.get_title() << '\n';
+            << lwg_issues_xml.get_title() << '\n';
          print_current_revisions(std::cout, old_issues, new_issues);
          std::cout << "</revision>\n";
          return 0;
