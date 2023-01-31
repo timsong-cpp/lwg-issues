@@ -1,0 +1,108 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3864: zip over range of reference to an abstract type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3864" href="lwg-active.html#3864">3864.</a> <tt>zip</tt> over range of reference to an abstract type</h3>
+<p><b>Section:</b> 26.7.23 <a href="https://timsong-cpp.github.io/cppwp/range.zip">[range.zip]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2023-01-28 <b>Last modified:</b> 2023-01-28 16:41:30 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct Abstract {
+  virtual ~Abstract() = default;
+  virtual int f() = 0;
+};
+
+struct Concrete : Abstract {
+  int f() override { return 42; }
+};
+
+int main() {
+  Concrete c[10];
+
+  auto xformed = c | std::views::transform([](Concrete&amp; c) -&gt; Abstract&amp; {
+    return c;
+  });
+
+  for (Abstract&amp; a : xformed) { }  // <span style="color:green;font-weight:bold">ok</span>
+
+  auto zipped = std::views::zip(xformed);
+
+  for (auto&amp;&amp; [a] : zipped) { }    // <span style="color:red;font-weight:bolder">error</span>
+}
+</pre></blockquote>
+<p>
+Here, <tt>xformed</tt> is a range whose reference type is <tt>Abstract&amp;</tt> and whose <tt>value_type</tt> is <tt>Abstract</tt>. 
+Even though you can't actually create a value of that <tt>value_type</tt>, that's okay here, because no code is actually trying to do so.
+<p/>
+On the other hand, <tt>zipped</tt> is a range whose reference type is <tt>std::tuple&lt;Abstract&amp;&gt;</tt> and whose 
+<tt>value_type</tt> is <tt>std::tuple&lt;Abstract&gt;</tt>. No code here is actually trying to construct a <tt>value_type</tt> either, 
+but this code fails because simply instantiating <tt>std::tuple&lt;Abstract&gt;</tt> is an error. There's no other possible 
+<tt>value_type</tt> for <tt>zipped</tt> to have, <tt>std::tuple&lt;Abstract&gt;</tt> is correct &mdash; it's just that it happens 
+to be an ill-formed type in this context. There are workarounds for this case &mdash; you would have to make <tt>xformed</tt> 
+be a range of <tt>Abstract*</tt> or, probably better, a range of <tt>reference_wrapper&lt;Abstract&gt;</tt> instead. 
+<p/>
+This is unfortunate because many (most?) algorithms don't actually make any use of a range's <tt>value_type</tt>. The ones that do 
+(like <tt>ranges::min</tt>) obviously could not work, but currently we end up rejecting all uses. Probably the only possible way to 
+make this work is to allow <tt>value_type</tt> to be <tt>void</tt> (or absent), but it is currently a fairly fundamental type due 
+to its use in <tt>indirectly_readable</tt> to identify input iterators.
+</p>
+
+
+<p id="res-3864"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

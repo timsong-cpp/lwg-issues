@@ -1,0 +1,216 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3868: Constrained algorithms should not require output_iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3868" href="lwg-active.html#3868">3868.</a> Constrained algorithms should not require <tt>output_iterator</tt></h3>
+<p><b>Section:</b> 27.7.5 <a href="https://timsong-cpp.github.io/cppwp/alg.replace">[alg.replace]</a>, 27.7.6 <a href="https://timsong-cpp.github.io/cppwp/alg.fill">[alg.fill]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-29 <b>Last modified:</b> 2023-01-29 16:20:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.replace">issues</a> in [alg.replace].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In C++20, <tt>output_iterator</tt> is required to support <tt>*o++ = t</tt> mainly for backward compatibility,
+that is to say, in addition to avoiding needless breakage, this semantic is actually not very useful, as it can 
+be equivalently replaced by <tt>*o = t; ++o;</tt>.
+<p/>
+This is reflected in the current implementation for constrained algorithms in libstdc++ and MSVC-STL. 
+Even if the algorithm explicitly requires <tt>output_iterator</tt>, there is no code of the form <tt>*o++ = t</tt> in practice,
+and the latter of a more generic form is used instead.
+<p/>
+It seems to me that constrained algorithms should never require <tt>output_iterator</tt>, since there really isn't
+any desirable reason to use <tt>*o++ = t</tt> in the new iterator system.
+It would be more appropriate to relax <tt>output_iterator</tt> to <tt>weakly_incrementable</tt> 
+(or <tt>input_or_output_iterator</tt>) and <tt>indirectly_writable</tt>,
+given that many constrained algorithms already do that.
+</p>
+
+
+<p id="res-3868"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <tt>&lt;algorithm&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+
+namespace std {
+  [&hellip;]
+  namespace ranges {
+    template&lt;class I, class O&gt;
+      using replace_copy_result = in_out_result&lt;I, O&gt;;
+
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T1, class T2,
+             <ins>weakly_incrementable</ins><del>output_iterator&lt;const T2&amp;&gt;</del> O, class Proj = identity&gt;
+      requires <ins>indirectly_writable&lt;O, const T2&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;I, O&gt; &amp;&amp;
+               indirect_binary_predicate&lt;ranges::equal_to, projected&lt;I, Proj&gt;, const T1*&gt;
+      constexpr replace_copy_result&lt;I, O&gt;
+        replace_copy(I first, S last, O result, const T1&amp; old_value, const T2&amp; new_value,
+                     Proj proj = {});
+    template&lt;input_range R, class T1, class T2, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T2&amp;&gt;</del> O,
+             class Proj = identity&gt;
+      requires <ins>indirectly_writable&lt;O, const T2&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;iterator_t&lt;R&gt;, O&gt; &amp;&amp;
+               indirect_binary_predicate&lt;ranges::equal_to,
+                                         projected&lt;iterator_t&lt;R&gt;, Proj&gt;, const T1*&gt;
+      constexpr replace_copy_result&lt;borrowed_iterator_t&lt;R&gt;, O&gt;
+        replace_copy(R&amp;&amp; r, O result, const T1&amp; old_value, const T2&amp; new_value,
+                     Proj proj = {});
+
+    template&lt;class I, class O&gt;
+      using replace_copy_if_result = in_out_result&lt;I, O&gt;;
+
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T&amp;&gt;</del> O,
+             class Proj = identity, indirect_unary_predicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+      requires <ins>indirectly_writable&lt;O, const T&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;I, O&gt;
+      constexpr replace_copy_if_result&lt;I, O&gt;
+        replace_copy_if(I first, S last, O result, Pred pred, const T&amp; new_value,
+                        Proj proj = {});
+    template&lt;input_range R, class T, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T&amp;&gt;</del> O, class Proj = identity,
+             indirect_unary_predicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+      requires <ins>indirectly_writable&lt;O, const T&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;iterator_t&lt;R&gt;, O&gt;
+      constexpr replace_copy_if_result&lt;borrowed_iterator_t&lt;R&gt;, O&gt;
+        replace_copy_if(R&amp;&amp; r, O result, Pred pred, const T&amp; new_value,
+                        Proj proj = {});
+  }
+  [&hellip;]
+  namespace ranges {
+    template&lt;class T, <ins>input_or_output_iterator</ins><del>output_iterator&lt;const T&amp;&gt;</del> O, sentinel_for&lt;O&gt; S&gt;
+      <ins>requires indirectly_writable&lt;O, const T&amp;&gt;</ins>
+      constexpr O fill(O first, S last, const T&amp; value);
+    template&lt;class T, output_range&lt;const T&amp;&gt; R&gt;
+      constexpr borrowed_iterator_t&lt;R&gt; fill(R&amp;&amp; r, const T&amp; value);
+    template&lt;class T, <ins>input_or_output_iterator</ins><del>output_iterator&lt;const T&amp;&gt;</del> O&gt;
+      <ins>requires indirectly_writable&lt;O, const T&amp;&gt;</ins>
+      constexpr O fill_n(O first, iter_difference_t&lt;O&gt; n, const T&amp; value);
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 27.7.5 <a href="https://timsong-cpp.github.io/cppwp/alg.replace">[alg.replace]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T1, class T2, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T2&amp;&gt;</del> O, 
+         class Proj = identity&gt;
+  requires <ins>indirectly_writable&lt;O, const T2&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;I, O&gt; &amp;&amp;
+           indirect_binary_predicate&lt;ranges::equal_to, projected&lt;I, Proj&gt;, const T1*&gt;
+constexpr ranges::replace_copy_result&lt;I, O&gt;
+  ranges::replace_copy(I first, S last, O result, const T1&amp; old_value, const T2&amp; new_value,
+                       Proj proj = {});
+template&lt;input_range R, class T1, class T2, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T2&amp;&gt;</del> O,
+         class Proj = identity&gt;
+  requires <ins>indirectly_writable&lt;O, const T2&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;iterator_t&lt;R&gt;, O&gt; &amp;&amp;
+           indirect_binary_predicate&lt;ranges::equal_to, projected&lt;iterator_t&lt;R&gt;, Proj&gt;, const T1*&gt;
+constexpr ranges::replace_copy_result&lt;borrowed_iterator_t&lt;R&gt;, O&gt;
+  ranges::replace_copy(R&amp;&amp; r, O result, const T1&amp; old_value, const T2&amp; new_value,
+                       Proj proj = {});
+
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T&amp;&gt;</del> O,
+         class Proj = identity, indirect_unary_predicate&lt;projected&lt;I, Proj&gt;&gt; Pred&gt;
+  requires <ins>indirectly_writable&lt;O, const T&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;I, O&gt;
+constexpr ranges::replace_copy_if_result&lt;I, O&gt;
+  ranges::replace_copy_if(I first, S last, O result, Pred pred, const T&amp; new_value,
+                          Proj proj = {});
+template&lt;input_range R, class T, <ins>weakly_incrementable</ins><del>output_iterator&lt;const T&amp;&gt;</del> O, class Proj = identity,
+         indirect_unary_predicate&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Pred&gt;
+  requires <ins>indirectly_writable&lt;O, const T&amp;&gt; &amp;&amp;</ins> indirectly_copyable&lt;iterator_t&lt;R&gt;, O&gt;
+constexpr ranges::replace_copy_if_result&lt;borrowed_iterator_t&lt;R&gt;, O&gt;
+  ranges::replace_copy_if(R&amp;&amp; r, O result, Pred pred, const T&amp; new_value,
+                          Proj proj = {});
+
+</pre>
+<blockquote>
+<p>
+-6- Let <i>E</i> be
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+
+
+<li><p>Modify 27.7.6 <a href="https://timsong-cpp.github.io/cppwp/alg.fill">[alg.fill]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;class T, <ins>input_or_output_iterator</ins><del>output_iterator&lt;const T&amp;&gt;</del> O, sentinel_for&lt;O&gt; S&gt;
+  <ins>requires indirectly_writable&lt;O, const T&amp;&gt;</ins>
+  constexpr O ranges::fill(O first, S last, const T&amp; value);
+template&lt;class T, output_range&lt;const T&amp;&gt; R&gt;
+  constexpr borrowed_iterator_t&lt;R&gt; ranges::fill(R&amp;&amp; r, const T&amp; value);
+template&lt;class T, <ins>input_or_output_iterator</ins><del>output_iterator&lt;const T&amp;&gt;</del> O&gt;
+  <ins>requires indirectly_writable&lt;O, const T&amp;&gt;</ins>
+  constexpr O ranges::fill_n(O first, iter_difference_t&lt;O&gt; n, const T&amp; value);
+</pre>
+<blockquote>
+<p>
+-1- Let <i>N</i> be max(0, <tt>n</tt>) for the <tt>fill_n</tt> algorithms, and <tt>last - first</tt> for the <tt>fill</tt> algorithms.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+</body>
+</html>

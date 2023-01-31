@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3859: std::projected cannot handle proxy iterator</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3859" href="lwg-active.html#3859">3859.</a> <tt>std::projected</tt> cannot handle proxy iterator</h3>
+<p><b>Section:</b> 25.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/projected">[projected]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-01-24 <b>Last modified:</b> 2023-01-28 12:53:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>std::projected</tt> is heavily used in <tt>&lt;algorithm&gt;</tt> to transform the original iterator into 
+a new readable type for concept checking, which has the following definition:
+</p>
+<blockquote><pre>
+template&lt;indirectly_readable I, indirectly_regular_unary_invocable&lt;I&gt; Proj&gt;
+struct projected {
+  using value_type = remove_cvref_t&lt;indirect_result_t&lt;Proj&amp;, I&gt;&gt;;
+  indirect_result_t&lt;Proj&amp;, I&gt; operator*() const;              // <i>not defined</i>
+};
+</pre></blockquote>
+<p>
+It provides the member type <tt>value_type</tt>, which is defined as the cvref-unqualified of a projection function 
+applied to the reference of the iterator, this seems reasonable since this is how iterators are usually defined for 
+the value type.
+<p/>
+However, this does not apply to C++20 proxy iterators such as <tt>zip_view::<i>iterator</i></tt>, we cannot obtain 
+the <tt>tuple</tt> of value by simply removing the <i>cvref</i>-qualifier of the <tt>tuple</tt> of reference.<br/>
+This incorrect definition allows us to unethically bypass the constraint checking of the constraint algorithm, 
+<a href="https://godbolt.org/z/98h36M4d8">for example</a>:
+</p>
+<blockquote><pre>
+#include &lt;algorithm&gt;
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+  
+struct Cmp {
+  bool operator()(std::tuple&lt;int&amp;&gt;, std::tuple&lt;int&amp;&gt;) const;
+  bool operator()(auto, auto) const = delete;
+};
+
+int main() {
+  std::vector&lt;int&gt; v;
+  std::ranges::sort(std::views::zip(v), Cmp{}); // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+<p>
+In the above example, the value type and reference of the original iterator <tt>I</tt> are <tt>tuple&lt;int&gt;</tt> 
+and <tt>tuple&lt;int&amp;&gt;</tt> respectively, however, the value type and reference of <tt>projected&lt;I, identity&gt;</tt> 
+will be <tt>tuple&lt;int&amp;&gt;</tt> and <tt>tuple&lt;int&amp;&gt;&amp;&amp;</tt>, which makes the constraint only 
+require that the comparator can compare two <tt>tuple&lt;int&amp;&gt;</tt>s, resulting in a hard error in the implementation.
+</p>
+
+
+<p id="res-3859"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> The proposed resolution is to alias <tt>projected</tt> as <tt>I</tt> when the projection function 
+is exactly <tt>identity</tt>. This form of type aliasing has similarities to the proposed wording of 
+<a href="https://wg21.link/P2538R1">P2538R1</a>, except for the nested <tt>struct type</tt>. &mdash; <i>end drafting note</i>]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <tt>&lt;iterator&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  [&hellip;]
+  // <i>25.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/projected">[projected]</a>, projected</i>
+  template&lt;indirectly_readable I, indirectly_regular_unary_invocable&lt;I&gt; Proj&gt;
+    <ins>using</ins><del>struct</del> projected <ins>= see <i>below</i></ins>;                         // <i>freestanding</i>
+
+  <del>template&lt;weakly_incrementable I, class Proj&gt;</del>
+    <del>struct incrementable_traits&lt;projected&lt;I, Proj&gt;&gt;;           // <i>freestanding</i></del>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 25.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/projected">[projected]</a> as indicated:</p>
+
+<blockquote>
+<p> 
+-1- Class template <tt>projected</tt> is used to constrain algorithms that accept callable objects and projections 
+(3.44 <a href="https://timsong-cpp.github.io/cppwp/defns.projection">[defns.projection]</a>). It combines a <tt>indirectly_readable</tt> type <tt>I</tt> and a callable object 
+type <tt>Proj</tt> into a new <tt>indirectly_readable</tt> type whose <tt>reference</tt> type is the result of applying 
+<tt>Proj</tt> to the <tt>iter_reference_t</tt> of <tt>I</tt>.
+</p>
+<blockquote><pre>
+namespace std {
+  template&lt;<ins>class</ins><del>indirectly_readable</del> I, <ins>class</ins><del>indirectly_regular_unary_invocable&lt;I&gt;</del> Proj&gt;
+  struct <ins><i>projected-impl</i></ins><del>projected</del> { <ins>// <i>exposition only</i></ins>
+    using value_type = remove_cvref_t&lt;indirect_result_t&lt;Proj&amp;, I&gt;&gt;;
+    <ins>using difference_type = iter_difference_t&lt;I&gt;;               // <i>present only if I models weakly_incrementable</i></ins>
+    indirect_result_t&lt;Proj&amp;, I&gt; operator*() const;              // <i>not defined</i>
+  };
+
+  <del>template&lt;weakly_incrementable I, class Proj&gt;</del>
+  <del>struct incrementable_traits&lt;projected&lt;I, Proj&gt;&gt; {</del>
+  <del>  using difference_type = iter_difference_t&lt;I&gt;;</del>
+  <del>};</del>
+
+  <ins>template&lt;indirectly_readable I, indirectly_regular_unary_invocable&lt;I&gt; Proj&gt;</ins>
+    <ins>using projected = conditional_t&lt;same_as&lt;Proj, identity&gt;, I, <i>projected-impl</i>&lt;I, Proj&gt;&gt;</ins>;
+}
+</pre></blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
