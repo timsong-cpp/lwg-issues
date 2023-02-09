@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="3803" href="lwg-active.html#3803">3803.</a> <tt>flat_<i>foo</i></tt> constructors taking <tt>KeyContainer</tt> lack <tt>KeyCompare</tt> parameter</h3>
 <p><b>Section:</b> 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/flat.map">[flat.map]</a>, 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap">[flat.multimap]</a>, 24.6.11 <a href="https://timsong-cpp.github.io/cppwp/flat.set">[flat.set]</a>, 24.6.12 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset">[flat.multiset]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2022-10-25 <b>Last modified:</b> 2022-11-04 20:59:04 UTC</p>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2022-10-25 <b>Last modified:</b> 2023-02-09 15:54:42 UTC</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#flat.map">active issues</a> in [flat.map].</p>
@@ -96,9 +96,570 @@ std::flat_set&lt;int, LessWhenDividedBy&gt; s(LessWhenDividedBy(10), data);
 Set priority to 1 after reflector poll.
 </p>
 
+<p><i>[2023-02-09 Tim adds wording]</i></p>
+
+<p>
+For each construction that takes containers, this wording allow a comparator to be specified as well.
+Differing from the suggestion in the issue, the comparator goes last (but before the allocator),
+for consistency with every other constructor of <tt>flat_<i>meow</i></tt> taking a comparator.
+(This is inconsistent with <tt>priority_queue</tt>, but consistency among the type's own
+constructors seems more important.)
+</p>
+
 
 
 <p id="res-3803"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Add a new bullet to 24.6.1 <a href="https://timsong-cpp.github.io/cppwp/container.adaptors.general">[container.adaptors.general]</a> p6 as indicated:</p>
+<blockquote>
+<p> -6- A deduction guide for a container adaptor shall not participate in overload 
+resolution if any of the following are true:</p>
+<ol style="list-style-type:none">
+<li>
+<p><ins>&mdash; (6.?) It has both <tt>KeyContainer</tt> and <tt>Compare</tt>
+template parameters, and <tt>is_invocable_v&lt;const Compare&amp;, 
+const typename KeyContainer::value_type&amp;, 
+const typename KeyContainer::value_type&amp;&gt;</tt> is not a valid expression
+or is <tt>false</tt>.</ins>
+</p>
+</li>
+</ol>
+</blockquote>
+</li>
+<li><p>Modify 24.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/flat.map.defn">[flat.map.defn]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+           class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_map {
+  public:
+    [&hellip;]
+    // 24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a>, construct/copy/destroy
+    flat_map() : flat_map(key_compare()) { }
+
+    flat_map(key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+             const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_map(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+               const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_map(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+               const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    flat_map(sorted_unique_t, key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+             const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_map(sorted_unique_t, const key_container_type&amp; key_cont,
+               const mapped_container_type&amp; mapped_cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_map(sorted_unique_t, const key_container_type&amp; key_cont,
+               const mapped_container_type&amp; mapped_cont, 
+               const key_compare&amp; comp, const Allocator&amp; a);</ins>
+    [&hellip;]
+  };
+
+  template&lt;class KeyContainer, class MappedContainer<ins>, class Compare = less&lt;typename KeyContainer::value_type&gt;</ins>&gt;
+    flat_map(KeyContainer, MappedContainer<ins>, Compare = Compare()</ins>)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  <ins>Compare</ins><del>less&lt;typename KeyContainer::value_type&gt;</del>, KeyContainer, MappedContainer&gt;;
+
+  template&lt;class KeyContainer, class MappedContainer, class Allocator&gt;
+    flat_map(KeyContainer, MappedContainer, Allocator)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  less&lt;typename KeyContainer::value_type&gt;, KeyContainer, MappedContainer&gt;;
+<ins>  template&lt;class KeyContainer, class MappedContainer, class Compare, class Allocator&gt;
+    flat_map(KeyContainer, MappedContainer, Compare, Allocator)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  Compare, KeyContainer, MappedContainer&gt;;</ins>
+
+
+  template&lt;class KeyContainer, class MappedContainer<ins>, class Compare = less&lt;typename KeyContainer::value_type&gt;</ins>&gt;
+    flat_map(sorted_unique_t, KeyContainer, MappedContainer<ins>, Compare = Compare()</ins>)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  <ins>Compare</ins><del>less&lt;typename KeyContainer::value_type&gt;</del>, KeyContainer, MappedContainer&gt;;
+
+  template&lt;class KeyContainer, class MappedContainer, class Allocator&gt;
+    flat_map(sorted_unique_t, KeyContainer, MappedContainer, Allocator)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  less&lt;typename KeyContainer::value_type&gt;, KeyContainer, MappedContainer&gt;;
+<ins>  template&lt;class KeyContainer, class MappedContainer, class Compare, class Allocator&gt;
+    flat_map(sorted_unique_t, KeyContainer, MappedContainer, Compare, Allocator)
+      -&gt; flat_map&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  Compare, KeyContainer, MappedContainer&gt;;</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Modify 24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+flat_map(key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+         const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Initializes <tt>c.keys</tt> with <tt>std::move(key_cont)</tt><ins>,</ins>
+<del>and</del> <tt>c.values</tt> with <tt>std::move(mapped_cont)</tt><ins>, and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>; value-initializes <tt>compare</tt></del>; sorts the range <tt>[begin(), end())</tt>
+with respect to <tt>value_comp()</tt>; and finally erases the duplicate elements as if by:
+</p>
+<blockquote>
+<pre>
+auto zv = ranges::zip_view(c.keys, c.values);
+auto it = ranges::unique(zv, key_equiv(compare)).begin();
+auto dist = distance(zv.begin(), it);
+c.keys.erase(c.keys.begin() + dist, c.keys.end());
+c.values.erase(c.values.begin() + dist, c.values.end());
+</pre>
+</blockquote>
+<p>
+-2- <i>Complexity:</i> Linear in <i>N</i> if the container arguments are already 
+sorted with respect to <tt>value_comp()</tt> and otherwise <i>N</i> log <i>N</i>,
+where <i>N</i> is the value of <tt>key_cont.size()</tt> before this call.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_map(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+           const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_map(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+           const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i> <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt>
+and <tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to <tt>flat_map(key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_map(key_cont, mapped_cont, comp)</tt>, respectively</ins>, 
+except that <tt>c.keys</tt> and <tt>c.values</tt> are constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-5- <i>Complexity:</i> Same as <tt>flat_map(key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_map(key_cont, mapped_cont, comp)</tt>, respectively</ins>.
+</p>
+</blockquote>
+
+<pre>
+flat_map(sorted_unique_t, key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+         const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Initializes <tt>c.keys</tt> with <tt>std::move(key_cont)</tt><ins>,</ins>
+<del>and</del> <tt>c.values</tt> with <tt>std::move(mapped_cont)</tt><ins>, and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>; value-initializes <tt>compare</tt></del>.
+<p/>
+-7- <i>Complexity:</i> Constant.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_map(sorted_unique_t s, const key_container_type&amp; key_cont,
+           const mapped_container_type&amp; mapped_cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_map(sorted_unique_t s, const key_container_type&amp; key_cont, 
+           const mapped_container_type&amp; mapped_cont, const key_compare&amp; comp,
+           const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-8- <i>Constraints:</i> <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt>
+and <tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-9- <i>Effects:</i> Equivalent to <tt>flat_map(s, key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_map(s, key_cont, mapped_cont, comp)</tt>, respectively</ins>, 
+except that <tt>c.keys</tt> and <tt>c.values</tt> are constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-10- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.6.10.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.defn">[flat.multimap.defn]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+           class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_multimap {
+  public:
+    [&hellip;]
+    // 24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a>, construct/copy/destroy
+    flat_multimap() : flat_multimap(key_compare()) { }
+
+    flat_multimap(key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+                  const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_multimap(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+                    const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_multimap(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+                    const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    flat_multimap(sorted_equivalent_t, 
+                  key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+                  const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_multimap(sorted_equivalent_t, const key_container_type&amp; key_cont,
+                    const mapped_container_type&amp; mapped_cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_multimap(sorted_equivalent_t, const key_container_type&amp; key_cont,
+                    const mapped_container_type&amp; mapped_cont, 
+                    const key_compare&amp; comp, const Allocator&amp; a);</ins>
+    [&hellip;]
+  };
+
+  template&lt;class KeyContainer, class MappedContainer<ins>, class Compare = less&lt;typename KeyContainer::value_type&gt;</ins>&gt;
+    flat_multimap(KeyContainer, MappedContainer<ins>, Compare = Compare()</ins>)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  <ins>Compare</ins><del>less&lt;typename KeyContainer::value_type&gt;</del>, KeyContainer, MappedContainer&gt;;
+
+  template&lt;class KeyContainer, class MappedContainer, class Allocator&gt;
+    flat_multimap(KeyContainer, MappedContainer, Allocator)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  less&lt;typename KeyContainer::value_type&gt;, KeyContainer, MappedContainer&gt;;
+<ins>  template&lt;class KeyContainer, class MappedContainer, class Compare, class Allocator&gt;
+    flat_multimap(KeyContainer, MappedContainer, Compare, Allocator)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  Compare, KeyContainer, MappedContainer&gt;;</ins>
+
+
+  template&lt;class KeyContainer, class MappedContainer<ins>, class Compare = less&lt;typename KeyContainer::value_type&gt;</ins>&gt;
+    flat_multimap(sorted_equivalent_t, KeyContainer, MappedContainer<ins>, Compare = Compare()</ins>)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  <ins>Compare</ins><del>less&lt;typename KeyContainer::value_type&gt;</del>, KeyContainer, MappedContainer&gt;;
+
+  template&lt;class KeyContainer, class MappedContainer, class Allocator&gt;
+    flat_multimap(sorted_equivalent_t, KeyContainer, MappedContainer, Allocator)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  less&lt;typename KeyContainer::value_type&gt;, KeyContainer, MappedContainer&gt;;
+<ins>  template&lt;class KeyContainer, class MappedContainer, class Compare, class Allocator&gt;
+    flat_multimap(sorted_equivalent_t, KeyContainer, MappedContainer, Compare, Allocator)
+      -&gt; flat_multimap&lt;typename KeyContainer::value_type, typename MappedContainer::value_type,
+                  Compare, KeyContainer, MappedContainer&gt;;</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Modify 24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+flat_multimap(key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+              const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Initializes <tt>c.keys</tt> with <tt>std::move(key_cont)</tt><ins>,</ins>
+<del>and</del> <tt>c.values</tt> with <tt>std::move(mapped_cont)</tt><ins>, and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>; value-initializes <tt>compare</tt></del>; and sorts the range <tt>[begin(), end())</tt>
+with respect to <tt>value_comp()</tt>.
+</p>
+<p>
+-2- <i>Complexity:</i> Linear in <i>N</i> if the container arguments are already 
+sorted with respect to <tt>value_comp()</tt> and otherwise <i>N</i> log <i>N</i>,
+where <i>N</i> is the value of <tt>key_cont.size()</tt> before this call.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_multimap(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+                const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_multimap(const key_container_type&amp; key_cont, const mapped_container_type&amp; mapped_cont,
+                const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i> <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt>
+and <tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to <tt>flat_multimap(key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_multimap(key_cont, mapped_cont, comp)</tt>, respectively</ins>, 
+except that <tt>c.keys</tt> and <tt>c.values</tt> are constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-5- <i>Complexity:</i> Same as <tt>flat_multimap(key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_multimap(key_cont, mapped_cont, comp)</tt>, respectively</ins>.
+</p>
+</blockquote>
+
+<pre>
+flat_multimap(sorted_equivalent_t, key_container_type key_cont, mapped_container_type mapped_cont<ins>,
+              const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Initializes <tt>c.keys</tt> with <tt>std::move(key_cont)</tt><ins>,</ins>
+<del>and</del> <tt>c.values</tt> with <tt>std::move(mapped_cont)</tt><ins>, and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>; value-initializes <tt>compare</tt></del>.
+<p/>
+-7- <i>Complexity:</i> Constant.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_multimap(sorted_equivalent_t s, const key_container_type&amp; key_cont,
+               const mapped_container_type&amp; mapped_cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_multimap(sorted_equivalent_t s, const key_container_type&amp; key_cont, 
+                const mapped_container_type&amp; mapped_cont, const key_compare&amp; comp,
+                const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-8- <i>Constraints:</i> <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt>
+and <tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-9- <i>Effects:</i> Equivalent to <tt>flat_multimap(s, key_cont, mapped_cont)</tt>
+<ins>and <tt>flat_multimap(s, key_cont, mapped_cont, comp)</tt>, respectively</ins>, 
+except that <tt>c.keys</tt> and <tt>c.values</tt> are constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-10- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.6.11.2 <a href="https://timsong-cpp.github.io/cppwp/flat.set.defn">[flat.set.defn]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_set {
+  public:
+    [&hellip;]
+
+    // [flat.set.cons], constructors
+    flat_set() : flat_set(key_compare()) { }
+
+    explicit flat_set(container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_set(const container_type&amp; cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_set(const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    flat_set(sorted_unique_t, container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>)
+      : <i>c</i>(std::move(cont)), <i>compare</i>(<ins>comp</ins><del>key_compare()</del>) { }
+    template&lt;class Allocator&gt;
+      flat_set(sorted_unique_t, const container_type&amp; cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_set(sorted_unique_t, const container_type&amp; cont, 
+               const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+
+<ins>
+  template&lt;class KeyContainer, class Compare = less&lt;typename KeyContainer::value_type&gt;&gt;
+    flat_set(KeyContainer, Compare = Compare())
+      -&gt; flat_set&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Allocator&gt;
+    flat_set(KeyContainer, Allocator)
+      -&gt; flat_set&lt;typename KeyContainer::value_type, less&lt;typename KeyContainer::value_type&gt;, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Compare, class Allocator&gt;
+    flat_set(KeyContainer, Compare, Allocator)
+      -&gt; flat_set&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+
+  template&lt;class KeyContainer, class Compare = less&lt;typename KeyContainer::value_type&gt;&gt;
+    flat_set(sorted_unique_t, KeyContainer, Compare = Compare())
+      -&gt; flat_set&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Allocator&gt;
+    flat_set(sorted_unique_t, KeyContainer, Allocator)
+      -&gt; flat_set&lt;typename KeyContainer::value_type, less&lt;typename KeyContainer::value_type&gt;, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Compare, class Allocator&gt;
+    flat_set(sorted_unique_t, KeyContainer, Compare, Allocator)
+      -&gt; flat_set&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Modify 24.6.11.3 <a href="https://timsong-cpp.github.io/cppwp/flat.set.cons">[flat.set.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+flat_set(container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Initializes <tt><i>c</i></tt> with <tt>std::move(cont)</tt>
+<ins> and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>, value-initializes <tt><i>compare</i></tt></del>, sorts the range <tt>[begin(), end())</tt>
+with respect to <tt><i>compare</i></tt>, and finally erases all but the first element from each group 
+of consecutive equivalent elements.
+</p>
+<p>
+-2- <i>Complexity:</i> Linear in <i>N</i> if <tt>cont</tt> is already 
+sorted with respect to <tt><i>compare</i></tt> and otherwise <i>N</i> log <i>N</i>,
+where <i>N</i> is the value of <tt>cont.size()</tt> before this call.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_set(const container_type&amp; cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_set(const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i> <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to <tt>flat_set(cont)</tt>
+<ins>and <tt>flat_set(cont, comp)</tt>, respectively</ins>, 
+except that <tt><i>c</i></tt> is constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-5- <i>Complexity:</i> Same as <tt>flat_set(cont)</tt>
+<ins>and <tt>flat_set(cont, comp)</tt>, respectively</ins>.
+</p>
+</blockquote>
+
+<pre>
+template&lt;class Allocator&gt;
+  flat_set(sorted_unique_t s, const container_type&amp; cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_set(sorted_unique_t s, const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-7- <i>Effects:</i> Equivalent to <tt>flat_set(s, cont)</tt>
+<ins>and <tt>flat_set(s, cont, comp)</tt>, respectively</ins>, 
+except that <tt><i>c</i></tt> is constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-8- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li><p>Modify 24.6.12.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.defn">[flat.multiset.defn]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_multiset {
+  public:
+    [&hellip;]
+
+    // [flat.multiset.cons], constructors
+    flat_multiset() : flat_multiset(key_compare()) { }
+
+    explicit flat_multiset(container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>);
+    template&lt;class Allocator&gt;
+      flat_multiset(const container_type&amp; cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_multiset(const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    flat_multiset(sorted_equivalent_t, container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>)
+      : <i>c</i>(std::move(cont)), <i>compare</i>(<ins>comp</ins><del>key_compare()</del>) { }
+    template&lt;class Allocator&gt;
+      flat_multiset(sorted_equivalent_t, const container_type&amp; cont, const Allocator&amp; a);
+<ins>    template&lt;class Allocator&gt;
+      flat_multiset(sorted_equivalent_t, const container_type&amp; cont, 
+                    const key_compare&amp; comp, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+
+<ins>
+  template&lt;class KeyContainer, class Compare = less&lt;typename KeyContainer::value_type&gt;&gt;
+    flat_multiset(KeyContainer, Compare = Compare())
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Allocator&gt;
+    flat_multiset(KeyContainer, Allocator)
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, less&lt;typename KeyContainer::value_type&gt;, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Compare, class Allocator&gt;
+    flat_multiset(KeyContainer, Compare, Allocator)
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+
+  template&lt;class KeyContainer, class Compare = less&lt;typename KeyContainer::value_type&gt;&gt;
+    flat_multiset(sorted_equivalent_t, KeyContainer, Compare = Compare())
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Allocator&gt;
+    flat_multiset(sorted_equivalent_t, KeyContainer, Allocator)
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, less&lt;typename KeyContainer::value_type&gt;, KeyContainer&gt;;
+  template&lt;class KeyContainer, class Compare, class Allocator&gt;
+    flat_multiset(sorted_equivalent_t, KeyContainer, Compare, Allocator)
+      -&gt; flat_multiset&lt;typename KeyContainer::value_type, Compare, KeyContainer&gt;;
+</ins>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+<li><p>Modify 24.6.12.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.cons">[flat.multiset.cons]</a> as indicated:</p>
+<blockquote>
+<pre>
+flat_multiset(container_type cont<ins>, const key_compare&amp; comp = key_compare()</ins>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects:</i> Initializes <tt><i>c</i></tt> with <tt>std::move(cont)</tt>
+<ins> and <tt>compare</tt> with <tt>comp</tt></ins>
+<del>, value-initializes <tt><i>compare</i></tt></del>, and sorts the range <tt>[begin(), end())</tt>
+with respect to <tt><i>compare</i></tt>.
+</p>
+<p>
+-2- <i>Complexity:</i> Linear in <i>N</i> if <tt>cont</tt> is already 
+sorted with respect to <tt><i>compare</i></tt> and otherwise <i>N</i> log <i>N</i>,
+where <i>N</i> is the value of <tt>cont.size()</tt> before this call.
+</p>
+</blockquote>
+<pre>
+template&lt;class Allocator&gt;
+  flat_multiset(const container_type&amp; cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_multiset(const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints:</i> <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects:</i> Equivalent to <tt>flat_multiset(cont)</tt>
+<ins>and <tt>flat_multiset(cont, comp)</tt>, respectively</ins>, 
+except that <tt><i>c</i></tt> is constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-5- <i>Complexity:</i> Same as <tt>flat_multiset(cont)</tt>
+<ins>and <tt>flat_multiset(cont, comp)</tt>, respectively</ins>.
+</p>
+</blockquote>
+
+<pre>
+template&lt;class Allocator&gt;
+  flat_multiset(sorted_equivalent_t s, const container_type&amp; cont, const Allocator&amp; a);
+<ins>template&lt;class Allocator&gt;
+  flat_multiset(sorted_equivalent_t s, const container_type&amp; cont, const key_compare&amp; comp, const Allocator&amp; a);</ins>
+</pre>
+<blockquote>
+<p>
+-6- <i>Constraints:</i> <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-7- <i>Effects:</i> Equivalent to <tt>flat_multiset(s, cont)</tt>
+<ins>and <tt>flat_multiset(s, cont, comp)</tt>, respectively</ins>, 
+except that <tt><i>c</i></tt> is constructed with 
+uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+<p/>
+-8- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
