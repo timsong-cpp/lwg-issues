@@ -1,0 +1,261 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3877: Incorrect constraints on const-qualified monadic overloads for std::expected</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3877" href="lwg-active.html#3877">3877.</a> Incorrect constraints on <tt>const</tt>-qualified monadic overloads for <tt>std::expected</tt></h3>
+<p><b>Section:</b> 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a>, 22.8.7.7 <a href="https://timsong-cpp.github.io/cppwp/expected.void.monadic">[expected.void.monadic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Sy Brand <b>Opened:</b> 2023-02-09 <b>Last modified:</b> 2023-02-09 19:08:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#expected.object.monadic">active issues</a> in [expected.object.monadic].</p>
+<p><b>View all other</b> <a href="lwg-index.html#expected.object.monadic">issues</a> in [expected.object.monadic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The constraints for <tt>and_then</tt>, <tt>transform</tt>, <tt>transform_error</tt>, and <tt>or_else</tt> 
+for <tt>std::expected</tt> seem incorrect for <tt>const</tt> overloads. E.g., from 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a>
+</p>
+<blockquote><pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+<i>Constraints</i>: <tt>is_move_constructible_v&lt;E&gt;</tt> is <tt>true</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+That constraint should likely be <tt>is_move_constructible_v&lt;const E&gt;</tt> for the <tt>const</tt>-qualified version. 
+Same for the lvalue overloads, and for the three other functions, including in the <tt>void</tt> partial specialization. 
+For example, currently this code would result in a hard compiler error inside the body of <tt>transform</tt> rather than 
+failing the constraint:
+</p>
+<blockquote><pre>
+const std::expected&lt;int, std::unique_ptr&lt;int&gt;&gt; e;
+std::move(e).transform([](auto) { return 42; });
+</pre></blockquote>
+
+
+<p id="res-3877"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-6- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-10- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>T</del><ins>decltype((value()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-14- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>T</del><ins>decltype((value()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-18- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-22- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-26- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>T</del><ins>decltype((value()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-30- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>T</del><ins>decltype((value()))</ins>&gt;</tt> is <tt>true</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 22.8.7.7 <a href="https://timsong-cpp.github.io/cppwp/expected.void.monadic">[expected.void.monadic]</a> as indicated:</p>
+<blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-2- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-6- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-16- <i>Constraints</i>: <tt>is_copy_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-20- <i>Constraints</i>: <tt>is_move_constructible_v&lt;<del>E</del><ins>decltype((error()))</ins>&gt;</tt> is <tt>true</tt>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
