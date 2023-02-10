@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3881: Incorrect formatting of container adapters backed by std::string</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3881" href="lwg-active.html#3881">3881.</a> Incorrect formatting of container adapters backed by <tt>std::string</tt></h3>
+<p><b>Section:</b> 24.6.13 <a href="https://timsong-cpp.github.io/cppwp/container.adaptors.format">[container.adaptors.format]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2023-02-10 <b>Last modified:</b> 2023-02-10 17:12:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+According to 24.6.13 <a href="https://timsong-cpp.github.io/cppwp/container.adaptors.format">[container.adaptors.format]</a> container adapters such as <tt>std::stack</tt> are 
+formatted by forwarding to the underlying container:
+</p>
+<blockquote><pre>
+template&lt;class FormatContext&gt;
+  typename FormatContext::iterator
+    format(<i>maybe-const-adaptor</i>&amp; r, FormatContext&amp; ctx) const;
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Equivalent to: <tt>return <i>underlying_</i>.format(r.c, ctx);</tt>
+</p>
+</blockquote>
+</blockquote>
+<p>
+This gives expected results for <tt>std::stack&lt;T&gt;</tt> and most types of underlying container:
+</p>
+<blockquote><pre>
+auto s = std::format("{}", std::stack(std::deque{'a', 'b', 'c'}));
+// s == "['a', 'b', 'c']"
+</pre></blockquote>
+<p>
+However, when the underlying container is <tt>std::string</tt> the output is:
+</p>
+<blockquote><pre>
+auto s = std::format("{}", std::stack{std::string{"abc"}});
+// s == "abc"
+</pre></blockquote>
+<p>
+This is clearly incorrect because <tt>std::stack</tt> itself is not a string (it is only backed by a string) 
+and inconsistent with formatting of ranges where non-string range types are formatted as comma-separated values 
+delimited by <tt>'['</tt> and <tt>']'</tt>. The correct output in this case would be <tt>['a', 'b', 'c']</tt>.
+<p/>
+Here is an illustration of this issue on godbolt using {fmt} and an implementation of the formatter for container 
+adapters based on the one from the standard: <a href="https://godbolt.org/z/P1nrM1986">https://godbolt.org/z/P1nrM1986</a>.
+<p/>
+A simple fix is to wrap the underlying container in <tt>std::views::all(_t)</tt> 
+(<a href="https://godbolt.org/z/8MT1be838">https://godbolt.org/z/8MT1be838</a>).
+</p>
+
+
+<p id="res-3881"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.6.13 <a href="https://timsong-cpp.github.io/cppwp/container.adaptors.format">[container.adaptors.format]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- For each of <tt>queue</tt>, <tt>priority_queue</tt>, and <tt>stack</tt>, the library provides the following formatter specialization
+where <tt><i>adaptor-type</i></tt> is the name of the template:
+</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class charT, class T, formattable&lt;charT&gt; Container, class... U&gt;
+  struct formatter&lt;<i>adaptor-type</i>&lt;T, Container, U...&gt;, charT&gt; {
+  private:
+    using <i>maybe-const-adaptor</i> =                       // <i>exposition only</i>
+      <i>fmt-maybe-const</i>&lt;<i>adaptor-type</i>&lt;T, Container, U...&gt;, charT&gt;;
+    formatter&lt;<ins>views::all_t&lt;const</ins> Container<ins>&amp;&gt;</ins>, charT&gt; <i>underlying_</i>;          // <i>exposition only</i>
+
+  public:
+    template&lt;class ParseContext&gt;
+      constexpr typename ParseContext::iterator
+        parse(ParseContext&amp; ctx);
+
+    template&lt;class FormatContext&gt;
+      typename FormatContext::iterator
+        format(<i>maybe-const-adaptor</i>&amp; r, FormatContext&amp; ctx) const;
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class FormatContext&gt;
+  typename FormatContext::iterator
+    format(<i>maybe-const-adaptor</i>&amp; r, FormatContext&amp; ctx) const;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to: <tt>return <i>underlying_</i>.format(<ins>views::all(</ins>r.c<ins>)</ins>, ctx);</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
