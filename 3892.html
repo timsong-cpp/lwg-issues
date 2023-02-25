@@ -1,0 +1,194 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3892: Incorrect formatting of nested ranges and tuples</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3892" href="lwg-active.html#3892">3892.</a> Incorrect formatting of nested ranges and tuples</h3>
+<p><b>Section:</b> 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a>, 22.14.9 <a href="https://timsong-cpp.github.io/cppwp/format.tuple">[format.tuple]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2023-02-20 <b>Last modified:</b> 2023-02-25 14:23:38 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.range.formatter">issues</a> in [format.range.formatter].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>formatter</tt> specializations for ranges and tuples set debug format for underlying element formatters in their 
+<tt>parse</tt> functions e.g. 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a> p9:
+</p>
+<blockquote><pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Parses the format specifier as a <i>range-format-spec</i> and stores the parsed specifiers in <tt>*this</tt>.
+ The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> are modified 
+ if and only if required by the <i>range-type</i> or the <tt>n</tt> option, if present. If:
+</p>
+<ol style="list-style-type: none">
+<li><p>&mdash; the <i>range-type</i> is neither <tt>s</tt> nor <tt>?s</tt>,</p></li>
+<li><p>&mdash; <tt><i>underlying_</i>.set_debug_format()</tt> is a valid expression, and</p></li>
+<li><p>&mdash; there is no <i>range-underlying-spec</i>,</p></li>
+</ol>
+<p>
+then calls <tt><i>underlying_</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+However, they don't say anything about calling <tt>parse</tt> functions of those formatters. As as result, 
+formatting of nested ranges can be incorrect, e.g.
+</p>
+<blockquote><pre>
+std::string s = std::format("{}", std::vector&lt;std::vector&lt;std::string&gt;&gt;{{"a, b", "c"}});
+</pre></blockquote>
+<p>
+With the current specification <tt>s</tt> is <tt>[[a, b, c]]</tt> instead of <tt>[["a, b", "c"]]</tt>, i.e. strings 
+in the output are not correctly escaped. The same is true for nested tuples and combinations of tuples and ranges.
+<p/>
+The fix approved by LEWG as part of <a href="https://wg21.link/P2733">P2733</a> (which was trying to address a different issue) is to 
+always call <tt>parse</tt> <a href="https://github.com/cplusplus/papers/issues/1426#issuecomment-1420017182">for underlying formatter</a>. 
+Additionally the standard should clarify that <i>format-spec</i> cannot start with <tt>'}'</tt> because that's the 
+implicit assumption in range formatting and what happens when <i>format-spec</i> is not present.
+</p>
+
+
+<p id="res-3892"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/format.string.general">[format.string.general]</a> p1 as indicated:</p>
+
+<blockquote>
+<dl>
+<dt>[&hellip;]</dt>
+<dt><i>format-specifier</i>:</dt>
+<dd>: <i>format-spec</i></dd>
+<dt><i>format-spec</i>:</dt>
+<dd>as specified by the <tt>formatter</tt> specialization for the argument type<ins>; cannot start with <tt>}</tt></ins></dd>
+</dl>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Given character type <tt>charT</tt>, output iterator type <tt>Out</tt>, and formatting argument type <tt>T</tt>, in 
+Table 74 [tab:formatter.basic] and Table 75 [tab:formatter]:
+<p/>
+[&hellip;]
+<p/>
+<tt>pc.begin()</tt> points to the beginning of the <i>format-spec</i> (22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) of the 
+replacement field being formatted in the format string. If <i>format-spec</i> is <ins>not present or</ins> empty then 
+either <tt>pc.begin() == pc.end()</tt> or <tt>*pc.begin() == '}'</tt>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>range-format-spec</i> and stores the parsed specifiers in <tt>*this</tt>.
+<ins>Calls <tt><i>underlying_</i>.parse(ctx)</tt> to parse <i>format-spec</i> in <i>range-format-spec</i> or, if the latter is not present, 
+empty <i>format-spec</i>.</ins> The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>range-type</i> or the <tt>n</tt> option, if present. If:
+</p>
+<ol style="list-style-type: none">
+<li><p>(9.1) &mdash; the <i>range-type</i> is neither <tt>s</tt> nor <tt>?s</tt>,</p></li>
+<li><p>(9.2) &mdash; <tt><i>underlying_</i>.set_debug_format()</tt> is a valid expression, and</p></li>
+<li><p>(9.3) &mdash; there is no <i>range-underlying-spec</i>,</p></li>
+</ol>
+<p>
+then calls <tt><i>underlying_</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.9 <a href="https://timsong-cpp.github.io/cppwp/format.tuple">[format.tuple]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>tuple-format-spec</i> and stores the parsed specifiers 
+in <tt>*this</tt>. The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>tuple-type</i>, if present. For each element <tt><i>e</i></tt> in 
+<tt><i>underlying_</i></tt>, <ins>calls <tt><i>e</i>.parse(ctx)</tt> to parse empty <i>format-spec</i> and,</ins> 
+if <tt><i>e</i>.set_debug_format()</tt> is a valid expression, calls <tt><i>e</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+</body>
+</html>

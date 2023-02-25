@@ -1,0 +1,127 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3888: Most ranges uninitialized memory algorithms are underconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3888" href="lwg-active.html#3888">3888.</a> Most ranges uninitialized memory algorithms are underconstrained</h3>
+<p><b>Section:</b> 27.11.8 <a href="https://timsong-cpp.github.io/cppwp/specialized.construct">[specialized.construct]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-02-17 <b>Last modified:</b> 2023-02-19 15:59:26 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#specialized.construct">active issues</a> in [specialized.construct].</p>
+<p><b>View all other</b> <a href="lwg-index.html#specialized.construct">issues</a> in [specialized.construct].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3870">3870</a> removed the support for constructing objects via <i>cv</i>-qualified lvalues. 
+However, it had not changed anything in the immediate context, which means some previously permitted 
+usages become hard errors instead of substitution failures.
+<p/>
+Note that <tt>ranges::uninitialized_default_construct</tt> and <tt>ranges::uninitialized_default_construct_n</tt> 
+are underconstrained even before LWG <a href="3870">3870</a>, because <tt>remove_reference_t&lt;iter_reference_t&lt;I&gt;&gt;</tt> 
+may be a <tt>const</tt> type, while only it's <i>cv</i>-unqualified version (<tt>iter_value_t&lt;I&gt;</tt>) 
+is required to be <tt>default_initializable</tt>.
+<p/>
+<tt>construct_at</tt> and <tt>ranges::construct_at</tt> are also made underconstrained because the function 
+body is no longer valid when <tt>T</tt> is <i>cv</i>-qualified, which is not reflected in <i>Constraints:</i>.
+</p>
+
+
+<p id="res-3888"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 27.11.2 <a href="https://timsong-cpp.github.io/cppwp/special.mem.concepts">[special.mem.concepts]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class I&gt;
+concept <i>nothrow-input-iterator</i> = // <i>exposition only</i>
+  input_iterator&lt;I&gt; &amp;&amp;
+  is_lvalue_reference_v&lt;iter_reference_t&lt;I&gt;&gt; &amp;&amp;
+  <ins>same_as&lt;remove_cvref_t&lt;iter_reference_t&lt;I&gt;&gt;, remove_reference_t&lt;iter_reference_t&lt;I&gt;&gt; &amp;&amp;</ins>
+  same_as&lt;remove_cvref_t&lt;iter_reference_t&lt;I&gt;&gt;, iter_value_t&lt;I&gt;&gt;;
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 27.11.8 <a href="https://timsong-cpp.github.io/cppwp/specialized.construct">[specialized.construct]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class... Args&gt;
+  constexpr T* construct_at(T* location, Args&amp;&amp;... args);
+
+namespace ranges {
+  template&lt;class T, class... Args&gt;
+    constexpr T* construct_at(T* location, Args&amp;&amp;... args);
+}
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: <ins><tt>T</tt> is a <i>cv</i>-unqualified type, and t</ins><del>T</del>he expression 
+<tt>::new (declval&lt;void*&gt;()) T(declval&lt;Args&gt;()...)</tt> is well-formed when treated 
+as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>).
+<p/>
+-2- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return ::new (<i>voidify</i>(*location)) T(std::forward&lt;Args&gt;(args)...);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

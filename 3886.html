@@ -1,0 +1,252 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3886: Monad mo' problems</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3886" href="lwg-active.html#3886">3886.</a> Monad mo' problems</h3>
+<p><b>Section:</b> 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a>, 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2023-02-13 <b>Last modified:</b> 2023-02-19 16:55:17 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.optional.general">issues</a> in [optional.optional.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+While implementing <a href="https://wg21.link/P2505R5">P2505R5</a> "Monadic Functions for <tt>std::expected</tt>" we found it odd that
+the template type parameter for the assignment operator that accepts an argument by forwarding reference is
+defaulted, but the template type parameter for <tt>value_or</tt> is not. For consistency, it would seem that
+<tt><i>meow</i>.value_or(<i>woof</i>)</tt> should accept the same arguments <tt><i>woof</i></tt> as does
+<tt><i>meow</i> = <i>woof</i></tt>, even when those arguments are braced-initializers.
+<p/>
+That said, it would be peculiar to default the template type parameter of <tt>value_or</tt> to <tt>T</tt>
+instead of <tt>remove_cv_t&lt;T&gt;</tt>. For <tt>expected&lt;const vector&lt;int&gt;, int&gt; <i>meow</i>{unexpect, 42};</tt>,
+for example, <tt><i>meow</i>.value_or({1, 2, 3})</tt> would create a temporary <tt>const vector&lt;int&gt;</tt>
+for the argument and return a copy of that argument. Were the default template argument instead
+<tt>remove_cv_t&lt;T&gt;</tt>, <tt><i>meow</i>.value_or({1, 2, 3})</tt> could move construct its return value
+from the argument <tt>vector&lt;int&gt;</tt>. For the same reason, the constructor that accepts a forwarding
+reference with a default template argument of <tt>T</tt> should default that argument to <tt>remove_cv_t&lt;T&gt;</tt>.
+<p/>
+For consistency, it would be best to default the template argument of the perfect-forwarding construct,
+perfect-forwarding assignment operator, and <tt>value_or</tt> to <tt>remove_cv_t&lt;T&gt;</tt>. Since all of
+the arguments presented apply equally to <tt>optional</tt>, we believe <tt>optional</tt> should be changed
+consistently with <tt>expected</tt>. MSVCSTL has prototyped these changes successfully.
+</p>
+
+
+<p id="res-3886"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt;
+  class optional {
+  public:
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+      constexpr explicit(<i>see below</i>) optional(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr optional&amp; operator=(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) const &amp;;
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) &amp;&amp;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/optional.ctor">[optional.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr explicit(<i>see below</i>) optional(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-23- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/optional.assign">[optional.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr optional&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-12- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.6 <a href="https://timsong-cpp.github.io/cppwp/optional.observe">[optional.observe]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) const &amp;;
+</pre>
+<blockquote>
+<p>
+-15- <i>Mandates</i>: [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-17- <i>Mandates</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T, class E&gt;
+  class expected {
+  public:
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+      constexpr explicit(<i>see below</i>) expected(U&amp;&amp; v);
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr expected&amp; operator=(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) const &amp;;
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) &amp;&amp;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.2 <a href="https://timsong-cpp.github.io/cppwp/expected.object.cons">[expected.object.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+  constexpr explicit(!is_convertible_v&lt;U, T&gt;) expected(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-23- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.4 <a href="https://timsong-cpp.github.io/cppwp/expected.object.assign">[expected.object.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+  constexpr expected&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.6 <a href="https://timsong-cpp.github.io/cppwp/expected.object.obs">[expected.object.obs]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) const &amp;;
+</pre>
+<blockquote>
+<p>
+-16- <i>Mandates</i>: [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-18- <i>Mandates</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,317 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3884: flat_foo is missing allocator-extended copy/move constructors</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3884" href="lwg-active.html#3884">3884.</a> <tt>flat_<i>foo</i></tt> is missing allocator-extended copy/move constructors</h3>
+<p><b>Section:</b> 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/flat.map">[flat.map]</a>, 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap">[flat.multimap]</a>, 24.6.11 <a href="https://timsong-cpp.github.io/cppwp/flat.set">[flat.set]</a>, 24.6.12 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset">[flat.multiset]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2023-02-06 <b>Last modified:</b> 2023-02-19 11:47:07 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#flat.map">active issues</a> in [flat.map].</p>
+<p><b>View all other</b> <a href="lwg-index.html#flat.map">issues</a> in [flat.map].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This issue is part of the "<tt>flat_<i>foo</i></tt>" sequence, LWG <a href="3786">3786</a>, <a href="3802">3802</a>, 
+<a href="3803">3803</a>, <a href="3804">3804</a>. <tt>flat_set</tt>, <tt>flat_multiset</tt>, <tt>flat_map</tt>, and 
+<tt>flat_multimap</tt> all have implicitly defaulted copy and move constructors, but they lack 
+allocator-extended versions of those constructors. This means that the following code is broken:
+</p>
+<blockquote><pre>
+// <a href="https://godbolt.org/z/qezv5rTrW"/>https://godbolt.org/z/qezv5rTrW<a/>
+#include &lt;cassert&gt;
+#include &lt;flat_set&gt;
+#include &lt;memory_resource&gt;
+#include &lt;utility&gt;
+#include &lt;vector&gt;
+
+template&lt;class T, class Comp = std::less&lt;T&gt;&gt;
+using pmr_flat_set = std::flat_set&lt;T, Comp, std::pmr::vector&lt;T&gt;&gt;;
+
+int main() {
+  std::pmr::vector&lt;pmr_flat_set&lt;int&gt;&gt; vs = {
+    {1,2,3},
+    {4,5,6},
+  };
+  std::pmr::vector&lt;int&gt; v = std::move(vs[0]).extract();
+  assert(v.get_allocator().resource() == std::pmr::get_default_resource());
+}
+</pre></blockquote>
+<p>
+<tt>pmr_flat_set&lt;int&gt;</tt> advertises that it "<tt>uses_allocator</tt>" <tt>std::pmr::polymorphic_allocator&lt;int&gt;</tt>, 
+but in fact it lacks the allocator-extended constructor overload set necessary to interoperate with <tt>std::pmr::vector</tt>.
+</p>
+
+
+<p id="res-3884"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/flat.map.defn">[flat.map.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+  class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_map {
+  public:
+    [&hellip;]
+    // <i>24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a>, construct/copy/destroy</i>
+    flat_map() : flat_map(key_compare()) { }
+
+    <ins>template&lt;class Allocator&gt;
+      flat_map(const flat_map&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_map(flat_map&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: As a drive-by fix, a missing closing <tt>&gt;</tt> is inserted in p11.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_map(const flat_map&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_map(flat_map&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_map(const key_compare&amp; comp, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  explicit flat_map(const Allocator&amp; a);
+template&lt;class InputIterator, class Allocator&gt;
+  flat_map(InputIterator first, InputIterator last, const key_compare&amp; comp, const Allocator&amp; a);
+template&lt;class InputIterator, class Allocator&gt;
+  flat_map(InputIterator first, InputIterator last, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints</i>: <tt>uses_allocator_v&lt;key_container_type, Allocator<ins>&gt;</ins></tt> is <tt>true</tt> and 
+<tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-12- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt>c.keys</tt> and 
+<tt>c.values</tt> are constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.10.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.defn">[flat.multimap.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+  class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_multimap {
+  public:
+    [&hellip;]
+    // <i>24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a>, construct/copy/destroy</i>
+    flat_multimap() : flat_multimap(key_compare()) { }  
+
+    <ins>template&lt;class Allocator&gt;
+      flat_multimap(const flat_multimap&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_multimap(flat_multimap&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_multimap(const flat_multimap&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_multimap(flat_multimap&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_multimap(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints</i>: <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt> and 
+<tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-12- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt>c.keys</tt> and 
+<tt>c.values</tt> are constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.11.2 <a href="https://timsong-cpp.github.io/cppwp/flat.set.defn">[flat.set.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_set {
+  public:
+    [&hellip;]
+    // <i>24.6.11.3 <a href="https://timsong-cpp.github.io/cppwp/flat.set.cons">[flat.set.cons]</a>, constructors</i>
+    flat_set() : flat_set(key_compare()) { }
+    
+    <ins>template&lt;class Allocator&gt;
+      flat_set(const flat_set&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_set(flat_set&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.11.3 <a href="https://timsong-cpp.github.io/cppwp/flat.set.cons">[flat.set.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_set(const flat_set&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_set(flat_set&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_set(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-10- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt><i>c</i></tt> is 
+constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.12.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.defn">[flat.multiset.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_multiset {
+  public:
+    [&hellip;]
+    // <i>24.6.12.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.cons">[flat.multiset.cons]</a>, constructors</i>
+    flat_multiset() : flat_multiset(key_compare()) { }
+    
+    <ins>template&lt;class Allocator&gt;
+      flat_multiset(const flat_multiset&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_multiset(flat_multiset&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.12.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.cons">[flat.multiset.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_multiset(const flat_multiset&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_multiset(flat_multiset&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_multiset(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-10- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt><i>c</i></tt> is 
+constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3891: LWG 3870 breaks std::expected&lt;cv T, E&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3891" href="lwg-active.html#3891">3891.</a> LWG 3870 breaks <tt>std::expected&lt;<i>cv</i> T, E&gt;</tt></h3>
+<p><b>Section:</b> 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-02-19 <b>Last modified:</b> 2023-02-20 11:57:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#expected.object.general">issues</a> in [expected.object.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently the <tt>value_type</tt> of <tt>std::expected</tt> can be a <i>cv</i>-qualified type, which is  possibly intented. 
+However, LWG <a href="3870">3870</a> disallows <tt>std::construct_at</tt> to construct objects via <tt><i>cv</i> T*</tt>, which 
+breaks <tt>std::expected&lt;<i>cv</i> T, E&gt;</tt> because some operations are specified with <tt>std::construct_at</tt> 
+(22.8.6.4 <a href="https://timsong-cpp.github.io/cppwp/expected.object.assign">[expected.object.assign]</a>, 22.8.6.5 <a href="https://timsong-cpp.github.io/cppwp/expected.object.swap">[expected.object.swap]</a>).
+<p/>
+I think when <tt>T</tt> is <i>cv</i>-qualified, it would be better to store <tt>std::remove_cv_t&lt;T&gt;</tt> subobject 
+while sometimes (other than construction/destruction) access it via a <i>cv</i>-qualified glvalue, which can also avoid UB 
+associated with <tt>const</tt>/<tt>volatile</tt> objects.
+</p>
+
+
+<p id="res-3891"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: When assignment and <tt>swap</tt> need to backup the old value by move construction, 
+the source should be considered <i>cv</i>-unqualified, as the backup mechanism is only used internally.]
+</p>
+</blockquote>
+
+<ol>
+
+<li><p>Modify 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+bool <i>has_val</i>;      // <i>exposition only</i>
+union {
+  <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins> <i>val</i>;       // <i>exposition only</i>
+  E <i>unex</i>;          // <i>exposition only</i>
+};
+[&hellip;]
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.4 <a href="https://timsong-cpp.github.io/cppwp/expected.object.assign">[expected.object.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr expected&amp; operator=(const expected&amp; rhs);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; If <tt>this-&gt;has_value() &amp;&amp; rhs.has_value()</tt> is <tt>true</tt>, 
+equivalent to <tt><ins>value()</ins><del><i>val</i></del> = *rhs</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr expected&amp; operator=(expected&amp;&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-6- <i>Effects</i>: 
+</p>
+<ol style="list-style-type: none">
+<li><p>(6.1) &mdash; If <tt>this-&gt;has_value() &amp;&amp; rhs.has_value()</tt> is <tt>true</tt>, 
+equivalent to <tt><ins>value()</ins><del><i>val</i></del> = std::move(*rhs)</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class U = T&gt;
+  constexpr expected&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-10- <i>Effects</i>: 
+</p>
+<ol style="list-style-type: none">
+<li><p>(10.1) &mdash; If <tt>has_value()</tt> is <tt>true</tt>, equivalent to
+ <tt><ins>value()</ins><del><i>val</i></del> = std::forward&lt;U&gt;(v)</tt>.</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify Table 64: <tt>swap(expected&amp;)</tt> effects  [tab:expected.object.swap] as indicated:</p>
+
+<blockquote>
+
+<table border="1">
+<caption>Table 64 &mdash; <tt>swap(expected&amp;)</tt> effects  [tab:expected.object.swap]</caption>
+<tr style="text-align:center">
+<th></th>
+<th><tt>this-&gt;has_value()</tt></th>
+<th><tt>!this-&gt;has_value()</tt></th>
+</tr>
+<tr>
+<td><tt>rhs.has_value()</tt></td>
+<td>equivalent to: <tt>using std::swap;</tt><br/>
+<tt>swap(<ins>value()</ins><del><i>val</i></del>, rhs.<ins>value()</ins><del><i>val</i></del>);</tt></td>
+<td>calls <tt>rhs.swap(*this)</tt></td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>[&hellip;]</tt>
+</td>
+</tr>
+</table>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.5 <a href="https://timsong-cpp.github.io/cppwp/expected.object.swap">[expected.object.swap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr void swap(expected&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: [&hellip;]
+<p/>
+-2- <i>Effects</i>: See Table 64  [tab:expected.object.swap].
+<p/>
+For the case where <tt>rhs.value()</tt> is <tt>false</tt> and <tt>this-&gt;has_value()</tt> is <tt>true</tt>, equivalent to:
+</p>
+<blockquote>
+<pre>
+if constexpr (is_nothrow_move_constructible_v&lt;E&gt;) {
+  E tmp(std::move(rhs.<i>unex</i>));
+  destroy_at(addressof(rhs.<i>unex</i>));
+  try {
+    construct_at(addressof(rhs.<i>val</i>), std::move(<ins>value()</ins><del><i>val</i></del>));
+    destroy_at(addressof(<i>val</i>));
+    construct_at(addressof(<i>unex</i>), std::move(tmp));
+  } catch(...) {
+    construct_at(addressof(rhs.<i>unex</i>), std::move(tmp));
+    throw;
+  }
+} else {
+  [&hellip;]
+}
+<i>has_val</i> = false;
+rhs.<i>has_val</i> = true;
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

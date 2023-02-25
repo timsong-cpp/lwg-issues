@@ -1,0 +1,156 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3893: LWG 3661 broke atomic&lt;shared_ptr&lt;T&gt;&gt; a; a = nullptr;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3893" href="lwg-active.html#3893">3893.</a> LWG 3661 broke <tt>atomic&lt;shared_ptr&lt;T&gt;&gt; a; a = nullptr;</tt></h3>
+<p><b>Section:</b> 33.5.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Zachary Wassall <b>Opened:</b> 2023-02-22 <b>Last modified:</b> 2023-02-25 15:13:55 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.atomic.shared">issues</a> in [util.smartptr.atomic.shared].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3661">3661</a>, "<tt>constinit atomic&lt;shared_ptr&lt;T&gt;&gt; a(nullptr);</tt> should work" 
+added the following to <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt>:
+</p>
+<blockquote><pre>
+constexpr atomic(nullptr_t) noexcept : atomic() { }
+</pre></blockquote>
+<p>
+I believe that doing so broke the following example:
+</p>
+<blockquote><pre>
+atomic&lt;shared_ptr&lt;T&gt;&gt; a;
+a = nullptr;
+</pre></blockquote>
+<p>
+For reference, <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt> provides two assignment operator overloads:
+</p>
+<blockquote><pre>
+void operator=(const atomic&amp;) = delete;          // #1
+void operator=(shared_ptr&lt;T&gt; desired) noexcept;  // #2
+</pre></blockquote>
+<p>
+Prior to LWG <a href="3661">3661</a>, the assignment in the example unambiguously matches #2. #1 is not viable because 
+<tt>nullptr_t</tt> is not convertible to <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt>. After LWG 3611, #1 is viable 
+and the assignment is ambiguous between #1 and #2.
+<p/>
+I believe this could be remedied easily enough by adding an assignment operator to match the added 
+<tt>nullptr_t</tt> constructor:
+</p>
+<blockquote><pre>
+void operator=(nullptr_t) noexcept;
+</pre></blockquote>
+
+<p><i>[2023-02-25; Daniel comments and provides wording]</i></p>
+
+<p>
+The suggested delegation below to <tt>store(nullptr)</tt> is not ambiguous and calls the constructor
+<tt>shared_ptr(nullptr_t)</tt>, which is guaranteed to be no-throwing.
+</p>
+
+
+<p id="res-3893"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.5.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; struct atomic&lt;shared_ptr&lt;T&gt;&gt; {
+    [&hellip;]
+    constexpr atomic() noexcept;
+    constexpr atomic(nullptr_t) noexcept : atomic() { }
+    atomic(shared_ptr&lt;T&gt; desired) noexcept;
+    atomic(const atomic&amp;) = delete;
+    void operator=(const atomic&amp;) = delete;
+    [&hellip;]
+    void operator=(shared_ptr&lt;T&gt; desired) noexcept;
+    <ins>void operator=(nullptr_t) noexcept;</ins>
+    [&hellip;]
+  private:
+    shared_ptr&lt;T&gt; p; // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+void operator=(shared_ptr&lt;T&gt; desired) noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: Equivalent to <tt>store(desired)</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>void operator=(nullptr_t) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to <tt>store(nullptr)</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+</body>
+</html>
