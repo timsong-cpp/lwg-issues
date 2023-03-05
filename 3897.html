@@ -1,0 +1,181 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3897: inout_ptr will not update raw pointer to 0</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3897" href="lwg-active.html#3897">3897.</a> <tt>inout_ptr</tt> will not update raw pointer to 0</h3>
+<p><b>Section:</b> 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Doug Cook <b>Opened:</b> 2023-02-27 <b>Last modified:</b> 2023-03-04 12:14:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#inout.ptr.t">issues</a> in [inout.ptr.t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>inout_ptr</tt> seems useful for two purposes:
+</p>
+<ol>
+<li><p>Using smart pointers with C-style APIs.</p></li>
+<li><p>Annotating raw pointers for use with C-style APIs.</p></li>
+</ol>
+<p>
+Unfortunately, as presently specified, it is not safe for developers to use <tt>inout_ptr</tt> for the second purpose. 
+It is not safe to change code from
+</p>
+<blockquote><pre>
+void* raw_ptr1;
+InitSomething(&amp;raw_ptr1);
+UpdateSomething(&amp;raw_ptr1); // In some cases may set raw_ptr1 = nullptr.
+CleanupSomething(raw_ptr1);
+</pre></blockquote>
+<p>
+to
+</p>
+<blockquote><pre>
+void* raw_ptr2;
+InitSomething(std::out_ptr(raw_ptr2));
+UpdateSomething(std::inout_ptr(raw_ptr2)); // <span style="color:red;font-weight:bolder">May leave dangling pointer</span>
+CleanupSomething(raw_ptr2);                // <span style="color:red;font-weight:bolder">Possible double-delete</span>
+</pre></blockquote>
+<p>
+In the case where <tt>UpdateSomething</tt> would set <tt>raw_ptr1 = nullptr</tt>, the currently-specified <tt>inout_ptr</tt> 
+implementation will leave <tt>raw_ptr2</tt> at its old value. This would likely lead to a double-delete in <tt>CleanupSomething</tt>.
+<p/>
+The issue occurs because <tt>inout_ptr</tt> is specified as follows:
+</p> 
+<ol>
+<li><p>Constructor: <em>If the user's pointer is a smart pointer</em>, perform a "<tt>release</tt>" operation.</p></li>
+<li><p>(C-style API executes)</p></li>
+<li><p><em>If the C-style API returns a non-<tt>NULL</tt> pointer</em>, propagate the returned value to the user's pointer.</p></li>
+</ol>
+<p>
+If the user's pointer is not a smart pointer, no "<tt>release</tt>" operation occurs, and if the C-style API returns a 
+<tt>NULL</tt> pointer, no propagation of the <tt>NULL</tt> occurs. We're left with a dangling raw pointer which is 
+different from the original behavior using <tt>&amp;</tt>.
+<p/>
+I see two potential solutions:
+</p>
+<ol>
+<li><p>Make the "<tt>release</tt>" operation unconditional (i.e. it applies to both smart and raw pointers). For raw pointers, 
+define the "<tt>release</tt>" operation as setting the raw pointer to <tt>nullptr</tt>.</p></li>
+<li><p>Make the return value propagation unconditional for raw pointers.</p></li>
+</ol>
+<p>
+Solution #2 seems likely to lead to more optimal code as it avoids an unnecessary branch.
+</p>
+
+
+<p id="res-3897"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~inout_ptr_t();
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>SP</tt> be <tt><i>POINTER_OF_OR</i>(Smart, Pointer)</tt> (20.2.1 <a href="https://timsong-cpp.github.io/cppwp/memory.general">[memory.general]</a>).
+<p/>
+-10- Let <i>release-statement</i> be <tt>s.release();</tt> if an implementation does not call <tt>s.release()</tt> in the
+constructor. Otherwise, it is empty.
+<p/>
+-11- <i>Effects</i>: Equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; </p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart( static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_pointer_v&lt;Smart&gt;</tt> is <tt>true</tt>;
+</p></li>
+<li><p>(11.2) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if the expression <tt>s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...)</tt> is well-formed;
+</p>
+</li>
+<li><p>(11.3) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
+</p>
+</li>
+<li><p>(11.4) &mdash; otherwise, the program is ill-formed.</p></li>
+</ol>
+
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

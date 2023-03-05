@@ -1,0 +1,124 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3896: The definition of viewable_range is not quite right</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3896" href="lwg-active.html#3896">3896.</a> The definition of <tt>viewable_range</tt> is not quite right</h3>
+<p><b>Section:</b> 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-02-27 <b>Last modified:</b> 2023-03-04 11:43:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The requirements of <tt>viewable_range</tt> for <tt>view</tt> type is <tt>view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; 
+constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;</tt>, that is, when the decayed type of <tt>T</tt> models <tt>view</tt>, 
+it must be constructible from <tt>T</tt>.
+</p>
+<p>
+This part of the constraint corresponds to first bullet of <tt>views::all</tt> (26.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/range.all.general">[range.all.general]</a>), 
+which returns <tt><i>decay-copy</i>(E)</tt> if the decayed type of <tt>E</tt> models <tt>view</tt>.
+</p>
+<p>
+However, <tt><i>decay-copy</i>(E)</tt> constraints <tt>convertible_to&lt;T, decay_t&lt;T&gt;&gt;</tt> which is a 
+stronger requirement than <tt>constructible_from</tt>, which is reflected in its rejection of types with explicit 
+copy constructors.
+</p>
+<p>
+This inconsistency is such that the following causes the range adapter to produce a hard error when invoked 
+(<a href="https://godbolt.org/z/PxWfs1Yco">online example</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct View : std::ranges::view_base 
+{
+  View();
+  explicit View(const View&amp;); // explicit copy constructor
+  View&amp; operator=(const View&amp;);
+  View(View&amp;&amp;);
+  
+  int* begin();
+  int* end();
+};
+
+int main() 
+{
+  View v;
+  auto r = std::views::take(v, 5); // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+
+
+<p id="res-3896"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept viewable_range =
+    range&lt;T&gt; &amp;&amp;
+    ((view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; <ins>convertible_to&lt;T, remove_cvref_t&lt;T&gt;&gt;</ins><del>constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;</del>) ||
+     (!view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;
+      (is_lvalue_reference_v&lt;T&gt; || (movable&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp; !<i>is-initializer-list</i>&lt;T&gt;))));
+</pre>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

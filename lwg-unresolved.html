@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2023-02-26 at 12:22:46 UTC</p>
+<p><p>Revised 2023-03-04 at 12:53:47 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -47945,6 +47945,311 @@ template&lt;class F, class I1, class I2 <ins>= I1</ins>&gt;
 
 </li>
 
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3896" href="3896">3896.</a> The definition of <tt>viewable_range</tt> is not quite right</h3>
+<p><b>Section:</b> 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-02-27 <b>Last modified:</b> 2023-03-04 11:43:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The requirements of <tt>viewable_range</tt> for <tt>view</tt> type is <tt>view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; 
+constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;</tt>, that is, when the decayed type of <tt>T</tt> models <tt>view</tt>, 
+it must be constructible from <tt>T</tt>.
+</p>
+<p>
+This part of the constraint corresponds to first bullet of <tt>views::all</tt> (26.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/range.all.general">[range.all.general]</a>), 
+which returns <tt><i>decay-copy</i>(E)</tt> if the decayed type of <tt>E</tt> models <tt>view</tt>.
+</p>
+<p>
+However, <tt><i>decay-copy</i>(E)</tt> constraints <tt>convertible_to&lt;T, decay_t&lt;T&gt;&gt;</tt> which is a 
+stronger requirement than <tt>constructible_from</tt>, which is reflected in its rejection of types with explicit 
+copy constructors.
+</p>
+<p>
+This inconsistency is such that the following causes the range adapter to produce a hard error when invoked 
+(<a href="https://godbolt.org/z/PxWfs1Yco">online example</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct View : std::ranges::view_base 
+{
+  View();
+  explicit View(const View&amp;); // explicit copy constructor
+  View&amp; operator=(const View&amp;);
+  View(View&amp;&amp;);
+  
+  int* begin();
+  int* end();
+};
+
+int main() 
+{
+  View v;
+  auto r = std::views::take(v, 5); // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+
+
+<p id="res-3896"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  concept viewable_range =
+    range&lt;T&gt; &amp;&amp;
+    ((view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; <ins>convertible_to&lt;T, remove_cvref_t&lt;T&gt;&gt;</ins><del>constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;</del>) ||
+     (!view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;
+      (is_lvalue_reference_v&lt;T&gt; || (movable&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp; !<i>is-initializer-list</i>&lt;T&gt;))));
+</pre>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3897" href="3897">3897.</a> <tt>inout_ptr</tt> will not update raw pointer to 0</h3>
+<p><b>Section:</b> 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Doug Cook <b>Opened:</b> 2023-02-27 <b>Last modified:</b> 2023-03-04 12:14:40 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#inout.ptr.t">issues</a> in [inout.ptr.t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>inout_ptr</tt> seems useful for two purposes:
+</p>
+<ol>
+<li><p>Using smart pointers with C-style APIs.</p></li>
+<li><p>Annotating raw pointers for use with C-style APIs.</p></li>
+</ol>
+<p>
+Unfortunately, as presently specified, it is not safe for developers to use <tt>inout_ptr</tt> for the second purpose. 
+It is not safe to change code from
+</p>
+<blockquote><pre>
+void* raw_ptr1;
+InitSomething(&amp;raw_ptr1);
+UpdateSomething(&amp;raw_ptr1); // In some cases may set raw_ptr1 = nullptr.
+CleanupSomething(raw_ptr1);
+</pre></blockquote>
+<p>
+to
+</p>
+<blockquote><pre>
+void* raw_ptr2;
+InitSomething(std::out_ptr(raw_ptr2));
+UpdateSomething(std::inout_ptr(raw_ptr2)); // <span style="color:red;font-weight:bolder">May leave dangling pointer</span>
+CleanupSomething(raw_ptr2);                // <span style="color:red;font-weight:bolder">Possible double-delete</span>
+</pre></blockquote>
+<p>
+In the case where <tt>UpdateSomething</tt> would set <tt>raw_ptr1 = nullptr</tt>, the currently-specified <tt>inout_ptr</tt> 
+implementation will leave <tt>raw_ptr2</tt> at its old value. This would likely lead to a double-delete in <tt>CleanupSomething</tt>.
+<p/>
+The issue occurs because <tt>inout_ptr</tt> is specified as follows:
+</p> 
+<ol>
+<li><p>Constructor: <em>If the user's pointer is a smart pointer</em>, perform a "<tt>release</tt>" operation.</p></li>
+<li><p>(C-style API executes)</p></li>
+<li><p><em>If the C-style API returns a non-<tt>NULL</tt> pointer</em>, propagate the returned value to the user's pointer.</p></li>
+</ol>
+<p>
+If the user's pointer is not a smart pointer, no "<tt>release</tt>" operation occurs, and if the C-style API returns a 
+<tt>NULL</tt> pointer, no propagation of the <tt>NULL</tt> occurs. We're left with a dangling raw pointer which is 
+different from the original behavior using <tt>&amp;</tt>.
+<p/>
+I see two potential solutions:
+</p>
+<ol>
+<li><p>Make the "<tt>release</tt>" operation unconditional (i.e. it applies to both smart and raw pointers). For raw pointers, 
+define the "<tt>release</tt>" operation as setting the raw pointer to <tt>nullptr</tt>.</p></li>
+<li><p>Make the return value propagation unconditional for raw pointers.</p></li>
+</ol>
+<p>
+Solution #2 seems likely to lead to more optimal code as it avoids an unnecessary branch.
+</p>
+
+
+<p id="res-3897"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~inout_ptr_t();
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>SP</tt> be <tt><i>POINTER_OF_OR</i>(Smart, Pointer)</tt> (20.2.1 <a href="https://timsong-cpp.github.io/cppwp/memory.general">[memory.general]</a>).
+<p/>
+-10- Let <i>release-statement</i> be <tt>s.release();</tt> if an implementation does not call <tt>s.release()</tt> in the
+constructor. Otherwise, it is empty.
+<p/>
+-11- <i>Effects</i>: Equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; </p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart( static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_pointer_v&lt;Smart&gt;</tt> is <tt>true</tt>;
+</p></li>
+<li><p>(11.2) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if the expression <tt>s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...)</tt> is well-formed;
+</p>
+</li>
+<li><p>(11.3) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
+</p>
+</li>
+<li><p>(11.4) &mdash; otherwise, the program is ill-formed.</p></li>
+</ol>
+
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3898" href="3898">3898.</a> Possibly unintended preconditions for completion functions of <tt>std::barrier</tt></h3>
+<p><b>Section:</b> 33.9.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.barrier.class">[thread.barrier.class]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-02 <b>Last modified:</b> 2023-03-04 12:53:47 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+33.9.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.barrier.class">[thread.barrier.class]</a>/5 currently says:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+[&hellip;] <tt>is_nothrow_invocable_v&lt;CompletionFunction&amp;&gt;</tt> shall be <tt>true</tt>.
+</blockquote>
+<p>
+This requirement introduces a kind of undefined behavior and permits implementation divergence. Currently 
+<a href="https://github.com/microsoft/STL/blob/16bb556afe5c56fe70a5508a6116842c226dd3be/stl/inc/barrier#L72-L77">MSVC STL</a>
+enforces the requirement, while 
+<a href="https://github.com/gcc-mirror/gcc/blob/4ea6bfedc8759cef739ae42eee162989112bd85a/libstdc%2B%2B-v3/include/std/barrier">libstdc++</a> 
+and 
+<a href="https://github.com/llvm/llvm-project/blob/9a77a6f80252288d536b3aa471f241786a54068b/libcxx/include/barrier">libc++</a> 
+don't.
+<p/>
+If implementation divergence is not intended, I don't think it makes much sense to introduce UB in this way. 
+I guess we should either strengthen the requirement to require well-formedness affection or relax it.
+</p>
+
+
+<p id="res-3898"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i> Two mutually exclusive options are prepared, depicted below by <b>Option A</b> and 
+<b>Option B</b>, respectively.] 
+</p>
+</blockquote>
+
+<p>
+<b>Option A:</b> Effectively impose a <i>Mandates:</i> requirement.
+</p>
+
+<ol>
+
+<li><p>Modify 33.9.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.barrier.class">[thread.barrier.class]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-5- <tt>CompletionFunction</tt> shall meet the <i>Cpp17MoveConstructible</i> (Table 32) and <i>Cpp17Destructible</i> (Table 36)
+requirements. <ins>Instantiation of <tt>barrier&lt;CompletionFunction&gt;</tt> is ill-formed if 
+<tt>is_nothrow_invocable_v&lt;CompletionFunction&amp;&gt;</tt> is not 
+<tt>true</tt></ins><del><tt>is_nothrow_invocable_v&lt;CompletionFunction&amp;&gt;</tt> shall be <tt>true</tt></del>.
+</p>
+</blockquote>
+
+</li>
+
+</ol>
+
+<p>
+<b>Option B:</b> Clarify that we impose a no-throw precondition here, whose violation causes UB.
+</p>
+
+<ol>
+
+<li><p>Modify 33.9.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.barrier.class">[thread.barrier.class]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- The <i>phase completion step</i> that is executed at the end of each phase has the following effects:
+</p>
+<ol style="list-style-type: none">
+<li><p>(3.1) &mdash; Invokes the completion function, equivalent to <tt>completion()</tt>. <ins>If any invocation 
+to the completion function throws an exception, the behavior is undefined.</ins></p></li>
+<li><p>(3.2) &mdash; Unblocks all threads that are blocked on the phase synchronization point.</p></li>
+</ol>
+<p>
+[&hellip;]
+<p/>
+-5- <tt>CompletionFunction</tt> shall meet the <i>Cpp17MoveConstructible</i> (Table 32) and <i>Cpp17Destructible</i> (Table 36)
+requirements. <del><tt>is_nothrow_invocable_v&lt;CompletionFunction&amp;&gt;</tt> shall be <tt>true</tt>.</del>
+</p>
+</blockquote>
+
+</li>
 
 </ol>
 
