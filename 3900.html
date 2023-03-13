@@ -1,0 +1,166 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3900: The allocator_arg_t overloads of generator::promise_type::operator new
+should not be constrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3900" href="lwg-active.html#3900">3900.</a> The <tt>allocator_arg_t</tt> overloads of <tt>generator::promise_type::operator new</tt>
+should not be constrained</h3>
+<p><b>Section:</b> 26.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2023-03-04 <b>Last modified:</b> 2023-03-05 04:19:45 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#coro.generator.promise">active issues</a> in [coro.generator.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#coro.generator.promise">issues</a> in [coro.generator.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When the allocator is not type-erased, the <tt>allocator_arg_t</tt> overloads of
+<tt>generator::promise_type::operator new</tt> are constrained on
+<tt>convertible_to&lt;const Alloc&amp;, Allocator&gt;</tt>. As a result, if the
+the allocator is default-constructible (like <tt>polymorphic_allocator</tt> is)
+but the user accidentally provided a wrong type (say, <tt>memory_resource&amp;</tt>
+instead of <tt>memory_resource*</tt>), their code will silently fall back to
+using a default-constructed allocator. It would seem better to take the tag
+as definitive evidence of the user's intent to supply an allocator for the coroutine,
+and error out if the supplied allocator cannot be used.
+<p/>
+This change does mean that the user cannot deliberately pass an incompatible
+allocator (preceded by an <tt>std::allocator_arg_t</tt> tag) for their own use
+inside the coroutine, but that sort of API seems fragile and confusing at best,
+since the usual case is that allocators so passed <i>will</i> be used by
+<tt>generator</tt>.
+</p>
+
+
+<p id="res-3900"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Ref, class V, class Allocator&gt;
+  class generator&lt;Ref, V, Allocator&gt;::promise_type {
+  public:
+    [&hellip;]
+    void* operator new(size_t size)
+      requires same_as&lt;Allocator, void&gt; || default_initializable&lt;Allocator&gt;;
+
+    template&lt;class Alloc, class... Args&gt;
+      <del>requires same_as&lt;Allocator, void&gt; || convertible_to&lt;const Alloc&amp;, Allocator&gt;</del>
+        void* operator new(size_t size, allocator_arg_t, const Alloc&amp; alloc, const Args&amp;...);
+
+    template&lt;class This, class Alloc, class... Args&gt;
+      <del>requires same_as&lt;Allocator, void&gt; || convertible_to&lt;const Alloc&amp;, Allocator&gt;</del>
+        void* operator new(size_t size, const This&amp;, allocator_arg_t, const Alloc&amp; alloc,
+                           const Args&amp;...);
+    [&hellip;]
+   };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+void* operator new(size_t size)
+  requires same_as&lt;Allocator, void&gt; || default_initializable&lt;Allocator&gt;;
+
+template&lt;class Alloc, class... Args&gt;
+  <del>requires same_as&lt;Allocator, void&gt; || convertible_to&lt;const Alloc&amp;, Allocator&gt;</del>
+  void* operator new(size_t size, allocator_arg_t, const Alloc&amp; alloc, const Args&amp;...);
+
+template&lt;class This, class Alloc, class... Args&gt;
+  <del>requires same_as&lt;Allocator, void&gt; || convertible_to&lt;const Alloc&amp;, Allocator&gt;</del>
+  void* operator new(size_t size, const This&amp;, allocator_arg_t, const Alloc&amp; alloc,
+                     const Args&amp;...);
+</pre>
+<blockquote>
+<p>
+-17- Let <tt>A</tt> be
+</p>
+<ol style="list-style-type: none">
+  <li><p>(17.1) &mdash; <tt>Allocator</tt>, if it is not <tt>void</tt>,</p></li>
+  <li><p>(17.2) &mdash; <tt>Alloc</tt> for the overloads with a template parameter <tt>Alloc</tt>, or</p></li>
+  <li><p>(17.3) &mdash; <tt>allocator&lt;void&gt;</tt> otherwise.</p></li>
+</ol>
+<p>
+Let <tt>B</tt> be <tt>allocator_traits&lt;A&gt;::template rebind_alloc&lt;U&gt;</tt>
+where <tt>U</tt> is an unspecified type whose size and alignment are both
+<tt>__STDCPP_DEFAULT_NEW_ALIGNMENT__</tt>.
+<p/>
+-18- <i>Mandates</i>: <tt>allocator_traits&lt;B&gt;::pointer</tt> is a pointer type.
+<ins>For the overloads with a template parameter <tt>Alloc</tt>,
+<tt>same_as&lt;Allocator, void&gt; || convertible_to&lt;const Alloc&amp;, Allocator&gt;</tt> is modeled.</ins>
+<p/>
+-19- <i>Effects</i>: Initializes an allocator <tt>b</tt> of type <tt>B</tt> with <tt>A(alloc)</tt>,
+for the overloads with a function parameter <tt>alloc</tt>, and with <tt>A()</tt> otherwise.
+Uses <tt>b</tt> to allocate storage for the smallest array of <tt>U</tt> sufficient
+to provide storage for a coroutine state of size <tt>size</tt>, and unspecified
+additional state necessary to ensure that <tt>operator delete</tt> can later
+deallocate this memory block with an allocator equal to <tt>b</tt>.
+<p/>
+-20- <i>Returns:</i> A pointer to the allocated storage.
+</p>
+
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+</body>
+</html>
