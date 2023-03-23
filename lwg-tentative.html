@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2023-03-22 at 13:19:33 UTC</p>
+<p><p>Revised 2023-03-23 at 05:02:17 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="3714" href="3714">3714.</a> Non-single-argument constructors for range adaptors should not be <tt>explicit</tt></h3>
@@ -51,6 +51,7 @@
  <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-06-10 <b>Last modified:</b> 2023-01-24 10:14:05 UTC</p>
 <p><b>Priority: </b>4
 </p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 All C++20 range adaptors' non-single-argument constructors are not declared as <tt>explicit</tt>, which makes 
@@ -308,6 +309,715 @@ constexpr <del>explicit</del> chunk_by_view(V base, Pred pred);
 </p>
 </blockquote>
 </blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3884" href="3884">3884.</a> <tt>flat_<i>foo</i></tt> is missing allocator-extended copy/move constructors</h3>
+<p><b>Section:</b> 24.6.9 <a href="https://timsong-cpp.github.io/cppwp/flat.map">[flat.map]</a>, 24.6.10 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap">[flat.multimap]</a>, 24.6.11 <a href="https://timsong-cpp.github.io/cppwp/flat.set">[flat.set]</a>, 24.6.12 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset">[flat.multiset]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2023-02-06 <b>Last modified:</b> 2023-03-23 04:33:35 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#flat.map">active issues</a> in [flat.map].</p>
+<p><b>View all other</b> <a href="lwg-index.html#flat.map">issues</a> in [flat.map].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This issue is part of the "<tt>flat_<i>foo</i></tt>" sequence, LWG <a href="3786">3786</a>, <a href="3802">3802</a>,
+<a href="3803">3803</a>, <a href="3804">3804</a>. <tt>flat_set</tt>, <tt>flat_multiset</tt>, <tt>flat_map</tt>, and
+<tt>flat_multimap</tt> all have implicitly defaulted copy and move constructors, but they lack
+allocator-extended versions of those constructors. This means that the following code is broken:
+</p>
+<blockquote><pre>
+// <a href="https://godbolt.org/z/qezv5rTrW">https://godbolt.org/z/qezv5rTrW</a>
+#include &lt;cassert&gt;
+#include &lt;flat_set&gt;
+#include &lt;memory_resource&gt;
+#include &lt;utility&gt;
+#include &lt;vector&gt;
+
+template&lt;class T, class Comp = std::less&lt;T&gt;&gt;
+using pmr_flat_set = std::flat_set&lt;T, Comp, std::pmr::vector&lt;T&gt;&gt;;
+
+int main() {
+  std::pmr::vector&lt;pmr_flat_set&lt;int&gt;&gt; vs = {
+    {1,2,3},
+    {4,5,6},
+  };
+  std::pmr::vector&lt;int&gt; v = std::move(vs[0]).extract();
+  assert(v.get_allocator().resource() == std::pmr::get_default_resource());
+}
+</pre></blockquote>
+<p>
+<tt>pmr_flat_set&lt;int&gt;</tt> advertises that it "<tt>uses_allocator</tt>" <tt>std::pmr::polymorphic_allocator&lt;int&gt;</tt>,
+but in fact it lacks the allocator-extended constructor overload set necessary to interoperate with <tt>std::pmr::vector</tt>.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3884"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/flat.map.defn">[flat.map.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+  class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_map {
+  public:
+    [&hellip;]
+    // <i>24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a>, construct/copy/destroy</i>
+    flat_map() : flat_map(key_compare()) { }
+
+    <ins>template&lt;class Allocator&gt;
+      flat_map(const flat_map&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_map(flat_map&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.9.3 <a href="https://timsong-cpp.github.io/cppwp/flat.map.cons">[flat.map.cons]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: As a drive-by fix, a missing closing <tt>&gt;</tt> is inserted in p11.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_map(const flat_map&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_map(flat_map&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_map(const key_compare&amp; comp, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  explicit flat_map(const Allocator&amp; a);
+template&lt;class InputIterator, class Allocator&gt;
+  flat_map(InputIterator first, InputIterator last, const key_compare&amp; comp, const Allocator&amp; a);
+template&lt;class InputIterator, class Allocator&gt;
+  flat_map(InputIterator first, InputIterator last, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints</i>: <tt>uses_allocator_v&lt;key_container_type, Allocator<ins>&gt;</ins></tt> is <tt>true</tt> and
+<tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-12- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt>c.keys</tt> and
+<tt>c.values</tt> are constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.10.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.defn">[flat.multimap.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class T, class Compare = less&lt;Key&gt;,
+  class KeyContainer = vector&lt;Key&gt;, class MappedContainer = vector&lt;T&gt;&gt;
+  class flat_multimap {
+  public:
+    [&hellip;]
+    // <i>24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a>, construct/copy/destroy</i>
+    flat_multimap() : flat_multimap(key_compare()) { }
+
+    <ins>template&lt;class Allocator&gt;
+      flat_multimap(const flat_multimap&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_multimap(flat_multimap&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.10.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multimap.cons">[flat.multimap.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_multimap(const flat_multimap&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_multimap(flat_multimap&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_multimap(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints</i>: <tt>uses_allocator_v&lt;key_container_type, Allocator&gt;</tt> is <tt>true</tt> and
+<tt>uses_allocator_v&lt;mapped_container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-12- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt>c.keys</tt> and
+<tt>c.values</tt> are constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.11.2 <a href="https://timsong-cpp.github.io/cppwp/flat.set.defn">[flat.set.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_set {
+  public:
+    [&hellip;]
+    // <i>24.6.11.3 <a href="https://timsong-cpp.github.io/cppwp/flat.set.cons">[flat.set.cons]</a>, constructors</i>
+    flat_set() : flat_set(key_compare()) { }
+
+    <ins>template&lt;class Allocator&gt;
+      flat_set(const flat_set&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_set(flat_set&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.11.3 <a href="https://timsong-cpp.github.io/cppwp/flat.set.cons">[flat.set.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_set(const flat_set&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_set(flat_set&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_set(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-10- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt><i>c</i></tt> is
+constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.12.2 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.defn">[flat.multiset.defn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Key, class Compare = less&lt;Key&gt;, class KeyContainer = vector&lt;Key&gt;&gt;
+  class flat_multiset {
+  public:
+    [&hellip;]
+    // <i>24.6.12.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.cons">[flat.multiset.cons]</a>, constructors</i>
+    flat_multiset() : flat_multiset(key_compare()) { }
+
+    <ins>template&lt;class Allocator&gt;
+      flat_multiset(const flat_multiset&amp;, const Allocator&amp; a);
+    template&lt;class Allocator&gt;
+      flat_multiset(flat_multiset&amp;&amp;, const Allocator&amp; a);</ins>
+
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.6.12.3 <a href="https://timsong-cpp.github.io/cppwp/flat.multiset.cons">[flat.multiset.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>template&lt;class Allocator&gt;
+  flat_multiset(const flat_multiset&amp;, const Allocator&amp; a);
+template&lt;class Allocator&gt;
+  flat_multiset(flat_multiset&amp;&amp;, const Allocator&amp; a);</ins>
+template&lt;class Allocator&gt;
+  flat_multiset(const key_compare&amp; comp, const Allocator&amp; a);
+[&hellip;]
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: <tt>uses_allocator_v&lt;container_type, Allocator&gt;</tt> is <tt>true</tt>.
+<p/>
+-10- <i>Effects</i>: Equivalent to the corresponding non-allocator constructors except that <tt><i>c</i></tt> is
+constructed with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>).
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3885" href="3885">3885.</a> '<tt>op</tt>' should be in [zombie.names]</h3>
+<p><b>Section:</b> 16.4.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/zombie.names">[zombie.names]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-02-11 <b>Last modified:</b> 2023-03-22 22:31:57 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+C++98 and C++11 defined a protected member <tt>std::bind1st::op</tt> so '<tt>op</tt>' should still be a reserved name, 
+just like '<tt>bind1st</tt>' itself.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3885"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 16.4.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/zombie.names">[zombie.names]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The following names are reserved as members for previous standardization, and may not be used as a name
+for object-like macros in portable code:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>argument_type</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(2.3) &mdash; <tt>io_state</tt>,</p></li>
+<li><p><ins>(2.?) &mdash; <tt>op</tt>,</ins></p></li>
+<li><p>(2.4) &mdash; <tt>open_mode</tt>,</p></li>
+<li><p>[&hellip;]</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3887" href="3887">3887.</a> Version macro for <tt>allocate_at_least</tt></h3>
+<p><b>Section:</b> 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2023-02-14 <b>Last modified:</b> 2023-03-22 21:44:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#version.syn">active issues</a> in [version.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#version.syn">issues</a> in [version.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In Issaquah, we just adopted <a href="https://wg21.link/P2652R0">P2652R0</a>, forbidding user specialization of <tt>allocator_traits</tt>. 
+<p/>
+It looks like we did not deem that worthy of a feature macro.
+<p/>
+However, it also changed the interface of the C++23 addition, <tt>allocate_at_least</tt>, which is covered by the macro 
+<tt>__cpp_lib_allocate_at_least</tt>.
+<p/>
+I believe we should have updated that macro for this significant change in how that function is accessed 
+(from free function to a member of <tt>allocator_traits</tt>). Unfortunately, there are no more meetings 
+to process a comment to that effect, and I suspect this rises beyond the purview of an editorial change, 
+although I live in hope (as the original paper left the value of the macro to the editor, although we 
+approved existing working papers where that macro does have a value, i.e., status quo).
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+But "if we don’t get the editors to do it for C++23 there doesn’t seem to be
+any point doing it."
+</p>
+
+
+
+<p id="res-3887"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a>, header <tt>&lt;version&gt;</tt> synopsis, as indicated and replace
+the placeholder <tt>YYYYMM</tt> by the year and month of adoption of <a href="https://wg21.link/P2652R0">P2652R0</a>:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+#define __cpp_lib_algorithm_iterator_requirements  202207L
+  // <i>also in &lt;algorithm&gt;, &lt;numeric&gt;, &lt;memory&gt;</i>
+#define __cpp_lib_allocate_at_least                <del>202106</del><ins>YYYYMM</ins>L // <i>also in &lt;memory&gt;</i>
+#define __cpp_lib_allocator_traits_is_always_equal 201411L
+  // <i>also in [&hellip;]</i>
+[&hellip;]
+</pre>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3893" href="3893">3893.</a> LWG 3661 broke <tt>atomic&lt;shared_ptr&lt;T&gt;&gt; a; a = nullptr;</tt></h3>
+<p><b>Section:</b> 33.5.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Zachary Wassall <b>Opened:</b> 2023-02-22 <b>Last modified:</b> 2023-03-22 22:32:33 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.atomic.shared">issues</a> in [util.smartptr.atomic.shared].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3661">3661</a>, "<tt>constinit atomic&lt;shared_ptr&lt;T&gt;&gt; a(nullptr);</tt> should work" 
+added the following to <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt>:
+</p>
+<blockquote><pre>
+constexpr atomic(nullptr_t) noexcept : atomic() { }
+</pre></blockquote>
+<p>
+I believe that doing so broke the following example:
+</p>
+<blockquote><pre>
+atomic&lt;shared_ptr&lt;T&gt;&gt; a;
+a = nullptr;
+</pre></blockquote>
+<p>
+For reference, <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt> provides two assignment operator overloads:
+</p>
+<blockquote><pre>
+void operator=(const atomic&amp;) = delete;          // #1
+void operator=(shared_ptr&lt;T&gt; desired) noexcept;  // #2
+</pre></blockquote>
+<p>
+Prior to LWG <a href="3661">3661</a>, the assignment in the example unambiguously matches #2. #1 is not viable because 
+<tt>nullptr_t</tt> is not convertible to <tt>atomic&lt;shared_ptr&lt;T&gt;&gt;</tt>. After LWG 3611, #1 is viable 
+and the assignment is ambiguous between #1 and #2.
+<p/>
+I believe this could be remedied easily enough by adding an assignment operator to match the added 
+<tt>nullptr_t</tt> constructor:
+</p>
+<blockquote><pre>
+void operator=(nullptr_t) noexcept;
+</pre></blockquote>
+
+<p><i>[2023-02-25; Daniel comments and provides wording]</i></p>
+
+<p>
+The suggested delegation below to <tt>store(nullptr)</tt> is not ambiguous and calls the constructor
+<tt>shared_ptr(nullptr_t)</tt>, which is guaranteed to be no-throwing.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3893"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.5.8.7.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.atomic.shared">[util.smartptr.atomic.shared]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; struct atomic&lt;shared_ptr&lt;T&gt;&gt; {
+    [&hellip;]
+    constexpr atomic() noexcept;
+    constexpr atomic(nullptr_t) noexcept : atomic() { }
+    atomic(shared_ptr&lt;T&gt; desired) noexcept;
+    atomic(const atomic&amp;) = delete;
+    void operator=(const atomic&amp;) = delete;
+    [&hellip;]
+    void operator=(shared_ptr&lt;T&gt; desired) noexcept;
+    <ins>void operator=(nullptr_t) noexcept;</ins>
+    [&hellip;]
+  private:
+    shared_ptr&lt;T&gt; p; // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+void operator=(shared_ptr&lt;T&gt; desired) noexcept;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: Equivalent to <tt>store(desired)</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>void operator=(nullptr_t) noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to <tt>store(nullptr)</tt>.</ins>
+</p>
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3894" href="3894">3894.</a> <tt>generator::promise_type::yield_value(ranges::elements_of&lt;Rng, Alloc&gt;)</tt> should not be <tt>noexcept</tt></h3>
+<p><b>Section:</b> 26.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2023-02-25 <b>Last modified:</b> 2023-03-22 22:32:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#coro.generator.promise">active issues</a> in [coro.generator.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#coro.generator.promise">issues</a> in [coro.generator.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The overload of <tt>yield_value</tt> for yielding elements of arbitrary ranges does so by creating a nested generator, 
+but to do so it needs to:
+</p>
+<ul>
+<li><p>call <tt>ranges::begin</tt>/<tt>ranges::end</tt> on the range  </p></li>
+<li><p>allocate a new coroutine frame (unless the allocation is elided by the compiler, which isn't guaranteed)</p></li>
+<li><p>copy/move the iterator and sentinel into the coroutine frame</p></li>
+</ul>
+<p>
+All of these are allowed to throw, so this overload should not be <tt>noexcept</tt>.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3894"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Ref, class V, class Allocator&gt;
+  class generator&lt;Ref, V, Allocator&gt;::promise_type {
+  public:
+    [&hellip;]
+    auto yield_value(const remove_reference_t&lt;yielded&gt;&amp; lval)
+      requires is_rvalue_reference_v&lt;yielded&gt; &amp;&amp;
+        constructible_from&lt;remove_cvref_t&lt;yielded&gt;, const remove_reference_t&lt;yielded&gt;&amp;&gt;;
+    
+    template&lt;class R2, class V2, class Alloc2, class Unused&gt;
+      requires same_as&lt;typename generator&lt;R2, V2, Alloc2&gt;::yielded, yielded&gt;
+        auto yield_value(ranges::elements_of&lt;generator&lt;R2, V2, Alloc2&gt;&amp;&amp;, Unused&gt; g) noexcept;
+    
+    template&lt;ranges::input_range R, class Alloc&gt;
+      requires convertible_to&lt;ranges::range_reference_t&lt;R&gt;, yielded&gt;
+        auto yield_value(ranges::elements_of&lt;R, Alloc&gt; r) <del>noexcept</del>;
+    [&hellip;]
+   };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;ranges::input_range R, class Alloc&gt;
+  requires convertible_to&lt;ranges::range_reference_t&lt;R&gt;, yielded&gt;
+  auto yield_value(ranges::elements_of&lt;R, Alloc&gt; r) <del>noexcept</del>;
+</pre>
+<blockquote>
+<p>
+-13- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto nested = [](allocator_arg_t, Alloc, ranges::iterator_t&lt;R&gt; i, ranges::sentinel_t&lt;R&gt; s)
+  -&gt; generator&lt;yielded, ranges::range_value_t&lt;R&gt;, Alloc&gt; {
+    for (; i != s; ++i) {
+      co_yield static_cast&lt;yielded&gt;(*i);
+    }
+  };
+return yield_value(ranges::elements_of(nested(
+  allocator_arg, r.allocator, ranges::begin(r.range), ranges::end(r.range))));
+</pre></blockquote>
+[&hellip;]
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3901" href="3901">3901.</a> Is uses-allocator construction of a <i>cv</i>-qualified object type still well-formed after LWG 3870?</h3>
+<p><b>Section:</b> 20.2.8 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses">[allocator.uses]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-05 <b>Last modified:</b> 2023-03-22 22:35:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3870">3870</a> made <tt>std::construct_at</tt> unable to create an object of a <i>cv</i>-qualified type, 
+which affects <tt>std::uninitialized_construct_using_allocator</tt>. However, uses-allocator construction is 
+currently not required to be equivalent to some call to <tt>std::uninitialized_construct_using_allocator</tt>, 
+which possibly implies that uses-allocator construction of a <i>cv</i>-qualified type may still be required to be 
+well-formed.
+<p/>
+Should we make such construction ill-formed?
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>Set status to Tentatively NAD.</p>
+<p>Not all uses-allocator construction is done using <code>construct_at</code>.
+<code>std::tuple&lt;const T&gt;(allocator_arg, alloc)</code> does
+uses-allocator construction of a const type, so we can't make it ill-formed.
+</p>
+
+
+
+<p id="res-3901"><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3903" href="3903">3903.</a> <tt>span</tt> destructor is redundantly <tt>noexcept</tt></h3>
+<p><b>Section:</b> 24.7.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Ben Craig <b>Opened:</b> 2023-03-11 <b>Last modified:</b> 2023-03-22 22:33:28 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#span.overview">active issues</a> in [span.overview].</p>
+<p><b>View all other</b> <a href="lwg-index.html#span.overview">issues</a> in [span.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>span</tt> class template synopsis in 24.7.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a> has this declaration:
+</p>
+<blockquote><pre>
+~span() noexcept = default;
+</pre></blockquote>
+<p>
+The <tt>noexcept</tt> is redundant, as <tt>~span</tt> is <tt>noexcept</tt> automatically. I think the entire 
+declaration is unnecessary as well. There is no additional specification for <tt>~span()</tt> at all, much 
+less some that warrants inclusion in the class template synopsis.
+<p/>
+Recommended fix:
+</p>
+<blockquote><pre>
+<del>~span() noexcept = default;</del>
+</pre></blockquote>
+<p>
+Alternative fix:
+</p>
+<blockquote><pre>
+~span() <del>noexcept</del> = default;
+</pre></blockquote>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3903"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 24.7.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/span.overview">[span.overview]</a>, class template <tt>span</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+
+<del>~span() noexcept = default;</del>
+
+[&hellip;]
+</pre>
+</blockquote>
+
 </li>
 
 </ol>
