@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3909: Issues about viewable_range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3909" href="lwg-active.html#3909">3909.</a> Issues about <code>viewable_range</code></h3>
+<p><b>Section:</b> 99 [ranges.refinements], 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-27 <b>Last modified:</b> 2023-03-27 14:01:48 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+After LWG <a href="3724">3724</a>, <code>views::all</code> is well-constrained for view types,
+and the constraints are stronger than <code>viewable_range</code>.
+The difference is that given an expression such that <code>decltype</code> gives <code>R</code>,
+when <code>decay_t&lt;R&gt;</code> is a view type and the implicit conversion of <code>R</code>
+to <code>decay_t&lt;R&gt;</code> is forbidden, <code>views::all</code> rejects the expression,
+but <code>viewable_range</code> may accept <code>R</code>.
+So I think we should remove the additional constraints on <code>views::all_t</code>.
+</p>
+<p>
+While <code>viewable_range</code> is probably not introducing any additional constraint within the standard library,
+I think it is still useful to express the constraints on <code>views::all</code>,
+so it should be slightly adjusted to match <code>views::all</code>.
+</p>
+<p>
+Furthermore, <code>viewable_range</code> is currently used in 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>,
+but given <a href="https://wg21.link/P2378R3">P2378R3</a> relaxed the requirements for range adaptor closure objects,
+I think we should also apply similar relaxation for range adaptor objects.
+This should have no impact on standard range adaptor objects.
+</p>
+
+
+<p id="res-3909"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Change the definition of <code>views::all_t</code> in 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:
+</p>
+<blockquote><pre><code>
+   template&lt;<del>viewable_range</del><ins>class</ins> R&gt;
+      using all_t = decltype(all(declval&lt;R&gt;()));          // freestanding
+</code></pre>
+</blockquote>
+</li>
+<li>
+<p>
+Change the definition of <code>viewable_range</code> in 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:
+</p>
+<blockquote>
+<p>-6-
+The <code>viewable_range</code> concept specifies the requirements of a <code>range</code> type
+that can be converted to a view safely.
+</p>
+<pre><code>
+template&lt;class T&gt;
+  concept viewable_range =
+    range&lt;T&gt; &amp;&amp;
+    ((view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp; <del>constructible_from&lt;remove_cvref_t&lt;T&gt;, T&gt;</del> <ins>convertible_to&lt;T, remove_cvref_t&lt;T&gt;&gt;</ins>) ||
+     (!view&lt;remove_cvref_t&lt;T&gt;&gt; &amp;&amp;
+      (is_lvalue_reference_v&lt;T&gt; || (movable&lt;remove_reference_t&lt;T&gt;&gt; &amp;&amp; !<i>is-initializer-list</i>&lt;T&gt;))));
+</code></pre>
+</blockquote>
+</li>
+<li>
+<p>
+Change 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> as indicated:
+</p>
+<blockquote>
+<p>-6-
+A <i>range adaptor object</i> is a customization point object (16.3.3.3.5 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>)
+that accepts a <code><del>viewable_range</del><ins>range</ins></code> as its first argument
+and returns a view.
+</p>
+<p>
+[&hellip;]
+</p>
+<p>-8-
+If a range adaptor object <code>adaptor</code> accepts more than one argument,
+then let <code>range</code> be an expression such that <code>decltype((range))</code>
+models <code><del>viewable_range</del><ins>range</ins></code>,
+let <code>args...</code> be arguments such that <code>adaptor(range, args...)</code>
+is a well-formed expression as specified in the rest of subclause 26.7 <a href="https://timsong-cpp.github.io/cppwp/range.adaptors">[range.adaptors]</a>,
+and let <code>BoundArgs</code> be a pack that denotes <code>decay_t&lt;decltype((args))&gt;...</code>.
+The expression <code>adaptor(args...)</code> produces a range adaptor closure object
+<code>f</code> that is a perfect forwarding call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>)
+with the following properties: [...]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>
