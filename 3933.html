@@ -1,0 +1,248 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3933: P1467R9 accidentally changed the signatures of certain constructors of std::complex</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3933" href="lwg-active.html#3933">3933.</a> P1467R9 accidentally changed the signatures of certain constructors of <tt>std::complex</tt></h3>
+<p><b>Section:</b> 28.4.3 <a href="https://timsong-cpp.github.io/cppwp/complex">[complex]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-05-16 <b>Last modified:</b> 2023-05-21 10:37:12 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#complex">active issues</a> in [complex].</p>
+<p><b>View all other</b> <a href="lwg-index.html#complex">issues</a> in [complex].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In C++20 and earlier revisions, there are constructors taking two floating-point numbers by value in explicit 
+specializations of <tt>std::complex</tt> for standard floating-point types. Since <a href="https://wg21.link/P1467R9">P1467R9</a> has 
+removed these explicit specializations, the corresponding constructor in the primary template that takes arguments 
+by <tt>const T&amp;</tt> are used instead. As a result, the following program becomes ill-formed after the changes.
+</p>
+<blockquote><pre>
+#include &lt;complex&gt;
+
+int main()
+{
+  volatile double x = 0.0;
+  std::complex&lt;double&gt; z{x, x}; // <span  style="color:#C80000;font-weight:bold">ill-formed due to P1467R9 because const double&amp; cannot be bound to a volatile double lvalue</span>
+}
+</pre></blockquote>
+<p>
+Currently, libstdc++ has implemented complex specializations for extended floating-point types, but the corresponding 
+constructors of these specializations takes two arguments by value, which is consistent with old specializations.
+<p/>
+It seems that it's unintended to change the signatures of these constructors. Perhaps we should restore the signatures for 
+required specializations.
+</p>
+
+<p>
+<b>Daniel:</b>
+<p/>
+Not only constructors are affected, but also all assignment operators taking the <tt>value_type</tt> as
+parameter and I suggest that LEWG should have a look at this issue.
+</p>
+
+<p><i>[2023-05-20; Daniel comments and suggests wording]</i></p>
+
+<p>
+The wording below attempts to restore the exact previous behaviour: For all floating-point types the 
+function parameter types are "by value" and for other types are "by const reference". The wording adds for 
+specification purposes a dependency to the concept <tt>std::floating_point</tt>, but that doesn't mean that an 
+implementation couldn't realize the required effects without usage of concepts or the <tt>&lt;type_traits&gt;</tt>
+header.
+<p/>
+Note that we have already precedence for similar cases where we later reintroduced concept requirements to library
+parts where no concept dependencies had exist before, such as the <tt>iterator_traits</tt> specialization for
+pointers (to object) or the additional constraints of <tt>set</tt>'s member function 
+<tt>iterator erase(const_iterator position)</tt> or the constraint for <tt>reverse_iterator::operator-&gt;()</tt>,
+just to name a few.
+<p/>
+One alternative approach could be to switch to "by-value" signatures only for the affected signatures. This could 
+affect user-defined floating-point-like types such as those with an arbitrary precision, therefore I started with 
+the most conservative approach restoring the original effects that was present in the
+working draft <a href="https://wg21.link/N4910">N4910</a> and older ones. It might we worth pointing out that the existing "setter"
+functions <tt>imag</tt> and <tt>real</tt> have always been using "by-value" signatures for all specializations.
+<p/>
+There exists also the possible argument to close this issue as NAD based on the argument that all existing 
+non-member operators taking a <tt>value_type</tt> argument had always been defined to use <tt>const T&amp;</tt>
+as parameter (such as the <tt>operator@(const T&amp; lhs, const complex&lt;T&gt;&amp; rhs)</tt> forms).
+<p/>
+My main argument to solve this issue as shown below is based on the ground that the refactoring done by
+<a href="https://wg21.link/P1467R9">P1467R9</a> was mainly inspired to simplify the existing wording and to make it more easy to
+integrate the addition of the extended floating-point types here, as quoted from 
+<a href="https://wg21.link/p1467r9#complex">P1467R9 section 6.6. <tt>&lt;complex&gt;</tt></a>:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+[&hellip;] The explicit specializations of <tt>std::complex&lt;T&gt;</tt> are removed. The only differences between 
+the explicit specializations was the explicit-ness of the constructors that take a complex number of a different type. 
+</blockquote>
+<p>
+This issue has some overlap with LWG <a href="3934">3934</a>, which suggests a yet missing specification for
+the assignment operator taking the <tt>value_type</tt> as parameter.
+</p>
+
+
+<p id="res-3933"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 28.4.3 <a href="https://timsong-cpp.github.io/cppwp/complex">[complex]</a>, class template <tt>complex</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; class complex {
+  public:
+    using value_type = T;
+
+    <ins>constexpr complex(T re = T(), T im = T()) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex(const T&amp; re = T(), const T&amp; im = T()) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    [&hellip;]
+    <ins>constexpr complex&amp; operator= (T) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex&amp; operator= (const T&amp;) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    <ins>constexpr complex&amp; operator+=(T) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex&amp; operator+=(const T&amp;) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    <ins>constexpr complex&amp; operator-=(T) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex&amp; operator-=(const T&amp;) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    <ins>constexpr complex&amp; operator*=(T) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex&amp; operator*=(const T&amp;) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    <ins>constexpr complex&amp; operator/=(T) requires floating_point&lt;T&gt;;</ins>
+    constexpr complex&amp; operator/=(const T&amp;) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 28.4.4 <a href="https://timsong-cpp.github.io/cppwp/complex.members">[complex.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<ins>constexpr complex(T re = T(), T im = T()) requires floating_point&lt;T&gt;;</ins>
+constexpr complex(const T&amp; re = T(), const T&amp; im = T()) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Postconditions</i>: <tt>real() == re &amp;&amp; imag() == im</tt> is <tt>true</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 28.4.5 <a href="https://timsong-cpp.github.io/cppwp/complex.member.ops">[complex.member.ops]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: We have an pre-existing specification hole that the effects of the non-compound assignment 
+operator taking the <tt>value_type</tt> as parameter are nowhere specified. This is going to be submitted as a
+separate issue, see LWG <a href="3934">3934</a>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+<ins>constexpr complex&amp; operator+=(T rhs) requires floating_point&lt;T&gt;;</ins>
+constexpr complex&amp; operator+=(const T&amp; rhs) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Adds the scalar value <tt>rhs</tt> to the real part of the complex value <tt>*this</tt> and 
+stores the result in the real part of <tt>*this</tt>, leaving the imaginary part unchanged.
+<p/>
+-2- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr complex&amp; operator-=(T rhs) requires floating_point&lt;T&gt;;</ins>
+constexpr complex&amp; operator-=(const T&amp; rhs) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Subtracts the scalar value <tt>rhs</tt> from the real part of the complex value <tt>*this</tt> and 
+stores the result in the real part of <tt>*this</tt>, leaving the imaginary part unchanged.
+<p/>
+-4- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr complex&amp; operator*=(T rhs) requires floating_point&lt;T&gt;;</ins>
+constexpr complex&amp; operator*=(const T&amp; rhs) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: Multiplies the scalar value <tt>rhs</tt> by the complex value <tt>*this</tt> and 
+stores the result in <tt>*this</tt>.
+<p/>
+-6- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr complex&amp; operator/=(T rhs) requires floating_point&lt;T&gt;;</ins>
+constexpr complex&amp; operator/=(const T&amp; rhs) <ins>requires (!floating_point&lt;T&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Divides the scalar value <tt>rhs</tt> into the complex value <tt>*this</tt> and 
+stores the result in <tt>*this</tt>.
+<p/>
+-8- <i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3941: &sect;[atomics.order] inadvertently prohibits widespread implementation techniques</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3941" href="lwg-active.html#3941">3941.</a> &sect;[atomics.order] inadvertently prohibits widespread implementation techniques</h3>
+<p><b>Section:</b> 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hans Boehm <b>Opened:</b> 2023-05-27 <b>Last modified:</b> 2023-05-28 08:04:56 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#atomics.order">active issues</a> in [atomics.order].</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.order">issues</a> in [atomics.order].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+[Discovered by Ori Lahav, lead author of <a href="https://plv.mpi-sws.org/scfix/paper.pdf"></a>, 
+which <a href="https://wg21.link/P0668">P0668</a> more or less tried to implement. This description also includes observations 
+from Olivier Giroux and David Goldblatt.]
+<p/>
+Currently, we require that the sequential consistency order S is consistent with the extended coherence order, 
+which includes "reads before" and "reads from". This may require sc reads to be consistently ordered 
+even if they see non-sc writes. This is not enforced by some "fence-after-store"/"trailing fence" sc 
+implementations, notably on X86. It may also be violated by compiler transformations that eliminate a 
+sequentially consistent load after a store into the same location, e.g. on sequentially consistent hardware.
+<p/>
+As Ori pointed out, this is exhibited by their (SB + rfis) example on x86 reproduced below. I would expect 
+this also happens on other platforms. The (SB + rfis) example:
+</p>
+<blockquote>
+<pre>
+Thread 1: x.store(1, mo_release); r1 = x.load() /* sees 1 */; r2 = y.load() /* sees 0 */
+Thread 2: y.store(1, mo_release); r1 = y.load() /* sees 1 */; r2 = x.load() /* sees 0 */
+</pre>
+</blockquote>
+<p>
+This is unintentionally and unexpectedly disallowed by the current standard. We can see this as follows:
+<p/>
+We have the following coherence-ordered-before relationships:
+</p>
+<ol style="list-style-type: none">
+<li><p>By 3.1 in 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> (reads-from): The store in each thread is coherence-ordered-before the 
+immediately following load.</p></li>
+<li><p>By 3.3 (reads-before): The final load in each thread is coherence-ordered before the store in the other thread.</p></li>
+<li><p>By 3.4 (transitivity): The final load in each thread is coherence-ordered-before the initial load in the other thread.</p></li>
+</ol>
+<p>
+On the other hand, the initial load in each thread is sequenced-before and thus strongly-happens-before 
+6.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a> p12.1 the final load in that thread. Thus coherence-ordered-before union strongly-happens-before 
+is cyclic. But the S relation 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> p4 must order all the loads, consistent with both strongly-happens-before 
+(p4) and coherence-ordered-before (p4.1), which is clearly impossible.
+<p/>
+With the standard x86 implementation, no fences are inserted. Thread 1 and Thread 2 see the stores to <tt>x</tt> and 
+<tt>y</tt> in inconsistent orders, which is allowed by TSO, since each thread can see its own write early. Thus the 
+implementation allows the outcome in question, as expected.
+<p/>
+The problem here is an error during the attempt to simplify and translate 
+<a href="https://plv.mpi-sws.org/scfix/paper.pdf">plv.mpi-sws.org/scfix/paper.pdf</a> to standardese. There is no known 
+issue with the underlying paper.
+<p/>
+I have not yet wrapped my head around this sufficiently to be able to suggest a solution, or to understand how difficult 
+that will be. This happened as a consequence of attempting to strengthen SC fences, and <em>not</em> fixing the Power 
+compilation problem (<a href="https://wg21.link/P0668">P0668</a>). So we could probably improve matters by reverting the strengthening of sc fences. 
+Clearly, we'd prefer to avoid that. We could just adopt the formulation in the paper, though that seems even harder to motivate 
+informally. Fundamentally, it feels like we inadvertently strengthened (and broke) the semantics of ordinary sc operations, 
+when we intended to only affect fences. The original paper makes more of a distinction there. The question is how we can 
+reformulate that suitably here.
+<p/>
+[ Meta-observation from a small off-line discussion that may be relevant to how we phrase the resolution here: The fact that 
+nobody noticed this for a very long time, and implementers were not bothered by it, suggests that the audience for this part 
+of the standard is nearly empty. We conjecture that implementers actually rely on atomics mappings generated by memory model 
+experts, who are more interested in formal models than standardese. A more formal description is likely to increase the size 
+of the audience, and would definitely ease verification and reduce the probability of mistakes like this.]
+</p>
+
+
+<p id="res-3941"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

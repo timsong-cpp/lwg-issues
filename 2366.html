@@ -46,7 +46,7 @@
 <hr>
 <h3><a name="2366" href="lwg-active.html#2366">2366.</a> <tt>istreambuf_iterator</tt> end-of-stream equality</h3>
 <p><b>Section:</b> 25.6.4 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator">[istreambuf.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Hyman Rosen <b>Opened:</b> 2014-02-19 <b>Last modified:</b> 2014-06-17 08:47:43 UTC</p>
+ <b>Submitter:</b> Hyman Rosen <b>Opened:</b> 2014-02-19 <b>Last modified:</b> 2023-04-13 07:33:55 UTC</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#istreambuf.iterator">active issues</a> in [istreambuf.iterator].</p>
@@ -79,9 +79,197 @@ work correctly. Dietmar K&uuml;hl has opined in a private communication that
 the iterators should compare equal.
 </p>
 
+<p><i>[2023-03-31; Jonathan Wakely comments]</i></p>
+
+<p>
+I agree that they should compare equal, but that's in conflict with the
+resolution of LWG <a href="2544">2544</a>, which says that <code>begin</code>
+must not be at end-of-stream because <code>&amp;buf</code> is not null.
+</p>
+
+<p><i>[2023-04-12; Jonathan adds wording]</i></p>
+
+
 
 
 <p id="res-2366"><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.</p>
+
+<ol>
+<li>
+<p>Change 25.6.4.1 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.general">[istreambuf.iterator.general]</a> as indicated:</p>
+<blockquote>
+<pre><code>
+    constexpr istreambuf_iterator() noexcept;
+    constexpr istreambuf_iterator(default_sentinel_t) noexcept;
+    istreambuf_iterator(const istreambuf_iterator&amp;) noexcept = default;
+    ~istreambuf_iterator() = default;
+    istreambuf_iterator(istream_type&amp; s) noexcept<del>;</del>
+    <ins>: istreambuf_iterator(s.rdbuf()) { }</ins>
+    istreambuf_iterator(streambuf_type* s) noexcept;
+    istreambuf_iterator(const <i>proxy</i>&amp; p) noexcept;
+    <i>&hellip;</i>
+
+  private:
+    streambuf_type* sbuf_;              <i>// exposition only</i>
+    <ins>int_type c_{};                      <i>// exposition only</i></ins>
+  };
+}
+</code></pre>
+</blockquote>
+</li>
+<li>
+<p>Change 25.6.4.3 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.cons">[istreambuf.iterator.cons]</a> as indicated:</p>
+<blockquote>
+<p>
+For each <tt>istreambuf_iterator</tt> constructor in this section, an end-of-stream iterator is
+constructed if <del>and only if</del> the exposition-only member <tt>sbuf_</tt> is initialized with a null
+pointer value
+<ins>or if <tt>sbuf_->sgetc()</tt> returns <tt>traits_type::eof()</tt></ins>.
+</p>
+<pre>
+constexpr istreambuf_iterator() noexcept;
+constexpr istreambuf_iterator(default_sentinel_t) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt>sbuf_</tt> with <tt>nullptr</tt>.
+</p>
+</blockquote>
+<pre><del>istreambuf_iterator(istream_type&amp; s) noexcept;</del></pre>
+<blockquote>
+<p><del>
+-2- <i>Effects</i>: Initializes <tt>sbuf_</tt> with <tt>s.rdbuf()</tt>.
+</del></p>
+</blockquote>
+<pre>
+istreambuf_iterator(streambuf_type* s) noexcept;
+</pre>
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i>
+<tt>sgetc()</tt> can throw, but this function is <tt>noexcept</tt>.
+Should it swallow exceptions and create an end-of-stream iterator,
+to avoid weakening the exception spec of an existing function?]
+</p>
+</blockquote>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Initializes <tt>sbuf_</tt> with <tt>s</tt>.
+<ins>
+If <tt>s</tt> is not null, initializes <tt>c_</tt> with <tt>s-&gt;sgetc()</tt>.
+Sets <tt>sbuf_</tt> to null if <tt>sgetc</tt> exits via an exception,
+or if <tt>traits_type::eq_int_type(c_, traits_type::eof())</tt> is <tt>true</tt>.
+</ins>
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator(const proxy&amp; p) noexcept;
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects</i>: Initializes <tt>sbuf_</tt> with <tt>p.sbuf_</tt>.
+<ins>
+If <tt>p.sbuf_</tt> is not null, initializes <tt>c_</tt> with <tt>p.keep_</tt>.
+</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<p>Change 25.6.4.4 <a href="https://timsong-cpp.github.io/cppwp/istreambuf.iterator.ops">[istreambuf.iterator.ops]</a> as indicated:</p>
+<blockquote>
+<pre>
+charT operator*() const;
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>sbuf_</tt> is not null.</ins>
+</p>
+<p>
+-1- <i>Returns</i>:
+<del>
+The character obtained via the <tt>streambuf</tt>
+member <tt>sbuf_-&gt;sgetc()</tt>.
+</del>
+<ins><tt>traits_type::to_char_type(c_)</tt>.</ins>
+</p>
+<p>
+<ins>-?- <i>Throws</i>: Nothing.</ins>
+</p>
+</blockquote>
+<pre>
+istreambuf_iterator&amp; operator++();
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>sbuf_</tt> is not null.</ins>
+</p>
+<p>-2-
+<i>Effects</i>:
+<del>As if by <tt>sbuf_-&gt;sbumpc()</tt>.</del>
+<ins>
+Performs <tt>c_ = sbuf_-&gt;snextc()</tt>,
+then sets <tt>sbuf_</tt> to null
+if <tt>traits_type::eq_int_type(c_, traits_type::eof())</tt> is <tt>true</tt>.
+</ins>
+</p>
+<p>-3-
+<i>Returns</i>: <tt>*this</tt>.
+</p>
+</blockquote>
+<pre>
+<i>proxy</i> operator++(int);
+</pre>
+<blockquote>
+<p>-4-
+<del>
+<i>Returns</i>: <tt><i>proxy</i>(sbuf_-&gt;sbumpc(), sbuf_)</tt>.
+</del>
+<br/>
+<ins><i>Effects</i>: Equivalent to:</ins>
+<pre><ins><code><i>proxy</i> p(**this, sbuf_);
+++*this;
+return p;
+</code></ins></pre>
+</p>
+</blockquote>
+<pre>
+bool equal(const istreambuf_iterator&amp; b) const;
+</pre>
+<blockquote>
+<p>-5-
+<i>Returns</i>: <ins><tt>bool(sbuf_) == bool(b.sbuf_)</tt>.</ins>
+</p>
+<p>
+<ins>[<i>Note</i>: This is</ins>
+<tt>true</tt> if and only if both iterators are at end-of-stream,
+or neither is at end-of-stream, regardless of what streambuf object they use.
+<ins>&mdash; <i>end note</i>]</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class charT, class traits&gt;
+  bool operator==(const istreambuf_iterator&lt;charT, traits&gt;&amp; a,
+                  const istreambuf_iterator&lt;charT, traits&gt;&amp; b);
+</pre>
+<blockquote>
+<p>-6-
+<i>Returns</i>: <tt>a.equal(b)</tt>.
+</p>
+</blockquote>
+<pre>
+bool equal(const istreambuf_iterator&amp; i, default_sentinel_t s) const;
+</pre>
+<blockquote>
+<p>-7-
+<i>Returns</i>: <tt><del>i.equal(s)</del> <ins>i.sbuf_ == nullptr</ins></tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
 
 
 

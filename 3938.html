@@ -1,0 +1,354 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3938: Cannot use std::expected monadic ops with move-only error_type</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3938" href="lwg-active.html#3938">3938.</a> Cannot use <code>std::expected</code> monadic ops with move-only <code>error_type</code></h3>
+<p><b>Section:</b> 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-05-25 <b>Last modified:</b> 2023-05-25 15:15:20 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#expected.object.monadic">issues</a> in [expected.object.monadic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The monadic ops for <code>std::expected</code> are specified in terms of calls
+to <code>value()</code> and <code>error()</code>, but LWG <a href="3843">3843</a>
+("<code>std::expected&lt;T,E&gt;::value()&amp;</code> assumes <code>E</code>
+is copy constructible") added additional <i>Mandates</i> requirements to
+<code>value()</code>. This means that you can never call <code>value()</code>
+for a move-only <code>error_type</code>, even the overloads of
+<code>value()</code> with rvalue ref-qualifiers.
+</p>
+<p>
+The changes to <code>value()</code> are because it needs to be able to throw a
+<code>bad_expected_access&lt;E&gt;</code> which requires a copyable <code>E</code>.
+But in the monadic ops we know it can't throw, because we always check.
+All the monadic ops are of the form:
+</p>
+<blockquote>
+<pre><code>if (has_value())
+  <i>do something with</i> value();
+else
+  <i>do something with</i> error();
+</code></pre></blockquote>
+<p>
+We know that <code>value()</code> won't throw here, but because we use
+"<i>Effects</i>: Equivalent to ..." the requirement for <code>E</code>
+to be copyable is inherited from <code>value()</code>.
+</p>
+<p>
+Should we have changed the monadic ops to use <code>operator*()</code>
+instead of <code>value()</code>?
+For example, for the first <code>and_then</code> overloads the change would be:
+</p>
+<blockquote>
+-4- <i>Effects</i>: Equivalent to:
+<blockquote>
+<pre><code>if (has_value())
+  return invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>**this</ins>);
+else
+  return U(unexpect, error());
+</code></pre></blockquote>
+</blockquote>
+
+
+<p id="res-3938"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li>
+<p>
+For each <i>Effects</i>: element in 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a>,
+replace <code>value()</code> with <code>**this</code> as indicated:
+</p>
+
+<blockquote>
+<pre><code>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;;
+</code></pre>
+<p>-1- Let <code>U</code> be
+<code>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(<del>value()</del><ins>**this</ins>)&gt;&gt;</code>.
+</p>
+<p>-2- <i>Constraints</i>:
+<code>is_constructible_v&lt;E, decltype(error())&gt;</code>
+is <code>true</code>.
+</p>
+<p>-3- <i>Mandates</i>:
+<code>U</code> is a specialization of <code>expected</code> and
+<code>is_same_v&lt;U::error_type, E&gt;</code> is <code>true</code>.
+</p>
+<p>-4- <i>Effects</i>: Equivalent to:</p>
+<blockquote>
+<pre><code>if (has_value())
+  return invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>**this</ins>);
+else
+  return U(unexpect, error());
+</code></pre>
+</blockquote>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;&amp;;
+</code></pre>
+<p>-5- Let <code>U</code> be
+<code>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(std::move(<del>value()</del><ins>**this</ins>))&gt;&gt;</code>.
+</p>
+<p>-6- <i>Constraints</i>:
+<code>is_constructible_v&lt;E, decltype(std::move(error()))&gt;</code>
+is <code>true</code>.
+</p>
+<p>-7- <i>Mandates</i>:
+<code>U</code> is a specialization of <code>expected</code> and
+<code>is_same_v&lt;U::error_type, E&gt;</code> is <code>true</code>.
+</p>
+<p>-8- <i>Effects</i>: Equivalent to:</p>
+<blockquote>
+<pre><code>if (has_value())
+  return invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>**this</ins>));
+else
+  return U(unexpect, std::move(error()));
+</code></pre>
+</blockquote>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;;
+</code></pre>
+<p>-9- Let <code>G</code> be
+<code>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(error())&gt;&gt;</code>.
+</p>
+<p>-10- <i>Constraints</i>:
+<code>is_constructible_v&lt;T, decltype(<del>value()</del><ins>**this</ins>)&gt;</code>
+is <code>true</code>.
+</p>
+<p>-11- <i>Mandates</i>:
+<code>G</code> is a specialization of <code>expected</code> and
+<code>is_same_v&lt;G::value_type, T&gt;</code> is <code>true</code>.
+</p>
+<p>-12- <i>Effects</i>: Equivalent to:</p>
+<blockquote>
+<pre><code>if (has_value())
+  return G(in_place, <del>value()</del><ins>**this</ins>);
+else
+  return invoke(std::forward&lt;F&gt;(f), error());
+</code></pre>
+</blockquote>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;&amp;;
+</code></pre>
+<p>-13- Let <code>G</code> be
+<code>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(std::move(error()))&gt;&gt;</code>.
+</p>
+<p>-14- <i>Constraints</i>:
+<code>is_constructible_v&lt;T, decltype(std::move(<del>value()</del><ins>**this</ins>))&gt;</code>
+is <code>true</code>.
+</p>
+<p>-15- <i>Mandates</i>:
+<code>G</code> is a specialization of <code>expected</code> and
+<code>is_same_v&lt;G::value_type, T&gt;</code> is <code>true</code>.
+</p>
+<p>-16- <i>Effects</i>: Equivalent to:</p>
+<blockquote>
+<pre><code>if (has_value())
+  return G(in_place, std::move(<del>value()</del><ins>**this</ins>));
+else
+  return invoke(std::forward&lt;F&gt;(f), std::move(error()));
+</code></pre>
+</blockquote>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;;
+</code></pre>
+<p>-17- Let <code>U</code> be
+<code>remove_cv_t&lt;invoke_result_t&lt;F, decltype(<del>value()</del><ins>**this</ins>)&gt;&gt;</code>.
+</p>
+<p>-18- <i>Constraints</i>:
+<code>is_constructible_v&lt;E, decltype(error())&gt;</code>
+is <code>true</code>.
+</p>
+<p>-19- <i>Mandates</i>:
+<code>U</code> is a valid value type for <code>expected</code>.
+If <code>is_void_v&lt;U&gt;</code> is <code>false</code>, the declaration
+<pre><code>  U u(invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>**this</ins>));</code></pre>
+is well-formed.
+
+</p>
+<p>-20- <i>Effects</i>:
+<ol style="list-style-type: none">
+<li> (20.1) &mdash;
+If <code>has_value()</code> is <code>false</code>,
+returns <code>expected&lt;U, E&gt;(unexpect, error())</code>.
+</li>
+<li> (20.2) &mdash;
+Otherwise, if <code>is_void_v&lt;U&gt;</code> is <code>false</code>,
+returns an <code>expected&lt;U, E&gt;</code> object whose
+<code><i>has_val</i></code> member is <code>true</code> and
+<code><i>val</i></code> member is direct-non-list-initialized with
+<code>invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>**this</ins>)</code>.
+</li>
+<li> (20.3) &mdash;
+Otherwise, evaluates
+<code>invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>**this</ins>)</code>
+and then returns <code>expected&lt;U, E&gt;()</code>.
+</li>
+</ol>
+</p>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+</code></pre>
+<p>-21- Let <code>U</code> be
+<code>remove_cv_t&lt;invoke_result_t&lt;F, decltype(std::move(<del>value()</del><ins>**this</ins>))&gt;&gt;</code>.
+</p>
+<p>-22- <i>Constraints</i>:
+<code>is_constructible_v&lt;E, decltype(std::move(error()))&gt;</code>
+is <code>true</code>.
+</p>
+<p>-23- <i>Mandates</i>:
+<code>U</code> is a valid value type for <code>expected</code>.
+If <code>is_void_v&lt;U&gt;</code> is <code>false</code>, the declaration
+<pre><code>  U u(invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>**this</ins>)));</code></pre>
+is well-formed <del>for some invented variable <code>u</code></del>.
+<blockquote class="note">
+<p>
+[<i>Drafting Note:</i>
+The removal of "for some invented variable u" in paragraph 23
+is a drive-by fix for consistency with paragraphs 19, 27 and 31.]
+</p>
+</blockquote>
+</p>
+<p>-24- <i>Effects</i>:
+<ol style="list-style-type: none">
+<li> (24.1) &mdash;
+If <code>has_value()</code> is <code>false</code>,
+returns <code>expected&lt;U, E&gt;(unexpect, error())</code>.
+</li>
+<li> (24.2) &mdash;
+Otherwise, if <code>is_void_v&lt;U&gt;</code> is <code>false</code>,
+returns an <code>expected&lt;U, E&gt;</code> object whose
+<code><i>has_val</i></code> member is <code>true</code> and
+<code><i>val</i></code> member is direct-non-list-initialized with
+<code>invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>**this</ins>))</code>.
+</li>
+<li> (24.3) &mdash;
+Otherwise, evaluates
+<code>invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>**this</ins>))</code>
+and then returns <code>expected&lt;U, E&gt;()</code>.
+</li>
+</ol>
+</p>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;;
+</code></pre>
+<p>-25- Let <code>G</code> be
+<code>remove_cv_t&lt;invoke_result_t&lt;F, decltype(error())&gt;&gt;</code>.
+</p>
+<p>-26- <i>Constraints</i>:
+<code>is_constructible_v&lt;T, decltype(<del>value()</del><ins>**this</ins>)&gt;</code>
+is <code>true</code>.
+</p>
+<p>-27- <i>Mandates</i>:
+<code>G</code> is a valie template argument for <code>unexpected</code>
+( [unexpected.un.general])
+and the declaration
+<pre><code>  G g(invoke(std::forward&lt;F&gt;(f), error()));</code></pre>
+is well-formed.
+</p>
+<p>-28- <i>Returns</i>:
+If <code>has_value()</code> is <code>true</code>,
+<code>expected&lt;T, G&gt;(in_place, <del>value()</del><ins>**this</ins>);</code>;
+otherwise, an <code>expected&lt;T, G&gt;</code> object whose
+<code><i>has_val</i></code> member is <code>false</code>
+and <code><i>unex</i></code> member is direct-non-list-initialized with
+<code>invoke(std::forward&lt;F&gt;(f), error())</code>.
+</p>
+
+<pre><code>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;&amp;;
+</code></pre>
+<p>-29- Let <code>G</code> be
+<code>remove_cv_t&lt;invoke_result_t&lt;F, decltype(std::move(error()))&gt;&gt;</code>.
+</p>
+<p>-30- <i>Constraints</i>:
+<code>is_constructible_v&lt;T, decltype(std::move(<del>value()</del><ins>**this</ins>))&gt;</code>
+is <code>true</code>.
+</p>
+<p>-31- <i>Mandates</i>:
+<code>G</code> is a valie template argument for <code>unexpected</code>
+( [unexpected.un.general])
+and the declaration
+<pre><code>  G g(invoke(std::forward&lt;F&gt;(f), std::move(error())));</code></pre>
+is well-formed.
+</p>
+<p>-32- <i>Returns</i>:
+If <code>has_value()</code> is <code>true</code>,
+<code>expected&lt;T, G&gt;(in_place, std::move(<del>value()</del><ins>**this</ins>));</code>;
+otherwise, an <code>expected&lt;T, G&gt;</code> object whose
+<code><i>has_val</i></code> member is <code>false</code>
+and <code><i>unex</i></code> member is direct-non-list-initialized with
+<code>invoke(std::forward&lt;F&gt;(f), std::move(error()))</code>.
+</p>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

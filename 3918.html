@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3918: std::uninitialized_move/_n and guaranteed copy elision</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3918" href="lwg-active.html#3918">3918.</a> <tt>std::uninitialized_move/_n</tt> and guaranteed copy elision</h3>
+<p><b>Section:</b> 27.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-04-04 <b>Last modified:</b> 2023-04-10 13:40:29 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently <tt>std::move</tt> is unconditionally used in <tt>std::uninitialized_move</tt> and <tt>std::uninitialized_move_n</tt>, 
+which may involve unnecessary move construction if dereferencing the input iterator yields a prvalue.
+<p/>
+The status quo was mentioned in <a href="https://github.com/cplusplus/papers/issues/975#issuecomment-990323753">paper issue #975</a>, 
+but no further process is done since then.
+</p>
+
+
+<p id="res-3918"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 27.11.1 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms.general">[specialized.algorithms.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Some algorithms specified in 27.11 <a href="https://timsong-cpp.github.io/cppwp/specialized.algorithms">[specialized.algorithms]</a> make use of the <ins>following</ins> exposition-only 
+function<ins>s</ins> <del><tt><i>voidify</i></tt></del>:
+</p>
+<blockquote><pre>
+template&lt;class T&gt;
+  constexpr void* <i>voidify</i>(T&amp; obj) noexcept {
+    return addressof(obj);
+  }
+  
+<ins>template&lt;class I&gt;
+  decltype(auto) <i>deref-move</i>(const I&amp; it) {
+    if constexpr (is_lvalue_reference_v&lt;decltype(*it)&gt;)
+      return std::move(*it);
+    else
+      return *it;
+  }</ins>
+</pre></blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 27.11.6 <a href="https://timsong-cpp.github.io/cppwp/uninitialized.move">[uninitialized.move]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class InputIterator, class NoThrowForwardIterator&gt;
+  NoThrowForwardIterator uninitialized_move(InputIterator first, InputIterator last,
+                                            NoThrowForwardIterator result);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions</i>: <tt>result + [0, (last - first))</tt> does not overlap with <tt>[first, last)</tt>.
+<p/>
+-2- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+for (; first != last; (void)++result, ++first)
+  ::new (<i>voidify</i>(*result))
+    typename iterator_traits&lt;NoThrowForwardIterator&gt;::value_type(<del>std::move(*</del><ins><i>deref-move</i>(</ins>first));
+return result;
+</pre></blockquote>
+</blockquote>
+[&hellip;]
+<pre>
+template&lt;class InputIterator, class Size, class NoThrowForwardIterator&gt;
+  pair&lt;InputIterator, NoThrowForwardIterator&gt;
+    uninitialized_move_n(InputIterator first, Size n, NoThrowForwardIterator result);
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions</i>: <tt>result + [0, n)</tt> does not overlap with <tt>first + [0, n)</tt>.
+<p/>
+-7- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+for (; n &gt; 0; ++result,(void) ++first, --n)
+  ::new (<i>voidify</i>(*result))
+    typename iterator_traits&lt;NoThrowForwardIterator&gt;::value_type(<del>std::move(*</del><ins><i>deref-move</i>(</ins>first));
+return {first, result};
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -43,8 +43,195 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2023-03-29 at 10:50:56 UTC</p>
+<p><p>Revised 2023-05-28 at 09:36:06 UTC</p>
 </p><h2>Tentative Issues</h2>
+<hr>
+<h3><a name="2457" href="2457">2457.</a> <tt>std::begin()</tt> and <tt>std::end()</tt> do not support multi-dimensional arrays correctly</h3>
+<p><b>Section:</b> 25.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Janez &#x17d;emva <b>Opened:</b> 2014-11-16 <b>Last modified:</b> 2023-04-06 13:59:48 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#iterator.range">active issues</a> in [iterator.range].</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.range">issues</a> in [iterator.range].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code:
+</p>
+<blockquote><pre>
+#include &lt;algorithm&gt;
+#include &lt;iterator&gt;
+#include &lt;iostream&gt;
+#include &lt;cassert&gt;
+
+int main() 
+{
+  int a[2][3][4] = { { { 1,  2,  3,  4}, { 5,  6,  7,  8}, { 9, 10, 11, 12} },
+                     { {13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24} } };
+  int b[2][3][4];
+
+  assert(std::distance(std::begin(a), std::end(a)) == 2 * 3 * 4);
+  std::copy(std::begin(a), std::end(a), std::begin(b));
+  std::copy(std::begin(b), std::end(b), std::ostream_iterator&lt;int&gt;(std::cout, ","));
+}
+</pre></blockquote>
+<p>
+does not compile. 
+<p/>
+A possible way to remedy this would be to add the following overloads of
+<tt>begin</tt>, <tt>end</tt>, <tt>rbegin</tt>, and <tt>rend</tt> to 25.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a>, 
+relying on recursive evaluation:
+</p>
+<blockquote><pre>
+namespace std {
+
+  template &lt;typename T, size_t M, size_t N&gt;
+  constexpr remove_all_extents_t&lt;T&gt;*
+  begin(T (&amp;array)[M][N])
+  {
+    return begin(*array);
+  }
+  
+  template &lt;typename T, size_t M, size_t N&gt;
+  constexpr remove_all_extents_t&lt;T&gt;*
+  end(T (&amp;array)[M][N])
+  {
+    return end(array[M - 1]);
+  }
+
+  template &lt;typename T, size_t M, size_t N&gt;
+  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
+  rbegin(T (&amp;array)[M][N])
+  {
+    return decltype(rbegin(array))(end(array[M - 1]));
+  }
+  
+  template &lt;typename T, size_t M, size_t N&gt;
+  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
+  rend(T (&amp;array)[M][N])
+  {
+    return decltype(rend(array))(begin(*array));
+  }
+
+}
+</pre></blockquote>
+
+<p><i>[2023-04-06; LWG reflector poll in November 2021]</i></p>
+
+<p>
+Changed to Tentatively NAD after 12 votes in favour.
+Use <code>views::join</code> or <code>mdspan</code> instead.
+</p>
+
+
+
+<p id="res-2457"><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="3635" href="3635">3635.</a> Add <tt>__cpp_lib_deduction_guides</tt> to feature test macros</h3>
+<p><b>Section:</b> 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Konstantin Varlamov <b>Opened:</b> 2021-11-09 <b>Last modified:</b> 2023-05-24 14:08:46 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#version.syn">active issues</a> in [version.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#version.syn">issues</a> in [version.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P0433R2">P0433R2</a>, the proposal for adding deduction guides to the standard library, contained a 
+recommendation to use <tt>__cpp_lib_deduction_guides</tt> as a feature test macro. However, it appears that this feature test macro has been accidentally omitted from the Standard when the paper was applied and probably needs to be added back.
+</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+#define __cpp_lib_coroutine          201902L  <i>// also in &lt;coroutine&gt;</i>
+<ins>#define __cpp_lib_deduction_guides   201703L
+  <i>// also in &lt;deque&gt;, &lt;forward_list&gt;, &lt;list&gt;, &lt;map&gt;, &lt;queue&gt;, &lt;set&gt;, &lt;stack&gt;,
+  // &lt;unordered_map&gt;, &lt;unordered_set&gt;, &lt;vector&gt;</i></ins>
+#define __cpp_lib_destroying_delete  201806L  <i>// also in &lt;new&gt;</i>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2021-11-16; Konstantin Varlamov comments and improves wording]</i></p>
+
+<p>
+One potential topic of discussion is whether the new feature test macro needs to be defined in every library 
+header that contains an explicit deduction guide. While this would be consistent with the current approach, 
+no other macro is associated with such a large set of headers (20 headers in total, whereas the current 
+record-holder is <tt>__cpp_lib_nonmember_container_access</tt> with 12 headers). For this reason, it should 
+be considered whether perhaps the new macro should only be defined in <tt>&lt;version&gt;</tt> (which would, 
+however, make it an outlier). The proposed wording currently contains an exhaustive list (note that the 
+deduction guides for <tt>&lt;mutex&gt;</tt> were removed by LWG <a href="2981">2981</a>).
+</p>
+
+<p><i>[2022-01-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+Several votes for NAD as it's too late to be useful, and code which needs
+to be portable to pre-CTAD compilers can just not use CTAD.
+</p>
+
+<p><i>[2023-04-21; Reflector poll for 'Tentatively NAD']</i></p>
+
+<p><i>[
+"We keep changing the deduction guides, and different libraries might be
+conformant in some headers and not others. The status cannot be represented
+by a single number."
+]</i></p>
+
+
+
+
+<p id="res-3635"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+#define __cpp_lib_coroutine          201902L  <i>// also in &lt;coroutine&gt;</i>
+<ins>#define __cpp_lib_deduction_guides   201703L
+  <i>// also in &lt;array&gt;, &lt;deque&gt;, &lt;forward_list&gt;, &lt;functional&gt;, &lt;list&gt;, &lt;map&gt;,
+  // &lt;memory&gt;, &lt;optional&gt;, &lt;queue&gt;, &lt;regex&gt;, &lt;scoped_allocator&gt;, &lt;set&gt;, &lt;stack&gt;,
+  // &lt;string&gt;, &lt;tuple&gt;, &lt;unordered_map&gt;, &lt;unordered_set&gt;, &lt;utility&gt;, &lt;valarray&gt;,
+  // &lt;vector&gt;</i></ins>
+#define __cpp_lib_destroying_delete  201806L  <i>// also in &lt;new&gt;</i>
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
 <hr>
 <h3><a name="3714" href="3714">3714.</a> Non-single-argument constructors for range adaptors should not be <tt>explicit</tt></h3>
 <p><b>Section:</b> 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.view">[range.zip.transform.view]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
@@ -1018,6 +1205,432 @@ This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
 </pre>
 </blockquote>
 
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3904" href="3904">3904.</a> <tt>lazy_split_view::<i>outer-iterator</i></tt>'s <tt>const</tt>-converting constructor isn't setting <tt><i>trailing_empty_</i></tt></h3>
+<p><b>Section:</b> 26.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Patrick Palka <b>Opened:</b> 2023-03-13 <b>Last modified:</b> 2023-05-24 14:01:15 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.lazy.split.outer">active issues</a> in [range.lazy.split.outer].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.outer">issues</a> in [range.lazy.split.outer].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It seems the <tt>const</tt>-converting constructor for <tt>lazy_split_view</tt>'s iterator fails
+to propagate <tt><i>trailing_empty_</i></tt> from the argument, which effectively results in
+the trailing empty range getting skipped over:
+</p>
+<blockquote><pre>
+auto r = views::single(0) | views::lazy_split(0); // r is { {}, {} }
+auto i = r.begin();
+++i; // i.trailing_empty_ is correctly true
+decltype(std::as_const(r).begin()) j = i; // <span style="color:red;font-weight:bolder">j.trailing_empty_ is incorrectly false</span>
+auto k = r.end(); // <span style="color:red;font-weight:bolder">k.trailing_empty_ is correctly false, and we wrongly have j == k</span>
+</pre></blockquote>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3904"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>outer-iterator</i>(<i>outer-iterator</i>&lt;!Const&gt; i)
+  requires Const &amp;&amp; convertible_to&lt;iterator_t&lt;V&gt;, iterator_t&lt;<i>Base</i>&gt;&gt;;
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects</i>: Initializes <tt><i>parent_</i></tt> with <tt>i.<i>parent_</i></tt><ins>,</ins> 
+<del>and</del> <tt><i>current_</i></tt> with <tt>std::move(i.<i>current_</i>)</tt><ins>, and 
+<tt><i>trailing_empty_</i></tt> with <tt>i.<i>trailing_empty_</i></tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3905" href="3905">3905.</a> Type of <tt>std::fexcept_t</tt></h3>
+<p><b>Section:</b> 28.3.1 <a href="https://timsong-cpp.github.io/cppwp/cfenv.syn">[cfenv.syn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Sam Elliott <b>Opened:</b> 2023-03-13 <b>Last modified:</b> 2023-05-24 14:09:14 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>&lt;cfenv&gt;</tt>, as specified in 28.3.1 <a href="https://timsong-cpp.github.io/cppwp/cfenv.syn">[cfenv.syn]</a>, requires <tt>fexcept_t</tt> to be
+an integer type:
+</p>
+<blockquote><pre>
+using fexcept_t = <i>integer type</i>;
+</pre></blockquote>
+<p>
+<tt>&lt;cfenv&gt;</tt> was initially added to the (first) Technical Report on
+C++ Library Extensions via <a href="https://wg21.link/N1568">N1568</a> and then integrated into the 
+C++ Working Draft N2009 in Berlin (April, 2006).
+<p/>
+However, C99 does not actually require that <tt>fexcept_t</tt> is
+an integer type, it only requires:
+</p>
+<blockquote>
+<p>
+The type <tt>fexcept_t</tt> represents the floating-point status flags
+collectively, including any status the implementation associates
+with the flags.
+</p>
+</blockquote>
+<p>
+Relaxing this requirement should not cause conforming C++ implementations to no longer be conforming. 
+In fact, this should enable conforming C implementations to become conforming C++ implementations without 
+an ABI break. The only incompatibility I foresee is where a user's program is initializing a <tt>std::fexcept_t</tt> 
+with an integer value, which would become invalid on some C++ implementations (but not those that were 
+previously conforming).
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3905"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 28.3.1 <a href="https://timsong-cpp.github.io/cppwp/cfenv.syn">[cfenv.syn]</a>, header <tt>&lt;cfenv&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std {
+  // <i>types</i>
+  using fenv_t = <i>object type</i>;
+  using fexcept_t = <i><del>integer</del><ins>object</ins> type</i>;
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3912" href="3912">3912.</a> <code>enumerate_view::iterator::operator-</code> should be <code>noexcept</code></h3>
+<p><b>Section:</b> 26.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-03-27 <b>Last modified:</b> 2023-05-24 14:11:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.enumerate.iterator">active issues</a> in [range.enumerate.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.enumerate.iterator">issues</a> in [range.enumerate.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The distance between two <code>enumerate_view::iterator</code>
+is calculated by subtracting two integers, which never throws.
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3912"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Modify 26.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a> as indicated:
+</p>
+<blockquote>
+<pre><code>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires <i>range-with-movable-references</i>&lt;V&gt;
+  template&lt;bool Const&gt;
+  class enumerate_view&lt;V&gt;::<i>iterator</i> {
+    [&hellip;]
+    public:
+    [&hellip;]
+    friend constexpr difference_type operator-(const iterator&amp; x, const iterator&amp; y)<ins> noexcept</ins>;
+    [&hellip;]
+  }
+  [&hellip;]
+}
+</code></pre>
+[&hellip;]
+<pre><code>
+friend constexpr difference_type operator-(const iterator&amp; x, const iterator&amp; y)<ins> noexcept</ins>;
+</code></pre>
+<p>
+-19- <i>Effects</i>:
+Equivalent to: <code>return x.<i>pos_</i> - y.<i>pos_</i>;</code>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3914" href="3914">3914.</a> Inconsistent <i>template-head</i> of <tt>ranges::enumerate_view</tt></h3>
+<p><b>Section:</b> 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, 26.7.23 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate">[range.enumerate]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2023-03-30 <b>Last modified:</b> 2023-05-24 14:00:24 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ranges.syn">active issues</a> in [ranges.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ranges.syn">issues</a> in [ranges.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Originally editorial issue <a href="https://github.com/cplusplus/draft/issues/6151">Editorial issue #6151</a>.
+<p/>
+The <i>template-head</i> of <tt>ranges::enumerate_view</tt> in the header synopsis
+is different from those in the class synopses of itself and its iterator/sentinel pair.
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3914"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+// <i>26.7.23 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate">[range.enumerate]</a>, enumerate view</i>
+template&lt;<ins>view V</ins><del>input_range View</del>&gt;
+  requires <ins><i>see below</i></ins><del>view&lt;View&gt;</del>
+class enumerate_view;
+[&hellip;]
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="3915" href="3915">3915.</a> Redundant paragraph about expression variations</h3>
+<p><b>Section:</b> 26.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Johel Ernesto Guerrero Pe&ntilde;a <b>Opened:</b> 2023-04-01 <b>Last modified:</b> 2023-05-25 08:24:53 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.range">issues</a> in [range.range].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Originally editorial issue <a href="https://github.com/cplusplus/draft/issues/4431">Editorial issue #4431</a>.
+<p/>
+Expression variations kick in for "an expression that is non-modifying for some constant lvalue operand", but 
+<tt>std::ranges::range</tt>'s is an non-constant lvalue, so 26.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a> p2 is redundant.
+<p/>
+I suppose that the change that clarified the template parameters' <i>cv</i>-qualification for purposes of 
+equality-preservation and requiring additional variations happened concurrently with the change of 
+<tt>std::ranges::range</tt>'s operand from a forwarding reference to a non-constant lvalue reference.
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3915"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The <tt>range</tt> concept defines the requirements of a type that allows iteration over its elements by providing an
+iterator and sentinel that denote the elements of the range.
+</p>
+<pre>
+template&lt;class T&gt;
+  concept range =
+    requires(T&amp; t) {
+      ranges::begin(t); // <i>sometimes equality-preserving (see below)</i>
+      ranges::end(t);
+    };
+</pre>
+<blockquote>
+<del>-2- The required expressions <tt>ranges::begin(t)</tt> and <tt>ranges::end(t)</tt> of the <tt>range</tt> 
+concept do not require implicit expression variations (18.2 <a href="https://timsong-cpp.github.io/cppwp/concepts.equality">[concepts.equality]</a>).</del>
+<p/>
+-3- [&hellip;]
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="3925" href="3925">3925.</a> Concept <tt>formattable</tt>'s definition is incorrect</h3>
+<p><b>Section:</b> 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formattable">[format.formattable]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2023-04-16 <b>Last modified:</b> 2023-05-24 14:31:37 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.formattable">issues</a> in [format.formattable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3631">3631</a> modified the <tt>formattable</tt> concept. The new wording 
+contains a small issue: <tt>basic_format_context</tt> requires two template arguments, 
+but only one is provided.
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after ten votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3925"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+<ol>
+<li>
+<p>Modify 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formattable">[format.formattable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Let <tt><i>fmt-iter-for</i>&lt;charT&gt;</tt> be an unspecified type that models 
+<tt>output_iterator&lt;const charT&amp;&gt;</tt> (25.3.4.10 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.output">[iterator.concept.output]</a>).
+</p>
+<blockquote><pre>
+[&hellip;]
+template&lt;class T, class charT&gt;
+  concept formattable =
+    <i>formattable-with</i>&lt;remove_reference_t&lt;T&gt;, basic_format_context&lt;<i>fmt-iter-for</i>&lt;charT&gt;<ins>, charT</ins>&gt;&gt;;
+</pre></blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+<hr>
+<h3><a name="3927" href="3927">3927.</a> Unclear preconditions for <tt>operator[]</tt> for sequence containers</h3>
+<p><b>Section:</b> 24.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Ville Voutilainen <b>Opened:</b> 2023-04-24 <b>Last modified:</b> 2023-05-24 14:27:59 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#sequence.reqmts">active issues</a> in [sequence.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#sequence.reqmts">issues</a> in [sequence.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 24.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a>/118, we specify what <tt>a[n]</tt> means for a sequence
+container <tt>a</tt>, but we don't state that it actually has preconditions, other
+than implied ones.
+<p/>
+When we want to use implied preconditions, we can actually get them by using the "<i>Effects</i>: 
+Equivalent to..." wording.
+</p>
+
+<p><i>[2023-05-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-3927"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 24.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> as indicated:</p>
+
+<blockquote><pre>
+a[n]
+</pre><blockquote>
+<p>
+-118- <i>Result</i>: <tt>reference</tt>; <tt>const_reference</tt> for constant <tt>a</tt>
+<p/>
+-119- <i><del>Returns</del><ins>Effects</ins></i>: <ins>Equivalent to:</ins> <tt><ins>return</ins> *(a.begin() + n)<ins>;</ins></tt>
+<p/>
+-120- <i>Remarks</i>: Required for <tt>basic_string</tt>, <tt>array</tt>, <tt>deque</tt>, and <tt>vector</tt>.
+</p>
+</blockquote>
+</blockquote>
 </li>
 
 </ol>
