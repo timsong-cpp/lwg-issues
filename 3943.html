@@ -1,0 +1,190 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3943: Clarify lifetime requirements of BasicFormatter and Formatter</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3943" href="lwg-active.html#3943">3943.</a> Clarify lifetime requirements of <i>BasicFormatter</i> and <i>Formatter</i></h3>
+<p><b>Section:</b> 22.14.6.2 <a href="https://timsong-cpp.github.io/cppwp/format.formattable">[format.formattable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2023-06-01 <b>Last modified:</b> 2023-06-08 20:31:48 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.formattable">active issues</a> in [format.formattable].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.formattable">issues</a> in [format.formattable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+A <a href="https://github.com/llvm/llvm-project/issues/62074">bug</a> has been
+filed against libc++'s format implementation. The question arose whether
+the parsed <i>chrono-specs</i> should still be available during executing the
+formatter's <tt>format</tt> member function. Libc++'s implementation requires
+this MSVC STL's implementation does not.
+<p/>
+It turns out there is a lifetime a requirement in the Standard, but it
+would be good to clarify the intention of the wording. Prosed a small
+wording improvement and a note to clarify the intention.
+<p/>
+Currently the <tt>format</tt> function may use elements in the range <tt>[pc.begin(),
+pc.end())</tt> that have not been parsed. This does not seem to be in the
+spirit of the formatting library. The wording change proposes to
+restrict this range to the parsed range.
+</p>
+
+<p><i>[2023-06-08; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+The proposed resolution is missing a guarantee that the parsed portion of the
+range is unchanged between the calls to <code>parse</code> and
+<code>format</code>. It must remain valid <em>and</em> unchanged.
+</p>
+
+
+
+<p id="res-3943"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li><p>Modify <i>BasicFormatter</i> requirements [tab:formatter.basic] as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 73: <i>BasicFormatter</i> requirements [tab:formatter.basic]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>f.format(u, fc)</tt>
+</td>
+<td>
+<tt>FC::iterator</tt>
+</td>
+<td>
+Formats <tt>u</tt> according to the specifiers stored in<br/>
+<tt>*this</tt>, writes the output to <tt>fc.out()</tt>, and returns<br/>
+an iterator past the end of the output range.<br/>
+The output shall only depend on <tt>u</tt>, <tt>fc.locale()</tt>,<br/>
+<tt>fc.arg(n)</tt> for any value <tt>n</tt> of type <tt>size_t</tt>, and<br/>
+the <ins>elements in the parsed</ins> range <ins>of</ins> <tt>[pc.begin(), pc.end())</tt><br/> 
+from the last call to <tt>f.parse(pc)</tt>.
+<p/>
+<ins>[<i>Note ?</i>: Using elements in the parsed range of <tt>[pc.begin(),<br/>
+pc.end())</tt> allows the formatter to store references, pointers, or<br/>
+iterators to elements in the parsed range. For example,<br/>
+<tt>formatter&lt;chrono::day&gt;</tt> might store the parsed <i>chrono-specs</i><br/>
+(29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>) in a <tt>basic_string_view</tt>. &mdash; <i>end note</i>]</ins>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify <i>Formatter</i> requirements [tab:formatter] as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 74: <i>Formatter</i> requirements [tab:formatter]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Requirement</th>
+</tr>
+
+<tr>
+<td>
+<tt>f.format(t, fc)</tt>
+</td>
+<td>
+<tt>FC::iterator</tt>
+</td>
+<td>
+Formats <tt>t</tt> according to the specifiers stored in<br/>
+<tt>*this</tt>, writes the output to <tt>fc.out()</tt>, and returns<br/>
+an iterator past the end of the output range.<br/>
+The output shall only depend on <tt>t</tt>, <tt>fc.locale()</tt>,<br/>
+<tt>fc.arg(n)</tt> for any value <tt>n</tt> of type <tt>size_t</tt>, and<br/>
+the <ins>elements in the parsed</ins> range <ins>of</ins> <tt>[pc.begin(), pc.end())</tt><br/>
+from the last call to <tt>f.parse(pc)</tt>.
+<p/>
+<ins>[<i>Note ?</i>: Using elements in the parsed range of <tt>[pc.begin(),<br/>
+pc.end())</tt> allows the formatter to store references, pointers, or<br/>
+iterators to elements in the parsed range. For example,<br/>
+<tt>formatter&lt;chrono::day&gt;</tt> might store the parsed <i>chrono-specs</i><br/>
+(29.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a>) in a <tt>basic_string_view</tt>. &mdash; <i>end note</i>]</ins>
+</td>
+</tr>
+
+<tr>
+<td colspan="3" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+</table>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

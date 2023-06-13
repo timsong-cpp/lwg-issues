@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3944: Formatters converting sequences of char to sequences of wchar_t</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3944" href="lwg-active.html#3944">3944.</a> Formatters converting sequences of <tt>char</tt> to sequences of <tt>wchar_t</tt></h3>
+<p><b>Section:</b> 22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> <b>Status:</b> <a href="lwg-active.html#SG16">SG16</a>
+ <b>Submitter:</b> Mark de Wever <b>Opened:</b> 2023-06-01 <b>Last modified:</b> 2023-06-08 20:31:48 UTC</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.formatter.spec">active issues</a> in [format.formatter.spec].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.formatter.spec">issues</a> in [format.formatter.spec].</p>
+<p><b>Discussion:</b></p>
+<p>
+I noticed some interesting features introduced by the range based
+formatters in C++23
+</p>
+<blockquote><pre>
+// Ill-formed in C++20 and C++23
+const char* cstr = "hello";
+char* str = const_cast&lt;char*&gt;(cstr);
+std::format(L"{}", str);
+std::format(L"{}",cstr);
+
+// Ill-formed in C++20
+// In C++23 they give L"['h', 'e', 'l', 'l', 'o']"
+std::format(L"{}", "hello"); // A libc++ bug prevents this from working.
+std::format(L"{}", std::string_view("hello"));
+std::format(L"{}", std::string("hello"));
+std::format(L"{}", std::vector{'h', 'e', 'l', 'l', 'o'});
+</pre></blockquote>
+<p>
+An example is shown <a href="https://godbolt.org/z/P9E6TK3YW">here</a>. This only
+shows libc++ since libstdc++ and MSVC STL have not implemented the
+formatting ranges papers (<a href="https://wg21.link/P2286R8">P2286R8</a> and <a href="https://wg21.link/P2585R0">P2585R0</a>) yet.
+<p/>
+The difference between C++20 and C++23 is the existence of range
+formatters. These formatters use the formatter specialization
+<tt>formatter&lt;char, wchar_t&gt;</tt> which converts the sequence of <tt>char</tt>s 
+to a sequence of <tt>wchar_t</tt>s.
+<p/>
+In this conversion <tt>same_as&lt;char, charT&gt;</tt> is <tt>false</tt>, thus the requirements
+of the range-type <tt>s</tt> and <tt>?s</tt> ([tab:formatter.range.type]) aren't met. So
+the following is ill-formed:
+</p>
+<blockquote><pre>
+std::format(L"{:s}", std::string("hello")); // Not L"hello"
+</pre></blockquote>
+<p>
+It is surprising that some string types can be formatted as a sequence
+of wide-characters, but others not. A sequence of characters can be a
+sequence UTF-8 code units. This is explicitly supported in the width
+estimation of string types. The conversion of <tt>char</tt> to <tt>wchar_t</tt> will
+convert the individual code units, which will give incorrect results for
+multi-byte code points. It will not transcode UTF-8 to UTF-16/32. The
+current behavior is not in line with the note in
+22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a>/2
+</p>
+<blockquote><p>
+[<i>Note 1</i>: Specializations such as <tt>formatter&lt;wchar_t, char&gt;</tt> and
+<tt>formatter&lt;const char*, wchar_t&gt;</tt> that would require implicit
+multibyte / wide string or character conversion are disabled. &mdash; <i>end note</i>]
+</p></blockquote>
+<p>
+Disabling this could be done by explicitly disabling the <tt>char</tt> to <tt>wchar_t</tt>
+sequence formatter. Something along the lines of
+</p>
+<blockquote><pre>
+template&lt;ranges::input_range R&gt;
+  requires(format_kind&lt;R&gt; == range_format::sequence &amp;&amp;
+           same_as&lt;remove_cvref_t&lt;ranges::range_reference_t&lt;R&gt;&gt;, char&gt;)
+struct formatter&lt;R, wchar_t&gt; : __disabled_formatter {};
+</pre></blockquote>
+<p>
+where <tt>__disabled_formatter</tt> satisfies 22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a>/5, would
+do the trick. This disables the conversion for all sequences not only
+the string types. So <tt>vector</tt>, <tt>array</tt>, <tt>span</tt>, etc. would be disabled.
+<p/>
+This does not disable the conversion in the <tt>range_formatter</tt>. This allows
+users to explicitly opt in to this formatter for their own
+specializations.
+<p/>
+An alternative would be to only disable this conversion for string type
+specializations (22.14.6.3 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a>/2.2) where <tt>char</tt> to 
+<tt>wchar_t</tt> is used:
+</p>
+<blockquote><pre>
+template&lt;size_t N&gt; struct formatter&lt;charT[N], charT&gt;;
+template&lt;class traits, class Allocator&gt;
+  struct formatter&lt;basic_string&lt;charT, traits, Allocator&gt;, charT&gt;;
+template&lt;class traits&gt;
+  struct formatter&lt;basic_string_view&lt;charT, traits&gt;, charT&gt;;
+</pre></blockquote>
+<p>
+Disabling following the following two is not strictly required:
+</p>
+<blockquote><pre>
+template&lt;&gt; struct formatter&lt;char*, wchar_t&gt;;
+template&lt;&gt; struct formatter&lt;const char*, wchar_t&gt;;
+</pre></blockquote>
+<p>
+However, if (<tt>const</tt>) <tt>char*</tt> becomes an <tt>input_range</tt> 
+in a future version C++, these formatters would become enabled. 
+Disabling all five instead of the three required specializations seems like a 
+future proof solution.
+<p/>
+Since there is no enabled narrowing formatter specialization
+</p>
+<blockquote><pre>
+template&lt;&gt; struct formatter&lt;wchar_t, char&gt;;
+</pre></blockquote>
+<p>
+there are no issues for <tt>wchar_t</tt> to <tt>char</tt> conversions.
+<p/>
+Before proceeding with a proposed resolution the following design
+questions need to be addressed:
+</p>
+<ul>
+<li><p>Do we want to allow string types of <tt>char</tt>s to be formatted as
+sequences of <tt>wchar_t</tt>s?</p></li>
+<li><p>Do we want to allow non string type sequences of <tt>char</tt>s to be
+formatted as sequences of <tt>wchar_t</tt>s?</p></li>
+<li><p>Should we disable <tt>char</tt> to <tt>wchar_t</tt> conversion in the <tt>range_formatter</tt>?</p></li>
+</ul>
+<p>
+SG16 has indicated they would like to discuss this issue during a telecon.
+</p>
+
+<p><i>[2023-06-08; Reflector poll]</i></p>
+
+<p>
+Set status to SG16 and priority to 3 after reflector poll.
+</p>
+
+
+
+<p id="res-3944"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>
