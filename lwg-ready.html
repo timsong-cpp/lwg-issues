@@ -51,7 +51,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left"><p>Revised 2023-06-14 at 20:44:28 UTC</p>
+<td align="left"><p>Revised 2023-06-16 at 09:32:19 UTC</p>
 </td>
 </tr>
 <tr>
@@ -275,6 +275,228 @@ template&lt;class T&gt;
 
 
 <hr>
+<h3><a name="3431" href="3431">3431.</a> <tt>&lt;=&gt;</tt> for containers should require <tt>three_way_comparable&lt;T&gt;</tt> instead of <tt>&lt;=&gt;</tt></h3>
+<p><b>Section:</b> 24.2.2.4 <a href="https://timsong-cpp.github.io/cppwp/container.opt.reqmts">[container.opt.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-17 <b>Last modified:</b> 2023-06-15 08:30:52 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The precondition for <tt>&lt;=&gt;</tt> on containers is:
+<p/>
+"Either <tt>&lt;=&gt;</tt> is defined for values of type (possibly <tt>const</tt>) <tt>T</tt>, 
+or <tt>&lt;</tt> is defined for values of type (possibly <tt>const</tt>) <tt>T</tt> and 
+<tt>&lt;</tt> is a total ordering relationship."
+<p/>
+I don't think <tt>&lt;=&gt;</tt> is sufficient, because <tt><i>synth-three-way</i></tt> won't 
+use <tt>&lt;=&gt;</tt> unless <tt>three_way_comparable&lt;T&gt;</tt> is satisfied, which requires
+<tt><i>weakly-equality-comparable-with</i>&lt;T, T&gt;</tt> as well as <tt>&lt;=&gt;</tt>.
+<p/>
+So to use <tt>&lt;=&gt;</tt> I think the type also requires <tt>==</tt>, or more precisely, it
+must satisfy <tt>three_way_comparable</tt>.
+<p/>
+The problem becomes clearer with the following example:
+</p>
+<blockquote><pre>
+#include &lt;compare&gt;
+#include &lt;vector&gt;
+
+struct X
+{
+  friend std::strong_ordering operator&lt;=&gt;(X, X) { return std::strong_ordering::equal; }
+};
+
+std::vector&lt;X&gt; v(1);
+std::strong_ordering c = v &lt;=&gt; v;
+</pre></blockquote>
+<p>
+This doesn't compile, because despite <tt>X</tt> meeting the preconditions for <tt>&lt;=&gt;</tt> in 
+[tab:container.opt], <tt><i>synth-three-way</i></tt> will return <tt>std::weak_ordering</tt>.
+<p/>
+Here is another example:
+</p>
+<blockquote><pre>
+#include &lt;compare&gt;
+#include &lt;vector&gt;
+
+struct X
+{
+  friend bool operator&lt;(X, X) { return true; } // <i>The return value is intentional, see below</i>
+  friend std::strong_ordering operator&lt;=&gt;(X, X) { return std::strong_ordering::equal; }
+};
+
+std::vector&lt;X&gt; v(1);
+std::weak_ordering c = v &lt;=&gt; v;
+</pre></blockquote>
+<p>
+This meets the precondition because it defines <tt>&lt;=&gt;</tt>, but the result of <tt>&lt;=&gt;</tt> 
+on <tt>vector&lt;X&gt;</tt> will be nonsense, because <tt><i>synth-three-way</i></tt> will use 
+<tt>operator&lt;</tt> not <tt>operator&lt;=&gt;</tt> and that defines a broken ordering.
+<p/>
+So we're stating a precondition which implies "if you do this, you don't get garbage results" and 
+then we give garbage results anyway.
+<p/>
+The proposed resolution is one way to fix that, by tightening the precondition so that it matches 
+what <tt><i>synth-three-way</i></tt> actually does.
+</p>
+
+<p><i>[2020-04-25 Issue Prioritization]</i></p>
+
+<p>Priority to 2 after reflector discussion.</p>
+
+<p>
+<strong>Previous resolution [SUPERSEDED]:</strong>
+</p>
+<blockquote class="note">
+<p>
+This wording is relative to <a href="https://wg21.link/N4861">N4861</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2.2.1 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>, Table [tab:container.opt], as indicated:</p>
+
+<blockquote>
+<table border="1">
+<caption>Table 75: Optional container operations [tab:container.opt]</caption>
+<tr>
+<th align="center">Expression</th>
+<th align="center">Return type</th>
+<th align="center">Operational<br/>semantics</th>
+<th align="center">Assertion/note<br/>pre-/post-condition</th>
+<th align="center">Complexity</th>
+</tr>
+
+<tr>
+<td colspan="5" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+
+<tr>
+<td>
+<tt>a &lt;=&gt; b</tt>
+</td>
+<td>
+<tt><i>synth-three-way-result</i>&lt;value_type&gt;</tt>
+</td>
+<td>
+<tt>lexicographical_compare_three_way(<br/>
+a.begin(), a.end(), b.begin(), b.end(),<br/>
+<i>synth-three-way</i>)</tt>
+</td>
+<td>
+<i>Preconditions:</i> Either
+<del><tt>&lt;=&gt;</tt> is defined for<br/>
+values of type (possibly <tt>const</tt>)</del><br/>
+<tt>T</tt> <ins>satisfies <tt>three_way_comparable</tt></ins>,<br/>
+or <tt>&lt;</tt> is defined for values of type<br/>
+(possibly <tt>const</tt>) <tt>T</tt> and<br/> 
+<tt>&lt;</tt> is a total ordering relationship.
+</td>
+<td>
+linear
+</td>
+</tr>
+
+<tr>
+<td colspan="5" align="center">
+<tt>&hellip;</tt>
+</td>
+</tr>
+</table>
+
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2022-04-24; Daniel rebases wording on <a href="https://wg21.link/N4910">N4910</a>]</i></p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2.2.4 <a href="https://timsong-cpp.github.io/cppwp/container.opt.reqmts">[container.opt.reqmts]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+a &lt;=&gt; b
+</pre>
+<blockquote>
+<p>
+-2- <i>Result:</i> <tt><i>synth-three-way-result</i>&lt;X::value_type&gt;</tt>.
+<p/>
+-3- <i>Preconditions:</i> Either <del><tt>&lt;=&gt;</tt> is defined for values of type (possibly <tt>const</tt>)</del> 
+<tt>T</tt> <ins>satisfies <tt>three_way_comparable</tt></ins>, or <tt>&lt;</tt> is defined for values of type 
+(possibly <tt>const</tt>) <tt>T</tt> and <tt>&lt;</tt> is a total ordering relationship.
+<p/>
+-4- <i>Returns:</i> <tt>lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end(),
+<i>synth-three-way</i>)</tt>
+<p/>
+[<i>Note 1</i>: The algorithm <tt>lexicographical_compare_three_way</tt> is defined in Clause 27. &mdash; <i>end note</i>]
+<p/>
+-5- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+
+<p><i>[2023-06-13; Varna]</i></p>
+
+<p>
+The group liked the previously suggested wording but would prefer to say "models" instead of "satisfies"
+in preconditions.
+</p>
+<p><i>[2023-06-14 Varna; Move to Ready]</i></p>
+
+
+
+<p id="res-3431"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2.2.4 <a href="https://timsong-cpp.github.io/cppwp/container.opt.reqmts">[container.opt.reqmts]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+a &lt;=&gt; b
+</pre>
+<blockquote>
+<p>
+-2- <i>Result:</i> <tt><i>synth-three-way-result</i>&lt;X::value_type&gt;</tt>.
+<p/>
+-3- <i>Preconditions:</i> Either <del><tt>&lt;=&gt;</tt> is defined for values of type (possibly <tt>const</tt>)</del> 
+<tt>T</tt> <ins>models <tt>three_way_comparable</tt></ins>, or <tt>&lt;</tt> is defined for values of type 
+(possibly <tt>const</tt>) <tt>T</tt> and <tt>&lt;</tt> is a total ordering relationship.
+<p/>
+-4- <i>Returns:</i> <tt>lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end(),
+<i>synth-three-way</i>)</tt>
+<p/>
+[<i>Note 1</i>: The algorithm <tt>lexicographical_compare_three_way</tt> is defined in Clause 27. &mdash; <i>end note</i>]
+<p/>
+-5- <i>Complexity:</i> Linear.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+<hr>
 <h3><a name="3749" href="3749">3749.</a> <tt>common_iterator</tt> should handle integer-class difference types</h3>
 <p><b>Section:</b> 25.5.5 <a href="https://timsong-cpp.github.io/cppwp/iterators.common">[iterators.common]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
  <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-08-01 <b>Last modified:</b> 2023-06-14 07:39:40 UTC</p>
@@ -489,6 +711,412 @@ If the expression <tt>a.operator-&gt;()</tt> is well-formed, then <tt>pointer</t
 Otherwise, <tt>pointer</tt> denotes <tt>void</tt>.</p></li>
 </ol>
 </blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3892" href="3892">3892.</a> Incorrect formatting of nested ranges and tuples</h3>
+<p><b>Section:</b> 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a>, 22.14.9 <a href="https://timsong-cpp.github.io/cppwp/format.tuple">[format.tuple]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2023-02-20 <b>Last modified:</b> 2023-06-16 09:23:22 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.range.formatter">issues</a> in [format.range.formatter].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>formatter</tt> specializations for ranges and tuples set debug format for underlying element formatters in their 
+<tt>parse</tt> functions e.g. 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a> p9:
+</p>
+<blockquote><pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+<i>Effects</i>: Parses the format specifier as a <i>range-format-spec</i> and stores the parsed specifiers in <tt>*this</tt>.
+ The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> are modified 
+ if and only if required by the <i>range-type</i> or the <tt>n</tt> option, if present. If:
+</p>
+<ol style="list-style-type: none">
+<li><p>&mdash; the <i>range-type</i> is neither <tt>s</tt> nor <tt>?s</tt>,</p></li>
+<li><p>&mdash; <tt><i>underlying_</i>.set_debug_format()</tt> is a valid expression, and</p></li>
+<li><p>&mdash; there is no <i>range-underlying-spec</i>,</p></li>
+</ol>
+<p>
+then calls <tt><i>underlying_</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+However, they don't say anything about calling <tt>parse</tt> functions of those formatters. As as result, 
+formatting of nested ranges can be incorrect, e.g.
+</p>
+<blockquote><pre>
+std::string s = std::format("{}", std::vector&lt;std::vector&lt;std::string&gt;&gt;{{"a, b", "c"}});
+</pre></blockquote>
+<p>
+With the current specification <tt>s</tt> is <tt>[[a, b, c]]</tt> instead of <tt>[["a, b", "c"]]</tt>, i.e. strings 
+in the output are not correctly escaped. The same is true for nested tuples and combinations of tuples and ranges.
+<p/>
+The fix approved by LEWG as part of <a href="https://wg21.link/P2733">P2733</a> (which was trying to address a different issue) is to 
+always call <tt>parse</tt> <a href="https://github.com/cplusplus/papers/issues/1426#issuecomment-1420017182">for underlying formatter</a>. 
+Additionally the standard should clarify that <i>format-spec</i> cannot start with <tt>'}'</tt> because that's the 
+implicit assumption in range formatting and what happens when <i>format-spec</i> is not present.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/format.string.general">[format.string.general]</a> p1 as indicated:</p>
+
+<blockquote>
+<dl>
+<dt>[&hellip;]</dt>
+<dt><i>format-specifier</i>:</dt>
+<dd>: <i>format-spec</i></dd>
+<dt><i>format-spec</i>:</dt>
+<dd>as specified by the <tt>formatter</tt> specialization for the argument type<ins>; cannot start with <tt>}</tt></ins></dd>
+</dl>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Given character type <tt>charT</tt>, output iterator type <tt>Out</tt>, and formatting argument type <tt>T</tt>, in 
+Table 74 [tab:formatter.basic] and Table 75 [tab:formatter]:
+<p/>
+[&hellip;]
+<p/>
+<tt>pc.begin()</tt> points to the beginning of the <i>format-spec</i> (22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) of the 
+replacement field being formatted in the format string. If <i>format-spec</i> is <ins>not present or</ins> empty then 
+either <tt>pc.begin() == pc.end()</tt> or <tt>*pc.begin() == '}'</tt>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>range-format-spec</i> and stores the parsed specifiers in <tt>*this</tt>.
+<ins>Calls <tt><i>underlying_</i>.parse(ctx)</tt> to parse <i>format-spec</i> in <i>range-format-spec</i> or, if the latter is not present, 
+empty <i>format-spec</i>.</ins> The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>range-type</i> or the <tt>n</tt> option, if present. If:
+</p>
+<ol style="list-style-type: none">
+<li><p>(9.1) &mdash; the <i>range-type</i> is neither <tt>s</tt> nor <tt>?s</tt>,</p></li>
+<li><p>(9.2) &mdash; <tt><i>underlying_</i>.set_debug_format()</tt> is a valid expression, and</p></li>
+<li><p>(9.3) &mdash; there is no <i>range-underlying-spec</i>,</p></li>
+</ol>
+<p>
+then calls <tt><i>underlying_</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.9 <a href="https://timsong-cpp.github.io/cppwp/format.tuple">[format.tuple]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>tuple-format-spec</i> and stores the parsed specifiers 
+in <tt>*this</tt>. The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>tuple-type</i>, if present. For each element <tt><i>e</i></tt> in 
+<tt><i>underlying_</i></tt>, <ins>calls <tt><i>e</i>.parse(ctx)</tt> to parse empty <i>format-spec</i> and,</ins> 
+if <tt><i>e</i>.set_debug_format()</tt> is a valid expression, calls <tt><i>e</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+</blockquote>
+
+
+<p><i>[Varna 2023-06-16; Jonathan provides tweaked wording]</i></p>
+
+<p>
+Add "an" in two places.
+</p>
+
+<p><i>[Varna 2023-06-16; Move to Ready]</i></p>
+
+<p>
+This would allow resolving LWG <a href="3776">3776</a> as NAD.
+</p>
+
+
+
+<p id="res-3892"><b>Proposed resolution:</b></p>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.14.2.1 <a href="https://timsong-cpp.github.io/cppwp/format.string.general">[format.string.general]</a> p1 as indicated:</p>
+
+<blockquote>
+<dl>
+<dt>[&hellip;]</dt>
+<dt><i>format-specifier</i>:</dt>
+<dd>: <i>format-spec</i></dd>
+<dt><i>format-spec</i>:</dt>
+<dd>as specified by the <tt>formatter</tt> specialization for the argument type<ins>; cannot start with <tt>}</tt></ins></dd>
+</dl>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.6.1 <a href="https://timsong-cpp.github.io/cppwp/formatter.requirements">[formatter.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- Given character type <tt>charT</tt>, output iterator type <tt>Out</tt>, and formatting argument type <tt>T</tt>, in 
+Table 74 [tab:formatter.basic] and Table 75 [tab:formatter]:
+<p/>
+[&hellip;]
+<p/>
+<tt>pc.begin()</tt> points to the beginning of the <i>format-spec</i> (22.14.2 <a href="https://timsong-cpp.github.io/cppwp/format.string">[format.string]</a>) of the 
+replacement field being formatted in the format string. If <i>format-spec</i> is <ins>not present or</ins> empty then 
+either <tt>pc.begin() == pc.end()</tt> or <tt>*pc.begin() == '}'</tt>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.7.2 <a href="https://timsong-cpp.github.io/cppwp/format.range.formatter">[format.range.formatter]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>range-format-spec</i> and stores the parsed specifiers in <tt>*this</tt>.
+<ins>Calls <tt><i>underlying_</i>.parse(ctx)</tt> to parse <i>format-spec</i> in <i>range-format-spec</i> or, if the latter is not present, 
+an empty <i>format-spec</i>.</ins> The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>range-type</i> or the <tt>n</tt> option, if present. If:
+</p>
+<ol style="list-style-type: none">
+<li><p>(9.1) &mdash; the <i>range-type</i> is neither <tt>s</tt> nor <tt>?s</tt>,</p></li>
+<li><p>(9.2) &mdash; <tt><i>underlying_</i>.set_debug_format()</tt> is a valid expression, and</p></li>
+<li><p>(9.3) &mdash; there is no <i>range-underlying-spec</i>,</p></li>
+</ol>
+<p>
+then calls <tt><i>underlying_</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.14.9 <a href="https://timsong-cpp.github.io/cppwp/format.tuple">[format.tuple]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ParseContext&gt;
+  constexpr typename ParseContext::iterator
+    parse(ParseContext&amp; ctx);
+</pre>
+<blockquote>
+<p>
+-7- <i>Effects</i>: Parses the format specifier<ins>s</ins> as a <i>tuple-format-spec</i> and stores the parsed specifiers 
+in <tt>*this</tt>. The values of <tt><i>opening-bracket_</i></tt>, <tt><i>closing-bracket_</i></tt>, and <tt><i>separator_</i></tt> 
+are modified if and only if required by the <i>tuple-type</i>, if present. For each element <tt><i>e</i></tt> in 
+<tt><i>underlying_</i></tt>, <ins>calls <tt><i>e</i>.parse(ctx)</tt> to parse an empty <i>format-spec</i> and,</ins> 
+if <tt><i>e</i>.set_debug_format()</tt> is a valid expression, calls <tt><i>e</i>.set_debug_format()</tt>.
+</p>
+</blockquote>
+</blockquote>
+
+
+</li>
+
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="3897" href="3897">3897.</a> <tt>inout_ptr</tt> will not update raw pointer to 0</h3>
+<p><b>Section:</b> 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Doug Cook <b>Opened:</b> 2023-02-27 <b>Last modified:</b> 2023-06-16 09:32:19 UTC</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#inout.ptr.t">issues</a> in [inout.ptr.t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>inout_ptr</tt> seems useful for two purposes:
+</p>
+<ol>
+<li><p>Using smart pointers with C-style APIs.</p></li>
+<li><p>Annotating raw pointers for use with C-style APIs.</p></li>
+</ol>
+<p>
+Unfortunately, as presently specified, it is not safe for developers to use <tt>inout_ptr</tt> for the second purpose. 
+It is not safe to change code from
+</p>
+<blockquote><pre>
+void* raw_ptr1;
+InitSomething(&amp;raw_ptr1);
+UpdateSomething(&amp;raw_ptr1); // In some cases may set raw_ptr1 = nullptr.
+CleanupSomething(raw_ptr1);
+</pre></blockquote>
+<p>
+to
+</p>
+<blockquote><pre>
+void* raw_ptr2;
+InitSomething(std::out_ptr(raw_ptr2));
+UpdateSomething(std::inout_ptr(raw_ptr2)); // <span style="color:red;font-weight:bolder">May leave dangling pointer</span>
+CleanupSomething(raw_ptr2);                // <span style="color:red;font-weight:bolder">Possible double-delete</span>
+</pre></blockquote>
+<p>
+In the case where <tt>UpdateSomething</tt> would set <tt>raw_ptr1 = nullptr</tt>, the currently-specified <tt>inout_ptr</tt> 
+implementation will leave <tt>raw_ptr2</tt> at its old value. This would likely lead to a double-delete in <tt>CleanupSomething</tt>.
+<p/>
+The issue occurs because <tt>inout_ptr</tt> is specified as follows:
+</p> 
+<ol>
+<li><p>Constructor: <em>If the user's pointer is a smart pointer</em>, perform a "<tt>release</tt>" operation.</p></li>
+<li><p>(C-style API executes)</p></li>
+<li><p><em>If the C-style API returns a non-<tt>NULL</tt> pointer</em>, propagate the returned value to the user's pointer.</p></li>
+</ol>
+<p>
+If the user's pointer is not a smart pointer, no "<tt>release</tt>" operation occurs, and if the C-style API returns a 
+<tt>NULL</tt> pointer, no propagation of the <tt>NULL</tt> occurs. We're left with a dangling raw pointer which is 
+different from the original behavior using <tt>&amp;</tt>.
+<p/>
+I see two potential solutions:
+</p>
+<ol>
+<li><p>Make the "<tt>release</tt>" operation unconditional (i.e. it applies to both smart and raw pointers). For raw pointers, 
+define the "<tt>release</tt>" operation as setting the raw pointer to <tt>nullptr</tt>.</p></li>
+<li><p>Make the return value propagation unconditional for raw pointers.</p></li>
+</ol>
+<p>
+Solution #2 seems likely to lead to more optimal code as it avoids an unnecessary branch.
+</p>
+
+<p><i>[2023-03-22; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><i>[Varna 2023-06-16; Move to Ready]</i></p>
+
+
+
+
+<p id="res-3897"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/inout.ptr.t">[inout.ptr.t]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+~inout_ptr_t();
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>SP</tt> be <tt><i>POINTER_OF_OR</i>(Smart, Pointer)</tt> (20.2.1 <a href="https://timsong-cpp.github.io/cppwp/memory.general">[memory.general]</a>).
+<p/>
+-10- Let <i>release-statement</i> be <tt>s.release();</tt> if an implementation does not call <tt>s.release()</tt> in the
+constructor. Otherwise, it is empty.
+<p/>
+-11- <i>Effects</i>: Equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(11.1) &mdash; </p>
+<blockquote><pre>
+<del>if (p) {</del>
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart( static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+<del>}</del>
+</pre></blockquote>
+<p>
+if <tt>is_pointer_v&lt;Smart&gt;</tt> is <tt>true</tt>;
+</p></li>
+<li><p>(11.2) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if the expression <tt>s.reset(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...)</tt> is well-formed;
+</p>
+</li>
+<li><p>(11.3) &mdash; otherwise,</p>
+<blockquote><pre>
+<i>release-statement</i>;
+if (p) {
+  apply([&amp;](auto&amp;&amp;... args) {
+    s = Smart(static_cast&lt;SP&gt;(p), std::forward&lt;Args&gt;(args)...); }, std::move(a));
+}
+</pre></blockquote>
+<p>
+if <tt>is_constructible_v&lt;Smart, SP, Args...&gt;</tt> is <tt>true</tt>;
+</p>
+</li>
+<li><p>(11.4) &mdash; otherwise, the program is ill-formed.</p></li>
+</ol>
+
+</blockquote>
+</blockquote>
+
 </li>
 
 </ol>
