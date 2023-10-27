@@ -1,0 +1,126 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3984: ranges::to's recursion branch may be ill-formed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3984" href="lwg-active.html#3984">3984.</a> <tt>ranges::to</tt>'s recursion branch may be ill-formed</h3>
+<p><b>Section:</b> 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-23 <b>Last modified:</b> 2023-09-24 10:08:01 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.utility.conv.to">active issues</a> in [range.utility.conv.to].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.utility.conv.to">issues</a> in [range.utility.conv.to].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When <tt>r</tt> is a nested range, <tt>ranges::to</tt> constructs the object recursively through <tt>r | views::transform(...)</tt>.
+<p/>
+However, the expression is ill-formed when the type of lvalue <tt>r</tt> does not model <tt>viewable_range</tt> 
+(<a href="https://godbolt.org/z/98rxGz73Y">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+#include &lt;list&gt;
+
+int main() {
+  std::vector&lt;std::vector&lt;int&gt;&gt; v;
+  auto r = std::views::all(std::move(v));
+  auto l = std::ranges::to&lt;std::list&lt;std::list&lt;int&gt;&gt;&gt;(r); // <span style="color:red;font-weight:bolder">hard error in MSVC-STL and libc++</span>
+}
+</pre></blockquote>
+
+
+<p id="res-3984"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, input_range R, class... Args&gt; requires (!view&lt;C&gt;)
+  constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <tt>C</tt> is a cv-unqualified class type.
+</p>
+<p>
+-2- <i>Returns</i>: An object of type <tt>C</tt> constructed from the elements of <tt>r</tt> in the following manner:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; If <tt>C</tt> does not satisfy <tt>input_range</tt> or 
+<tt>convertible_to&lt;range_reference_t&lt;R&gt;, range_value_t&lt;C&gt;&gt;</tt> is <tt>true</tt>:</p>
+<ol style="list-style-type: none">
+<li><p>[&hellip;]</p></li>
+</ol></li>
+<li><p>(2.2) &mdash; Otherwise, if <tt>input_range&lt;range_reference_t&lt;R&gt;&gt;</tt> is <tt>true</tt>:
+</p>
+<blockquote>
+<pre>
+to&lt;C&gt;(<ins>ref_view(</ins>r<ins>)</ins> | views::transform([](auto&amp;&amp; elem) {
+  return to&lt;range_value_t&lt;C&gt;&gt;(std::forward&lt;decltype(elem)&gt;(elem));
+}), std::forward&lt;Args&gt;(args)...);
+</pre>
+</blockquote>
+</li>
+<li><p>(2.3) &mdash; Otherwise, the program is ill-formed.</p></li>
+</ol>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

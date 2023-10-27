@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3977: constexpr and noexcept for operators for bitmask types</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3977" href="lwg-active.html#3977">3977.</a> <tt>constexpr</tt> and <tt>noexcept</tt> for operators for bitmask types</h3>
+<p><b>Section:</b> 16.3.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/bitmask.types">[bitmask.types]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-08-19 <b>Last modified:</b> 2023-09-24 09:43:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#bitmask.types">active issues</a> in [bitmask.types].</p>
+<p><b>View all other</b> <a href="lwg-index.html#bitmask.types">issues</a> in [bitmask.types].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, no operator in 16.3.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/bitmask.types">[bitmask.types]</a>/2 is specified as <tt>noexcept</tt>, and the compound assignment 
+operators are not specified as <tt>constexpr</tt>.
+<p/>
+Implementations are divergent on this. E.g., MSVC STL 
+<a href="https://github.com/microsoft/STL/blob/8f67ece4a654625220642c92fa029a5cfc77afa8/stl/inc/type_traits#L2266-L2297">consistently 
+marks them <tt>constexpr</tt> and <tt>noexcept</tt></a> (given MSVC STL doesn't support pre-C++14 modes), while libstdc++'s 
+<a href="https://github.com/gcc-mirror/gcc/blob/fab08d12b40ad637c5a4ce8e026fb43cd3f0fad1/libstdc%2B%2B-v3/include/bits/regex_constants.h#L395-L408">compound 
+assignment operators for <tt>match_flag_type</tt></a> are <tt>constexpr</tt> since C++14 but lack <tt>noexcept</tt>, and 
+<a href="https://github.com/gcc-mirror/gcc/blob/fab08d12b40ad637c5a4ce8e026fb43cd3f0fad1/libstdc%2B%2B-v3/include/std/future#L176-L183">the 
+operators for <tt>launch</tt></a> are <tt>noexcept</tt> but not <tt>constexpr</tt>.
+<p/>
+I think it's better to ensure more consistency be integer types and non-integer bitmask types, i.e., require the 
+compound assignment operators to be <tt>constexpr</tt> (only available in C++14 and later) and all operators to be <tt>noexcept</tt>.
+</p>
+
+
+<p id="res-3977"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 16.3.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/bitmask.types">[bitmask.types]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The bitmask type <tt><i>bitmask</i></tt> can be written:
+</p>
+<blockquote>
+<pre>
+// <i>For exposition only.</i>
+// <i>int_type is an integral type capable of representing all values of the bitmask type.</i>
+enum <i>bitmask</i> : int_type {
+  <i>V</i><sub>0</sub> = 1 &lt;&lt; 0, <i>V</i><sub>1</sub> = 1 &lt;&lt; 1, <i>V</i><sub>2</sub> = 1 &lt;&lt; 2, <i>V</i><sub>3</sub> = 1 &lt;&lt; 3, &hellip;
+};
+
+inline constexpr <i>bitmask</i> <i>C</i><sub>0</sub>(<i>V</i><sub>0</sub>);
+inline constexpr <i>bitmask</i> <i>C</i><sub>1</sub>(<i>V</i><sub>1</sub>);
+inline constexpr <i>bitmask</i> <i>C</i><sub>2</sub>(<i>V</i><sub>2</sub>);
+inline constexpr <i>bitmask</i> <i>C</i><sub>3</sub>(<i>V</i><sub>3</sub>);
+
+[&hellip;]
+
+constexpr bitmask operator&amp;(bitmask X, bitmask Y) <ins>noexcept</ins> {
+  return static_cast&lt;bitmask&gt;(
+    static_cast&lt;int_type&gt;(X) &amp; static_cast&lt;int_type&gt;(Y));
+}
+constexpr bitmask operator|(bitmask X, bitmask Y) <ins>noexcept</ins> {
+  return static_cast&lt;bitmask&gt;(
+    static_cast&lt;int_type&gt;(X) | static_cast&lt;int_type&gt;(Y));
+}
+constexpr bitmask operator^(bitmask X, bitmask Y) <ins>noexcept</ins> {
+  return static_cast&lt;bitmask&gt;(
+    static_cast&lt;int_type&gt;(X) ^ static_cast&lt;int_type&gt;(Y));
+}
+constexpr bitmask operator~(bitmask X) <ins>noexcept</ins> {
+  return static_cast&lt;bitmask&gt;(~static_cast&lt;int_type&gt;(X));
+}
+<ins>constexpr</ins> bitmask&amp; operator&amp;=(bitmask&amp; X, bitmask Y) <ins>noexcept</ins> {
+  X = X &amp; Y; return X;
+}
+<ins>constexpr</ins> bitmask&amp; operator|=(bitmask&amp; X, bitmask Y) <ins>noexcept</ins> {
+  X = X | Y; return X;
+}
+<ins>constexpr</ins> bitmask&amp; operator^=(bitmask&amp; X, bitmask Y) <ins>noexcept</ins> {
+  X = X ^ Y; return X;
+}
+</pre>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

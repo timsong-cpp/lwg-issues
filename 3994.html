@@ -1,0 +1,118 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3994: adaptor(args...)(r) is not equivalent to std::bind_back(adaptor, args...)(r)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3994" href="lwg-active.html#3994">3994.</a> <tt>adaptor(args...)(r)</tt> is not equivalent to <tt>std::bind_back(adaptor, args...)(r)</tt></h3>
+<p><b>Section:</b> 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-11 <b>Last modified:</b> 2023-10-14 15:40:02 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.adaptor.object">active issues</a> in [range.adaptor.object].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.adaptor.object">issues</a> in [range.adaptor.object].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> p8 specifies that:
+</p>
+<blockquote><p> 
+The expression <tt>adaptor(args...)</tt> produces a range adaptor closure object <tt>f</tt> that is a perfect forwarding 
+call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>) with the following properties:
+</p></blockquote>
+<p>
+According to the subsequent description, it can be inferred that the behavior is similar to 
+<tt>std::bind_back(adaptor, args...)</tt> which also returns a perfect forwarding call wrapper.
+<p/>
+Among them, "A <i>perfect forwarding call wrapper</i> is an argument forwarding call wrapper 
+that forwards its state entities to the underlying call expression" according to <a href="https://wg21.link/func.require">[func.require]</a>/4, and call wrapper in <a href="https://wg21.link/func.require">[func.require]</a>/3 is described as:
+</p>
+<blockquote><p>
+Every call wrapper (22.10.3 <a href="https://timsong-cpp.github.io/cppwp/func.def">[func.def]</a>) meets the <i>Cpp17MoveConstructible</i> and <i>Cpp17Destructible</i> requirements.
+</p></blockquote>
+<p>
+In order to conform with the specification, standard functions that return perfect forwarding call wrappers such as 
+<tt>std::bind_front/back</tt> and <tt>std::not_fn</tt> all <i>Mandates</i> that 
+<tt>(is_constructible_v&lt;BoundArgs, Args&gt; &amp;&amp; ...)</tt> and 
+<tt>(is_move_constructible_v&lt;BoundArgs&gt; &amp;&amp; ...)</tt> are each <tt>true</tt>, 
+the former condition corresponds to 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> p8:
+</p>
+<blockquote><p>
+The expression <tt>adaptor(args...)</tt> is well-formed if and only if the initialization of the bound argument 
+entities of the result, as specified above, are all well-formed.
+</p></blockquote>
+<p>
+However, the latter does not have a corresponding description in <tt>&lt;ranges&gt;</tt>. In other words, range 
+adaptor objects do not explicitly indicate that the bound argument must be move-constructible.
+This results in implementation divergence for some uncommon types (<a href="https://godbolt.org/z/r6Gq8W6qe">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;string_view&gt;
+
+constexpr struct WeirdFive {
+  WeirdFive() = default;
+  WeirdFive(const WeirdFive&amp;) = default;
+  constexpr operator int() const { return 5; }
+
+  WeirdFive(WeirdFive&amp;&amp;) = delete;
+} five;
+
+constexpr std::string_view sv{"hello"};
+static_assert(sv == std::views::take(five)(sv)); // <span style="color:red;font-weight:bolder">libstdc++/libc++ reject, MSVC-STL accepts</span>
+</pre></blockquote>
+<p>
+Above, libstdc++ always moves arguments into internal members, which leads to hard errors in the member initializer list;
+libc++ uses <tt>std::bind_back</tt> for argument binding, which also leads to hard errors in the function body as the 
+former requires arguments to be move-constructible; MSVC-STL is the most compliant with current wording.
+</p>
+
+
+<p id="res-3994"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

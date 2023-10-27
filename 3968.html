@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3968: std::endian::native value should be more specific about object representations</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3968" href="lwg-active.html#3968">3968.</a> <tt>std::endian::native</tt> value should be more specific about object representations</h3>
+<p><b>Section:</b> 22.15.8 <a href="https://timsong-cpp.github.io/cppwp/bit.endian">[bit.endian]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Brian Bi <b>Opened:</b> 2023-08-06 <b>Last modified:</b> 2023-08-13 08:49:34 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+22.15.8 <a href="https://timsong-cpp.github.io/cppwp/bit.endian">[bit.endian]</a> says that "big-endian" and "little-endian" refer to whether bytes are stored 
+in descending or ascending order of significance. In other words, when <tt>std::endian::native</tt> is either 
+<tt>std::endian::big</tt> or <tt>std::endian::little</tt>, we are told something about the object representations o
+f multi-byte scalar types. However, the guarantee provided in this case is not strong enough to fully specify 
+the object representation, even in the common situation where padding bits are not present. It would be more 
+useful to provide a stronger guarantee.
+<p/>
+Consider, for example, if <tt>char</tt> is 8 bits and there is an <tt>uint32_t</tt> type on the current platform. 
+If <tt>std::endian::native</tt> is <tt>std::endian::little</tt>, then the program should be able to rely on the 
+fact that if a <tt>uint32_t</tt> object is copied into an array of 4 <tt>unsigned char</tt>, then the value of 
+the first element of that array actually equals the original value modulo 256. However, because 
+<a href="https://wg21.link/P1236R1">P1236R1</a> removed the core language specification of the value representation of unsigned integer 
+types, the program cannot actually rely on this. It is conceivable (though unlikely), for example, that 
+<tt>std::endian::native</tt> could be <tt>std::endian::little</tt> but the first byte in a <tt>uint32_t</tt> 
+object is actually the least significant 8 bits flipped, or the least significant 8 bits permuted, or something 
+like that.
+</p>
+
+
+<p id="res-3968"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+
+<li><p>Modify the 22.15.8 <a href="https://timsong-cpp.github.io/cppwp/bit.endian">[bit.endian]</a> as indicated; using 
+<a href="https://timsong-cpp.github.io/cppwp/n4659/basic.fundamental#7">removed wording from C++17</a>:</p>
+
+<blockquote>
+<p>
+-2- <del>If all scalar types have size 1 byte, then all of <tt>endian::little</tt>, <tt>endian::big</tt>, 
+and <tt>endian::native</tt> have the same value. Otherwise, <tt>endian::little</tt> is not equal to 
+<tt>endian::big</tt>. If all scalar types are big-endian, <tt>endian::native</tt> is equal to 
+<tt>endian::big</tt>. If all scalar types are little-endian, <tt>endian::native</tt> is equal to 
+<tt>endian::little</tt>. Otherwise, <tt>endian::native</tt> is not equal to either <tt>endian::big</tt> or
+<tt>endian::little</tt>.</del><ins><tt>endian::little</tt> is equal to <tt>endian::big</tt> if and only if 
+all scalar types have size 1 byte. If the value representation (6.8 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>) of every 
+unsigned integer type uses a pure binary numeration system<sup>footnote ?</sup>, then:</ins>
+</p>
+<ul>
+<li><p><ins>If all scalar types have size 1 byte, then <tt>endian::native</tt> is equal to the common value 
+of <tt>endian::little</tt> and <tt>endian::big</tt>.</ins></p></li>
+<li><p><ins>Otherwise, if all scalar types are big-endian, <tt>endian::native</tt> is equal to <tt>endian::big</tt>.</ins></p></li>
+<li><p><ins>Otherwise, if all scalar types are little-endian, <tt>endian::native</tt> is equal to <tt>endian::little</tt>.</ins></p></li>
+<li><p><ins>Otherwise, <tt>endian::native</tt> is not equal to either <tt>endian::big</tt> or <tt>endian::little</tt>.</ins></p></li>
+</ul>
+<p>
+<ins>Otherwise, <tt>endian::native</tt> is not equal to either <tt>endian::big</tt> or <tt>endian::little</tt>.</ins>
+</p>
+<blockquote><p>
+<ins>footnote ?) A positional representation for integers that uses the binary digits 0 and 1, in which the 
+values represented by successive bits are additive, begin with 1, and are multiplied by successive integral 
+powers of 2, except perhaps for the bit with the highest position. (Adapted from the American National 
+Dictionary for Information Processing Systems.)</ins>
+</p></blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

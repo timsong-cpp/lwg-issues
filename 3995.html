@@ -1,0 +1,117 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3995: Issue with custom index conversion in &lt;mdspan&gt;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3995" href="lwg-active.html#3995">3995.</a> Issue with custom index conversion in <tt>&lt;mdspan&gt;</tt></h3>
+<p><b>Section:</b> 24.7.3 <a href="https://timsong-cpp.github.io/cppwp/views.multidim">[views.multidim]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-11 <b>Last modified:</b> 2023-10-14 15:55:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>std::layout_<i>meow</i>::mapping::operator()</tt> has the following definition (24.7.3.4.5.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.left.obs">[mdspan.layout.left.obs]</a>):
+</p>
+<blockquote>
+<pre>
+template&lt;class... Indices&gt;
+  constexpr index_type operator()(Indices... i) const noexcept;</pre>
+<blockquote>
+<p>
+-2- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <tt>sizeof...(Indices) == extents_type::rank()</tt> is <tt>true</tt>,</p></li>
+<li><p>(2.2) &mdash; <tt>(is_convertible_v&lt;Indices, index_type&gt; &amp;&amp; ...)</tt> is <tt>true</tt>, and</p></li>
+<li><p>(2.3) &mdash; <tt>(is_nothrow_constructible_v&lt;index_type, Indices&gt; &amp;&amp; ...)</tt> is <tt>true</tt>.</p></li>       
+</ol>
+<p>
+<i>Preconditions</i>: <tt>extents_type::<i>index-cast</i>(i)</tt> is a multidimensional index in <tt><i>extents_</i></tt> 
+(24.7.3.1 <a href="https://timsong-cpp.github.io/cppwp/mdspan.overview">[mdspan.overview]</a>).
+<p/>
+<i>Effects</i>: Let <tt>P</tt> be a parameter pack such that
+</p>
+<blockquote><pre>
+is_same_v&lt;index_sequence_for&lt;Indices...&gt;, index_sequence&lt;P...&gt;&gt;
+</pre></blockquote>
+<p>  
+is <tt>true</tt>. Equivalent to:
+</p>
+<blockquote><pre>
+return ((static_cast&lt;index_type&gt;(i) * stride(P)) + ... + 0);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+<p>
+Above, <tt>is_convertible_v&lt;Indices, index_type&gt;</tt> implies that <tt>index_type</tt> can be constructed through 
+rvalue-qualified conversion operators. However, we cast the lvalue <tt>i</tt> in the return statement, which makes the 
+expression possibly ill-formed. The same goes for <tt>extents_type::<i>index-cast(i)</i></tt>.
+</p>
+<p>
+However, if we use <tt>std::move</tt> before casting, this will result in the rvalue-qualified conversion operator 
+being called in <i>Preconditions</i> via <tt>extents_type::<i>index-cast(i)</i></tt> before the mapping index is actually calculated,
+so that the expression may no longer be valid. And such an issue already exists in <tt>mdspan::operator[]</tt>.
+</p>
+<p>
+In addition, the variadic version of <tt>mdspan::operator[]</tt> constraints 
+<tt>is_convertible_v&lt;OtherIndexTypes, index_type&gt;</tt>, but its <tt>array</tt>/<tt>span</tt> version constraints 
+<tt>is_convertible_v&lt;const OtherIndexType&amp;, index_type&gt;</tt>.
+<p/>
+This seems to bring inconsistency as <tt>mdspan[arr]</tt> may not necessarily guarantee <tt>mdspan[arr[i]...]</tt>.
+</p>
+<p>
+I think we should unanimously require that custom indexes can be converted to <tt>index_type</tt> via <tt>const</tt> 
+lvalue references, which eliminates the worry of conversion expiration.
+</p>
+
+
+<p id="res-3995"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

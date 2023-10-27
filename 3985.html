@@ -1,0 +1,155 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3985: ranges::to should Mandates C not to be view</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3985" href="lwg-active.html#3985">3985.</a> <tt>ranges::to</tt> should <i>Mandates</i> <tt>C</tt> not to be view</h3>
+<p><b>Section:</b> 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a>, 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-25 <b>Last modified:</b> 2023-10-02 14:18:19 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.utility.conv.to">active issues</a> in [range.utility.conv.to].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.utility.conv.to">issues</a> in [range.utility.conv.to].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In order to solve issues in LWG <a href="3787">3787</a> and LWG <a href="3847">3847</a> that the template parameter <tt>C</tt> 
+can be specified as an unreasonable type, <tt>ranges::to</tt> adds a <i>Mandates</i> that requires <tt>C</tt> to be a 
+<i>cv</i>-unqualified class type.
+</p>
+<p>
+However, the earliest requirement that <tt>C</tt> not be a view was still imposed by the constraints of function signatures,
+although it is unclear why <i>Constraints</i> were used in the first place, such a way of kicking out the function candidate 
+does bring undesirable hard errors and poor diagnostics (<a href="https://godbolt.org/z/K1f15K71n">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto iota = std::views::iota(0, 10);
+  auto take = std::ranges::to&lt;std::ranges::take_view&gt;(iota, 5);  // <span style="color:red;font-weight:bolder">hard error in function body</span>
+  auto drop = iota | std::ranges::to&lt;std::ranges::drop_view&gt;(5); // <span style="color:red;font-weight:bolder">poor diagnostics</span>
+}
+</pre></blockquote>
+<p>
+I think consistent use of <i>Mandates</i> for template parameter <tt>C</tt> is more appropriate, as <tt>static_assert</tt> 
+provide clearer and more readable diagnostics.
+</p>
+
+
+<p id="res-3985"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;compare&gt;              // <i>see 17.11.1 <a href="https://timsong-cpp.github.io/cppwp/compare.syn">[compare.syn]</a></i>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+#include &lt;iterator&gt;             // <i>see 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a></i>
+
+namespace std::ranges {
+  [&hellip;]
+  // <i>26.5.7 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv">[range.utility.conv]</a>, range conversions</i>
+  template&lt;class C, input_range R, class... Args&gt; <del>requires (!view&lt;C&gt;)</del>
+    constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);                                          // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, input_range R, class... Args&gt;
+    constexpr auto to(R&amp;&amp; r, Args&amp;&amp;... args);                                       // <i>freestanding</i>
+  template&lt;class C, class... Args&gt; <del>requires (!view&lt;C&gt;)</del>
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, class... Args&gt;
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+
+<blockquote>
+<pre>template&lt;class C, input_range R, class... Args&gt; <del>requires (!view&lt;C&gt;)</del>
+  constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <tt>C</tt> is a cv-unqualified class type <ins>and does not satisfy <tt>view</tt></ins>.
+</p>
+[&hellip;]
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> as indicated:</p>
+
+<blockquote>
+<pre>template&lt;class C, class... Args&gt; <del>requires (!view&lt;C&gt;)</del>
+  constexpr auto to(Args&amp;&amp;... args);
+template&lt;template&lt;class...&gt; class C, class... Args&gt;
+  constexpr auto to(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: For the first overload, <tt>C</tt> is a cv-unqualified class type <ins>and does not satisfy <tt>view</tt></ins>.
+</p>
+[&hellip;]
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

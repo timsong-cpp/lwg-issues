@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3961: Does chrono::parse check format strings?</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3961" href="lwg-active.html#3961">3961.</a> Does <tt>chrono::parse</tt> check format strings?</h3>
+<p><b>Section:</b> 29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-07-28 <b>Last modified:</b> 2023-07-29 14:58:41 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.parse">active issues</a> in [time.parse].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.parse">issues</a> in [time.parse].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> p16 says:
+"If the type being parsed cannot represent the information that the format flag refers to, <tt>is.setstate(ios_base::failbit)</tt> is called."
+Note it says "the format flag" singular. I had interpreted this as meaning that if the entire format string doesn't provide the info 
+needed by the type, it fails. But that's not what it says.
+It says that parsing fails if the type cannot represent
+"the information that the format flag refers to". Which format flag?
+Presumably this rule applies to each of them in turn.
+So <tt>"Monday 13:00" &gt;&gt; parse("%a %R", sec)</tt> is required to fail,
+rather than ignore the %a part and set <tt>sec</tt> to <tt>13h</tt>.
+I don't think that is the intended design.
+I think the phrasing of this rule is backwards. It shouldn't be focused on what info is provided by the format flag, 
+but what info is needed by the type.
+</p>
+
+<p>
+What should happen when <tt>chrono::parse</tt> is given a meaningless
+format string like "%", or "%E", or "%Ea" or "%99a"?
+Presumably that should set failbit, but I don't think we actually say so.
+If the implementation should set failbit, is it conforming to do so before
+extracting any characters?
+</p>
+<p>
+Is it conforming to set failbit before extracting any characters if the
+format string can never succeed for the parsable type?
+Consider:
+<pre><blockquote>std::chrono::seconds sec;
+std::cin &gt;&gt; parse("%a", sec);
+</blockquote></pre>
+
+The type being parsed (<tt>seconds</tt>) cannot represent the information that
+%a (a weekday) refers to, so we should set <tt>cin.setstate(ios_base::failbit)</tt>.
+But should that happen before extracting any characters, or after extracting
+a weekday string? If it's unspecified, should we say so explicitly?
+</p>
+
+<p>
+Can a conforming implementation validate the format string before extracting
+any characters, and fail early if parsing the actual istream contents can never
+succeed? Or is <tt>parse("%a", sec)</tt> required to try to parse a valid
+weekday name before setting <tt>failbit</tt>?
+</p>
+
+
+
+<p id="res-3961"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 29.13 <a href="https://timsong-cpp.github.io/cppwp/time.parse">[time.parse]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-15-
+All <tt>from_stream</tt> overloads behave as unformatted input functions,
+except that they have an unspecified effect on the value returned by subsequent 
+calls to <tt><del>basic_istream&lt;&gt;::</del><ins>is.</ins>gcount()</tt>.
+Each overload takes a format string containing ordinary characters and
+flags which have special meaning.
+Each flag begins with a <tt>%</tt>.
+Some flags can be modified by <tt>E</tt> or <tt>O</tt>.
+During parsing each flag interprets characters as parts of date and time types
+according to Table 102.
+Some flags can be modified by a width parameter given as
+a positive decimal integer called out as <tt><i>N</i></tt> below
+which governs how many characters are parsed from the stream
+in interpreting the flag.
+All characters in the format string that are not represented in Table 102,
+except for whitespace, are parsed unchanged from the stream.
+A whitespace character matches zero or more whitespace characters
+in the input stream.
+</p>
+<p>
+<ins>
+-?-
+If a format string contains a <tt>%</tt> character that is not part of a flag
+shown in Table 102, or a modifier that is not allowed for a flag,
+<tt>is.setstate(ios_base::failbit)</tt> is called.
+It is unspecified how many characters (if any) are extracted before the call
+to <tt>is.setstate(ios_base::failbit)</tt>.
+</ins>
+</p>
+<p>
+-16-
+If <ins>a value cannot be determined for</ins> the type being parsed
+<ins>from the flags in the format string</ins>
+<del>cannot represent the information that the format flag refers to</del>
+<tt>is.setstate(ios_base::failbit)</tt> is called.
+<ins>
+It is unspecified how many characters (if any) are extracted before the call
+to <tt>is.setstate(ios_base::failbit)</tt>.
+</ins>
+</p>
+<p>
+[<i>Example</i>:
+A <tt>duration</tt> cannot represent a <del><tt>weekday</tt></del> <ins>weekday,
+so <tt>parse("%a", dur)</tt> will always fail if the type of <tt>dur</tt>
+is a specialization of <tt>duration</tt>.
+Implementations can check the format string and set <tt>failbit</tt>
+before extracting any characters.
+</ins>
+&mdash; <i>end example</i>]
+</p>
+
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

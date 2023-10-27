@@ -1,0 +1,194 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3983: ranges::to adaptors are underconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3983" href="lwg-active.html#3983">3983.</a> <tt>ranges::to</tt> adaptors are underconstrained</h3>
+<p><b>Section:</b> 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-23 <b>Last modified:</b> 2023-10-03 15:17:18 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <tt>ranges::to</tt> adaptor returns a range adaptor closure object that stores a copy of the decayed parameter pack.
+<p/>
+However, the function signature does not constrain the type of arguments, which leads to hard errors within the function 
+body when they cannot be copied (<a href="https://godbolt.org/z/9f8q3zvb5">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+
+struct NonMovable {
+  NonMovable() = default;
+  NonMovable(NonMovable&amp;&amp;) = delete;
+};
+
+int main() {
+  auto r = std::ranges::to&lt;std::vector&gt;(NonMovable{}); // <span style="color:red;font-weight:bolder">hard error in MSVC-STL and libc++</span>
+}
+</pre></blockquote>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;compare&gt;              // <i>see <a href="https://wg21.link/compare.syn">[compare.syn]</a></i>
+#include &lt;initializer_list&gt;     // <i>see <a href="https://wg21.link/initializer.list.syn">[initializer.list.syn]</a></i>
+#include &lt;iterator&gt;             // <i>see <a href="https://wg21.link/iterator.synopsis">[iterator.synopsis]</a></i>
+
+namespace std::ranges {
+  [&hellip;]
+  // <i>26.5.7 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv">[range.utility.conv]</a>, range conversions</i>
+  template&lt;class C, input_range R, class... Args&gt; requires (!view&lt;C&gt;&gt;)
+    constexpr C to(R&amp;&amp; r, Args&amp;&amp;... args);                                          // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, input_range R, class... Args&gt;
+    constexpr auto to(R&amp;&amp; r, Args&amp;&amp;... args);                                       // <i>freestanding</i>
+  template&lt;class C, class... Args&gt;
+    requires (!view&lt;C&gt;) <ins>&amp;&amp; (constructible_from&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</ins>
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  template&lt;template&lt;class...&gt; class C, class... Args&gt;
+    <ins>requires (constructible_from&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</ins>
+    constexpr auto to(Args&amp;&amp;... args);                                              // <i>freestanding</i>
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, class... Args&gt;
+  requires (!view&lt;C&gt;) <ins>&amp;&amp; (constructible_from&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</ins>
+  constexpr auto to(Args&amp;&amp;... args);
+template&lt;template&lt;class...&gt; class C, class... Args&gt;
+  <ins>requires (constructible_from&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</ins>
+  constexpr auto to(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: For the first overload, <tt>C</tt> is a cv-unqualified class type.
+<p/>
+-2- <i>Returns</i>: A range adaptor closure object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>) <tt>f</tt> that is a 
+perfect forwarding call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>) with the following properties:
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+</blockquote>
+
+
+<p><i>[2023-09-28; Hewill provides alternative wording]</i></p>
+
+<p>
+The new wording form is consistent with the current wording, that is, it has a similar structure 
+with 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> p1 and 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> p8.
+</p>
+
+
+<p id="res-3983"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.adaptors">[range.utility.conv.adaptors]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class C, class... Args&gt; requires (!view&lt;C&gt;)
+  constexpr auto to(Args&amp;&amp;... args);
+template&lt;template&lt;class...&gt; class C, class... Args&gt;
+  constexpr auto to(Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: For the first overload, <tt>C</tt> is a cv-unqualified class type.
+<p/>
+-2- <i>Returns</i>: A range adaptor closure object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>) <tt>f</tt> that is a 
+perfect forwarding call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>) with the following properties:
+</p>
+<ol style="list-style-type:none">
+<li><p>(2.1) &mdash; It has no target object.</p></li>
+<li><p>(2.2) &mdash; Its bound argument entities <tt>bound_args</tt> consist of objects of types <tt>decay_t&lt;Args&gt;...</tt> 
+direct-non-list-initialized with <tt>std::forward&lt;Args&gt;(args)...</tt>, respectively. </p></li>
+<li><p>(2.3) &mdash; Its call pattern is <tt>to&lt;C&gt;(r, bound_args...)</tt>, where <tt>r</tt> is the argument used in a 
+function call expression of <tt>f</tt>.</p></li>
+</ol>
+<p><ins>
+-?- <i>Remarks</i>: The expression <tt>to(args...)</tt> is well-formed if and only if the initialization of the bound argument entities 
+of the result, as specified above, are all well-formed.
+</ins></p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

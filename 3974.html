@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3974: mdspan::operator[] should not copy OtherIndexTypes</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3974" href="lwg-active.html#3974">3974.</a> <tt>mdspan::operator[]</tt> should not copy <tt>OtherIndexTypes</tt></h3>
+<p><b>Section:</b> 24.7.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.members">[mdspan.mdspan.members]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2023-08-12 <b>Last modified:</b> 2023-09-24 09:43:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording for <tt>mdspan</tt>'s <tt>operator[]</tt> overloads that accept <tt>span</tt> and <tt>array</tt> is in 
+24.7.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.members">[mdspan.mdspan.members]</a> paragraphs 5 and 6:
+</p>
+<blockquote><pre>
+template&lt;class OtherIndexType&gt;
+  constexpr reference operator[](span&lt;OtherIndexType, rank()&gt; indices) const;
+template&lt;class OtherIndexType&gt;
+  constexpr reference operator[](const array&lt;OtherIndexType, rank()&gt;&amp; indices) const;
+</pre>
+<p>
+-5- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; <tt>is_convertible_v&lt;const OtherIndexType&amp;, index_type&gt;</tt> is <tt>true</tt>, and</p></li>
+<li><p>(5.2) &mdash; <tt>is_nothrow_constructible_v&lt;index_type, const OtherIndexType&amp;&gt;</tt> is <tt>true</tt>.</p></li>
+</ol>
+<p>
+-6- <i>Effects</i>: Let <tt>P</tt> be a parameter pack such that
+</p>
+<blockquote><pre>
+is_same_v&lt;make_index_sequence&lt;rank()&gt;, index_sequence&lt;P...&gt;&gt;
+</pre></blockquote>
+<p>
+is <tt>true</tt>. Equivalent to:
+</p>
+<blockquote><pre>
+return operator[](as_const(indices[P])...);
+</pre></blockquote>
+</blockquote>
+<p>
+The equivalent code calls the other <tt>operator[]</tt> overload:
+</p>
+<blockquote><pre>
+template&lt;class... OtherIndexTypes&gt;
+  constexpr reference operator[](OtherIndexTypes... indices) const;
+</pre></blockquote>
+<p>
+with a pack of <tt>const OtherIndexType</tt> lvalues, but we notably haven't required <tt>OtherIndexTypes</tt> to be copyable &mdash; 
+we only require that we can convert them to <tt>index_type</tt>. While one could argue that the use in "<i>Effects</i>: equivalent to" 
+implies a requirement of copyability, it's odd that this implicit requirement would be the only requirement for copyable 
+<tt>OtherIndexTypes</tt> in the spec. We could fix this by changing the <tt>operator[]</tt> overload accepting <tt>OtherIndexTypes</tt> 
+to take them by <tt>const&amp;</tt>, but that would be inconsistent with virtually every other place in the spec where types 
+convertible to <tt>index_type</tt> are taken by-value. I think the best localized fix is to perform the conversion to <tt>index_type</tt> 
+in the "<i>Effects</i>: equivalent to" code so the actual arguments have type <tt>index_type</tt> which we know is copyable.
+</p>
+
+
+<p id="res-3974"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 24.7.3.6.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.members">[mdspan.mdspan.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr reference operator[](span&lt;OtherIndexType, rank()&gt; indices) const;
+template&lt;class OtherIndexType&gt;
+  constexpr reference operator[](const array&lt;OtherIndexType, rank()&gt;&amp; indices) const;
+</pre>
+<blockquote>
+<p>
+-5- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; <tt>is_convertible_v&lt;const OtherIndexType&amp;, index_type&gt;</tt> is <tt>true</tt>, and</p></li>
+<li><p>(5.2) &mdash; <tt>is_nothrow_constructible_v&lt;index_type, const OtherIndexType&amp;&gt;</tt> is <tt>true</tt>.</p></li>
+</ol>
+<p>
+-6- <i>Effects</i>: Let <tt>P</tt> be a parameter pack such that
+</p>
+<blockquote><pre>
+is_same_v&lt;make_index_sequence&lt;rank()&gt;, index_sequence&lt;P...&gt;&gt;
+</pre></blockquote>
+<p>
+is <tt>true</tt>. Equivalent to:
+</p>
+<blockquote><pre>
+return operator[](<ins>extents_type::<i>index-cast</i>(</ins>as_const(indices[P])<ins>)</ins>...);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

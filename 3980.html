@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3980: The read exclusive ownership of an atomic read-modify-write operation and whether its read and write are two operations are unclear</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3980" href="lwg-active.html#3980">3980.</a> The read exclusive ownership of an atomic read-modify-write operation and whether its read and write are two operations are unclear</h3>
+<p><b>Section:</b> 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> jim x <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-09-24 09:43:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#atomics.order">active issues</a> in [atomics.order].</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.order">issues</a> in [atomics.order].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Such two questions are sourced from StackOverflow:
+</p>
+<ol>
+<li><p><a href="https://stackoverflow.com/questions/77126045/can-the-read-operations-in-compare-exchange-strong-in-different-two-thread-rea/77126363?noredirect=1#comment135968355_77126363">Can the read operations in <tt>compare_exchange_strong</tt> in different two thread read the same value?</a></p></li>
+<li><p><a href="https://stackoverflow.com/questions/65568185/for-purposes-of-ordering-is-atomic-read-modify-write-one-operation-or-two">For purposes of ordering, is atomic read-modify-write one operation or two?</a></p></li>
+</ol>
+<p>
+Given this example:
+</p>
+<blockquote>
+<pre>
+#include &lt;iostream&gt;
+#include &lt;atomic&gt;
+#include &lt;thread&gt;
+
+struct SpinLock{
+  std::atomic&lt;bool&gt; atomic_;
+  void lock(){
+    bool expected = false;
+    while (!atomic_.compare_exchange_strong(expected,true,std::memory_order_release,std::memory_order_relaxed)) {
+    }
+  }
+  void unlock(){
+    atomic_.store(false, std::memory_order_release);
+  }
+};
+
+int main(){
+  SpinLock spin{false};
+  auto t1 = std::thread([&amp;](){
+    spin.lock();
+    spin.unlock();
+  });
+  auto t2 = std::thread([&amp;](){
+    spin.lock();
+    spin.unlock();
+  });
+  t1.join();
+  t2.join();
+}
+</pre>
+</blockquote>
+<p>
+In the current draft, the relevant phrasing that can interpret that only one read-modify-write operation reads the initial 
+value false is 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> p10:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
+Atomic read-modify-write operations shall always read the last value (in the modification order) written before the write 
+associated with the read-modify-write operation.
+</p></blockquote>
+<p>
+However, the wording can have two meanings, each kind of read can result in different explanations for the example
+</p>
+<ol>
+<li><p>The check of the violation is done before the side effect of the RMW is in the modification order, i.e. the rule is 
+just checked at the read point.</p></li>
+<li><p>The check of the violation is done after the side effect of the RMW is in the modification order, i.e. the rule is 
+checked when <tt>RMW</tt> tries to add the side effect that is based on the read-value to the modification order, and that 
+side effect wouldn't be added to the modification order if the rule was violated.</p></li>
+</ol>
+<p>
+With the first interpretation, the two RMW operations can read the same initial value because that value is indeed the last value 
+in the modification order before such two RMW operations produce the side effect to the modification order.
+<p/>
+With the second interpretation, there is only one RMW operation that can read the initial value because the latter one in 
+the modification order would violate the rule if it read the initial value.
+<p/>
+Such two interpretations arise from that the wording doesn't clearly specify when that check is performed.
+<p/>
+So, my proposed wording is:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
+Atomic read-modify-write operations shall always read the value from a side effect <tt>X</tt>, where <tt>X</tt> 
+immediately precedes the side effect of the read-modify-write operation in the modification order.
+</p></blockquote>
+<p>
+This wording keeps a similar utterance to 6.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a>, and it can clearly convey the meaning 
+that we say the value read by <tt>RWM</tt> is associated with the side effect of <tt>RMW</tt> in the modification order.
+<p/>
+Relevant discussion can be seen <a href="https://github.com/cplusplus/CWG/issues/423">CWG/issues/423</a> here.
+</p>
+
+
+<p id="res-3980"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-10- Atomic read-modify-write operations shall always read the <del>last</del> value <ins>from a side effect <i>X</i>, 
+where <i>X</i> immediately precedes the side effect of the read-modify-write operation</ins> <del>(</del>in the 
+modification order<del>) written before the write associated with the read-modify-write operation</del>.
+<p/>
+-11- Implementations should make atomic stores visible to atomic loads within a reasonable amount of time.
+</p>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

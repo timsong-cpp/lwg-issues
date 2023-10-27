@@ -1,0 +1,377 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3973: Monadic operations should be ADL-proof</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3973" href="lwg-active.html#3973">3973.</a> Monadic operations should be ADL-proof</h3>
+<p><b>Section:</b> 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a>, 22.5.3.7 <a href="https://timsong-cpp.github.io/cppwp/optional.monadic">[optional.monadic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-08-10 <b>Last modified:</b> 2023-09-24 09:43:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#expected.object.monadic">issues</a> in [expected.object.monadic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3938">3938</a> switched to use <tt>**this</tt> to access the value stored in <tt>std::expected</tt>. 
+However, as shown in LWG <a href="3969">3969</a>, <tt>**this</tt> can trigger ADL and find an unwanted overload, 
+and thus may caused unintended behavior.
+<p/>
+Current implementations behave correctly (<a href="https://godbolt.org/z/3b1Tbs1jd">Godbolt link</a>): they 
+don't direct use <tt>**this</tt>, but use the name of the union member instead.
+<p/>
+Moreover, <a href="https://wg21.link/P2407R5">P2407R5</a> will change the monadic operations of <tt>std::optional</tt> to use <tt>**this</tt>, 
+which is also problematic.
+</p>
+
+<p><i>[2023-09-19; Wording update]</i></p>
+
+<p>
+Several people preferred to replace <tt>operator*()</tt> by the corresponding union members, so this part of the proposed wording 
+has been adjusted, which is a rather mechanical replacement.
+</p>
+
+
+<p id="res-3973"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.8.6.7 <a href="https://timsong-cpp.github.io/cppwp/expected.object.monadic">[expected.object.monadic]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Effectively replace all occurrences of <tt>**this</tt> by <tt><i>val</i></tt>, except for <tt>decltype</tt>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-1- Let <tt>U</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(<del>**this</del><ins>(<i>val</i>)</ins>)&gt;&gt;</tt>.
+<p/>
+-2- [&hellip;]
+<p/>
+-3- [&hellip;]
+<p/>
+-4- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (has_value())
+  return invoke(std::forward&lt;F&gt;(f), <del>**this</del><ins><i>val</i></ins>);
+else
+  return U(unexpect, error());
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-5- Let <tt>U</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype((std::move(<del>**this</del><ins><i>val</i></ins>))&gt;&gt;</tt>.
+<p/>
+-6- [&hellip;]
+<p/>
+-7- [&hellip;]
+<p/>
+-8- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (has_value())
+  return invoke(std::forward&lt;F&gt;(f), std::move(<del>**this</del><ins><i>val</i></ins>));
+else
+  return U(unexpect, std::move(error()));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-9- Let <tt>G</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(error())&gt;&gt;</tt>.
+<p/>
+-10- <i>Constraints</i>: <tt>is_constructible_v&lt;T, decltype(<del>**this</del><ins>(<i>val</i>)</ins>)&gt;</tt> is <tt>true</tt>.
+<p/>
+-11- [&hellip;]
+<p/>
+-12- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (has_value())
+  return G(in_place, <del>**this</del><ins><i>val</i></ins>);
+else
+  return invoke(std::forward&lt;F&gt;(f), error());
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto or_else(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-13- Let <tt>G</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(std::move(error()))&gt;&gt;</tt>.
+<p/>
+-14- <i>Constraints</i>: <tt>is_constructible_v&lt;T, decltype(std::move(<del>**this</del><ins><i>val</i></ins>))&gt;</tt> is <tt>true</tt>.
+<p/>
+-15- [&hellip;]
+<p/>
+-16- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (has_value())
+  return G(in_place, std::move(<del>**this</del><ins><i>val</i></ins>));
+else
+  return invoke(std::forward&lt;F&gt;(f), std::move(error()));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-17- Let <tt>U</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(<del>**this</del><ins>(<i>val</i>)</ins>)&gt;&gt;</tt>.
+<p/>
+-18- [&hellip;]
+<p/>
+-19- <i>Mandates</i>: <tt>U</tt> is a valid value type for <tt>expected</tt>. If <tt>is_void_v&lt;U&gt;</tt> is <tt>false</tt>, 
+the declaration
+</p>
+<blockquote><pre>
+U u(invoke(std::forward&lt;F&gt;(f), <del>**this</del><ins><i>val</i></ins>));
+</pre></blockquote>
+<p>
+is well-formed.
+<p/>
+-20- <i>Effects</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(20.1) &mdash; [&hellip;]</p></li>
+<li><p>(20.2) &mdash; Otherwise, if <tt>is_void_v&lt;U&gt;</tt> is <tt>false</tt>, returns an <tt>expected&lt;U, E&gt;</tt> 
+object whose <tt><i>has_val</i></tt> member is <tt>true</tt> and <tt><i>val</i></tt> member is direct-non-list-initialized 
+with <tt>invoke(std::forward&lt;F&gt;(f), <del>**this</del><ins><i>val</i></ins>)</tt>.</p></li>
+<li><p>(20.3) &mdash; Otherwise, evaluates <tt>invoke(std::forward&lt;F&gt;(f), <del>**this</del><ins><i>val</i></ins>)</tt> 
+and then returns <tt>expected&lt;U, E&gt;()</tt>.</p></li>
+</ol>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-21- Let <tt>U</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(std::move(<del>**this</del><ins><i>val</i></ins>))&gt;&gt;</tt>.
+<p/>
+-22- [&hellip;]
+<p/>
+-23- <i>Mandates</i>: <tt>U</tt> is a valid value type for <tt>expected</tt>. If <tt>is_void_v&lt;U&gt;</tt> is <tt>false</tt>, 
+the declaration
+</p>
+<blockquote><pre>
+U u(invoke(std::forward&lt;F&gt;(f), std::move(<del>**this</del><ins><i>val</i></ins>)));
+</pre></blockquote>
+<p>
+is well-formed.
+<p/>
+-24- <i>Effects</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p>(24.1) &mdash; [&hellip;]</p></li>
+<li><p>(24.2) &mdash; Otherwise, if <tt>is_void_v&lt;U&gt;</tt> is <tt>false</tt>, returns an <tt>expected&lt;U, E&gt;</tt> 
+object whose <tt><i>has_val</i></tt> member is <tt>true</tt> and <tt><i>val</i></tt> member is direct-non-list-initialized 
+with <tt>invoke(std::forward&lt;F&gt;(f), std::move(<del>**this</del><ins><i>val</i></ins>))</tt>.</p></li>
+<li><p>(24.3) &mdash; Otherwise, evaluates <tt>invoke(std::forward&lt;F&gt;(f), std::move(<del>**this</del><ins><i>val</i></ins>))</tt> 
+and then returns <tt>expected&lt;U, E&gt;()</tt>.</p></li>
+</ol>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-25- Let <tt>G</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(error())&gt;&gt;</tt>.
+<p/>
+-26- <i>Constraints</i>: <tt>is_constructible_v&lt;T, decltype(<del>**this</del><ins>(<i>val</i>)</ins>)&gt;</tt> is <tt>true</tt>.
+<p/>
+-27- <i>Mandates</i>: [&hellip;]
+<p/>
+-28- <i>Returns</i>: If <tt>has_value()</tt> is <tt>true</tt>, <tt>expected&lt;T, G&gt;(in_place, <del>**this</del><ins><i>val</i></ins>)</tt>; 
+otherwise, an <tt>expected&lt;T, G&gt;</tt> object whose <tt><i>has_val</i></tt> member is <tt>false</tt> and 
+<tt><i>unex</i></tt> member is direct-non-list-initialized with <tt>invoke(std::forward&lt;F&gt;(f), error())</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform_error(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-29- Let <tt>G</tt> be <tt>remove_cvref_t&lt;invoke_result_t&lt;F, decltype(std::move(error()))&gt;&gt;</tt>.
+<p/>
+-30- <i>Constraints</i>: <tt>is_constructible_v&lt;T, decltype(std::move(<del>**this</del><ins><i>val</i></ins>))&gt;</tt> is <tt>true</tt>.
+<p/>
+-31- <i>Mandates</i>: [&hellip;]
+<p/>
+-32- <i>Returns</i>: If <tt>has_value()</tt> is <tt>true</tt>, <tt>expected&lt;T, G&gt;(in_place, std::move(<del>**this</del><ins><i>val</i></ins>))</tt>; 
+otherwise, an <tt>expected&lt;T, G&gt;</tt> object whose <tt><i>has_val</i></tt> member is <tt>false</tt> and 
+<tt><i>unex</i></tt> member is direct-non-list-initialized with <tt>invoke(std::forward&lt;F&gt;(f), std::move(error()))</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 22.5.3.7 <a href="https://timsong-cpp.github.io/cppwp/optional.monadic">[optional.monadic]</a> as indicated:</p>
+
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Effectively replace all occurrences of <tt>value()</tt> by <tt>*val</tt>.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-1- Let <tt>U</tt> be <tt>invoke_result_t&lt;F, decltype(<del>value()</del><ins>*val</ins>)&gt;</tt>.
+<p/>
+-2- [&hellip;]
+<p/>
+-3- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (*this) {
+  return invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>*val</ins>);
+} else {
+  return remove_cvref_t&lt;U&gt;();
+}
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto and_then(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-4- Let <tt>U</tt> be <tt>invoke_result_t&lt;F, decltype(std::move(<del>value()</del><ins>*val</ins>))&gt;</tt>.
+<p/>
+-5- [&hellip;]
+<p/>
+-6- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (*this) {
+  return invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>*val</ins>));
+} else {
+  return remove_cvref_t&lt;U&gt;();
+}
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;;
+</pre>
+<blockquote>
+<p>
+-7- Let <tt>U</tt> be <tt>remove_cv_t&lt;invoke_result_t&lt;F, decltype(<del>value()</del><ins>*val</ins>)&gt;&gt;</tt>.
+<p/>
+-8- <i>Mandates</i>: <tt>U</tt> is a non-array object type other than <tt>in_place_t</tt> or <tt>nullopt_t</tt>. The declaration
+</p>
+<blockquote><pre>
+U u(invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>*val</ins>));
+</pre></blockquote>
+<p>
+is well-formed for some invented variable <tt>u</tt>.
+<p/>
+[&hellip;]
+<p/>
+-9- <i>Returns</i>: If <tt>*this</tt> contains a value, an <tt>optional&lt;U&gt;</tt> object whose contained value is 
+direct-non-list-initialized with <tt>invoke(std::forward&lt;F&gt;(f), <del>value()</del><ins>*val</ins>)</tt>; otherwise, 
+<tt>optional&lt;U&gt;()</tt>.
+</p>
+</blockquote>
+<pre>
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) &amp;&amp;;
+template&lt;class F&gt; constexpr auto transform(F&amp;&amp; f) const &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-10- Let <tt>U</tt> be <tt>remove_cv_t&lt;invoke_result_t&lt;F, decltype(std::move(<del>value()</del><ins>*val</ins>))&gt;&gt;</tt>.
+<p/>
+-11- <i>Mandates</i>: <tt>U</tt> is a non-array object type other than <tt>in_place_t</tt> or <tt>nullopt_t</tt>. The declaration
+</p>
+<blockquote><pre>
+U u(invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>*val</ins>)));
+</pre></blockquote>
+<p>
+is well-formed for some invented variable <tt>u</tt>.
+<p/>
+[&hellip;]
+<p/>
+-12- <i>Returns</i>: If <tt>*this</tt> contains a value, an <tt>optional&lt;U&gt;</tt> object whose contained value is 
+direct-non-list-initialized with <tt>invoke(std::forward&lt;F&gt;(f), std::move(<del>value()</del><ins>*val</ins>))</tt>; otherwise, 
+<tt>optional&lt;U&gt;()</tt>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3955: Add noexcept to several repeat_view[::iterator] member functions</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3955" href="lwg-active.html#3955">3955.</a> Add <tt>noexcept</tt> to several <tt>repeat_view[::<i>iterator</i>]</tt> member functions</h3>
+<p><b>Section:</b> 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a>, 26.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.iterator">[range.repeat.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-07-06 <b>Last modified:</b> 2023-07-08 12:17:42 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.repeat.view">issues</a> in [range.repeat.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Several member functions of <tt>repeat_view::<i>iterator</i></tt> only operate on its integer member, indicating that 
+they do not throw.
+<p/>
+Similarly, <tt>repeat_view::size</tt> should also be <tt>noexcept</tt> since it just performs the integer conversion.
+</p>
+
+
+<p id="res-3955"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a>, class template <tt>repeat_view</tt> synopsis, as indicated:</p>
+
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;move_constructible T, semiregular Bound = unreachable_sentinel_t&gt;
+    requires (is_object_v&lt;T&gt; &amp;&amp; same_as&lt;T, remove_cv_t&lt;T&gt;&gt; &amp;&amp;
+              (<i>integer-like-with-usable-difference-type</i>&lt;Bound&gt; ||
+               same_as&lt;Bound, unreachable_sentinel_t&gt;))
+  class repeat_view : public view_interface&lt;repeat_view&lt;T, Bound&gt;&gt; {
+  private:
+    [&hellip;]
+  public:
+    [&hellip;]
+
+    constexpr auto size() const <ins>noexcept</ins> requires (!same_as&lt;Bound, unreachable_sentinel_t&gt;);
+  };
+  [&hellip;]
+}
+</pre>
+<p>[&hellip;]</p>
+<pre>
+constexpr auto size() const <ins>noexcept</ins> requires (!same_as&lt;Bound, unreachable_sentinel_t&gt;);
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects:</i> Equivalent to: <tt>return <i>to-unsigned-like</i>(<i>bound_</i>);</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.iterator">[range.repeat.iterator]</a>, class <tt>repeat_view::<i>iterator</i></tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;move_constructible T, semiregular Bound&gt;
+    requires (is_object_v&lt;T&gt; &amp;&amp; same_as&lt;T, remove_cv_t&lt;T&gt;&gt; &amp;&amp;
+              (<i>integer-like-with-usable-difference-type</i>&lt;Bound&gt; ||
+               same_as&lt;Bound, unreachable_sentinel_t&gt;))
+  class repeat_view&lt;T, Bound&gt;::<i>iterator</i> {
+  private:
+   using <i>index-type</i> =                          // <i>exposition only</i>
+      conditional_t&lt;same_as&lt;Bound, unreachable_sentinel_t&gt;, ptrdiff_t, Bound&gt;;
+   const T* <i>value_</i> = nullptr;                  // <i>exposition only</i>
+   <i>index-type current_</i> = <i>index-type()</i>;         // <i>exposition only</i>
+
+   constexpr explicit <i>iterator</i>(const T* value, <i>index-type</i> b = <i>index-type</i>());   // <i>exposition only</i>
+
+  public:
+    [&hellip;]
+    constexpr <i>iterator</i>&amp; operator++() <ins>noexcept</ins>;
+    constexpr <i>iterator</i> operator++(int) <ins>noexcept</ins>;
+
+    constexpr const T&amp; operator[](difference_type n) const noexcept;
+
+    friend constexpr bool operator==(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+    friend constexpr auto operator&lt;=&gt;(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+
+    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+  };
+}
+</pre>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr <i>iterator</i>&amp; operator++() <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+++<i>current_</i>;
+return *this;
+</pre></blockquote>
+</blockquote>
+<pre>
+constexpr <i>iterator</i> operator++(int) <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-6- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+auto tmp = *this;
+++*this;
+return tmp;
+</pre></blockquote>
+</blockquote>
+<p>[&hellip;]</p>
+<pre>
+friend constexpr bool operator==(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-15- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> == y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+<pre>
+friend constexpr auto operator&lt;=&gt;(const <i>iterator</i>&amp;x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-16- <i>Effects:</i> Equivalent to: <tt>return x.<i>current_</i> &lt;=&gt; y.<i>current_</i>;</tt>
+</p>
+</blockquote>
+<p>[&hellip;]</p>
+<pre>
+friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) <ins>noexcept</ins>;
+</pre>
+<blockquote>
+<p>
+-19- <i>Effects:</i> Equivalent to:
+</p>
+<blockquote><pre>
+return static_cast&lt;difference_type&gt;(x.<i>current_</i>) - static_cast&lt;difference_type&gt;(y.<i>current_</i>);
+</pre></blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

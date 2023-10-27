@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 3953: iter_move for common_iterator and counted_iterator should return decltype(auto)</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="3953" href="lwg-active.html#3953">3953.</a> <tt>iter_move</tt> for <tt>common_iterator</tt> and <tt>counted_iterator</tt> should return <tt>decltype(auto)</tt></h3>
+<p><b>Section:</b> 25.5.5.7 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cust">[common.iter.cust]</a>, 25.5.7.7 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.cust">[counted.iter.cust]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-06-30 <b>Last modified:</b> 2023-07-02 10:03:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Although the customized <tt>iter_move</tt> of both requires the underlying iterator <tt>I</tt> to be <tt>input_iterator</tt>, 
+they still explicitly specify the return type as <tt>iter_rvalue_reference_t&lt;I&gt;</tt>,
+which makes it always instantiated.
+</p>
+<p>
+From the point of view that its validity is only specified in the <tt>input_iterator</tt> concept, it would be better to remove such 
+unnecessary type instantiation, which does not make much sense for an <tt>output_iterator</tt> even if it is still valid.
+</p>
+
+
+<p id="res-3953"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, class template <tt>common_iterator</tt> synopsis, as indicated:</p>
+
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; &amp;&amp; copyable&lt;I&gt;)
+  class common_iterator {
+  public:
+    [&hellip;]
+    friend constexpr <del>iter_rvalue_reference_t&lt;I&gt;</del><ins>decltype(auto)</ins> iter_move(const common_iterator&amp; i)
+      noexcept(noexcept(ranges::iter_move(declval&lt;const I&amp;&gt;())))
+        requires input_iterator&lt;I&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 25.5.5.7 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cust">[common.iter.cust]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr <del>iter_rvalue_reference_t&lt;I&gt;</del><ins>decltype(auto)</ins> iter_move(const common_iterator&amp; i)
+  noexcept(noexcept(ranges::iter_move(declval&lt;const I&amp;&gt;())))
+    requires input_iterator&lt;I&gt;;
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions</i>: [&hellip;]
+<p/>
+-2- <i>Effects</i>: Equivalent to: <tt>return ranges::iter_move(get&lt;I&gt;(i.v_));</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 25.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/counted.iterator">[counted.iterator]</a>, class template <tt>counted_iterator</tt> synopsis, as indicated:</p>
+
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I&gt;
+  class counted_iterator {
+  public:
+    [&hellip;]
+    friend constexpr <del>iter_rvalue_reference_t&lt;I&gt;</del><ins>decltype(auto)</ins> iter_move(const counted_iterator&amp; i)
+      noexcept(noexcept(ranges::iter_move(i.current)))
+        requires input_iterator&lt;I&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 25.5.7.7 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.cust">[counted.iter.cust]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+friend constexpr <del>iter_rvalue_reference_t&lt;I&gt;</del><ins>decltype(auto)</ins> 
+  iter_move(const counted_iterator&amp; i)
+    noexcept(noexcept(ranges::iter_move(i.current)))
+    requires input_iterator&lt;I&gt;;
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions</i>: [&hellip;]
+<p/>
+-2- <i>Effects</i>: Equivalent to: <tt>return ranges::iter_move(i.current);</tt>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
