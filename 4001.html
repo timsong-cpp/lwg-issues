@@ -1,0 +1,156 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4001: iota_view should provide empty</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4001" href="lwg-active.html#4001">4001.</a> <tt>iota_view</tt> should provide <tt>empty</tt></h3>
+<p><b>Section:</b> 26.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-27 <b>Last modified:</b> 2023-11-03 18:06:50 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.iota.view">active issues</a> in [range.iota.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iota.view">issues</a> in [range.iota.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When <tt>iota_view</tt>'s template parameter is not an integer type and does not model <tt><i>advanceable</i></tt>, 
+its <tt>size</tt> member will not be provided as constraints are not satisfied.
+<p/>
+If the type further fails to model the <tt>incrementable</tt>, this results in its <tt>view_interface</tt> base being 
+unable to synthesize a valid <tt>empty</tt> member as <tt>iota_view</tt> will just be an <tt>input_range</tt> 
+(<a href="https://godbolt.org/z/hG9GWvv97">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+#include &lt;iostream&gt;
+
+int main() {
+  std::vector&lt;int&gt; v;
+  auto it = std::back_inserter(v);
+  auto s = std::ranges::subrange(it, std::unreachable_sentinel);
+  auto r = std::views::iota(it);
+  std::cout &lt;&lt; s.empty() &lt;&lt; "\n"; // 0
+  std::cout &lt;&lt; r.empty() &lt;&lt; "\n"; // <span style="color:red;font-weight:bolder">ill-formed</span>
+}
+</pre></blockquote>
+<p>
+This seems to be an oversight. I don't see a reason why <tt>iota_view</tt> doesn't provide <tt>empty</tt> 
+as it does store the start and end like <tt>subrange</tt>, in which case it's easy to tell if it's empty 
+just by comparing the two.
+</p>
+
+<p><i>[2023-11-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4001"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>, class template <tt>iota_view</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;weakly_incrementable W, semiregular Bound = unreachable_sentinel_t&gt;
+    requires <i>weakly-equality-comparable-with</i>&lt;W, Bound&gt; &amp;&amp; copyable&lt;W&gt;
+  class iota_view : public view_interface&lt;iota_view&lt;W, Bound&gt;&gt; {
+  private:
+    [&hellip;]
+    W <i>value_</i> = W();                     // <i>exposition only</i>
+    Bound <i>bound_</i> = Bound();             // <i>exposition only</i>
+  public:
+    [&hellip;]
+    constexpr <i>iterator</i> begin() const;
+    constexpr auto end() const;
+    constexpr <i>iterator</i> end() const requires same_as&lt;W, Bound&gt;;
+
+    <ins>constexpr bool empty() const;</ins>
+    constexpr auto size() const requires <i>see below</i>;
+  };
+  [&hellip;]
+}
+</pre></blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+constexpr <i>iterator</i> end() const requires same_as&lt;W, Bound&gt;;
+</pre>
+<blockquote>
+<p>
+-14- <i>Effects</i>: Equivalent to: <tt>return <i>iterator</i>{<i>bound_</i>};</tt> 
+</p>
+</blockquote>
+<pre>
+<ins>constexpr bool empty() const;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to: <tt>return <i>value_</i> == <i>bound_</i>;</tt></ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

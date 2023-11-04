@@ -1,0 +1,142 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4003: view_interface::back is overconstrained</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4003" href="lwg-active.html#4003">4003.</a> <tt>view_interface::back</tt> is overconstrained</h3>
+<p><b>Section:</b> 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-28 <b>Last modified:</b> 2023-10-28 16:14:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#view.interface">issues</a> in [view.interface].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>view_interface</tt> only provides the <tt>back</tt> member when the derived class satisfies both 
+<tt>bidirectional_range</tt> and <tt>common_range</tt>, which ensures that <tt>ranges::prev</tt> can act its sentinel.
+<p/>
+However, requiring <tt>common_range</tt> seems to be too strict because when the derived class satisfies both 
+<tt>random_access_range</tt> and <tt>sized_range</tt>, its end iterator can still be calculated in constant time, 
+which is what some range adaptors currently do to greedily become common ranges.
+<p/>
+I think we should follow similar rules to eliminate this inconsistency (<a href="https://godbolt.org/z/1oEf58Krh">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+constexpr auto r = std::ranges::subrange(std::views::iota(0), 5);
+constexpr auto z = std::views::zip(r);
+static_assert(r.back() == 4); // <span style="color:red;font-weight:bolder">ill-formed</span>
+static_assert(std::get&lt;0&gt;(z.back()) == 4); // ok
+</pre></blockquote>
+
+
+<p id="res-4003"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a>, class template <tt>view_interface</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std::ranges {
+  template&lt;class D&gt;
+    requires is_class_v&lt;D&gt; &amp;&amp; same_as&lt;D, remove_cv_t&lt;D&gt;&gt;
+  class view_interface {
+    [&hellip;]
+  public:
+    [&hellip;]
+    constexpr decltype(auto) back() requires <ins>(</ins>bidirectional_range&lt;D&gt; &amp;&amp; common_range&lt;D&gt;<ins>) ||</ins>
+                                             <ins>(random_access_range&lt;D&gt; &amp;&amp; sized_range&lt;D&gt;)</ins>;
+    constexpr decltype(auto) back() const
+      requires <ins>(</ins>bidirectional_range&lt;const D&gt; &amp;&amp; common_range&lt;const D&gt;<ins>) ||</ins>
+               <ins>(random_access_range&lt;const D&gt; &amp;&amp; sized_range&lt;const D&gt;)</ins>;
+    [&hellip;]
+  };
+}
+</pre></blockquote>
+
+</li>
+
+<li><p>Modify 26.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/view.interface.members">[view.interface.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr decltype(auto) back() requires <ins>(</ins>bidirectional_range&lt;D&gt; &amp;&amp; common_range&lt;D&gt;<ins>) ||</ins>
+                                         <ins>(random_access_range&lt;D&gt; &amp;&amp; sized_range&lt;D&gt;)</ins>;
+constexpr decltype(auto) back() const
+  requires <ins>(</ins>bidirectional_range&lt;const D&gt; &amp;&amp; common_range&lt;const D&gt;<ins>) ||</ins>
+           <ins>(random_access_range&lt;const D&gt; &amp;&amp; sized_range&lt;const D&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions</i>: <tt>!empty()</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+<ins>auto <i>common-arg-end</i> = []&lt;class R&gt;(R&amp; r) {
+  if constexpr (common_range&lt;R&gt;) {
+    return ranges::end(r);
+  } else {
+    return ranges::begin(r) + ranges::distance(r);
+  }
+};</ins>
+return *ranges::prev(<ins><i>common-arg-end</i></ins><del>ranges::end</del>(<i>derived</i>()));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
