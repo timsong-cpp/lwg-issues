@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2023-11-04 at 15:14:11 UTC</p>
+<p><p>Revised 2023-11-05 at 11:06:54 UTC</p>
 </p><h2>Unresolved Issues</h2>
 <hr>
 <h3><a name="423" href="423">423.</a> Effects of negative <tt>streamsize</tt> in iostreams</h3>
@@ -51961,6 +51961,160 @@ Bullet (2.4) of 16.4.5.8 <a href="https://timsong-cpp.github.io/cppwp/res.on.fun
 
 
 <p id="res-4005"><b>Proposed resolution:</b></p>
+
+
+
+
+
+<hr>
+<h3><a name="4006" href="4006">4006.</a> <tt>chunk_view::<i>outer-iterator</i>::value_type</tt> should provide <tt>empty</tt></h3>
+<p><b>Section:</b> 26.7.28.4 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.outer.value">[range.chunk.outer.value]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-11-05 <b>Last modified:</b> 2023-11-05 10:47:39 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.chunk.outer.value">issues</a> in [range.chunk.outer.value].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>chunk_view::<i>outer-iterator</i>::value_type</tt> can determine whether it is empty by simply checking whether the 
+<tt>chunk_view</tt>'s <tt><i>remainder_</i></tt> is <tt>0</tt>, which makes it valuable to explicitly provide a 
+<tt>noexcept empty</tt> member.
+<p/>
+Otherwise, the <tt>view_interface::empty</tt> is synthesized only through the <tt>size</tt> member when the original 
+sentinel and iterator type model <tt>sized_sentinel_for</tt>, <a href="https://godbolt.org/z/v3MbzfT9G">which seems overkill</a>:
+</p>
+<blockquote><pre>
+#include &lt;cassert&gt;
+#include &lt;iostream&gt;
+#include &lt;sstream&gt;
+#include &lt;ranges&gt;
+
+int main() {
+  auto ints = std::istringstream{"1 2 3 4 5 6 7 8 9 10"};
+  for (auto chunk : std::views::istream&lt;int&gt;(ints) | std::views::chunk(3)) {
+    for (auto elem : chunk) {
+      assert(!chunk.empty()); // <span style="color:red;font-weight:bolder">no matching function for call to 'empty()'</span>
+      std::cout &lt;&lt; elem &lt;&lt; " ";
+    }
+    assert(chunk.empty()); // <span style="color:red;font-weight:bolder">ditto</span>
+    std::cout &lt;&lt; "\n";
+  }
+}
+</pre></blockquote>
+
+
+<p id="res-4006"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.28.4 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.outer.value">[range.chunk.outer.value]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+  namespace std::ranges {
+    template&lt;view V&gt;
+      requires input_range&lt;V&gt;
+    struct chunk_view&lt;V&gt;::<i>outer-iterator</i>::value_type : view_interface&lt;value_type&gt; {
+    private:
+      chunk_view* <i>parent_</i>;                                        // <i>exposition only</i>
+
+      constexpr explicit value_type(chunk_view&amp; parent);          // <i>exposition only</i>
+
+    public:
+      constexpr <i>inner-iterator</i> begin() const noexcept;
+      constexpr default_sentinel_t end() const noexcept;
+
+      <ins>constexpr bool empty() const noexcept;</ins>
+      constexpr auto size() const
+        requires sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;;
+    };
+  }
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr default_sentinel_t end() const noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: <tt>default_sentinel</tt>.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr bool empty() const noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to: <tt>return <i>parent_</i>-&gt;<i>remainder_</i> == 0;</tt></ins>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="4007" href="4007">4007.</a> Mystic prohibition of calling a <tt>volatile</tt>-qualified perfect forwarding call wrapper</h3>
+<p><b>Section:</b> 22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-11-05 <b>Last modified:</b> 2023-11-05 11:06:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#func.require">issues</a> in [func.require].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>/4 says:
+</p>
+<blockquote><p>
+[&hellip;] This forwarding step delivers a state entity of type <tt>T</tt> as <i>cv</i> <tt>T&amp;</tt> 
+when the call is performed on an lvalue of the call wrapper type and as <i>cv</i> <tt>T&amp;&amp;</tt> 
+otherwise, where <i>cv</i> represents the cv-qualifiers of the call wrapper and where <i>cv</i> shall 
+be neither <tt>volatile</tt> nor <tt>const volatile</tt>.
+</p></blockquote>
+<p>
+The "shall" seemingly indicates a requirement for user codes that calling a volatile perfect forwarding 
+call wrapper is undefined behavior. Such requirement seems to be combined with requirements for 
+implementations in an unusual way.
+<p/>
+Moreover, it is unclear whether UB is intended here. Perhaps we only want calling such a <tt>volatile</tt> 
+wrapper to be conditionally-supported. E.g. when the <tt>operator()</tt> happens to be implementable as a 
+static member function, calling a <tt>volatile</tt> wrapper can be naturally supported and have expected 
+behavior.
+</p>
+
+
+<p id="res-4007"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a> as indicated:</p>
+
+<blockquote>
+<p>
+4 A <i>perfect forwarding call wrapper</i> is an argument forwarding call wrapper that forwards its state entities
+to the underlying call expression. This forwarding step delivers a state entity of type <tt>T</tt> as 
+<i>cv</i> <tt>T&amp;</tt> when the call is performed on an lvalue of the call wrapper type and as <i>cv</i> 
+<tt>T&amp;&amp;</tt> otherwise, where <i>cv</i> represents the cv-qualifiers of the call wrapper <del>and where 
+<i>cv</i> shall be neither <tt>volatile</tt> nor <tt>const volatile</tt></del><ins>, except that if <i>cv</i> 
+is either <tt>volatile</tt> or <tt>const volatile</tt>, it is unspecified whether the call is well-formed</ins>.
+</p>
+</blockquote>
+
+</li>
+
+</ol>
 
 
 
