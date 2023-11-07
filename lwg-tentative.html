@@ -43,7 +43,7 @@
 </style>
 </head>
 <body>
-<p><p>Revised 2023-11-05 at 11:06:54 UTC</p>
+<p><p>Revised 2023-11-07 at 18:35:04 UTC</p>
 </p><h2>Tentative Issues</h2>
 <hr>
 <h3><a name="2457" href="2457">2457.</a> <tt>std::begin()</tt> and <tt>std::end()</tt> do not support multi-dimensional arrays correctly</h3>
@@ -1177,7 +1177,7 @@ For the case where <tt>rhs.<ins>has_</ins>value()</tt> is <tt>false</tt> and <tt
 <hr>
 <h3><a name="3953" href="3953">3953.</a> <tt>iter_move</tt> for <tt>common_iterator</tt> and <tt>counted_iterator</tt> should return <tt>decltype(auto)</tt></h3>
 <p><b>Section:</b> 25.5.5.7 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cust">[common.iter.cust]</a>, 25.5.7.7 <a href="https://timsong-cpp.github.io/cppwp/counted.iter.cust">[counted.iter.cust]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-06-30 <b>Last modified:</b> 2023-10-27 21:22:44 UTC</p>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-06-30 <b>Last modified:</b> 2023-11-07 18:35:04 UTC</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
@@ -1195,7 +1195,7 @@ unnecessary type instantiation, which does not make much sense for an <tt>output
 <p><i>[2023-10-27; Reflector poll]</i></p>
 
 <p>
-Set status to Tentatively Ready after five votes in favour during reflector poll.
+Set status to Tentatively Ready after six votes in favour during reflector poll.
 </p>
 
 
@@ -2748,6 +2748,110 @@ constexpr <i>iterator</i> end() const requires same_as&lt;W, Bound&gt;;
 <p/>
 [&hellip;]
 </p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3><a name="4003" href="4003">4003.</a> <tt>view_interface::back</tt> is overconstrained</h3>
+<p><b>Section:</b> 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-28 <b>Last modified:</b> 2023-11-07 18:35:04 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#view.interface">issues</a> in [view.interface].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <tt>view_interface</tt> only provides the <tt>back</tt> member when the derived class satisfies both 
+<tt>bidirectional_range</tt> and <tt>common_range</tt>, which ensures that <tt>ranges::prev</tt> can act its sentinel.
+<p/>
+However, requiring <tt>common_range</tt> seems to be too strict because when the derived class satisfies both 
+<tt>random_access_range</tt> and <tt>sized_range</tt>, its end iterator can still be calculated in constant time, 
+which is what some range adaptors currently do to greedily become common ranges.
+<p/>
+I think we should follow similar rules to eliminate this inconsistency (<a href="https://godbolt.org/z/1oEf58Krh">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+constexpr auto r = std::ranges::subrange(std::views::iota(0), 5);
+constexpr auto z = std::views::zip(r);
+static_assert(r.back() == 4); // <span style="color:red;font-weight:bolder">ill-formed</span>
+static_assert(std::get&lt;0&gt;(z.back()) == 4); // ok
+</pre></blockquote>
+
+<p><i>[2023-11-07; Reflector poll]</i></p>
+
++<p>NAD. "During the <code>concat</code> discussion LEWG decided not to
+support the corner case of random-access sized but not-common ranges."
+"If we did want to address such ranges, would be better to enforce commonness
+for random-access sized ranges by having <code>ranges::end</code> return
+<code>ranges::begin(r) + ranges::size(r)</code>."
+</p>
+
+
+<p id="res-4003"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a>, class template <tt>view_interface</tt> synopsis, as indicated:</p>
+
+<blockquote><pre>
+namespace std::ranges {
+  template&lt;class D&gt;
+    requires is_class_v&lt;D&gt; &amp;&amp; same_as&lt;D, remove_cv_t&lt;D&gt;&gt;
+  class view_interface {
+    [&hellip;]
+  public:
+    [&hellip;]
+    constexpr decltype(auto) back() requires <ins>(</ins>bidirectional_range&lt;D&gt; &amp;&amp; common_range&lt;D&gt;<ins>) ||</ins>
+                                             <ins>(random_access_range&lt;D&gt; &amp;&amp; sized_range&lt;D&gt;)</ins>;
+    constexpr decltype(auto) back() const
+      requires <ins>(</ins>bidirectional_range&lt;const D&gt; &amp;&amp; common_range&lt;const D&gt;<ins>) ||</ins>
+               <ins>(random_access_range&lt;const D&gt; &amp;&amp; sized_range&lt;const D&gt;)</ins>;
+    [&hellip;]
+  };
+}
+</pre></blockquote>
+
+</li>
+
+<li><p>Modify 26.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/view.interface.members">[view.interface.members]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr decltype(auto) back() requires <ins>(</ins>bidirectional_range&lt;D&gt; &amp;&amp; common_range&lt;D&gt;<ins>) ||</ins>
+                                         <ins>(random_access_range&lt;D&gt; &amp;&amp; sized_range&lt;D&gt;)</ins>;
+constexpr decltype(auto) back() const
+  requires <ins>(</ins>bidirectional_range&lt;const D&gt; &amp;&amp; common_range&lt;const D&gt;<ins>) ||</ins>
+           <ins>(random_access_range&lt;const D&gt; &amp;&amp; sized_range&lt;const D&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions</i>: <tt>!empty()</tt> is <tt>true</tt>.
+<p/>
+-4- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+<ins>auto <i>common-arg-end</i> = []&lt;class R&gt;(R&amp; r) {
+  if constexpr (common_range&lt;R&gt;) {
+    return ranges::end(r);
+  } else {
+    return ranges::begin(r) + ranges::distance(r);
+  }
+};</ins>
+return *ranges::prev(<ins><i>common-arg-end</i></ins><del>ranges::end</del>(<i>derived</i>()));
+</pre></blockquote>
 </blockquote>
 </blockquote>
 
