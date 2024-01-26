@@ -1,0 +1,152 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4016: container-insertable checks do not match what container-inserter does</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4016" href="lwg-active.html#4016">4016.</a> <code><i>container-insertable</i></code> checks do not match what <code><i>container-inserter</i></code> does</h3>
+<p><b>Section:</b> 26.5.7 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv">[range.utility.conv]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-11-24 <b>Last modified:</b> 2023-11-26 17:51:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The exposition-only helper <code><i>container-inserter</i></code> uses either
+<code>std::back_inserter</code> or <code>std::inserter</code>. Both
+<code>std::back_insert_iterator</code> and <code>std::insert_iterator</code>
+require <code>C::value_type</code> to be a valid type, and we do not check
+for that in <code><i>container-insertable</i></code>.
+The insert iterators can also incur a conversion to construct a
+<code>C::value_type</code> which then gets moved into the container.
+Using emplace instead of insert would avoid that temporary object.
+It's also possible (although arguably not worth caring about) that
+<code>range_value_t&lt;C&gt;</code> is not the same type as
+<code>C::value_type</code>, and that conversion to <code>C::value_type</code>
+could be ill-formed (we only check that conversion from
+<code>range_reference_t&lt;R&gt;</code> to <code>range_value_t&lt;C&gt;</code>
+is well-formed).
+</p>
+<p>
+It seems preferable to remove the use of insert iterators, so that we don't
+need to check their requirements at all.
+</p>
+
+<p><i>[2023-1-26; Rename exposition-only concept and function after reflector discussion.]</i></p>
+
+
+
+
+<p id="res-4016"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.general">[range.utility.conv.general]</a> as indicated:</p>
+
+<blockquote>
+<p>-4- Let <code><i>container-<del>insertable</del><ins>appendable</ins></i></code> be defined as follows:
+<blockquote>
+<pre><code>template&lt;class Container, class Ref&gt;
+constexpr bool <i>container-<del>insertable</del><ins>appendable</ins></i> =         <i>// exposition only</i>
+  requires(Container&amp; c, Ref&amp;&amp; ref) {
+           requires (<ins>requires { c.emplace_back(std::forward&lt;Ref&gt;(ref)); } ||</ins>
+                     requires { c.push_back(std::forward&lt;Ref&gt;(ref)); } ||
+                     <ins>requires { c.emplace(c.end(), std::forward&lt;Ref&gt;(ref)); } ||</ins>
+                     requires { c.insert(c.end(), std::forward&lt;Ref&gt;(ref)); });
+};
+</code></pre>
+</blockquote>
+</p>
+<p>-5- Let <code><i>container-<del>inserter</del><ins>append</ins></i></code> be defined as follows:
+<blockquote>
+<pre><code>template&lt;class Container<del>, class Ref</del>&gt;
+constexpr auto <i>container-<del>inserter</del><ins>append</ins></i>(Container&amp; c) {     <i>// exposition only</i>
+<del>  if constexpr (requires { c.push_back(declval&lt;Ref&gt;()); })
+    return back_inserter(c);
+  else
+    return inserter(c, c.end());</del>
+<ins>  return [&amp;c]&lt;class Ref&gt;(Ref&amp;&amp; ref) {
+    if constexpr (requires { c.emplace_back(declval&lt;Ref&gt;()); })
+      c.emplace_back(std::forward&lt;Ref&gt;(ref));
+    else if constexpr (requires { c.push_back(declval&lt;Ref&gt;()); })
+      c.push_back(std::forward&lt;Ref&gt;(ref));
+    else if constexpr (requires { c.emplace(c.end(), declval&lt;Ref&gt;()); })
+      c.emplace(c.end(), std::forward&lt;Ref&gt;(ref));
+    else
+      c.insert(c.end(), std::forward&lt;Ref&gt;(ref));
+  };</ins>
+};
+</code></pre>
+</blockquote>
+</p>
+</blockquote>
+</li>
+<li><p>Modify 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+<blockquote>
+<p>(2.1.4) Otherwise, if
+<ul style="list-style-type: none">
+<li>&mdash; <code>constructible_from&lt;C, Args...&gt;</code> is <code>true</code>, and</li>
+<li>&mdash; <code><i>container-<del>insertable</del><ins>appendable</ins></i>&lt;C, range_reference_t&lt;R&gt;&gt;</code> is <code>true</code>:</li>
+</ul>
+<blockquote>
+<pre><code>
+C c(std::forward&lt;Args&gt;(args)...);
+if constexpr (sized_range&lt;R&gt; &amp;&amp; <i>reservable-container</i>&lt;C&gt;)
+c.reserve(static_cast&lt;range_size_t&lt;C&gt;&gt;(ranges::size(r)));
+ranges::<del>copy</del><ins>for_each</ins>(r, <i>container-<del>inserter</del><ins>append</ins></i><del>&lt;range_reference_t&lt;R&gt;&gt;</del>(c));
+</code></pre>
+</blockquote>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

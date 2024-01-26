@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4045: tuple can create dangling references from tuple-like</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4045" href="lwg-active.html#4045">4045.</a> <code>tuple</code> can create dangling references from <code><i>tuple-like</i></code></h3>
+<p><b>Section:</b> 22.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-01-24 <b>Last modified:</b> 2024-01-25 00:35:27 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P2165R4">P2165R4</a>
+(Compatibility between tuple, pair and tuple-like objects)
+added two new constructors to <code>std::tuple</code>:
+</p>
+<pre><code>
+  template&lt;tuple-likeUTuple&gt;
+    constexpr explicit(see below ) tuple(UTuple&amp;&amp; u);
+</code></pre>
+<p>
+and the allocator-extended equivalent.
+Unlike the existing constructors taking a single parameter of tuple type,
+these new constructors are not defined as deleted if they would create a
+dangling reference to a temporary. The existing constructors gained that
+restriction from
+<a href="https://wg21.link/P2255R2">P2255R2</a>
+(A type trait to detect reference binding to temporary)
+which was approved one meeting before
+<a href="https://wg21.link/P2165R4">P2165R4</a>
+so LWG seem to have missed the inconsistency.
+</p>
+<p>
+The proposal also added a new constructor for <code>std::pair</code>:
+</p>
+<pre><code>
+  template&lt;pair-like P&gt; constexpr explicit(<i>see below</i>) pair(P&amp;&amp; p);
+</code></pre>
+<p>
+This <em>is</em> deleted if it would create a dangling reference,
+although that seems to be an almost accidental consequence of adding
+the new signature after existing ones which already have the <em>Remarks</em>:
+about being deleted.
+</p>
+
+
+<p id="res-4045"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+<ol>
+<li><p>Modify 22.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
+<blockquote>
+<pre><code>
+template&lt;<i>tuple-like</i> UTuple&gt;
+  constexpr explicit(<i>see below</i>) tuple(UTuple&amp;&amp; u);
+</code></pre>
+<p>-28-
+Let <code>I</code> be the pack <code>0, 1, ..., (sizeof...(Types) - 1)</code>.
+</p>
+<p>-29-
+<i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li>(29.1) &ndash;
+<code><i>different-from</i>&lt;UTuple, tuple&gt;</code>
+(26.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.helpers">[range.utility.helpers]</a>) is <code>true</code>,
+</li>
+<li>(29.2) &ndash;
+<code>remove_cvref_t&lt;UTuple&gt;</code> is not a specialization of
+<code>ranges::subrange</code>,
+</li>
+<li>(29.3) &ndash;
+<code>sizeof...(Types)</code> equals
+<code>tuple_size_v&lt;remove_cvref_t&lt;UTuple&gt;&gt;</code>,
+</li>
+<li>(29.4) &ndash;
+<code>(is_constructible_v&lt;Types, decltype(get&lt;I&gt;(std::forward&lt;UTuple&gt;(u)))> &amp;&amp; ...)</code>
+ is
+<code>true</code>, and
+</li>
+<li>(29.5) &ndash;
+either <code>sizeof...(Types)</code> is not 1,
+or (when <code>Types...</code> expands to <code>T</code>)
+<code>is_convertible_v&lt;UTuple, T&gt;</code> and <code>is_constructible_v&lt;T, UTuple&gt;</code>
+are both <code>false</code>.
+</li>
+</ol>
+<p>-30- <i>Effects</i>:
+For all <i>i</i>,
+initializes the <i>i</i><sup>th</sup> element of <code>*this</code>
+with <code>get&lt;i&gt;(std::forward&lt;UTuple&gt;(u))</code>.
+</p>
+<p>-31- <i>Remarks</i>:
+The expression inside <code>explicit</code> is equivalent to:
+</p>
+<pre><code>  !(is_convertible_v&lt;decltype(get&lt;I&gt;(std::forward&lt;UTuple&gt;(u))), Types&gt; &amp;&amp; ...)
+</code></pre>
+<p>
+<ins>
+The constructor is defined as deleted if
+</ins>
+</p>
+<pre><code><ins>  (reference_constructs_from_temporary_v&lt;Types, decltype(get&lt;I&gt;(std::forward&lt;UTuple&gt;(u)))&gt; || ...)</ins>
+</code></pre>
+<p>
+<ins>
+is <code>true</code>.
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

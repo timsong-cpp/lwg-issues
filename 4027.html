@@ -1,0 +1,151 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4027: possibly-const-range should prefer returning const R&amp;</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4027" href="lwg-active.html#4027">4027.</a> <tt><i>possibly-const-range</i></tt> should prefer returning <tt>const R&amp;</tt></h3>
+<p><b>Section:</b> 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-12-17 <b>Last modified:</b> 2023-12-22 11:29:13 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ranges.syn">active issues</a> in [ranges.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ranges.syn">issues</a> in [ranges.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt><i>possibly-const-range</i></tt> currently only returns <tt>const R&amp;</tt> when <tt>R</tt> does not 
+satisfy <tt>constant_range</tt> and <tt>const R</tt> satisfies <tt>constant_range</tt>.
+<p/>
+Although it's not clear why we need the former condition, this does diverge from the legacy <tt>std::cbegin</tt> 
+(<a href="https://godbolt.org/z/636osY7os">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto r = std::views::single(0)
+        | std::views::transform([](int) { return 0; });
+  using C1 = decltype(std::ranges::cbegin(r));
+  using C2 = decltype(std::cbegin(r));
+  static_assert(std::same_as&lt;C1, C2&gt;); // <span style="color:red;font-weight:bolder">failed</span>
+}
+</pre></blockquote>
+<p>
+Since <tt>R</tt> itself is <tt>constant_range</tt>, so <tt><i>possibly-const-range</i></tt>, above just returns 
+<tt>R&amp;</tt> and <tt>C1</tt> is <tt>transform_view::<i>iterator</i>&lt;false&gt;</tt>; <tt>std::cbegin</tt> 
+specifies to return <tt>as_const(r).begin()</tt>, which makes that <tt>C2</tt> is 
+<tt>transform_view::<i>iterator</i>&lt;true&gt;</tt> which is different from <tt>C1</tt>.
+<p/>
+I believe <tt>const R&amp;</tt> should always be returned if it's a range, regardless of whether <tt>const R</tt> 
+or <tt>R</tt> is a <tt>constant_range</tt>, just as <tt><i>fmt-maybe-const</i></tt> in format ranges always prefers 
+<tt>const R</tt> over <tt>R</tt>.
+<p/>
+Although it is theoretically possible for <tt>R</tt> to satisfy <tt>constant_range</tt> and that <tt>const R</tt> 
+is a mutable range, such nonsense range type should not be of interest.
+<p/>
+This relaxation of constraints allows for maximum consistency with <tt>std::cbegin</tt>, and in some cases can 
+preserve constness to the greatest extent (<a href="https://godbolt.org/z/3hYToMq35">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  auto r = std::views::single(0) | std::views::lazy_split(0);
+  (*std::ranges::cbegin(r)).front() = 42; // ok
+  (*std::cbegin(r)).front() = 42; // <span style="color:red;font-weight:bolder">not ok</span>
+}
+</pre></blockquote>
+<p>
+Above, <tt>*std::ranges::cbegin</tt> returns a range of type <tt>const lazy_split_view::<i>outer-iterator</i>&lt;false&gt;::value_type</tt>, 
+which does not satisfy <tt>constant_range</tt> because its reference type is <tt>int&amp;</tt>.
+<p/>
+However, <tt>*std::cbegin(r)</tt> returns <tt>lazy_split_view::<i>outer-iterator</i>&lt;true&gt;::value_type</tt> 
+whose reference type is <tt>const int&amp;</tt> and satisfies <tt>constant_range</tt>.
+</p>
+
+
+<p id="res-4027"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a>, header <tt>&lt;ranges&gt;</tt> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;compare&gt;              // <i>see 17.11.1 <a href="https://timsong-cpp.github.io/cppwp/compare.syn">[compare.syn]</a></i>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+#include &lt;iterator&gt;             // <i>see 25.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a></i>
+
+namespace std::ranges {
+  [&hellip;]
+
+  // <i>26.7.21 <a href="https://timsong-cpp.github.io/cppwp/range.as.const">[range.as.const]</a>, as const view</i>
+  template&lt;input_range R&gt;
+    constexpr auto&amp; <i>possibly-const-range</i>(R&amp; r) noexcept { // <i>exposition only</i>
+      if constexpr (<ins>input</ins><del>constant</del>_range&lt;const R&gt;<del> &amp;&amp; !constant_range&lt;R&gt;</del>) {
+        return const_cast&lt;const R&amp;&gt;(r);
+      } else {
+        return r;
+      }
+    }
+
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+
+</body>
+</html>

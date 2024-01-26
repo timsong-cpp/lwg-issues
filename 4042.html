@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4042: std::print should permit an efficient implementation</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4042" href="lwg-active.html#4042">4042.</a> <tt>std::print</tt> should permit an efficient implementation</h3>
+<p><b>Section:</b> 31.7.10 <a href="https://timsong-cpp.github.io/cppwp/print.fun">[print.fun]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2024-01-20 <b>Last modified:</b> 2024-01-21 07:57:35 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#print.fun">active issues</a> in [print.fun].</p>
+<p><b>View all other</b> <a href="lwg-index.html#print.fun">issues</a> in [print.fun].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>std::print</tt>/<tt>std::vprint*</tt> is currently defined in terms of formatting into a temporary string, e.g. 
+31.7.10 <a href="https://timsong-cpp.github.io/cppwp/print.fun">[print.fun]</a>:
+</p>
+<blockquote>
+<pre>
+void vprint_nonunicode(FILE* stream, string_view fmt, format_args args);
+</pre>
+<blockquote>
+<p>
+<i>Preconditions</i>: <tt>stream</tt> is a valid pointer to an output C stream.
+<p/>
+<i>Effects</i>: Writes the result of <tt>vformat(fmt, args)</tt> to <tt>stream</tt>.
+<p/>
+<i>Throws</i>: Any exception thrown by the call to <tt>vformat</tt> (22.14.3 <a href="https://timsong-cpp.github.io/cppwp/format.err.report">[format.err.report]</a>).
+ <tt>system_error</tt> if writing to <tt>stream</tt> fails. May throw <tt>bad_alloc</tt>.
+</p>
+</blockquote>
+</blockquote>
+<p>
+This is done to make it clear that noninterleaved output is desired while keeping specification simple and portable.
+<p/>
+Unfortunately, the current specification seems to prohibit a more efficient implementation that performs formatting 
+directly into a stream buffer under a lock (<tt>flockfile</tt>/<tt>funlockfile</tt> in POSIX) like <tt>printf</tt> does. 
+The difference can be observable in case of an I/O error that occurs before a custom formatter is called. In the 
+(double buffered) implementation that directly follows the spec all formatters will be called, while in a more efficient 
+(locking) implementation subsequent formatters may not be called.
+<p/>
+The easiest fix, given in the current proposed resolution, is to say that some arguments may not be formatted in 
+case of a write error. It might be a bit weird considering that the spec says that we construct a string first so an 
+alternative resolution is to replace <tt>vformat</tt> with <tt>vformat_to</tt> info some unspecified buffer iterator 
+and state noninterleaving requirement separately. 
+</p>
+
+
+<p id="res-4042"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 31.7.10 <a href="https://timsong-cpp.github.io/cppwp/print.fun">[print.fun]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void vprint_unicode(FILE* stream, string_view fmt, format_args args);
+</pre>
+<blockquote>
+<p>
+-6- <i>Preconditions</i>: <tt>stream</tt> is a valid pointer to an output C stream.
+<p/>
+-7- <i>Effects</i>: The function initializes an automatic variable via
+</p>
+<blockquote><pre>
+string out = vformat(fmt, args);
+</pre></blockquote>
+<p>
+If <tt>stream</tt> refers to a terminal capable of displaying Unicode, writes out to the terminal using the
+native Unicode API; if out contains invalid code units, the behavior is undefined and implementations
+are encouraged to diagnose it. Otherwise writes <tt>out</tt> to <tt>stream</tt> unchanged. If the native 
+Unicode API is used, the function flushes <tt>stream</tt> before writing <tt>out</tt>.
+<p/>
+<ins>If writing to the terminal or <tt>stream</tt> fails, some arguments in <tt>args</tt> may not be formatted.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+void vprint_nonunicode(FILE* stream, string_view fmt, format_args args);
+</pre>
+<blockquote>
+<p>
+-11- <i>Preconditions</i>: <tt>stream</tt> is a valid pointer to an output C stream.
+<p/>
+-12- <i>Effects</i>: Writes the result of <tt>vformat(fmt, args)</tt> to <tt>stream</tt>. <ins>If writing to 
+<tt>stream</tt> fails, some arguments in <tt>args</tt> may not be formatted.</ins>
+<p/>
+-13- <i>Throws</i>: [&hellip;].
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4034: Clarify specification of std::min and std::max</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4034" href="lwg-active.html#4034">4034.</a> Clarify specification of <tt>std::min</tt> and <tt>std::max</tt></h3>
+<p><b>Section:</b> 27.8.9 <a href="https://timsong-cpp.github.io/cppwp/alg.min.max">[alg.min.max]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2023-12-29 <b>Last modified:</b> 2024-01-15 04:56:28 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.min.max">issues</a> in [alg.min.max].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+All standard libraries effectively use the same implementation for <tt>std::min(a, b)</tt>, 
+namely something along the lines of
+</p>
+<blockquote>
+<pre>
+return __b &lt; __a ? __b : __a;
+</pre>
+</blockquote>
+<ul>
+<li><p><a href="https://github.com/microsoft/STL/blob/a8888806c6960f1687590ffd4244794c753aa819/stl/inc/utility#L100C22-L100C22">MSVC STL</a></p></li>
+<li><p><a href="https://github.com/gcc-mirror/gcc/blob/748a4e9069e41bec1f27aa369c19f9756d8c1494/libstdc%2B%2B-v3/include/bits/stl_algobase.h#L237">libstdc++</a></p></li>
+<li><p><a href="https://github.com/llvm/llvm-project/blob/b6daac023a72235108bddc17a5245a9371cd6147/libcxx/include/__algorithm/min.h#L36">libc++</a></p></li>
+</ul>
+<p>
+However, the wording in 27.8.9 <a href="https://timsong-cpp.github.io/cppwp/alg.min.max">[alg.min.max]</a> is not so clear:
+</p>
+<blockquote>
+<p>
+<i>Returns</i>: The smaller value. Returns the first argument when the arguments are equivalent.
+</p>
+</blockquote>
+<p>
+This leaves a few questions open:
+</p>
+<ul>
+<li><p>How is the smaller value determined? Must it be through the less-than operator?</p></li>
+<li><p>For <tt>std::max</tt>, can the "larger" value be determined through the greater-than operator or must it be through less-than?</p></li>
+</ul>
+
+
+<p id="res-4034"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 27.8.9 <a href="https://timsong-cpp.github.io/cppwp/alg.min.max">[alg.min.max]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr const T&amp; min(const T&amp; a, const T&amp; b);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>T</tt> meets the <i>Cpp17LessThanComparable</i> requirements (Table 29).</ins>
+<p/>
+<ins>-?- <i>Returns</i>: <tt>b &lt; a ? b : a</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Compare&gt;
+  constexpr const T&amp; min(const T&amp; a, const T&amp; b, Compare comp);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns</i>: <tt>comp(b, a) ? b : a</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;const T*, Proj&gt;&gt; Comp = ranges::less&gt;
+constexpr const T&amp; ranges::min(const T&amp; a, const T&amp; b, Comp comp = {}, Proj proj = {});
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Preconditions</i>: For the first form, <tt>T</tt> meets the <i>Cpp17LessThanComparable</i> requirements (Table 29).</del>
+<p/>
+-2- <i>Returns</i>: <ins><tt>comp(proj(b), proj(a)) ? b : a</tt></ins><del>The smaller value. Returns the first 
+argument when the arguments are equivalent</del>.
+<p/>
+<del>-3- <i>Complexity</i>: Exactly one comparison and two applications of the projection, if any.</del>
+<p/>
+<del>-4- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt> of the
+overloads in namespace <tt>std</tt>.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr T min(initializer_list&lt;T&gt; r);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <tt>T</tt> meets the <i>Cpp17CopyConstructible</i> 
+(Table 32) and <i>Cpp17LessThanComparable</i> (Table 29) requirements.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>y &lt; x</tt> is <tt>false</tt> 
+for all subsequent elements <tt>y</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Compare&gt;
+  constexpr T min(initializer_list&lt;T&gt; r, Compare comp);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <tt>T</tt> meets the <i>Cpp17CopyConstructible</i> 
+requirements (Table 32).</ins>
+<p/>
+<ins>-?- <i>Returns</i>: The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>comp(y, x)</tt> is <tt>false</tt> 
+for all subsequent elements <tt>y</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;copyable T, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;const T*, Proj&gt;&gt; Comp = ranges::less&gt;
+  constexpr T ranges::min(initializer_list&lt;T&gt; r, Comp comp = {}, Proj proj = {});
+template&lt;input_range R, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Comp = ranges::less&gt;
+  requires indirectly_copyable_storable&lt;iterator_t&lt;R&gt;, range_value_t&lt;R&gt;*&gt;
+  constexpr range_value_t&lt;R&gt;
+    ranges::min(R&amp;&amp; r, Comp comp = {}, Proj proj = {});
+</pre>
+<blockquote>
+<p>
+-5- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <del>For the overloads in namespace <tt>std</tt>, 
+<tt>T</tt> meets the <i>Cpp17CopyConstructible</i> requirements. For the first form, <tt>T</tt> meets the 
+<i>Cpp17LessThanComparable</i> requirements (Table 29).</del>
+<p/>
+-6- <i>Returns</i>: <ins>The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>comp(proj(y), proj(x))</tt> 
+is <tt>false</tt> for all subsequent elements <tt>y</tt></ins><del>The smallest value in the input range. 
+Returns a copy of the leftmost element when several elements are equivalent to the smallest</del>.
+<p/>
+-7- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons and twice as many applications of the
+projection<del>, if any</del>.
+<p/>
+<del>-8- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt> of the
+overloads in namespace <tt>std</tt>.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr const T&amp; max(const T&amp; a, const T&amp; b);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>T</tt> meets the <i>Cpp17LessThanComparable</i> requirements (Table 29).</ins>
+<p/>
+<ins>-?- <i>Returns</i>: <tt>a &lt; b ? b : a</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Compare&gt;
+  constexpr const T&amp; max(const T&amp; a, const T&amp; b, Compare comp);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Returns</i>: <tt>comp(a, b) ? b : a</tt>.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;const T*, Proj&gt;&gt; Comp = ranges::less&gt;
+  constexpr const T&amp; ranges::max(const T&amp; a, const T&amp; b, Comp comp = {}, Proj proj = {});
+</pre>
+<blockquote>
+<p>
+<del>-9- <i>Preconditions</i>: For the first form, <tt>T</tt> meets the <i>Cpp17LessThanComparable</i> requirements (Table 29).</del>
+<p/>
+-10- <i>Returns</i>: <ins><tt>comp(proj(a), proj(b)) ? b : a</tt></ins><del>The larger value. Returns the first 
+argument when the arguments are equivalent</del>.
+<p/>
+<del>-11- <i>Complexity</i>: Exactly one comparison and two applications of the projection, if any.</del>
+<p/>
+<del>-12- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt> 
+of the overloads in namespace <tt>std</tt>.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr T max(initializer_list&lt;T&gt; r);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <tt>T</tt> meets the <i>Cpp17CopyConstructible</i> 
+(Table 32) and <i>Cpp17LessThanComparable</i> (Table 29) requirements.</ins>
+<p/>
+<ins>-?- <i>Returns</i>: The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>x &lt; y</tt> is <tt>false</tt> 
+for all subsequent elements <tt>y</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;class T, class Compare&gt;
+  constexpr T max(initializer_list&lt;T&gt; r, Compare comp);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <tt>T</tt> meets the <i>Cpp17CopyConstructible</i> 
+requirements (Table 32).</ins>
+<p/>
+<ins>-?- <i>Returns</i>: The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>comp(x, y)</tt> is <tt>false</tt> 
+for all subsequent elements <tt>y</tt>.</ins>
+<p/>
+<ins>-?- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons.</ins>
+<p/>
+<ins>-?- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt>.</ins>
+</p>
+</blockquote>
+<pre>
+template&lt;copyable T, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;const T*, Proj&gt;&gt; Comp = ranges::less&gt;
+  constexpr T ranges::max(initializer_list&lt;T&gt; r, Comp comp = {}, Proj proj = {});
+template&lt;input_range R, class Proj = identity,
+         indirect_strict_weak_order&lt;projected&lt;iterator_t&lt;R&gt;, Proj&gt;&gt; Comp = ranges::less&gt;
+  requires indirectly_copyable_storable&lt;iterator_t&lt;R&gt;, range_value_t&lt;R&gt;*&gt;
+  constexpr range_value_t&lt;R&gt;
+    ranges::max(R&amp;&amp; r, Comp comp = {}, Proj proj = {});
+</pre>
+<blockquote>
+<p>
+-13- <i>Preconditions</i>: <tt>ranges::distance(r) &gt; 0</tt>. <del>For the overloads in namespace <tt>std</tt>, 
+<tt>T</tt> meets the <i>Cpp17CopyConstructible</i> requirements. For the first form, <tt>T</tt> meets the 
+<i>Cpp17LessThanComparable</i> requirements (Table 29).</del>
+<p/>
+-14- <i>Returns</i>: <ins>The leftmost element <tt>x</tt> in <tt>r</tt> where <tt>comp(proj(x), proj(y)</tt> 
+is <tt>false</tt> for all subsequent elements <tt>y</tt></ins><del>The largest value in the input range. 
+Returns a copy of the leftmost element when several elements are equivalent to the largest</del>.
+<p/>
+-15- <i>Complexity</i>: Exactly <tt>ranges::distance(r) - 1</tt> comparisons and twice as many applications of the
+projection<del>, if any</del>.
+<p/>
+<del>-16- <i>Remarks</i>: An invocation may explicitly specify an argument for the template parameter <tt>T</tt> 
+of the overloads in namespace <tt>std</tt>.</del>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+
+
+</body>
+</html>

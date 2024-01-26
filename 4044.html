@@ -1,0 +1,298 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4044: Confusing requirements for std::print on POSIX platforms</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4044" href="lwg-active.html#4044">4044.</a> Confusing requirements for <code>std::print</code> on POSIX platforms</h3>
+<p><b>Section:</b> 31.7.10 <a href="https://timsong-cpp.github.io/cppwp/print.fun">[print.fun]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-01-24 <b>Last modified:</b> 2024-01-24 20:20:08 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#print.fun">active issues</a> in [print.fun].</p>
+<p><b>View all other</b> <a href="lwg-index.html#print.fun">issues</a> in [print.fun].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The effects for <code>vprintf_unicode</code> say:
+</p>
+
+<blockquote>
+<p>
+If <code>stream</code> refers to a terminal capable of displaying Unicode,
+writes <code>out</code> to the terminal using the native Unicode API;
+if <code>out</code> contains invalid code units, the behavior is undefined
+and implementations are encouraged to diagnose it.
+Otherwise writes <code>out</code> to stream unchanged.
+If the native Unicode API is used, the function flushes <code>stream</code>
+before writing <code>out</code>.
+</p>
+<p>
+[<i>Note 1</i>:
+On POSIX and Windows, <code>stream</code> referring to a terminal means that,
+respectively, <code>isatty(fileno(stream))</code> and
+<code>GetConsoleMode(_get_osfhandle(_fileno(stream)), ...)</code>
+return nonzero.
+&mdash; <i>end note</i>]
+</p>
+<p>
+[<i>Note 2</i>:
+On Windows, the native Unicode API is <code>WriteConsoleW</code>.
+&mdash; <i>end note</i>]
+</p>
+<p>-8-
+<i>Throws</i>:  [...]
+</p>
+<p>-9-
+<i>Recommended practice</i>:
+If invoking the native Unicode API requires transcoding, implementations
+should substitute invalid code units with
+<span style="font-variant: small-caps">u+fffd replacement character</span>
+per the Unicode Standard, Chapter 3.9
+<span style="font-variant: small-caps">u+fffd</span> Substitution in Conversion.
+</p>
+</blockquote>
+
+<p>
+The very explicit mention of <code>isatty</code> for POSIX platforms has
+confused at least two implementers into thinking that we're supposed to
+use <code>isatty</code>, and supposed to do something differently based
+on what it returns. That seems consistent with the nearly identical wording
+in 22.14.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> paragraph 12, which says
+"Implementations should use either UTF-8, UTF-16, or UTF-32,
+on platforms <u>capable of displaying Unicode text in a terminal</u>"
+and then has a note explicitly saying this is the case for Windows-based and
+many POSIX-based operating systems. So it seems clear that POSIX platforms
+are supposed to be considered to have "a terminal capable of displaying
+Unicode text", and so <code>std::print</code> should use <code>isatty</code>
+and then use a native Unicode API, and diagnose invalid code units.
+</p>
+<p>
+This is a problem however, because <code>isatty</code> needs
+to make a system call on Linux, adding 500ns to every <code>std::print</code>
+call. This results in a 10x slowdown on Linux, where <code>std::print</code>
+can take just 60ns without the <code>isatty</code> check.
+</p>
+<p>
+From discussions with Tom Honermann I learned that the "native Unicode API"
+wording is only relevant on Windows. This makes sense, because for POSIX
+platforms, writing to a terminal is done using the usual stdio functions,
+so there's no need to treat a terminal differently to any other file stream.
+And substitution of invalid code units with
+<span style="font-variant: small-caps">u+fffd</span>
+is recommended for Windows because that's what typical modern terminals do on
+POSIX platforms, so requiring the implementation to do that on Windows gives
+consistent behaviour. But the implementation doesn't need to do anything to
+make that happen with a POSIX terminal, it happens anyway.
+So the <code>isatty</code> check is unnecessary for POSIX platforms,
+and the note mentioning it just causes confusion and has no benefit.
+</p>
+
+<p>
+Secondly, there initially seems to be a contradiction between the 
+"implementations are encouraged to diagnose it" wording and the later
+<i>Recommended practice</i>. In fact, there's no contradiction because
+the native Unicode API might accept UTF-8 and therefore require no
+transcoding, and so the <i>Recommended practice</i> wouldn't apply.
+The intention is that diagnosing invalid UTF-8 is still desirable in this case,
+but how should it be diagnosed? By writing an error to the terminal alongside
+the formatted string?
+Or by substituting <span style="font-variant: small-caps">u+fffd</span> maybe?
+If the latter is the intention, why is one suggestion in the middle of the
+<i>Effects</i>, and one given as <i>Recommended practice</i>?
+</p>
+
+<p>
+The proposed resolution attempts to clarify that a "native Unicode API"
+is only needed if that's how you display Unicode on the terminal.
+It also moves the flushing requirement to be adjacent to the other
+requirements for systems using a native Unicode API instead of on its own
+later in the paragraph.
+And the suggestion to diagnose invalid code units is moved into the
+<i>Recommended practice</i> and clarified that it's only relevant if
+using a native Unicode API. I'm still not entirely happy with encouragement
+to diagnose invalid code units without giving any clue as to how that should
+be done. What does it mean to diagnose something at runtime? That's novel
+for the C++ standard. The way it's currently phrased seems to imply something
+other than <span style="font-variant: small-caps">u+fffd</span> substitution
+should be done, although that seems the most obvious implementation to me.
+</p>
+
+
+
+<p id="res-4044"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 31.7.6.3.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.print">[ostream.formatted.print]</a> as indicated:</p>
+<blockquote>
+<pre>
+void vprint_unicode(ostream&amp; os, string_view fmt, format_args args);
+void vprint_nonunicode(ostream&amp; os, string_view fmt, format_args args);
+</pre>
+<p>-3-
+<i>Effects</i>:
+Behaves as a formatted output function
+(31.7.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.reqmts">[ostream.formatted.reqmts]</a>)
+of <code>os</code>, except that:
+<ol style="list-style-type: none">
+<li>(3.1) &ndash;
+failure to generate output is reported as specified below, and
+</li>
+<li>(3.2) &ndash;
+any exception thrown by the call to <code>vformat</code> is propagated without
+regard to the value of <code>os.exceptions()</code> and without turning on
+<code>ios_base::badbit</code> in the error state of <code>os</code>.
+</li>
+</ol>
+</p>
+<p>
+After constructing a <code>sentry</code> object,
+the function initializes an automatic variable via
+<pre><code>  string out = vformat(os.getloc(), fmt, args); </code></pre>
+If the function is <code>vprint_unicode</code>
+and <code>os</code> is a stream that
+refers to a terminal capable of displaying Unicode
+<ins>via a native Unicode API,</ins>
+which is determined in an implementation-defined manner,
+<ins>flushes <code>os</code> and then</ins>
+writes <code>out</code> to the terminal using the native Unicode API;
+if <code>out</code> contains invalid code units, the behavior is undefined
+<del>and implementations are encouraged to diagnose it</del>.
+<del>
+If the native Unicode API is used, the function flushes <code>os</code>
+before writing <code>out</code>.
+</del>
+Otherwise, (is <code>os</code> is not such a stream or the function is
+<code>vprint_nonunicode</code>), inserts the character sequence
+[<code>out.begin()</code>,<code>out.end()</code>) into <code>os</code>.
+If writing to the terminal or inserting into <code>os</code> fails, calls
+<code>os.setstate(ios_base::badbit)</code>
+(which may throw <code>ios_base::failure</code>).
+</p>
+<p>-4-
+<i>Recommended practice</i>:
+For <code>vprint_unicode</code>,
+if invoking the native Unicode API requires transcoding, implementations
+should substitute invalid code units with
+<span style="font-variant: small-caps">u+fffd replacement character</span>
+per the Unicode Standard, Chapter 3.9
+<span style="font-variant: small-caps">u+fffd</span> Substitution in Conversion.
+<ins>
+If invoking the native Unicode API  does not require transcoding,
+implementations are encouraged to diagnose invalid code units.
+</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 31.7.10 <a href="https://timsong-cpp.github.io/cppwp/print.fun">[print.fun]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+void vprint_unicode(FILE* stream, string_view fmt, format_args args);
+</pre>
+<p>-6-
+<i>Preconditions</i>:
+<code>stream</code> is a valid pointer to an output C stream.
+</p>
+<p>-7-
+<i>Effects</i>:
+The function initializes an automatic variable via
+<pre><code>  string out = vformat(fmt, args); </code></pre>
+If <code>stream</code> refers to a terminal capable of displaying Unicode
+<ins>via a native Unicode API</ins>,
+<ins>flushes <code>stream</code> and then</ins>
+writes <code>out</code> to the terminal using the native Unicode API;
+if <code>out</code> contains invalid code units, the behavior is undefined
+<del>and implementations are encouraged to diagnose it</del>.
+Otherwise writes <code>out</code> to stream unchanged.
+<del>
+If the native Unicode API is used, the function flushes <code>stream</code>
+before writing <code>out</code>.
+</del>
+</p>
+<p>
+[<i>Note 1</i>:
+On <del>POSIX and</del> Windows<del>,</del>
+<ins>the native Unicode API is <code>WriteConsoleW</code> and</ins>
+<code>stream</code> referring to a terminal means that<del>,
+respectively, <code>isatty(fileno(stream))</code> and</del>
+<code>GetConsoleMode(_get_osfhandle(_fileno(stream)), ...)</code>
+return nonzero.
+&mdash; <i>end note</i>]
+</p>
+<p>
+<del>
+[<i>Note 2</i>:
+On Windows, the native Unicode API is <code>WriteConsoleW</code>.
+&mdash; <i>end note</i>]
+</del>
+</p>
+<p>-8-
+<i>Throws</i>:  [...]
+</p>
+<p>-9-
+<i>Recommended practice</i>:
+If invoking the native Unicode API requires transcoding, implementations
+should substitute invalid code units with
+<span style="font-variant: small-caps">u+fffd replacement character</span>
+per the Unicode Standard, Chapter 3.9
+<span style="font-variant: small-caps">u+fffd</span> Substitution in Conversion.
+<ins>
+If invoking the native Unicode API  does not require transcoding,
+implementations are encouraged to diagnose invalid code units.
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

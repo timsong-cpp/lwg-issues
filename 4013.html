@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4013: lazy_split_view::outer-iterator::value_type should not provide default constructor</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4013" href="lwg-active.html#4013">4013.</a> <tt>lazy_split_view::<i>outer-iterator</i>::value_type</tt> should not provide default constructor</h3>
+<p><b>Section:</b> 26.7.16.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-11-11 <b>Last modified:</b> 2023-11-18 13:05:11 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.lazy.split.outer.value">issues</a> in [range.lazy.split.outer.value].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+After <a href="https://wg21.link/P2325">P2325</a>, there is no reason for <tt>lazy_split_view::<i>outer-iterator</i>::value_type</tt> 
+to provide a default constructor, which only leads to <a href="https://godbolt.org/z/rM4WdMz79">unexpected behavior</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+constexpr int arr[] = {42};
+constexpr auto split = arr | std::views::lazy_split(0);
+static_assert(!std::ranges::range_value_t&lt;decltype(split)&gt;{});  // <span style="color:red;font-weight:bolder">UB, dereferencing a null pointer</span>
+</pre></blockquote>
+<p>
+Also, the other constructor should be private because it makes no sense for the user to construct it arbitrarily, 
+which is not the intention.
+</p>
+
+
+<p id="res-4013"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.16.4 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer.value">[range.lazy.split.outer.value]</a>, class <tt>split_view::<i>outer-iterator</i>::value_type</tt> synopsis, 
+as indicated:</p>
+
+<blockquote><pre>
+namespace std::ranges {
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; view&lt;Pattern&gt; &amp;&amp;
+             indirectly_comparable&lt;iterator_t&lt;V&gt;, iterator_t&lt;Pattern&gt;, ranges::equal_to&gt; &amp;&amp;
+             (forward_range&lt;V&gt; || <i>tiny-range</i>&lt;Pattern&gt;)
+  template&lt;bool Const&gt;
+  struct lazy_split_view&lt;V, Pattern&gt;::<i>outer-iterator</i>&lt;Const&gt;::value_type
+    : view_interface&lt;value_type&gt; {
+  private:
+    <i>outer-iterator i_</i> = <i>outer-iterator</i>();               <i>// exposition only</i>
+  
+    <ins>constexpr explicit value_type(<i>outer-iterator</i> i);    <i>// exposition only</i></ins>
+
+  public:
+    <del>value_type() = default;</del>
+    <del>constexpr explicit value_type(<i>outer-iterator</i> i);</del>
+
+    constexpr <i>inner-iterator</i>&lt;Const&gt; begin() const;
+    constexpr default_sentinel_t end() const noexcept;
+  };
+}
+</pre></blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

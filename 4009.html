@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4009: drop_view::begin const may have &#x1d4aa;(n) complexity</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4009" href="lwg-active.html#4009">4009.</a> <tt>drop_view::begin const</tt> may have &#x1d4aa;(n) complexity</h3>
+<p><b>Section:</b> 26.7.12.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.view">[range.drop.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-11-08 <b>Last modified:</b> 2023-11-18 12:00:42 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.drop.view">active issues</a> in [range.drop.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.drop.view">issues</a> in [range.drop.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<tt>drop_view::begin const</tt> is specified to return <tt>ranges::next(ranges::begin(<i>base_</i>), 
+<i>count_</i>, ranges::end(<i>base_</i>))</tt>, which has &#x1d4aa;(n) complexity when <i>base_</i> 
+is a random-access-sized but non-common range (<a href="https://godbolt.org/z/jYdo9K6jn">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+int main() {
+  const auto s = std::ranges::subrange(std::views::iota(0uz), size_t(-1));
+  const auto r = std::ranges::drop_view(s, s.size() - 1);
+  const auto b = r.begin(); // <span style="color:red;font-weight:bolder">time out</span>
+}
+</pre></blockquote>
+
+
+
+<p id="res-4009"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.12.2 <a href="https://timsong-cpp.github.io/cppwp/range.drop.view">[range.drop.view]</a> as indicated:</p>
+
+<pre>
+constexpr auto begin()
+  requires (!(<i>simple-view</i>&lt;V&gt; &amp;&amp;
+              random_access_range&lt;const V&gt; &amp;&amp; sized_range&lt;const V&gt;));
+<del>constexpr auto begin() const
+  requires random_access_range&lt;const V&gt; &amp;&amp; sized_range&lt;const V&gt;;</del>
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: 
+</p>
+<ol style="list-style-type: none">
+<li><p><ins>(?.?) &mdash; If <tt>V</tt> models <tt>random_access_range</tt> and <tt>sized_range</tt>,</ins></p>
+<blockquote><pre>
+<ins><tt>ranges::begin(<i>base_</i>) + (ranges::distance(<i>base_</i>) - range_difference_t&lt;V&gt;(size()))</tt></ins>
+</pre></blockquote>
+</li>
+<li><p><ins>(?.?) &mdash; Otherwise,</ins> <tt>ranges::next(ranges::begin(<i>base_</i>), <i>count_</i>, 
+ranges::end(<i>base_</i>))</tt>.</p></li>
+</ol>
+<p>
+-4- <i>Remarks</i>: In order to provide the amortized constant-time complexity required by the <tt>range</tt> 
+concept when <ins><tt>V</tt></ins><del><tt>drop_view</tt></del> <ins>does not</ins> model<del>s</del> 
+<ins><tt>random_access_range</tt> and <tt>sized_range</tt></ins><del><tt>forward_range</tt></del>, 
+<ins>this function</ins><del>the first overload</del> caches the result within the <tt>drop_view</tt> for 
+use on subsequent calls.
+<p/>
+[<i>Note 1</i>: Without this, applying a <tt>reverse_view</tt> over a <tt>drop_view</tt> would have quadratic 
+iteration complexity. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<pre><ins>
+constexpr auto begin() const
+  requires random_access_range&lt;const V&gt; &amp;&amp; sized_range&lt;const V&gt;;</ins>
+</pre>
+<blockquote>
+<p><ins>-?- <i>Returns</i>: <tt>ranges::begin(<i>base_</i>) + (ranges::distance(<i>base_</i>) - 
+range_difference_t&lt;const V&gt;(size()))</tt>.</ins></p>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

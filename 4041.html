@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4041: The requirements on literal type in [concept.swappable] should be removed</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4041" href="lwg-active.html#4041">4041.</a> The requirements on literal type in [concept.swappable] should be removed</h3>
+<p><b>Section:</b> 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-01-20 <b>Last modified:</b> 2024-01-21 07:32:54 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#concept.swappable">issues</a> in [concept.swappable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> bullet (2.3.1) currently requires <tt>T</tt> to be a literal type in order 
+to make the swapping expression a constant expression in that case. The requirement was likely automatically 
+enforced by the core language rules in C++20 and thus essentially redundant.
+<p/>
+However, as <a href="https://wg21.link/P2448R2">P2448R2</a> relaxed the restrictions on constexpr functions, it seems that the 
+swapping expression can be a constant expression even if <tt>T</tt> is not a literal type.
+<p/>
+E.g. the following program is accepted by GCC/libstdc++ in C++23 mode 
+(<a href="https://godbolt.org/z/dWeb3xTxd">demo</a>).
+</p>
+<blockquote><pre>
+#include &lt;concepts&gt;
+
+struct NonLiteral {
+  NonLiteral() {} // <span style="color:red;font-weight:bolder">non-constexpr</span>
+  constexpr NonLiteral(const NonLiteral&amp;) noexcept {};
+  constexpr NonLiteral&amp; operator=(const NonLiteral&amp;) noexcept { return *this; };
+};
+
+int main()
+{
+  NonLiteral x;
+  static_assert((std::ranges::swap(x, x), true));
+}
+</pre></blockquote>
+<p>
+IMO there's no good reason to additionally require literal types since C++23, which would complicate implementations.
+</p>
+
+
+<p id="res-4041"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 18.4.9 <a href="https://timsong-cpp.github.io/cppwp/concept.swappable">[concept.swappable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <tt>ranges::swap</tt> denotes a customization point object (16.3.3.3.5 <a href="https://timsong-cpp.github.io/cppwp/customization.point.object">[customization.point.object]</a>). 
+The expression <tt>ranges::swap(E1, E2)</tt> for subexpressions <tt>E1</tt> and <tt>E2</tt> is expression-equivalent 
+to an expression <tt>S</tt> determined as follows:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; [&hellip;]</p></li>
+<li><p>(2.2) &mdash; [&hellip;]</p></li>
+<li><p>(2.3) &mdash; Otherwise, if <tt>E1</tt> and <tt>E2</tt> are lvalues of the same type <tt>T</tt> that 
+models <tt>move_constructible&lt;T&gt;</tt> and <tt>assignable_from&lt;T&amp;, T&gt;</tt>, <tt>S</tt> is an 
+expression that exchanges the denoted values. <tt>S</tt> is a constant expression if</p>
+<ol style="list-style-type: none">
+<li><p><del>(2.3.1) &mdash; <tt>T</tt> is a literal type (6.8.1 <a href="https://timsong-cpp.github.io/cppwp/basic.types.general">[basic.types.general]</a>),</del></p></li>
+<li><p>(2.3.2) &mdash; both <tt>E1 = std::move(E2)</tt> and <tt>E2 = std::move(E1)</tt> are constant subexpressions 
+(3.14 <a href="https://timsong-cpp.github.io/cppwp/defns.const.subexpr">[defns.const.subexpr]</a>), and</p></li>
+<li><p>(2.3.3) &mdash; the full-expressions of the initializers in the declarations</p>
+<blockquote><pre>
+T t1(std::move(E1));
+T t2(std::move(E2));
+</pre></blockquote>
+<p>
+are constant subexpressions.
+</p></li>
+<li><p>(2.4) &mdash; Otherwise, <tt>ranges::swap(E1, E2)</tt> is ill-formed.</p></li>
+</ol>
+<p>
+<tt>noexcept(S)</tt> is equal to <tt>is_nothrow_move_constructible_v&lt;T&gt; &amp;&amp; is_nothrow_move_assignable_v&lt;T&gt;</tt>.
+</p>
+</li>
+<li><p>(2.4) &mdash; Otherwise, <tt>ranges::swap(E1, E2)</tt> is ill-formed.</p></li>
+</ol>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

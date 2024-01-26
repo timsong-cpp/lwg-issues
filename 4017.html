@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta charset="utf-8">
+<title>Issue 4017: Behavior of std::views::split on an empty range</title>
+<style type="text/css">
+  p {text-align:justify}
+  li {text-align:justify}
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table {border-collapse: collapse;}
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3><a name="4017" href="lwg-active.html#4017">4017.</a> Behavior of <tt>std::views::split</tt> on an empty range</h3>
+<p><b>Section:</b> 26.7.17.3 <a href="https://timsong-cpp.github.io/cppwp/range.split.iterator">[range.split.iterator]</a>, 26.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> David Stone <b>Opened:</b> 2023-11-19 <b>Last modified:</b> 2023-11-27 17:13:05 UTC</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following example (which uses <tt>fmt::println</tt> instead of <tt>std::println</tt>, 
+but they do the same thing in C++23):
+</p>
+<blockquote><pre>
+#include &lt;iostream&gt;
+#include &lt;string&gt;
+#include &lt;ranges&gt;
+#include &lt;fmt/ranges.h&gt;
+
+int main()
+{
+  fmt::println("{}", std::views::split(std::string(" x "), ' '));
+  fmt::println("{}", std::views::split(std::string(" "), ' '));
+  fmt::println("{}", std::views::split(std::string("x"), ' '));
+  fmt::println("{}", std::views::split(std::string(""), ' '));
+}
+</pre></blockquote>
+<p>
+The output of this program (as specified today) is 
+</p>
+<blockquote><pre>
+[[], ['x'], []]
+[[], []]
+[['x']]
+[]
+</pre></blockquote>
+<p>
+The principle set out in LWG <a href="3478">3478</a> is that splitting a sequence containing <tt>N</tt> 
+delimiters should lead to <tt>N+1</tt> subranges. That principle was broken if the <tt>N</tt>-th 
+delimiter was at the end of the sequence, which was fixed by <a href="https://wg21.link/P2210">P2210</a>. 
+<p/>
+However, the principle is still broken if the sequence contains zero delimiters. A non-empty sequence 
+will split into one range, but an empty sequence will split into zero ranges. That last line is incorrect 
+&mdash; splitting an empty range on a delimiter should yield a range of an empty range &mdash; not 
+simply an empty range.
+<p/>
+Proposed Resolution: Currently, <tt>split_view::iterator</tt>'s constructor unconditionally initializes 
+<tt><i>trailing_empty_</i></tt> to <tt>false</tt>. Instead, change 26.7.17.3 <a href="https://timsong-cpp.github.io/cppwp/range.split.iterator">[range.split.iterator]</a>/1 
+to initialize <tt><i>trailing_empty_</i></tt> to <tt><i>cur_</i> == <i>next_</i>.begin()</tt> (i.e. 
+<tt><i>trailing_empty_</i></tt> is typically <tt>false</tt>, but if we're empty on initialization then we 
+have to have a trailing empty range).
+<p/>
+The following demo shows Barry Revzin's implementation from <a href="https://wg21.link/P2210">P2210</a>, adjusted to fix this: 
+<a href="https://godbolt.org/z/axWb64j9f">godbolt.org/z/axWb64j9f</a>
+</p>
+
+
+<p id="res-4017"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.7.17.3 <a href="https://timsong-cpp.github.io/cppwp/range.split.iterator">[range.split.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>iterator</i>(split_view&amp; parent, iterator_t&lt;V&gt; current, subrange&lt;iterator_t&lt;V&gt;&gt; next);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Initializes <tt><i>parent_</i></tt> with <tt>addressof(parent)</tt>, <tt><i>cur_</i></tt> with 
+<tt>std::move(current)</tt>, <del>and</del> <tt><i>next_</i></tt> with <tt>std::move(next)</tt><ins>, and
+<tt><i>trailing_empty_</i></tt> with <tt><i>cur_</i> == <i>next_</i>.begin()</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.16.3 <a href="https://timsong-cpp.github.io/cppwp/range.lazy.split.outer">[range.lazy.split.outer]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>outer-iterator</i>(<i>Parent</i>&amp; parent, iterator_t&lt;<i>Base</i>&gt; current)
+  requires forward_range&lt;<i>Base</i>&gt;;
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Initializes <tt><i>parent_</i></tt> with <tt>addressof(parent)</tt><ins>,</ins> <del>and</del> 
+<tt><i>current_</i></tt> with <tt>std::move(current)</tt><ins>, and <tt><i>trailing_empty_</i></tt> with 
+<tt><i>current_</i> == ranges::end(parent.<i>base_</i>)</tt></ins>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
