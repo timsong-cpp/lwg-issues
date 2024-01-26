@@ -92,8 +92,7 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    }
    k += sizeof("<issue num=\"") - 1;
    auto l = tx.find('\"', k);
-   std::istringstream temp{tx.substr(k, l-k)};
-   temp >> is.num;
+   is.num = std::stoi(tx.substr(k, l-k));
 
    // Get issue status
    k = tx.find("status=\"", l);
@@ -176,10 +175,9 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    }
    k += sizeof("<date>") - 1;
    l = tx.find("</date>", k);
-   temp.clear();
-   temp.str(tx.substr(k, l-k));
 
    try {
+      std::istringstream temp{tx.substr(k, l-k)};
       is.date = parse_date(temp);
 
       // Get modification timestamp
@@ -219,7 +217,7 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
          auto l2 = tx.find("</resolution>", k2);
          is.resolution = tx.substr(k2, l2 - k2);
          if (is.resolution.length() < 15) {
-            // Filter small ammounts of whitespace between tags, with no actual resolution
+            // Filter small amounts of whitespace between tags, with no actual resolution
             is.resolution.clear();
          }
 //         is.has_resolution = l2 - k2 > 15;

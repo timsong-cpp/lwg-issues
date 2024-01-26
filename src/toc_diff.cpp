@@ -57,6 +57,7 @@ auto find_file(std::string const & status) -> std::string {
          : stat == "CD1"            ?  "lwg-defects.html"
          : stat == "TS"             ?  "lwg-defects.html"
          : stat == "WP"             ?  "lwg-defects.html"
+         : stat == "C++23"          ?  "lwg-defects.html"
          : stat == "C++20"          ?  "lwg-defects.html"
          : stat == "C++17"          ?  "lwg-defects.html"
          : stat == "C++14"          ?  "lwg-defects.html"

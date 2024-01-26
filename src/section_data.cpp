@@ -108,15 +108,6 @@ operator!=(const section_num& x, const section_num& y)
 
 typedef std::string section_tag;
 
-struct sort_first
-{
-    template <class T, class U>
-    bool operator()(const T& x, const U& y)
-    {
-        return x.first < y.first;
-    }
-};
-
 std::string
 replace_all(std::string s, const std::string& old, const std::string& nw)
 {
@@ -161,7 +152,7 @@ int main (int argc, char** argv)
         t = '[' + t + ']';
         v.push_back(std::make_pair(n, t));
     }
-    std::sort(v.begin(), v.end(), sort_first());
+    std::sort(v.begin(), v.end());
     for (std::vector<std::pair<section_num, section_tag> >::const_iterator i = v.begin(), e = v.end(); i != e; ++i)
     {
         const int indent = 4*(i->first.num.size()-1);
