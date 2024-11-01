@@ -218,14 +218,7 @@ namespace
    };
 }
 
-std::unordered_map<std::string, std::string> paper_titles = [] {
-   std::unordered_map<std::string, std::string> titles;
-   std::ifstream in{"meta-data/paper_titles.txt"};
-   std::string paper_number, title;
-   while (in >> paper_number && std::getline(in, title))
-      titles[paper_number] = title;
-   return titles;
-}();
+std::unordered_map<std::string, std::string> paper_titles;
 
 // The title of the specified paper, formatted as an HTML title="..." attribute.
 std::string paper_title_attr(std::string paper_number) {
@@ -762,6 +755,16 @@ int main(int argc, char* argv[]) {
 
          return lwg::read_section_db(infile);
       }();
+
+      paper_titles = [&path] {
+         std::unordered_map<std::string, std::string> titles;
+         std::ifstream in{path / "meta-data/paper_titles.txt"};
+         std::string paper_number, title;
+         while (in >> paper_number && std::getline(in, title))
+            titles[paper_number] = title;
+         return titles;
+      }();
+      
 #if defined (DEBUG_LOGGING)
       // dump the contents of the section index
       for (auto const & elem : section_db ) {

@@ -74,6 +74,7 @@ struct issue_mod_time {
 auto git_commit_times() -> std::map<int, std::time_t>
 {
   using Iter = std::istream_iterator<issue_mod_time>;
+  // FIXME: this should be relative, but it's so crazy expensive to generate that we aren't going to use it.
   std::ifstream f{"meta-data/dates"};
   std::map<int, std::time_t> times{ Iter{f}, Iter{} };
   return times;
