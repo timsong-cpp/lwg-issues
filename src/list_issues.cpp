@@ -39,7 +39,7 @@ namespace fs = std::filesystem;
 
 // solution specific headers
 #include "issues.h"
-#include "sections.h"
+#include "metadata.h"
 
 
 auto read_file_into_string(fs::path const & filename) -> std::string {
@@ -66,7 +66,7 @@ auto is_issue_xml_file(fs::directory_entry const & e) {
    return false;
 }
 
-void filter_issues(fs::path const & issues_path, lwg::section_map & section_db, std::function<bool(lwg::issue const &)> predicate) {
+void filter_issues(fs::path const & issues_path, lwg::metadata & meta, std::function<bool(lwg::issue const &)> predicate) {
    // Open the specified directory, 'issues_path', and iterate all the '.xml' files
    // it contains, parsing each such file as an LWG issue document. Collect
    // the number of every issue that satisfies the 'predicate'.
@@ -75,7 +75,7 @@ void filter_issues(fs::path const & issues_path, lwg::section_map & section_db, 
   for (auto ent : fs::directory_iterator(issues_path)) {
      if (is_issue_xml_file(ent)) {
          fs::path const issue_file = ent.path();
-        auto const iss = parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), section_db);
+        auto const iss = parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), meta);
         if (predicate(iss)) {
           nums.push_back(iss.num);
         }
@@ -97,8 +97,6 @@ void check_is_directory(fs::path const & directory) {
 
 int main(int argc, char const* argv[]) {
    try {
-      bool trace_on{false};  // Will pick this up from the command line later
-
       if (argc != 2) {
          std::cerr << "Must specify exactly one status\n";
          return 2;
@@ -109,22 +107,9 @@ int main(int argc, char const* argv[]) {
 
       check_is_directory(path);
 
-      lwg::section_map section_db = [&] {
-         // This lambda expression scopes the lifetime of an open 'fstream'
-         auto filename = path / "meta-data/section.data";
-         std::ifstream infile{filename};
-         if (!infile.is_open()) {
-            throw std::runtime_error{"Can't open section.data at " + path.string() + "meta-data"};
-         }
+      auto metadata = lwg::metadata::read_from_path(path);
 
-         if (trace_on) {
-            std::cout << "Reading section-tag index from: " << filename << std::endl;
-         }
-
-         return lwg::read_section_db(infile);
-      }();
-
-      filter_issues(path / "xml/", section_db, [status](lwg::issue const & iss) { return status == iss.stat; });
+      filter_issues(path / "xml/", metadata, [status](lwg::issue const & iss) { return status == iss.stat; });
    }
    catch(std::exception const & ex) {
       std::cout << ex.what() << std::endl;

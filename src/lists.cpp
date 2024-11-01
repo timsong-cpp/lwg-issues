@@ -78,7 +78,7 @@ auto is_issue_xml_file(fs::directory_entry const & e) {
    return false;
 }
 
-auto read_issues(fs::path const & issues_path, lwg::section_map & section_db) -> std::vector<lwg::issue> {
+auto read_issues(fs::path const & issues_path, lwg::metadata & meta) -> std::vector<lwg::issue> {
    // Open the specified directory, 'issues_path', and iterate all the '.xml' files
    // it contains, parsing each such file as an LWG issue document.  Return the set
    // of issues as a vector.
@@ -87,7 +87,7 @@ auto read_issues(fs::path const & issues_path, lwg::section_map & section_db) ->
    for (auto ent : fs::directory_iterator(issues_path)) {
       if (is_issue_xml_file(ent)) {
          fs::path const issue_file = ent.path();
-         issues.emplace_back(parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), section_db));
+         issues.emplace_back(parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), meta));
       }
    }
 
@@ -218,11 +218,9 @@ namespace
    };
 }
 
-std::unordered_map<std::string, std::string> paper_titles;
-
 // The title of the specified paper, formatted as an HTML title="..." attribute.
-std::string paper_title_attr(std::string paper_number) {
-   auto title = paper_titles[paper_number];
+std::string paper_title_attr(std::string paper_number, lwg::metadata& meta) {
+   auto title = meta.paper_titles[paper_number];
    if (!title.empty())
    {
       title = lwg::replace_reserved_char(std::move(title), '&', "&amp;");
@@ -235,8 +233,9 @@ std::string paper_title_attr(std::string paper_number) {
 void format_issue_as_html(lwg::issue & is,
                           std::vector<lwg::issue>::iterator first_issue,
                           std::vector<lwg::issue>::iterator last_issue,
-                          lwg::section_map & section_db) {
+                          lwg::metadata & meta) {
 
+   auto& section_db = meta.section_db;
    std::vector<std::string> tag_stack; // stack of open XML tags as we parse
 
    // Used by fix_tags to report errors.
@@ -443,7 +442,7 @@ void format_issue_as_html(lwg::issue & is,
                std::transform(paper_number.begin(), paper_number.end(), paper_number.begin(),
                      [] (unsigned char c) { return std::toupper(c); });
 
-               auto title = paper_title_attr(paper_number);
+               auto title = paper_title_attr(paper_number, meta);
 
                j -= i - 1;
                std::string r = "<a href=\"https://wg21.link/" + paper_number + "\"" + title + ">" + paper_number + "</a>";
@@ -487,7 +486,7 @@ void format_issue_as_html(lwg::issue & is,
 }
 
 
-void prepare_issues(std::vector<lwg::issue> & issues, lwg::section_map & section_db) {
+void prepare_issues(std::vector<lwg::issue> & issues, lwg::metadata & meta) {
    // Initially sort the issues by issue number, so each issue can be correctly 'format'ted
    sort(issues.begin(), issues.end(), lwg::order_by_issue_number{});
 
@@ -497,7 +496,7 @@ void prepare_issues(std::vector<lwg::issue> & issues, lwg::section_map & section
    // Currently, the 'format' function takes a reference-to-non-const-vector-of-issues purely to
    // mark up information related to duplicates, so processing duplicates in a separate pass may
    // clarify the code.
-   for (auto & i : issues) { format_issue_as_html(i, issues.begin(), issues.end(), section_db); }
+   for (auto & i : issues) { format_issue_as_html(i, issues.begin(), issues.end(), meta); }
 
    // Issues will be routinely re-sorted in later code, but contents should be fixed after formatting.
    // This suggests we may want to be storing some kind of issue handle in the functions that keep
@@ -744,30 +743,11 @@ int main(int argc, char* argv[]) {
       const fs::path target_path{path / "mailing"};
       check_is_directory(target_path);
 
-
-      lwg::section_map section_db =[&path]() {
-         auto filename = path / "meta-data" / "section.data";
-         std::ifstream infile{filename};
-         if (!infile.is_open()) {
-            throw std::runtime_error{"Can't open section.data at " + path.string() + "meta-data"};
-         }
-         std::cout << "Reading section-tag index from: " << filename << std::endl;
-
-         return lwg::read_section_db(infile);
-      }();
-
-      paper_titles = [&path] {
-         std::unordered_map<std::string, std::string> titles;
-         std::ifstream in{path / "meta-data/paper_titles.txt"};
-         std::string paper_number, title;
-         while (in >> paper_number && std::getline(in, title))
-            titles[paper_number] = title;
-         return titles;
-      }();
+      auto metadata = lwg::metadata::read_from_path(path);
       
 #if defined (DEBUG_LOGGING)
       // dump the contents of the section index
-      for (auto const & elem : section_db ) {
+      for (auto const & elem : metadata.section_db ) {
          std::string temp = elem.first;
          temp.erase(temp.end()-1);
          temp.erase(temp.begin());
@@ -793,11 +773,11 @@ int main(int argc, char* argv[]) {
 
 
       std::cout << "Reading issues from: " << issues_path << std::endl;
-      auto issues = read_issues(issues_path, section_db);
-      prepare_issues(issues, section_db);
+      auto issues = read_issues(issues_path, metadata);
+      prepare_issues(issues, metadata);
 
 
-      lwg::report_generator generator{lwg_issues_xml, section_db};
+      lwg::report_generator generator{lwg_issues_xml, metadata.section_db};
       generator.set_timestamp_from_issues(issues);
 
 

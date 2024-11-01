@@ -9,7 +9,7 @@
 
 // solution specific headers
 #include "date.h"
-#include "sections.h"
+#include "metadata.h"
 #include "status.h"
 
 namespace lwg
@@ -38,7 +38,7 @@ struct order_by_issue_number {
     bool operator()(int x,           issue const & y) const noexcept   {  return x     < y.num;   }
 };
 
-auto parse_issue_from_file(std::string file_contents, std::string const & filename, lwg::section_map & section_db) -> issue;
+auto parse_issue_from_file(std::string file_contents, std::string const & filename, lwg::metadata & meta) -> issue;
   // Seems appropriate constructor behavior.
   //
   // Note that 'section_db' is modifiable as new (unknown) sections may be inserted,

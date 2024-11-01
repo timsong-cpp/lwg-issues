@@ -3,7 +3,7 @@
 #endif
 
 #include "issues.h"
-#include "sections.h"
+#include "metadata.h"
 #include "status.h"
 
 #include <algorithm>
@@ -64,27 +64,10 @@ auto make_date(std::tm const & mod) -> gregorian::date {
    return gregorian::year((unsigned short)(mod.tm_year+1900)) / (mod.tm_mon+1) / mod.tm_mday;
 }
 
-struct issue_mod_time {
-   int id;
-   std::time_t t;
-   operator std::pair<const int, std::time_t>() const { return { id, t }; }
-   friend std::istream& operator>>(std::istream& in, issue_mod_time& v) { return in >> v.id >> v.t; }
-};
-
-auto git_commit_times() -> std::map<int, std::time_t>
-{
-  using Iter = std::istream_iterator<issue_mod_time>;
-  // FIXME: this should be relative, but it's so crazy expensive to generate that we aren't going to use it.
-  std::ifstream f{"meta-data/dates"};
-  std::map<int, std::time_t> times{ Iter{f}, Iter{} };
-  return times;
-}
-
-auto report_date_file_last_modified(std::filesystem::path const & filename) -> gregorian::date {
+auto report_date_file_last_modified(std::filesystem::path const & filename, lwg::metadata const& meta) -> gregorian::date {
    std::time_t mtime;
    int id = std::stoi(filename.filename().stem().native().substr(5));
-   static auto git_times = git_commit_times();
-   if (auto it = git_times.find(id); it != git_times.end())
+   if (auto it = meta.git_commit_times.find(id); it !=  meta.git_commit_times.end())
       mtime = it->second;
    else
    {
@@ -113,7 +96,8 @@ std::string escape_special_chars(std::string s) {
 } // close unnamed namespace
 
 auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
-  lwg::section_map & section_db) -> issue {
+  lwg::metadata & meta) -> issue {
+   auto& section_db = meta.section_db;
    struct bad_issue_file : std::runtime_error {
       bad_issue_file(std::string const & filename, std::string error_message)
          : runtime_error{"Error parsing issue file " + filename + ": " + error_message}
@@ -264,7 +248,7 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
       is.date = parse_date(temp);
 
       // Get modification date
-      is.mod_date = report_date_file_last_modified(filename);
+      is.mod_date = report_date_file_last_modified(filename, meta);
    }
    catch(std::exception const & ex) {
       throw bad_issue_file{filename, ex.what()};

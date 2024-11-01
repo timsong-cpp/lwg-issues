@@ -6,11 +6,8 @@ git pull
 
 make -j10
 
-# Restore timestamp from the last commit that touched the file.
-# Otherwise the "last modified" time displayed is worthless.
 cd LWG
-make new-papers
-../git-tools/git-restore-mtime --force
+make new-papers dates
 cd ..
 
 cp -pr LWG tmp
