@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4170: contiguous_iterator should require to_address(I{})</title>
+<meta property="og:title" content="Issue 4170: contiguous_iterator should require to_address(I{})">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4170.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4170"><a href="lwg-active.html#4170">4170</a>. <code class='backtick'>contiguous_iterator</code> should require <code class='backtick'>to_address(I{})</code></h3>
+<p><b>Section:</b> 24.3.4.14 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.contiguous">[iterator.concept.contiguous]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2024-11-01 <b>Last modified:</b> 2024-11-01</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#iterator.concept.contiguous">issues</a> in [iterator.concept.contiguous].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The design intent of the <code class='backtick'>contiguous_iterator</code> concept is that iterators can be converted
+to pointers denoting the same sequence of elements. This enables a common range <code class='backtick'>[i, j)</code>
+or counted range <code class='backtick'>i + [0, n)</code> to be processed with extremely efficient low-level C
+or assembly code that operates on <code class='backtick'>[to_address(i), to_address(j))</code> (respectively
+<code class='backtick'>to_address(i) + [0, n)</code>).
+</p><p>
+A value-initialized iterator <code class='backtick'>I{}</code> can be used to denote the empty ranges <code class='backtick'>[I{}, I{})</code>
+and <code class='backtick'>I{} + [0, 0)</code>. While the existing semantic requirements of <code class='backtick'>contiguous_iterator</code> enable us
+to convert both dereferenceable and past-the-end iterators with <code class='backtick'>to_address</code>, converting
+ranges involving value-initialized iterators to pointer ranges additionally needs
+<code class='backtick'>to_address(I{})</code> to be well-defined. Note that <code class='backtick'>to_address</code> is already implicitly
+equality-preserving for <code class='backtick'>contiguous_iterator</code> arguments. Given this additional requirement
+<code class='backtick'>to_address(I{}) == to_address(I{})</code> and <code class='backtick'>to_address(I{}) == to_address(I{)) + 0</code>
+both hold, so the two types of empty ranges involving value-initialized iterators convert
+to empty pointer ranges as desired.
+</p>
+
+
+<p id="res-4170"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4993" title=" Working Draft, Programming Languages — C++">N4993</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.3.4.14 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.contiguous">[iterator.concept.contiguous]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The <code class='backtick'>contiguous_iterator</code> concept provides a guarantee that the denoted elements are stored contiguously
+in memory.
+</p>
+<blockquote>
+<pre>
+template&lt;class I&gt;
+  concept contiguous_iterator =
+    random_access_iterator&lt;I&gt; &amp;&amp;
+    derived_from&lt;<i>ITER_CONCEPT</i>(I), contiguous_iterator_tag&gt; &amp;&amp;
+    is_lvalue_reference_v&lt;iter_reference_t&lt;I&gt;&gt; &amp;&amp;
+    same_as&lt;iter_value_t&lt;I&gt;, remove_cvref_t&lt;iter_reference_t&lt;I&gt;&gt;&gt; &amp;&amp;
+    requires(const I&amp; i) {
+      { to_address(i) } -&gt; same_as&lt;add_pointer_t&lt;iter_reference_t&lt;I&gt;&gt;&gt;;
+    };
+</pre>
+</blockquote>
+<p>
+-2- Let <code class='backtick'>a</code> and <code class='backtick'>b</code> be dereferenceable iterators and <code class='backtick'>c</code> be a non-dereferenceable iterator of type
+<code class='backtick'>I</code> such that <code class='backtick'>b</code> is reachable from <code class='backtick'>a</code> and <code class='backtick'>c</code> is reachable from <code class='backtick'>b</code>, and let <code class='backtick'>D</code> be
+<code>iter_difference_t&lt;I&gt;</code>. The type <code class='backtick'>I</code> models <code class='backtick'>contiguous_iterator</code> only if
+</p>
+
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <code class='backtick'>to_address(a) == addressof(*a)</code>,</p></li>
+<li><p>(2.2) &mdash; <code class='backtick'>to_address(b) == to_address(a) + D(b - a)</code>,</p></li>
+<li><p>(2.3) &mdash; <code class='backtick'>to_address(c) == to_address(a) + D(c - a)</code>,</p></li>
+<li><p><ins>(2.?) &mdash; <code class='backtick'>to_address(I{})</code> is well-defined,</ins></p></li>
+<li><p>(2.4) &mdash; <code class='backtick'>ranges::iter_move(a)</code> has the same type, value category, and effects as
+<code class='backtick'>std::move(*a)</code>, and</p></li>
+<li><p>(2.5) &mdash; if <code class='backtick'>ranges::iter_swap(a, b)</code> is well-formed, it has effects equivalent to
+<code class='backtick'>ranges::swap(*a, *b)</code>.</p></li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+</body>
+</html>
