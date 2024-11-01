@@ -2,6 +2,8 @@
 
 #include "issues.h"
 
+#include "html_utils.h"
+
 #include <algorithm>
 #include <istream>
 #include <sstream>
@@ -55,12 +57,20 @@ void replace_all_irefs(std::vector<lwg::issue> const & issues, std::string & s) 
 } // close unnamed namespace
 
 auto lwg::make_html_anchor(lwg::issue const & iss) -> std::string {
-   auto temp = std::to_string(iss.num);
+   auto num = std::to_string(iss.num);
+   // Remove XML elements from the title to just get the text nodes.
+   auto title = lwg::strip_xml_elements(iss.title);
+   // Attribute text is delimited with quotes so replace them with "&quot;".
+   title = lwg::replace_reserved_char(std::move(title), '"', "&quot;");
 
    std::string result{"<a href=\""};
-   result += temp;
-   result += "\">";
-   result += temp;
+   result += num;
+   result += "\" title=\"";
+   result += title;
+   result += " (Status: ";
+   result += iss.stat;
+   result += ")\">";
+   result += num;
    result += "</a>";
    return result;
 }

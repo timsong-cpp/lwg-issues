@@ -24,6 +24,7 @@
 // . XML parser
 
 // standard headers
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -67,18 +68,23 @@ auto is_issue_xml_file(fs::directory_entry const & e) {
 
 void filter_issues(fs::path const & issues_path, lwg::section_map & section_db, std::function<bool(lwg::issue const &)> predicate) {
    // Open the specified directory, 'issues_path', and iterate all the '.xml' files
-   // it contains, parsing each such file as an LWG issue document.  Write to 'out'
+   // it contains, parsing each such file as an LWG issue document. Collect
    // the number of every issue that satisfies the 'predicate'.
 
+  std::vector<int> nums;
   for (auto ent : fs::directory_iterator(issues_path)) {
      if (is_issue_xml_file(ent)) {
          fs::path const issue_file = ent.path();
         auto const iss = parse_issue_from_file(read_file_into_string(issue_file), issue_file.string(), section_db);
         if (predicate(iss)) {
-           std::cout << iss.num << '\n';
+          nums.push_back(iss.num);
         }
      }
   }
+  // Write the sorted issue numbers to stdout.
+  std::sort(nums.begin(), nums.end());
+  for (auto num : nums)
+    std::cout << num << '\n';
 }
 
 // ============================================================================================================

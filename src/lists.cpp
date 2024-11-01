@@ -39,6 +39,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include <filesystem>
@@ -46,6 +47,7 @@ namespace fs = std::filesystem;
 
 // solution specific headers
 #include "date.h"
+#include "html_utils.h"
 #include "issues.h"
 #include "mailing_info.h"
 #include "report_generator.h"
@@ -201,6 +203,42 @@ namespace {
 
 // ============================================================================================================
 
+namespace
+{
+   std::map<std::string_view, std::pair<std::string_view, std::string_view>, std::less<>> substitutions {
+      { "discussion", {"<p><b>Discussion:</b></p>", ""} },
+         { "resolution", {} },
+         { "rationale", {"<p><b>Rationale:</b></p>", ""} },
+         { "duplicate", {} },
+         { "note", { "<p><i>[", "]</i></p>\n"} },
+         { "superseded",
+            { "<p><strong>Previous resolution [SUPERSEDED]:</strong></p>\n"
+               "<blockquote class=\"note\">\n",
+               "</blockquote>" } },
+   };
+}
+
+std::unordered_map<std::string, std::string> paper_titles = [] {
+   std::unordered_map<std::string, std::string> titles;
+   std::ifstream in{"meta-data/paper_titles.txt"};
+   std::string paper_number, title;
+   while (in >> paper_number && std::getline(in, title))
+      titles[paper_number] = title;
+   return titles;
+}();
+
+// The title of the specified paper, formatted as an HTML title="..." attribute.
+std::string paper_title_attr(std::string paper_number) {
+   auto title = paper_titles[paper_number];
+   if (!title.empty())
+   {
+      title = lwg::replace_reserved_char(std::move(title), '&', "&amp;");
+      title = lwg::replace_reserved_char(std::move(title), '"', "&quot;");
+      title = " title=\"" + title + "\"";
+   }
+   return title;
+}
+
 void format_issue_as_html(lwg::issue & is,
                           std::vector<lwg::issue>::iterator first_issue,
                           std::vector<lwg::issue>::iterator last_issue,
@@ -324,19 +362,9 @@ void format_issue_as_html(lwg::issue & is,
              }
 
              tag_stack.pop_back();
-             if (tag == "discussion" or tag == "resolution" or tag == "rationale" or tag == "duplicate") {
-                 s.erase(i, j-i + 1);
-                 --i;
-             }
-             else if (tag == "superseded") {
-                 std::string_view r = "</blockquote>\n";
-                 s.replace(i, j-i + 1, r);
-                 i += r.size() - 1;
-             }
-             else if (tag == "note") {
-                 std::string_view r = "]</i></p>\n";
-                 s.replace(i, j-i + 1, r);
-                 i += r.size() - 1;
+             if (auto r = substitutions.find(tag); r != substitutions.end()) {
+                 s.replace(i, j-i + 1, r->second.second);
+                 i += r->second.second.size() - 1;
              }
              else {
                  i = j;
@@ -422,8 +450,10 @@ void format_issue_as_html(lwg::issue & is,
                std::transform(paper_number.begin(), paper_number.end(), paper_number.begin(),
                      [] (unsigned char c) { return std::toupper(c); });
 
+               auto title = paper_title_attr(paper_number);
+
                j -= i - 1;
-               std::string r = "<a href=\"https://wg21.link/" + paper_number + "\">" + paper_number + "</a>";
+               std::string r = "<a href=\"https://wg21.link/" + paper_number + "\"" + title + ">" + paper_number + "</a>";
                s.replace(i, j, r);
                i += r.size() - 1;
                continue;
@@ -433,38 +463,16 @@ void format_issue_as_html(lwg::issue & is,
          }
 
          tag_stack.push_back(tag);
-         if (tag == "discussion") {
-             std::string_view r = "<p><b>Discussion:</b></p>";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
-         }
-         else if (tag == "resolution") {
+         if (tag == "resolution") {
              std::ostringstream os;
              os << "<p id=\"res-" << is.num << "\"><b>Proposed resolution:</b></p>";
              auto r = os.str();
              s.replace(i, j-i + 1, r);
              i += r.length() - 1;
          }
-         else if (tag == "rationale") {
-             std::string_view r = "<p><b>Rationale:</b></p>";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
-         }
-         else if (tag == "duplicate") {
-             s.erase(i, j-i + 1);
-             --i;
-         }
-         else if (tag == "note") {
-             std::string_view r = "<p><i>[";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
-         }
-         else if (tag == "superseded") {
-             std::string_view r =
-                 "<p><strong>Previous resolution [SUPERSEDED]:</strong></p>\n"
-                 "<blockquote class=\"note\">\n";
-             s.replace(i, j-i + 1, r);
-             i += r.size() - 1;
+         else if (auto r = substitutions.find(tag); r != substitutions.end()) {
+             s.replace(i, j-i + 1, r->second.first);
+             i += r->second.first.size() - 1;
          }
          else if (tag == "!--") {
              tag_stack.pop_back();

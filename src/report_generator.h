@@ -66,7 +66,6 @@ struct report_generator {
 private:
    mailing_info const & lwg_issues_xml;
    section_map &        section_db;
-
 };
 
 } // close namespace lwg

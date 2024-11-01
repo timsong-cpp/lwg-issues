@@ -1,4 +1,4 @@
-// This program resets the status attribute of a single issue 
+// This program resets the status attribute of a single issue
 // It relies entirely on textual search/replace and does not
 // use any other associated functionality of the list management
 // tools.
@@ -121,8 +121,11 @@ int main(int argc, char const * argv[]) {
             throw std::logic_error("Datestamp size is borked");
          std::ostringstream note;
          note << "<note>" << date;
-         if (comment.size())
-            note << ' ' << comment << '.';
+         if (comment.size()) {
+            note << ' ' << comment;
+            if (comment.back() != '.')
+               note << '.';
+         }
          note << " Status changed: " + old_status + " &rarr; " + new_status + ".</note>\n";
          issue_data.insert(eod, note.str());
       }
@@ -139,5 +142,3 @@ int main(int argc, char const * argv[]) {
       return -1;
    }
 }
-
-

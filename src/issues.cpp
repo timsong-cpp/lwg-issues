@@ -13,6 +13,8 @@
 #include <string>
 #include <stdexcept>
 
+#include <iterator>
+#include <fstream>
 #include <sstream>
 
 #include <iostream>  // eases debugging
@@ -39,7 +41,7 @@ auto parse_month(std::string const & m) -> gregorian::month {
         : (m == "Oct") ? gregorian::oct
         : (m == "Nov") ? gregorian::nov
         : (m == "Dec") ? gregorian::dec
-        : throw std::runtime_error{"unknown month " + m};
+        : throw std::runtime_error{"unknown month abbreviation " + m};
 }
 
 auto parse_date(std::istream & temp) -> gregorian::date {
@@ -62,14 +64,49 @@ auto make_date(std::tm const & mod) -> gregorian::date {
    return gregorian::year((unsigned short)(mod.tm_year+1900)) / (mod.tm_mon+1) / mod.tm_mday;
 }
 
-auto report_date_file_last_modified(std::string const & filename) -> std::time_t {
-   auto file_mtime = fs::last_write_time(filename);
-   auto sys_mtime = std::chrono::system_clock::now() - (fs::file_time_type::clock::now() - file_mtime);
-   return std::chrono::system_clock::to_time_t(sys_mtime);
+struct issue_mod_time {
+   int id;
+   std::time_t t;
+   operator std::pair<const int, std::time_t>() const { return { id, t }; }
+   friend std::istream& operator>>(std::istream& in, issue_mod_time& v) { return in >> v.id >> v.t; }
+};
+
+auto git_commit_times() -> std::map<int, std::time_t>
+{
+  using Iter = std::istream_iterator<issue_mod_time>;
+  std::ifstream f{"meta-data/dates"};
+  std::map<int, std::time_t> times{ Iter{f}, Iter{} };
+  return times;
 }
 
-auto make_date(std::time_t t) -> gregorian::date {
-   return make_date(*std::gmtime(&t));
+auto report_date_file_last_modified(std::filesystem::path const & filename) -> gregorian::date {
+   std::time_t mtime;
+   int id = std::stoi(filename.filename().stem().native().substr(5));
+   static auto git_times = git_commit_times();
+   if (auto it = git_times.find(id); it != git_times.end())
+      mtime = it->second;
+   else
+   {
+      auto file_mtime = fs::last_write_time(filename);
+      auto sys_mtime = std::chrono::system_clock::now() - (fs::file_time_type::clock::now() - file_mtime);
+      mtime = std::chrono::duration_cast<std::chrono::seconds>(sys_mtime.time_since_epoch()).count();
+   }
+
+   return make_date(*std::gmtime(&mtime));
+}
+
+// Replace '<' and '>' and '&' with HTML character references.
+// This is used to turn backtick-quoted inline code into valid XML/HTML.
+std::string escape_special_chars(std::string s) {
+   static const std::vector<std::pair<char, std::string_view>> subs {
+      { '&', "&amp;" }, // this has to come first!
+      { '<', "&lt;" },
+      { '>', "&gt;" },
+   };
+   for (auto [c, r] : subs)
+      for (auto p = s.find(c); p != s.npos; p = s.find(c, p+r.size()))
+         s.replace(p, 1, r);
+   return s;
 }
 
 } // close unnamed namespace
@@ -77,11 +114,56 @@ auto make_date(std::time_t t) -> gregorian::date {
 auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
   lwg::section_map & section_db) -> issue {
    struct bad_issue_file : std::runtime_error {
-      bad_issue_file(std::string const & filename, char const * error_message)
+      bad_issue_file(std::string const & filename, std::string error_message)
          : runtime_error{"Error parsing issue file " + filename + ": " + error_message}
-         {
-      }
+         { }
    };
+
+   // Replace ```code block``` with valid XML.
+   for (size_t p = tx.find("\n```\n"); p != tx.npos; p = tx.find("\n```\n", p))
+   {
+      size_t p2 = tx.find("\n```\n", p + 5);
+      if (p2 == tx.npos)
+         throw bad_issue_file{filename, "Unmatched ``` code block: " + tx.substr(p, 10)};
+      auto code = "\n<pre><code>" + escape_special_chars(tx.substr(p + 5, p2 - p - 5)) + "\n</code></pre>\n";
+      tx.replace(p, p2 - p + 5, code);
+      p += code.size();
+   }
+
+   // Replace inline `code` with valid XML.
+   for (size_t p = tx.find('`'); p != tx.npos; p = tx.find('`', p))
+   {
+      if (tx[p+1] == '`')
+      {
+         // Some issues use double backtick for ``quotes like this''.
+         // We don't want to do anything here.
+         p += 2;
+         continue;
+      }
+      size_t p2 = tx.find('`', p + 1);
+      if (p2 > tx.find('\n', p + 1))
+      {
+         // Do not treat "`foo\nbar`" as inline code.
+         // Move to the next backtick and check that one.
+         p = p2;
+         continue;
+      }
+      // This class attribute is used by the CSS in src/report_generator.cpp
+      // so that the backticks are still displayed if this occurs inside a
+      // <pre> element (because that always displays in code font anyway).
+      auto code = "<code class='backtick'>"
+         + escape_special_chars(tx.substr(p + 1, p2 - p - 1))
+         + "</code>";
+      tx.replace(p, p2 - p + 1, code);
+      p += code.size();
+   }
+
+   // <tt> is obsolete in HTML5, replace with <code>:
+   for (auto p = tx.find("<tt"); p != tx.npos; p = tx.find("<tt", p+5))
+      if (tx.at(p+3) == '>' || tx.at(p+3) == ' ')
+         tx.replace(p, 3, "<code");
+   for (auto p = tx.find("</tt>"); p != tx.npos; p = tx.find("</tt>", p+7))
+         tx.replace(p, 5, "</code>");
 
    issue is;
 
@@ -180,9 +262,8 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
       std::istringstream temp{tx.substr(k, l-k)};
       is.date = parse_date(temp);
 
-      // Get modification timestamp
-      is.mod_timestamp = report_date_file_last_modified(filename);
-      is.mod_date = make_date(is.mod_timestamp);
+      // Get modification date
+      is.mod_date = report_date_file_last_modified(filename);
    }
    catch(std::exception const & ex) {
       throw bad_issue_file{filename, ex.what()};

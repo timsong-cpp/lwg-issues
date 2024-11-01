@@ -36,9 +36,6 @@ private:
       // However, we do not mark it as 'const', as it would kill the implicit move constructor.
 };
 
-// odd place for this to land up, but currently the lowest dependency.
-auto make_html_anchor(issue const & iss) -> std::string;
-
 }
 
 #endif // INCLUDE_LWG_MAILING_INFO_H
