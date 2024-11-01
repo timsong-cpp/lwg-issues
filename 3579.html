@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3579: Complexity guarantees for resize() and append() functions across the library</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3579: Complexity guarantees for resize() and append() functions across the library">
+<meta property="og:description" content="C++ library issue. Status: NAD">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3579.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,48 +61,48 @@
 </head>
 <body>
 <hr>
-<h3><a name="3579" href="lwg-closed.html#3579">3579.</a> Complexity guarantees for <tt>resize()</tt> and <tt>append()</tt> functions across the library</h3>
-<p><b>Section:</b> 23.4.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a>, 24.3.8.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a>, 24.3.10.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a>, 24.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>, 24.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a>, 28.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a>, 23.4.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 31.12.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.append">[fs.path.append]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
- <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2021-08-11 <b>Last modified:</b> 2022-08-23 13:55:25 UTC</p>
+<h3 id="3579"><a href="lwg-closed.html#3579">3579</a>. Complexity guarantees for <code>resize()</code> and <code>append()</code> functions across the library</h3>
+<p><b>Section:</b> 27.4.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a>, 23.3.5.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a>, 23.3.9.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a>, 23.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>, 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a>, 29.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a>, 27.4.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a>, 31.12.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.append">[fs.path.append]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2021-08-11 <b>Last modified:</b> 2022-08-23</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#string.capacity">issues</a> in [string.capacity].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-This issue requests to clarify the complexity requirements for <tt>resize</tt> and <tt>append</tt> 
+This issue requests to clarify the complexity requirements for <code>resize</code> and <code>append</code> 
 member functions across the library. Currently, none of them have complexity requirements associated to them, 
 which means that implementations are free to use a geometric growth approach or not. A geometric growth 
-approach (like what's required by <tt>push_back</tt>) implies that calling <tt>resize/append</tt> with 
-successively larger sizes will have amortized <tt>&#x1d4aa;(<i>N</i>)</tt> complexity, whereas using a 
-<tt>resize</tt>-exactly approach makes that pattern <tt>&#x1d4aa;(<i>N</i><sup>2</sup>)</tt>.
+approach (like what's required by <code>push_back</code>) implies that calling <code>resize/append</code> with 
+successively larger sizes will have amortized <code>&#x1d4aa;(<i>N</i>)</code> complexity, whereas using a 
+<code>resize</code>-exactly approach makes that pattern <code>&#x1d4aa;(<i>N</i><sup>2</sup>)</code>.
 <p/>
 I believe the Standard should either specify that those member functions are required to have behavior that 
-is consistent with <tt>push_back</tt>, or explicitly mention that implementations are allowed to use whatever 
+is consistent with <code>push_back</code>, or explicitly mention that implementations are allowed to use whatever 
 growth strategy they want. If we do the former, users could start relying on this guarantee in a portable manner. 
 If we do the latter, it would make it clear to users that they should not rely on the amortized 
-<tt>&#x1d4aa;(<i>N</i>)</tt> guarantee if they want their code to be portable.
+<code>&#x1d4aa;(<i>N</i>)</code> guarantee if they want their code to be portable.
 <p/>
-The following classes have a <tt>resize()</tt> member function and also a <tt>push_back()</tt> member function:
+The following classes have a <code>resize()</code> member function and also a <code>push_back()</code> member function:
 </p>
 <ul>
-<li><p>23.4.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a></p></li>
-<li><p>24.3.8.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a></p></li>
-<li><p>24.3.10.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a></p></li>
-<li><p>24.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a></p></li>
+<li><p>27.4.3.5 <a href="https://timsong-cpp.github.io/cppwp/string.capacity">[string.capacity]</a></p></li>
+<li><p>23.3.5.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a></p></li>
+<li><p>23.3.9.3 <a href="https://timsong-cpp.github.io/cppwp/list.capacity">[list.capacity]</a></p></li>
+<li><p>23.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a></p></li>
 </ul>
 <p>
-The following classes have a <tt>resize()</tt> member function but do not support <tt>push_back()</tt>:
+The following classes have a <code>resize()</code> member function but do not support <code>push_back()</code>:
 </p>
 <ul>
-<li><p>24.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a></p></li>
-<li><p>28.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a></p></li>
+<li><p>23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a></p></li>
+<li><p>29.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/valarray.members">[valarray.members]</a></p></li>
 </ul>
 <p>
-The following classes have an <tt>append()</tt> member function:
+The following classes have an <code>append()</code> member function:
 </p>
 <ul>
-<li><p>23.4.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a></p></li>
+<li><p>27.4.3.7.2 <a href="https://timsong-cpp.github.io/cppwp/string.append">[string.append]</a></p></li>
 <li><p>31.12.6.5.3 <a href="https://timsong-cpp.github.io/cppwp/fs.path.append">[fs.path.append]</a></p></li>
 </ul>
 <p>

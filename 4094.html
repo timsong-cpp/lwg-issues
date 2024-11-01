@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4094: ranges::fold_meow is overconstrained</title>
+<meta property="og:title" content="Issue 4094: ranges::fold_meow is overconstrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4094.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4094"><a href="lwg-active.html#4094">4094</a>. <code>ranges::fold_<i>meow</i></code> is overconstrained</h3>
+<p><b>Section:</b> 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-03 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#alg.fold">active issues</a> in [alg.fold].</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.fold">issues</a> in [alg.fold].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The two <code>convertible_to</code> constraints required by <code>ranges::fold_<i>meow</i></code> mainly 
+check whether the decayed result type of the binary operator can be constructed by both the invoke type 
+and the initial value type.
+<p/>
+However, using <code>constructible_from</code> seems more appropriate here because we don't need to care whether 
+the two types can be converted implicitly and explicitly.
+Taking <code>string</code> and <code>string_view</code> as examples, the former can only be explicitly constructed by 
+the latter and can be assigned by the latter, which makes <code>ranges::fold_<i>meow</i></code> unable to fold 
+ranges whose elements are of type <code>string</code> with an initial value of type <code>string_view</code>:
+</p>
+<blockquote><pre>
+vector&lt;string&gt; vs{"a", "b", "c"};
+string_view init{"d"};
+auto result = ranges::fold_right(vs, init, plus{}); // <span style="color:red;font-weight:bolder">still ill-formed after <a href="https://wg21.link/P2591R5">P2591R5</a> as the constraint is not satisfied</span>
+</pre></blockquote>
+<p>
+In addition, the two <code>movable</code> constraints in the function signature seem to be too strict as well since we 
+only need to check that the decayed result type and the initial type can be move-constructible (one for returned by 
+elidable move and one for move into other overloads) instead of whether they can be move-assignable.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+"NAD. Constraining algorithms is not about limiting the constraints to
+the bare minimum required by implementation details. That's what the C++0x
+attempt did - in an effort to maintain backward compatibility - and it's a mess.
+While the <code class='backtick'>string</code>/<code class='backtick'>string_view</code> case might look superficially appealing,
+it would also allow <code>vector&lt;string&gt;</code>/<code>int</code>,
+which is much less so."
+</p>
+
+
+
+<p id="res-4094"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <code>&lt;algorithm&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+
+namespace std {
+  [&hellip;]
+  namespace ranges {
+    [&hellip;]
+    template&lt;class F, class T, class I, class U&gt;
+      concept <i>indirectly-binary-left-foldable-impl</i> =  // <i>exposition only</i>
+        <del>movable</del><ins>move_constructible</ins>&lt;T&gt; &amp;&amp; <del>movable</del><ins>move_constructible</ins>&lt;U&gt; &amp;&amp;
+        <del>convertible_to</del><ins>constructible_from</ins>&lt;<del>T, </del>U<ins>, T</ins>&gt; &amp;&amp; invocable&lt;F&amp;, U, iter_reference_t&lt;I&gt;&gt; &amp;&amp;
+        assignable_from&lt;U&amp;, invoke_result_t&lt;F&amp;, U, iter_reference_t&lt;I&gt;&gt;&gt;;
+
+    template&lt;class F, class T, class I&gt;
+      concept <i>indirectly-binary-left-foldable</i> =      // <i>exposition only</i>
+        copy_constructible&lt;F&gt; &amp;&amp; indirectly_readable&lt;I&gt; &amp;&amp;
+        invocable&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt; &amp;&amp;
+        <del>convertible_to</del><ins>constructible_from&lt;decay_t</ins>&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;<ins>&gt;</ins>,
+               <del>decay_t&lt;</del>invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;<del>&gt;</del> &amp;&amp;
+        <i>indirectly-binary-left-foldable-impl</i>&lt;F, T, I,
+                        decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;&gt;;
+    [&hellip;]
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+         <i>indirectly-binary-right-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr auto ranges::fold_right(I first, S last, T init, F f);
+template&lt;bidirectional_range R, class T = range_value_t&lt;R&gt;,
+         <i>indirectly-binary-right-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr auto ranges::fold_right(R&amp;&amp; r, T init, F f);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+using U = decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;;
+if (first == last)
+  return U(std::move(init));
+I tail = ranges::next(first, last);
+U accum<del> =</del><ins>(</ins>invoke(f, *--tail, std::move(init))<ins>)</ins>;
+while (first != tail)
+  accum = invoke(f, *--tail, std::move(accum));
+return accum;
+</pre></blockquote>
+[&hellip;]
+</blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr <i>see below</i> ranges::fold_left_with_iter(I first, S last, T init, F f);
+template&lt;input_range R, class T = range_value_t&lt;R&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr <i>see below</i> ranges::fold_left_with_iter(R&amp;&amp; r, T init, F f);
+</pre>
+<blockquote>
+<p>
+-6- Let <code>U</code> be <code>decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;</code>.
+<p/>
+-7- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return {std::move(first), U(std::move(init))};
+U accum<del> =</del><ins>(</ins>invoke(f, std::move(init), *first)<ins>)</ins>;
+for (++first; first != last; ++first)
+  accum = invoke(f, std::move(accum), *first);
+return {std::move(first), std::move(accum)};
+</pre></blockquote>
+<p>
+-8- <i>Remarks</i>: The return type is <code>fold_left_with_iter_result&lt;I, U&gt;</code>
+for the first overload and <code>fold_left_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;, U&gt;</code> 
+for the second overload.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

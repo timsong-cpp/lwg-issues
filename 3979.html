@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3979: Should we reject std::bind_front&lt;42&gt;() and its friends?</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3979: Should we reject std::bind_front&lt;42&gt;() and its friends?">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3979.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,23 +61,41 @@
 </head>
 <body>
 <hr>
-<h3><a name="3979" href="lwg-active.html#3979">3979.</a> Should we reject <tt>std::bind_front&lt;42&gt;()</tt> and its friends?</h3>
+<h3 id="3979"><a href="lwg-active.html#3979">3979</a>. Should we reject <code>std::bind_front&lt;42&gt;()</code> and its friends?</h3>
 <p><b>Section:</b> 22.10.13 <a href="https://timsong-cpp.github.io/cppwp/func.not.fn">[func.not.fn]</a>, 22.10.14 <a href="https://timsong-cpp.github.io/cppwp/func.bind.partial">[func.bind.partial]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-09-24 09:43:08 UTC</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2024-02-22</p>
+<p><b>Priority: </b>4
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#func.not.fn">issues</a> in [func.not.fn].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-<tt>std::bind_front&lt;42&gt;()</tt> seems to be currently well-formed, but the result isn't invocable with any arguments. 
-Given we are already detecting types and values of the NTTP for new overloads of <tt>std::bind_front</tt>, 
-<tt>std::bind_back</tt>, and <tt>std::not_fn</tt>, it might be better to diagnose such cases when NTTP is of a scalar type.
+<code>std::bind_front&lt;42&gt;()</code> seems to be currently well-formed, but the result isn't invocable with any arguments. 
+Given we are already detecting types and values of the NTTP for new overloads of <code>std::bind_front</code>, 
+<code>std::bind_back</code>, and <code>std::not_fn</code>, it might be better to diagnose such cases when NTTP is of a scalar type.
 <p/>
 Note that we might need to separately handle NTTP of scalar and class types for these functions when 
 <a href="https://wg21.link/CWG2459">CWG2459</a> is not resolved, because it might be necessary to avoid copying a 
 template parameter object.
 </p>
+
+<p><i>[2024-02-22; Reflector poll]</i></p>
+
+<p>
+Set priority to 4 after reflector poll in September 2023.
+</p>
+<p>
+"Not convinced it's worth adding a small amount of future maintenance burden
+to catch a tiny amount of nonsense-but-not-dangerous code slightly earlier
+(at the point of call instead of point of use)."
+</p>
+<p>
+"NAD. We reject <code>bind_front&lt;null_f&gt;()</code> because
+<code>bind_front(null_f)()</code> compiles but gives UB.
+Neither <code>bind_front(42)()</code> nor <code>bind_front&lt;42&gt;()</code>
+compiles."
+</p>
+
 
 
 <p id="res-3979"><b>Proposed resolution:</b></p>
@@ -80,10 +115,10 @@ template&lt;auto f&gt; constexpr <i>unspecified</i> not_fn() noexcept;
 <p>
 -6- [&hellip;]
 <p/>
--7- <i>Mandates</i>: If <del><tt>is_pointer_v&lt;F&gt; || is_member_pointer_v&lt;F&gt;</tt> is <tt>true</tt>, then 
-<tt>f != nullptr</tt> is <tt>true</tt></del><ins><tt>is_scalar_v&lt;F&gt;</tt> is <tt>true</tt>, then either 
-<tt>is_pointer_v&lt;F&gt; &amp;&amp; is_function_v&lt;remove_pointer_t&lt;F&gt;&gt;</tt> is <tt>true</tt> or 
-<tt>is_member_pointer_v&lt;F&gt;</tt> is <tt>true</tt>, and <tt>f != nullptr</tt> is <tt>true</tt> in either case</ins>.
+-7- <i>Mandates</i>: If <del><code>is_pointer_v&lt;F&gt; || is_member_pointer_v&lt;F&gt;</code> is <code>true</code>, then 
+<code>f != nullptr</code> is <code>true</code></del><ins><code>is_scalar_v&lt;F&gt;</code> is <code>true</code>, then either 
+<code>is_pointer_v&lt;F&gt; &amp;&amp; is_function_v&lt;remove_pointer_t&lt;F&gt;&gt;</code> is <code>true</code> or 
+<code>is_member_pointer_v&lt;F&gt;</code> is <code>true</code>, and <code>f != nullptr</code> is <code>true</code> in either case</ins>.
 </p>
 </blockquote>
 </blockquote>
@@ -108,10 +143,10 @@ template&lt;auto f, class... Args&gt;
 <ol style="list-style-type: none">
 <li><p>(7.1) &mdash; [&hellip;]</p></li>
 <li><p>(7.2) &mdash; [&hellip;]</p></li>
-<li><p>(7.3) &mdash; if <del><tt>is_pointer_v&lt;F&gt; || is_member_pointer_v&lt;F&gt;</tt> is <tt>true</tt>, then 
-<tt>f != nullptr</tt> is <tt>true</tt></del><ins><tt>is_scalar_v&lt;F&gt;</tt> is <tt>true</tt>, then either 
-<tt>is_pointer_v&lt;F&gt; &amp;&amp; is_function_v&lt;remove_pointer_t&lt;F&gt;&gt;</tt> is <tt>true</tt> or 
-<tt>is_member_pointer_v&lt;F&gt;</tt> is <tt>true</tt>, and <tt>f != nullptr</tt> is <tt>true</tt> in either case</ins>.</p></li>
+<li><p>(7.3) &mdash; if <del><code>is_pointer_v&lt;F&gt; || is_member_pointer_v&lt;F&gt;</code> is <code>true</code>, then 
+<code>f != nullptr</code> is <code>true</code></del><ins><code>is_scalar_v&lt;F&gt;</code> is <code>true</code>, then either 
+<code>is_pointer_v&lt;F&gt; &amp;&amp; is_function_v&lt;remove_pointer_t&lt;F&gt;&gt;</code> is <code>true</code> or 
+<code>is_member_pointer_v&lt;F&gt;</code> is <code>true</code>, and <code>f != nullptr</code> is <code>true</code> in either case</ins>.</p></li>
 </ol>
 </blockquote>
 </blockquote>

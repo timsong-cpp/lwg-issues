@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4067: Inconsistency and potential infinity meta-recursion in std::chrono::zoned_time's constructors</title>
+<meta property="og:title" content="Issue 4067: Inconsistency and potential infinity meta-recursion in std::chrono::zoned_time's constructors">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4067.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4067"><a href="lwg-active.html#4067">4067</a>. Inconsistency and potential infinity meta-recursion in <code>std::chrono::zoned_time</code>'s constructors</h3>
+<p><b>Section:</b> 30.11.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-04-14 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.zone.zonedtime.ctor">issues</a> in [time.zone.zonedtime.ctor].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, there are no requirements on a program-defined <code>std::chrono::zoned_traits</code> specialization. 
+So a <code>zoned_traits&lt;<i>UserDefinedTzPtr</i>&gt;::locate_zone</code> possibly returns a <code>string_view</code>, 
+which leads to infinite meta-recursion when checking the constraints of <code>zoned_time</code>'s constructors 
+that take a <code>string_view</code>.
+<p/>
+Also, the constructor of <code>zoned_time</code> taking only one <code>string_view</code> is inconsistent with others 
+and even self-inconsistent. For other constructors taking <code>string_view</code>, it is expected that the return 
+value of <code>locate_zone</code> is only implicitly converted to a <code>TimeZonePtr</code>. But the return value is 
+permitted to be convertible to <code>zoned_time</code> or <code>sys_time&lt;Duration&gt;</code> in this constructor. 
+And given the <code>locate_name</code> function may be an overload set that distinguishes lvalues and rvalues of 
+<code>string_view</code>, the use of <code>locate_time(string_view{})</code> in the constraints doesn't always reflect 
+<code>locate_time(name)</code> in the effects as the return types can be different.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+"Such a <code class='backtick'>UserDefinedTzPtr</code> would be ridiculous and not useful,
+but it wouldn't hurt to tighten the spec a bit."
+"Would prefer a much simpler resolution saying 'dont do that'.
+I don't like that <code><i>locatable-as-tzptr</i></code> doesn't look like
+a dependent expression, but it is really.
+Saying '<code class='backtick'>TimeZonePtr</code> is implicit convertible from its return type'
+should be phrased in terms of converting <i>to</i>, and should talk about
+conversion from an expression to a type (see LWG <a href="3105" title="T1 is convertible to T2 (Status: New)">3105</a>)."
+</p>
+
+
+
+<p id="res-4067"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 30.11.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> Add the following two paragraphs to the very beginning of subclause
+30.11.7.2 <a href="https://timsong-cpp.github.io/cppwp/time.zone.zonedtime.ctor">[time.zone.zonedtime.ctor]</a>] 
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+<ins>-?- Let <code><i>locatable-as-tzptr</i></code> be <code>true</code> if given an lvalue <code>sv</code> of type 
+<code>string_view</code>, <code>traits::locate_zone(sv)</code> is well-formed and <code>TimeZonePtr</code> is implicitly 
+convertible from its return type, and <code>false</code> otherwise. Only the validity of the immediate context 
+of the invocation and conversion is considered.</ins>
+<p/>
+<ins>-?- In every constructor that takes a <code>string_view</code> parameter <code>name</code>, let 
+<code><i>converted-tzptr</i></code> be a variable of type <code>TimeZonePtr</code> that is copy-initialized 
+from <code>traits::locate_zone(name)</code>.</ins>
+<p/>
+[&hellip;]
+</p>
+<pre>
+explicit zoned_time(string_view name);
+</pre>
+<blockquote>
+<p>
+-7- <i>Constraints:</i> <del><code>traits::locate_zone(string_view{})</code> is a well-formed expression and 
+<code>zoned_time</code> is constructible from the return type of <code>traits::locate_zone(string_view{})</code></del>
+<ins><code><i>locatable-as-tzptr</i></code> is <code>true</code></ins>.
+<p/>
+-8- <i>Effects:</i> Initializes <code>zone_</code> with <code>traits::locate_zone(name)</code> and default 
+constructs <code>tp_</code>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+zoned_time(string_view name, const sys_time&lt;Duration&gt;&amp; st);
+</pre>
+<blockquote>
+<p>
+-13- <i>Constraints:</i> <del><code>zoned_time</code> is constructible from the return type of 
+<code>traits::locate_zone(name)</code> and <code>st</code></del><ins><code><i>locatable-as-tzptr</i></code> is 
+<code>true</code></ins>.
+<p/>
+-14- <i>Effects:</i> Equivalent to construction with 
+<code>{<del>traits::locate_zone(name)</del><ins>std::move(<i>converted-tzptr</i>)</ins>, st}</code>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+zoned_time(string_view name, const local_time&lt;Duration&gt;&amp; tp);
+</pre>
+<blockquote>
+<p>
+-18- <i>Constraints:</i> <ins><code><i>locatable-as-tzptr</i></code> is <code>true</code> and</ins>
+<code>zoned_time</code> is constructible from <del>the return type of 
+<code>traits::locate_zone(name)</code></del><ins><code>TimeZonePtr</code></ins> and <code>tp</code>.
+<p/>
+-19- <i>Effects:</i> Equivalent to construction with 
+<code>{<del>traits::locate_zone(name)</del><ins>std::move(<i>converted-tzptr</i>)</ins>, tp}</code>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+zoned_time(string_view name, const local_time&lt;Duration&gt;&amp; tp, choose c);
+</pre>
+<blockquote>
+<p>
+-23- <i>Constraints:</i> <ins><code><i>locatable-as-tzptr</i></code> is <code>true</code> and</ins> 
+<code>zoned_time</code> is constructible from <del>the return type of 
+<code>traits::locate_zone(name)</code></del><ins><code>TimeZonePtr</code></ins>, 
+<code>local_time&lt;Duration&gt;</code>, and <code>choose</code>.
+<p/>
+-24- <i>Effects:</i> Equivalent to construction with 
+<code>{<del>traits::locate_zone(name)</del><ins>std::move(<i>converted-tzptr</i>)</ins>, tp, c}</code>.
+</p>
+</blockquote>
+<p>
+[&hellip;]
+</p>
+<pre>
+template&lt;class Duration2, class TimeZonePtr2&gt;
+  zoned_time(string_view name, const zoned_time&lt;Duration2, TimeZonePtr2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-32- <i>Constraints:</i> <ins><code><i>locatable-as-tzptr</i></code> is <code>true</code> and</ins>
+<code>zoned_time</code> is constructible from <del>the return type of 
+<code>traits::locate_zone(name)</code></del><ins><code>TimeZonePtr</code></ins> 
+and the type <code>zoned_time&lt;Duration2, TimeZonePtr2&gt;</code>.
+<p/>
+-33- <i>Effects:</i> Equivalent to construction with 
+<code>{<del>traits::locate_zone(name)</del><ins>std::move(<i>converted-tzptr</i>)</ins>, y}</code>.
+</p>
+</blockquote>
+<pre>
+template&lt;class Duration2, class TimeZonePtr2&gt;
+  zoned_time(string_view name, const zoned_time&lt;Duration2, TimeZonePtr2&gt;&amp; y, choose c);
+</pre>
+<blockquote>
+<p>
+-34- <i>Constraints:</i> <ins><code><i>locatable-as-tzptr</i></code> is <code>true</code> and</ins> 
+<code>zoned_time</code> is constructible from <del>the return type of 
+<code>traits::locate_zone(name)</code></del><ins><code>TimeZonePtr</code></ins>, the type 
+<code>zoned_time&lt;Duration2, TimeZonePtr2&gt;</code>, and the type <code>choose</code>.
+<p/>
+-35- <i>Effects:</i> Equivalent to construction with 
+<code>{<del>traits::locate_zone(name)</del><ins>std::move(<i>converted-tzptr</i>)</ins>, y, c}</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

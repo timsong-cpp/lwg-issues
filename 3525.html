@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3525: uses_allocator_construction_args fails to handle types convertible to pair</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3525: uses_allocator_construction_args fails to handle types convertible to pair">
+<meta property="og:description" content="C++ library issue. Status: C++23">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3525.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,16 +61,16 @@
 </head>
 <body>
 <hr>
-<h3><a name="3525" href="lwg-defects.html#3525">3525.</a> <tt>uses_allocator_construction_args</tt> fails to handle types convertible to <tt>pair</tt></h3>
+<h3 id="3525"><a href="lwg-defects.html#3525">3525</a>. <code>uses_allocator_construction_args</code> fails to handle types convertible to <code>pair</code></h3>
 <p><b>Section:</b> 20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2023-11-22 15:47:43 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2021-02-23 <b>Last modified:</b> 2023-11-22</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#allocator.uses.construction">issues</a> in [allocator.uses.construction].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++23">C++23</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-As currently specified, the following program is ill-formed (and appears to have been since LWG <a href="2975">2975</a>):
+As currently specified, the following program is ill-formed (and appears to have been since LWG <a href="2975" title="Missing case for pair construction in scoped and polymorphic allocators (Status: C++20)">2975</a>):
 </p>
 <blockquote><pre>
 struct S {
@@ -68,29 +85,29 @@ void f() {
 }
 </pre></blockquote>
 <p>
-There's no matching overload for <tt>uses_allocator_construction_args&lt;pair&lt;const int, int&gt;&gt;(alloc, S&amp;&amp;)</tt>,
-since <tt>S</tt> is not a <tt>pair</tt> and every overload for constructing <tt>pair</tt>s that takes one
-non-allocator argument expects a <tt>pair</tt> from which template arguments can be deduced.
+There's no matching overload for <code>uses_allocator_construction_args&lt;pair&lt;const int, int&gt;&gt;(alloc, S&amp;&amp;)</code>,
+since <code>S</code> is not a <code>pair</code> and every overload for constructing <code>pair</code>s that takes one
+non-allocator argument expects a <code>pair</code> from which template arguments can be deduced.
 </p>
 <p><i>[2021-02-27 Tim adds PR and comments]</i></p>
 
 <p>The superseded resolution below attempts to solve this issue by adding two
-additional overloads of <tt>uses_allocator_construction_args</tt> to
+additional overloads of <code>uses_allocator_construction_args</code> to
 handle this case. However, the new overloads forces implicit conversions
-at the call to <tt>uses_allocator_construction_args</tt>, which requires
+at the call to <code>uses_allocator_construction_args</code>, which requires
 the result to be consumed within the same full-expression
 before any temporary created from the conversion is destroyed.
-This is not the case for the <tt>piecewise_construct</tt> overload of
-<tt>uses_allocator_construction_args</tt>, which recursively calls
-<tt>uses_allocator_construction_args</tt> for the two elements of the pair, which
-might themselves be <tt>pair</tt>s.</p>
+This is not the case for the <code>piecewise_construct</code> overload of
+<code>uses_allocator_construction_args</code>, which recursively calls
+<code>uses_allocator_construction_args</code> for the two elements of the pair, which
+might themselves be <code>pair</code>s.</p>
 <p>
 The approach taken in the revised PR is to produce an exposition-only
-<tt><i>pair-constructor</i></tt> object instead. The object holds the allocator
-and the argument by reference, implicitly converts to the specified specialization of <tt>pair</tt>,
-and when so converted return a <tt>pair</tt> that is constructed by uses-allocator
+<code><i>pair-constructor</i></code> object instead. The object holds the allocator
+and the argument by reference, implicitly converts to the specified specialization of <code>pair</code>,
+and when so converted return a <code>pair</code> that is constructed by uses-allocator
 construction with the converted value of the original argument.
-This maintains the existing design that <tt>pair</tt> itself doesn't know
+This maintains the existing design that <code>pair</code> itself doesn't know
 anything about allocator construction.
 </p>
 
@@ -101,7 +118,7 @@ This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
 </p>
 
 <ol>
-<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <code>&lt;memory&gt;</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -141,7 +158,7 @@ template&lt;class T, class Alloc, class U, class V&gt;
 </pre>
 <blockquote>
 <p>
--12- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>. <ins>For the second overload, <tt>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</tt> is <tt>false</tt>.</ins>
+-12- <i>Constraints:</i> <code>T</code> is a specialization of <code>pair</code>. <ins>For the second overload, <code>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</code> is <code>false</code>.</ins>
 <p/>
 -13- <i>Effects:</i> Equivalent to:
 </p>
@@ -161,7 +178,7 @@ template&lt;class T, class Alloc, class U, class V&gt;
 </pre>
 <blockquote>
 <p>
--14- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>. <ins>For the second overload, <tt>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</tt> is <tt>false</tt>.</ins>
+-14- <i>Constraints:</i> <code>T</code> is a specialization of <code>pair</code>. <ins>For the second overload, <code>is_same_v&lt;pair&lt;U, V&gt;, remove_cv_t&lt;T&gt;&gt;</code> is <code>false</code>.</ins>
 <p/>
 -15- <i>Effects:</i> Equivalent to:
 </p>
@@ -188,7 +205,7 @@ Set priority to 3 following reflector poll.
 This wording is relative to <a href="https://wg21.link/n4878">N4878</a>.
 </p>
 <ol>
-<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <code>&lt;memory&gt;</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 namespace std {
@@ -221,21 +238,21 @@ namespace std {
 </pre>
 <blockquote>
 <p>
-<ins>-?- Let <tt><i>FUN</i></tt> be the function template:</ins>
+<ins>-?- Let <code><i>FUN</i></code> be the function template:</ins>
 </p>
 <blockquote><pre><ins>
   template&lt;class A, class B&gt;
   void <i>FUN</i>(const pair&lt;A, B&gt;&amp;);</ins>
 </pre></blockquote>
 <p>
-<ins>-?- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>, and the expression <tt><i>FUN</i>(u)</tt> is not well-formed when considered as an unevaluated operand.</ins>
+<ins>-?- <i>Constraints:</i> <code>T</code> is a specialization of <code>pair</code>, and the expression <code><i>FUN</i>(u)</code> is not well-formed when considered as an unevaluated operand.</ins>
 <p/>
 <ins>-?- <i>Effects:</i> Equivalent to:</ins>
 </p>
 <blockquote><pre><ins>
 return make_tuple(<i>pair-constructor</i>{alloc, u});</ins>
 </pre></blockquote>
-<p><ins>where <tt><i>pair-constructor</i></tt> is an exposition-only class defined as follows:</ins></p>
+<p><ins>where <code><i>pair-constructor</i></code> is an exposition-only class defined as follows:</ins></p>
 <blockquote><pre><ins>
 struct <i>pair-constructor</i> {
   using <i>pair-type</i> = remove_cv_t&lt;T&gt;;            // exposition only
@@ -279,7 +296,7 @@ Set status to Tentatively Ready after seven votes in favour during reflector pol
 This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
 </p>
 <ol>
-<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <tt>&lt;memory&gt;</tt> synopsis, as indicated:</p>
+<li><p>Edit 20.2.2 <a href="https://timsong-cpp.github.io/cppwp/memory.syn">[memory.syn]</a>, header <code>&lt;memory&gt;</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 namespace std {
@@ -318,16 +335,16 @@ namespace std {
 </pre>
 <blockquote>
 <p>
-<ins>-?- Let <tt><i>FUN</i></tt> be the function template:</ins>
+<ins>-?- Let <code><i>FUN</i></code> be the function template:</ins>
 </p>
 <blockquote><pre><ins>
   template&lt;class A, class B&gt;
   void <i>FUN</i>(const pair&lt;A, B&gt;&amp;);</ins>
 </pre></blockquote>
 <p>
-<ins>-?- <i>Constraints:</i> <tt>T</tt> is a specialization of <tt>pair</tt>, and the expression <tt><i>FUN</i>(u)</tt> is not well-formed when considered as an unevaluated operand.</ins>
+<ins>-?- <i>Constraints:</i> <code>T</code> is a specialization of <code>pair</code>, and the expression <code><i>FUN</i>(u)</code> is not well-formed when considered as an unevaluated operand.</ins>
 <p/>
-<ins>-?- Let <tt><i>pair-constructor</i></tt> be an exposition-only class defined as follows:</ins></p>
+<ins>-?- Let <code><i>pair-constructor</i></code> be an exposition-only class defined as follows:</ins></p>
 <blockquote><pre><ins>
 class <i>pair-constructor</i> {
   using <i>pair-type</i> = remove_cv_t&lt;T&gt;;            // exposition only
@@ -350,9 +367,9 @@ public:
 </ins></pre></blockquote>
 
 <p>
-<ins> -?- <i>Returns:</i> <tt>make_tuple(<i>pc</i>)</tt>, where <tt><i>pc</i></tt>
-is a <tt><i>pair-constructor</i></tt> object whose <tt><i>alloc_</i></tt> member is
-initialized with <tt>alloc</tt> and whose <tt><i>u_</i></tt> member is initialized with <tt>u</tt>.
+<ins> -?- <i>Returns:</i> <code>make_tuple(<i>pc</i>)</code>, where <code><i>pc</i></code>
+is a <code><i>pair-constructor</i></code> object whose <code><i>alloc_</i></code> member is
+initialized with <code>alloc</code> and whose <code><i>u_</i></code> member is initialized with <code>u</code>.
 </ins>
 </p>
 </blockquote>

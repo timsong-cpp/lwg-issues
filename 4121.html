@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4121: ranges::to constructs associative containers via c.emplace(c.end(), *it)</title>
+<meta property="og:title" content="Issue 4121: ranges::to constructs associative containers via c.emplace(c.end(), *it)">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4121.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4121"><a href="lwg-active.html#4121">4121</a>. <code>ranges::to</code> constructs associative containers via <code>c.emplace(c.end(), *it)</code></h3>
+<p><b>Section:</b> 25.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.general">[range.utility.conv.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-07-16 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When <code>ranges::to</code> constructs an associative container, if there is no range version constructor 
+for <code>C</code> and the input range is not common range, <code>ranges::to</code> will dispatch to the
+bullet 25.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> (2.1.4), which first default-constructs the container 
+and emplaces the element through <code>c.emplace(c.end(), *it)</code>.
+<p/>
+However, this is not the correct way to call <code>emplace()</code> on an associative container as it does 
+not expect an iterator as the first argument, and since <code>map::emplace()</code>, for instance, is not 
+constrained, which turns out a hard error because we are trying to make a <code>pair</code> with 
+<code>{it, pair}</code>.
+<p/>
+Given that libstdc++ currently does not implement the range constructor for associative containers, the following
+illustrates the <a href="https://godbolt.org/z/q8MzP8bb1">issue</a>:
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;set&gt;
+  
+auto s = std::views::iota(0)
+       | std::views::take(5)
+       | std::ranges::to&lt;std::set&gt;(); // <span  style="color:#C80000;font-weight:bold">hard error</span>
+</pre></blockquote>
+<p>
+The proposed resolution simply removes the <code>emplace()</code> branch. Although this means that we always use
+<code>insert()</code> to fill associative containers, such an impact seems negligible.
+</p>
+
+<p><i>[2024-07-23; This was caused by LWG <a href="4016" title="container-insertable checks do not match what container-inserter does (Status: WP)">4016</a>.]</i></p>
+
+
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+"Would like to preserve the ability to use <code class='backtick'>emplace</code>. Tim suggested trying
+<code class='backtick'>emplace_hint</code> first, then <code class='backtick'>emplace</code>."
+"I tried it, it gets very verbose, because we might also want to try
+<code class='backtick'>insert(*it)</code> instead of <code class='backtick'>insert(c.end(), *it)</code> if <code class='backtick'>emplace(*it)</code> is not valid
+for associative containers, because <code class='backtick'>c.end()</code> might not be a good hint."
+"It might be suboptimal, but it still works."
+</p>
+
+
+
+<p id="res-4121"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.general">[range.utility.conv.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-4- Let <code><i>container-appendable</i></code> be defined as follows:
+</p>
+<blockquote><pre>
+template&lt;class Container, class Ref&gt;
+constexpr bool <i>container-appendable</i> =         <i>// exposition only</i>
+  requires(Container&amp; c, Ref&amp;&amp; ref) {
+           requires (requires { c.emplace_back(std::forward&lt;Ref&gt;(ref)); } ||
+                     requires { c.push_back(std::forward&lt;Ref&gt;(ref)); } ||
+                     <del>requires { c.emplace(c.end(), std::forward&lt;Ref&gt;(ref)); } ||</del>
+                     requires { c.insert(c.end(), std::forward&lt;Ref&gt;(ref)); });
+};
+</pre></blockquote>
+<p>
+-5- Let <code><i>container-append</i></code> be defined as follows:
+</p>
+<blockquote><pre>
+template&lt;class Container&gt;
+constexpr auto <i>container-append</i>(Container&amp; c) {     <i>// exposition only</i>
+  return [&amp;c]&lt;class Ref&gt;(Ref&amp;&amp; ref) {
+    if constexpr (requires { c.emplace_back(declval&lt;Ref&gt;()); })
+      c.emplace_back(std::forward&lt;Ref&gt;(ref));
+    else if constexpr (requires { c.push_back(declval&lt;Ref&gt;()); })
+      c.push_back(std::forward&lt;Ref&gt;(ref));
+    <del>else if constexpr (requires { c.emplace(c.end(), declval&lt;Ref&gt;()); })
+      c.emplace(c.end(), std::forward&lt;Ref&gt;(ref));</del>
+    else
+      c.insert(c.end(), std::forward&lt;Ref&gt;(ref));
+  };
+};
+</pre></blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

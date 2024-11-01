@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4125: move_iterator's default constructor should be constrained</title>
+<meta property="og:title" content="Issue 4125: move_iterator's default constructor should be constrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4125.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4125"><a href="lwg-active.html#4125">4125</a>. <code>move_iterator</code>'s default constructor should be constrained</h3>
+<p><b>Section:</b> 24.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/move.iterator">[move.iterator]</a>, 24.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/move.iter.cons">[move.iter.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-07-22 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#move.iterator">active issues</a> in [move.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#move.iterator">issues</a> in [move.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Although it is unclear why <a href="https://wg21.link/P2325">P2325</a> did not apply to <code>move_iterator</code>, there is 
+implementation divergence among the current libraries (<a href="https://godbolt.org/z/WdoPcjjv4">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;istream&gt;
+#include &lt;iterator&gt;
+#include &lt;ranges&gt;
+
+using R = std::ranges::istream_view&lt;int&gt;;
+using I = std::ranges::iterator_t&lt;R&gt;;
+using MI = std::move_iterator&lt;I&gt;;
+static_assert(std::default_initializable&lt;MI&gt;); // <span  style="color:#C80000;font-weight:bold">libstdc++ passes, libc++ fails</span>
+</pre></blockquote>
+<p>
+As libc++ additionally requires that its default constructors satisfy <code>is_constructible_v&lt;Iterator&gt;</code>.
+<p/>
+Although this is not current standard-conforming behavior, such constraint does make sense since <code>move_iterator</code> 
+only requires the underlying iterator to be <code>input_iterator</code> which may not be <code>default_initializable</code>.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+Five P0 (tentatively rady) votes but one for NAD:
+"design change, needs paper. Not constraining this seems to be intended by
+<a href="https://wg21.link/P2325R3">P2325R3</a>. Even if we want to constrain it,
+why <code class='backtick'>default_initializable</code> rather than just <code class='backtick'>is_constructible_v</code>?"
+</p>
+
+
+
+<p id="res-4125"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.5.4.2 <a href="https://timsong-cpp.github.io/cppwp/move.iterator">[move.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Iterator&gt;
+  class move_iterator {
+  public:
+    [&hellip;]
+    constexpr move_iterator() <ins>requires default_initializable&lt;Iterator&gt; = default</ins>;
+    [&hellip;]
+  private:
+    Iterator current <ins>= Iterator()</ins>;   // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.5.4.4 <a href="https://timsong-cpp.github.io/cppwp/move.iter.cons">[move.iter.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<del>constexpr move_iterator();</del>
+</pre>
+<blockquote>
+<p>
+<del>-1- <i>Effects</i>: Value-initializes <code>current</code>.</del>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

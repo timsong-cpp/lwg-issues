@@ -1,12 +1,13 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>C++ Standard Library Tentative Issues</title>
-<style type="text/css">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +18,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -43,507 +54,439 @@
 </style>
 </head>
 <body>
-<p>Revised 2024-01-25 at 14:42:31 UTC
+<p>Revised 2024-10-31
 </p><h2>Tentative Issues</h2>
 <hr>
-<h3><a name="2457" href="2457">2457.</a> <tt>std::begin()</tt> and <tt>std::end()</tt> do not support multi-dimensional arrays correctly</h3>
-<p><b>Section:</b> 25.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Janez &#x17d;emva <b>Opened:</b> 2014-11-16 <b>Last modified:</b> 2023-04-06 13:59:48 UTC</p>
+<h3 id="3216"><a href="3216">3216</a>. Rebinding the allocator before calling <code>construct</code>/<code>destroy</code> in <code>allocate_shared</code></h3>
+<p><b>Section:</b> 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2019-06-11 <b>Last modified:</b> 2024-10-02</p>
 <p><b>Priority: </b>3
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#iterator.range">active issues</a> in [iterator.range].</p>
-<p><b>View all other</b> <a href="lwg-index.html#iterator.range">issues</a> in [iterator.range].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared.create">active issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.create">issues</a> in [util.smartptr.shared.create].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The following code:
-</p>
-<blockquote><pre>
-#include &lt;algorithm&gt;
-#include &lt;iterator&gt;
-#include &lt;iostream&gt;
-#include &lt;cassert&gt;
-
-int main() 
-{
-  int a[2][3][4] = { { { 1,  2,  3,  4}, { 5,  6,  7,  8}, { 9, 10, 11, 12} },
-                     { {13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24} } };
-  int b[2][3][4];
-
-  assert(std::distance(std::begin(a), std::end(a)) == 2 * 3 * 4);
-  std::copy(std::begin(a), std::end(a), std::begin(b));
-  std::copy(std::begin(b), std::end(b), std::ostream_iterator&lt;int&gt;(std::cout, ","));
-}
-</pre></blockquote>
-<p>
-does not compile. 
+The new <code>allocate_shared</code> wording says we need to rebind the allocator back to <code>T</code>'s
+type before we can call <code>construct</code> or <code>destroy</code>, but this is suboptimal (might make
+extra unnecessary allocator copies), and is inconsistent with the containers' behavior, which call
+allocator <code>construct</code> on whatever <code>T</code> they want. (For example,
+<code>std::list&lt;T, alloc&lt;T&gt;&gt;</code> rebinds to <code>alloc&lt;_ListNode&lt;T&gt;&gt;</code>,
+but calls <code>construct(T*)</code> without rebinding back)
 <p/>
-A possible way to remedy this would be to add the following overloads of
-<tt>begin</tt>, <tt>end</tt>, <tt>rbegin</tt>, and <tt>rend</tt> to 25.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.range">[iterator.range]</a>, 
-relying on recursive evaluation:
-</p>
-<blockquote><pre>
-namespace std {
-
-  template &lt;typename T, size_t M, size_t N&gt;
-  constexpr remove_all_extents_t&lt;T&gt;*
-  begin(T (&amp;array)[M][N])
-  {
-    return begin(*array);
-  }
-  
-  template &lt;typename T, size_t M, size_t N&gt;
-  constexpr remove_all_extents_t&lt;T&gt;*
-  end(T (&amp;array)[M][N])
-  {
-    return end(array[M - 1]);
-  }
-
-  template &lt;typename T, size_t M, size_t N&gt;
-  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
-  rbegin(T (&amp;array)[M][N])
-  {
-    return decltype(rbegin(array))(end(array[M - 1]));
-  }
-  
-  template &lt;typename T, size_t M, size_t N&gt;
-  reverse_iterator&lt;remove_all_extents_t&lt;T&gt;*&gt;
-  rend(T (&amp;array)[M][N])
-  {
-    return decltype(rend(array))(begin(*array));
-  }
-
-}
-</pre></blockquote>
-
-<p><i>[2023-04-06; LWG reflector poll in November 2021]</i></p>
-
-<p>
-Changed to Tentatively NAD after 12 votes in favour.
-Use <code>views::join</code> or <code>mdspan</code> instead.
+It seems like we should be consistent with the containers and not require a rebind here. PR would
+look something like this, relative to N4810; I'm still not super happy with this wording because
+it looks like it might be saying a copy of the allocator must be made we would like to avoid&hellip;
 </p>
 
+<p><i>[2019-07 Issue Prioritization]</i></p>
 
+<p>Priority to 3 after discussion on the reflector.</p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 
-<p id="res-2457"><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/n4810">N4810</a>.</p>
 
+<ol>
+<li><p>Modify 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
 
-
-
-
-<hr>
-<h3><a name="3635" href="3635">3635.</a> Add <tt>__cpp_lib_deduction_guides</tt> to feature test macros</h3>
-<p><b>Section:</b> 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Konstantin Varlamov <b>Opened:</b> 2021-11-09 <b>Last modified:</b> 2023-05-24 14:08:46 UTC</p>
-<p><b>Priority: </b>3
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#version.syn">active issues</a> in [version.syn].</p>
-<p><b>View all other</b> <a href="lwg-index.html#version.syn">issues</a> in [version.syn].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-<a href="https://wg21.link/P0433R2">P0433R2</a>, the proposal for adding deduction guides to the standard library, contained a 
-recommendation to use <tt>__cpp_lib_deduction_guides</tt> as a feature test macro. However, it appears that this feature test macro has been accidentally omitted from the Standard when the paper was applied and probably needs to be added back.
-</p>
-
-<p>
-<strong>Previous resolution [SUPERSEDED]:</strong>
-</p>
 <blockquote class="note">
 <p>
-This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
+[<i>Drafting note:</i> The edits to change <code>pv</code> to <code>pu</code> were suggested by Jonathan
+Wakely (thanks!). This wording also has the <code>remove_cv_t</code> fixes specified by LWG <a href="3210" title="allocate_shared is inconsistent about removing const from the pointer
+passed to allocator construct and destroy (Status: New)">3210</a>
+&mdash; if that change is rejected some of those have to be stripped here.]
 </p>
-
-<ol>
-<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
+</blockquote>
 
 <blockquote>
 <pre>
-[&hellip;]
-#define __cpp_lib_coroutine          201902L  <i>// also in &lt;coroutine&gt;</i>
-<ins>#define __cpp_lib_deduction_guides   201703L
-  <i>// also in &lt;deque&gt;, &lt;forward_list&gt;, &lt;list&gt;, &lt;map&gt;, &lt;queue&gt;, &lt;set&gt;, &lt;stack&gt;,
-  // &lt;unordered_map&gt;, &lt;unordered_set&gt;, &lt;vector&gt;</i></ins>
-#define __cpp_lib_destroying_delete  201806L  <i>// also in &lt;new&gt;</i>
-[&hellip;]
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared_default_init(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared_default_init(const A&amp; a, <i>args</i>);
 </pre>
+<blockquote>
+<p>
+-2- <i>Requires:</i> [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; [&hellip;]</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.5) &mdash; When a (sub)object of a non-array type <code>U</code> is specified to have an initial
+value of <code>v</code>, or <code>U(l...)</code>, where <code>l...</code> is a list of constructor arguments,
+<code>allocate_shared</code> shall initialize this (sub)object via the expression
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.5.1) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, v)</code> or</p></li>
+<li><p>(7.5.2) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, l...)</code></p></li>
+</ol>
+<p>
+respectively, where <code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type
+<code>remove_cv_t&lt;U&gt;*</code></ins> point<del>s</del><ins>ing</ins> to storage suitable to hold
+an object of type <code><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></code> and <code>a2</code> of type
+<code>A2</code> is a <ins>potentially</ins> rebound copy of the allocator <code>a</code>
+passed to <code>allocate_shared</code> <del>such that its <code>value_type</code> is <code>remove_cv_t&lt;U&gt;</code></del>.
+</p>
+</li>
+<li><p>(7.6) &mdash; [&hellip;]</p></li>
+<li><p>(7.7) &mdash; When a (sub)object of non-array type <code>U</code> is specified to have a default
+initial value, <code>allocate_shared</code> <del>shall</del> initialize<ins>s</ins> this (sub)object via
+the expression <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>)</code>, where
+<code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type <code>remove_cv_t&lt;U&gt;*</code></ins>
+point<del>s</del><ins>ing</ins> to storage suitable to hold an object of type
+<code><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></code> and <code>a2</code> of type <code>A2</code> is a
+<ins>potentially</ins> rebound copy of the allocator <code>a</code> passed to <code>allocate_shared</code>
+<del>such that its <code>value_type</code> is <code>remove_cv_t&lt;U&gt;</code></del>.</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.12) &mdash; When a (sub)object of non-array type <code>U</code> that was initialized by
+<code>allocate_shared</code> is to be destroyed, it is destroyed via the expression
+<code>allocator_traits&lt;A2&gt;::destroy(a2, p<del>v</del><ins>u</ins>)</code> where
+<code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type <code>remove_cv_t&lt;U&gt;*</code></ins>
+point<del>s</del><ins>ing</ins> to that object of type <code>remove_cv_t&lt;U&gt;</code> and
+<code>a2</code> of type <code>A2</code> is a <ins>potentially</ins> rebound copy of the
+allocator <code>a</code> passed to <code>allocate_shared</code> <del>such that its <code>value_type</code> is
+<code>remove_cv_t&lt;U&gt;</code></del>.</p></li>
+</ol>
+</blockquote>
 </blockquote>
 </li>
 </ol>
 </blockquote>
 
-<p><i>[2021-11-16; Konstantin Varlamov comments and improves wording]</i></p>
+<p><i>[2024-08-23; Jonathan provides updated wording]</i></p>
 
 <p>
-One potential topic of discussion is whether the new feature test macro needs to be defined in every library 
-header that contains an explicit deduction guide. While this would be consistent with the current approach, 
-no other macro is associated with such a large set of headers (20 headers in total, whereas the current 
-record-holder is <tt>__cpp_lib_nonmember_container_access</tt> with 12 headers). For this reason, it should 
-be considered whether perhaps the new macro should only be defined in <tt>&lt;version&gt;</tt> (which would, 
-however, make it an outlier). The proposed wording currently contains an exhaustive list (note that the 
-deduction guides for <tt>&lt;mutex&gt;</tt> were removed by LWG <a href="2981">2981</a>).
+<code class='backtick'>make_shared_default_init</code> and <code class='backtick'>allocate_shared_default_init</code> were renamed
+by <a href="https://wg21.link/P1973R1">P1973R1</a> so this needs a rebase.
+The edit to (7.11) is just for consistency, so that <code class='backtick'>pv</code> is always <code class='backtick'>void*</code>
+and <code class='backtick'>pu</code> is <code>remove_cv_t&lt;U&gt;*</code>.
+Accepting this proposed resolution would also resolve issue <a href="3210" title="allocate_shared is inconsistent about removing const from the pointer
+passed to allocator construct and destroy (Status: New)">3210</a>.
 </p>
 
-<p><i>[2022-01-30; Reflector poll]</i></p>
+
+<p><i>[2024-10-02; Reflector poll]</i></p>
 
 <p>
-Set priority to 3 after reflector poll.
-Several votes for NAD as it's too late to be useful, and code which needs
-to be portable to pre-CTAD compilers can just not use CTAD.
+Set status to Tentatively Ready after six votes in favour during reflector poll.
 </p>
 
-<p><i>[2023-04-21; Reflector poll for 'Tentatively NAD']</i></p>
-
-<p><i>[
-"We keep changing the deduction guides, and different libraries might be
-conformant in some headers and not others. The status cannot be represented
-by a single number."
-]</i></p>
 
 
-
-
-<p id="res-3635"><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4901">N4901</a>.
-</p>
+<p id="res-3216"><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.</p>
 
 <ol>
-<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
+<li><p>Modify 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
 
 <blockquote>
 <pre>
-[&hellip;]
-#define __cpp_lib_coroutine          201902L  <i>// also in &lt;coroutine&gt;</i>
-<ins>#define __cpp_lib_deduction_guides   201703L
-  <i>// also in &lt;array&gt;, &lt;deque&gt;, &lt;forward_list&gt;, &lt;functional&gt;, &lt;list&gt;, &lt;map&gt;,
-  // &lt;memory&gt;, &lt;optional&gt;, &lt;queue&gt;, &lt;regex&gt;, &lt;scoped_allocator&gt;, &lt;set&gt;, &lt;stack&gt;,
-  // &lt;string&gt;, &lt;tuple&gt;, &lt;unordered_map&gt;, &lt;unordered_set&gt;, &lt;utility&gt;, &lt;valarray&gt;,
-  // &lt;vector&gt;</i></ins>
-#define __cpp_lib_destroying_delete  201806L  <i>// also in &lt;new&gt;</i>
-[&hellip;]
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared(const A&amp; a, <i>args</i>);
+template&lt;class T, ...&gt;
+  shared_ptr&lt;T&gt; make_shared_for_overwrite(<i>args</i>);
+template&lt;class T, class A, ...&gt;
+  shared_ptr&lt;T&gt; allocate_shared_for_overwrite(const A&amp; a, <i>args</i>);
 </pre>
+<blockquote>
+<p>
+-2- <i>Preconditions:</i> [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; [&hellip;]</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.5) &mdash; When a (sub)object of a non-array type <code>U</code> is specified to have an initial
+value of <code>v</code>, or <code>U(l...)</code>, where <code>l...</code> is a list of constructor arguments,
+<code>allocate_shared</code> shall initialize this (sub)object via the expression
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.5.1) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, v)</code> or</p></li>
+<li><p>(7.5.2) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>, l...)</code></p></li>
+</ol>
+<p>
+respectively, where <code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type
+<code>remove_cv_t&lt;U&gt;*</code></ins> point<del>s</del><ins>ing</ins> to storage suitable to hold
+an object of type <code><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></code> and <code>a2</code> of type
+<code>A2</code> is a <ins>potentially</ins> rebound copy of the allocator <code>a</code>
+passed to <code>allocate_shared</code> <del>such that its <code>value_type</code> is <code>remove_cv_t&lt;U&gt;</code></del>.
+</p>
+</li>
+<li><p>(7.6) &mdash; [&hellip;]</p></li>
+<li><p>(7.7) &mdash; When a (sub)object of non-array type <code>U</code> is specified to have a default
+initial value, <code>allocate_shared</code> <del>shall</del> initialize<ins>s</ins> this (sub)object via
+the expression <code>allocator_traits&lt;A2&gt;::construct(a2, p<del>v</del><ins>u</ins>)</code>, where
+<code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type <code>remove_cv_t&lt;U&gt;*</code></ins>
+point<del>s</del><ins>ing</ins> to storage suitable to hold an object of type
+<code><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></code> and <code>a2</code> of type <code>A2</code> is a
+<ins>potentially</ins> rebound copy of the allocator <code>a</code> passed to <code>allocate_shared</code>
+<del>such that its <code>value_type</code> is <code>remove_cv_t&lt;U&gt;</code></del>.</p></li>
+<li><p>[&hellip;]</p></li>
+<li>
+<blockquote class="note"><p>[<i>Drafting note</i>:
+Issue <a href="4024" title="Underspecified destruction of objects created in std::make_shared_for_overwrite/std::allocate_shared_for_overwrite (Status: Ready)">4024</a> will add <code class='backtick'>make_shared_for_overwrite</code>
+and <code class='backtick'>allocate_shared_for_overwrite</code> to (7.11) but that doesn't conflict with this next edit.]
+</p></blockquote>
+<p>(7.11) &mdash; When a (sub)object of non-array type <code>U</code> that was initialized by
+<code>make_shared</code> is to be destroyed, it is destroyed via the expression
+<code>p<del>v</del><ins>u</ins>->~U()</code> where <code>p<del>v</del><ins>u</ins></code>
+points to that object of type <code>U</code>.</p></li>
+<li><p>(7.12) &mdash; When a (sub)object of non-array type <code>U</code> that was initialized by
+<code>allocate_shared</code> is to be destroyed, it is destroyed via the expression
+<code>allocator_traits&lt;A2&gt;::destroy(a2, p<del>v</del><ins>u</ins>)</code> where
+<code>p<del>v</del><ins>u</ins></code> <ins>is a pointer of type <code>remove_cv_t&lt;U&gt;*</code></ins>
+point<del>s</del><ins>ing</ins> to that object of type <code>remove_cv_t&lt;U&gt;</code> and
+<code>a2</code> of type <code>A2</code> is a <ins>potentially</ins> rebound copy of the
+allocator <code>a</code> passed to <code>allocate_shared</code> <del>such that its <code>value_type</code> is
+<code>remove_cv_t&lt;U&gt;</code></del>.</p></li>
+</ol>
+</blockquote>
 </blockquote>
 </li>
 </ol>
-
-
 
 
 
 
 <hr>
-<h3><a name="3714" href="3714">3714.</a> Non-single-argument constructors for range adaptors should not be <tt>explicit</tt></h3>
-<p><b>Section:</b> 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.view">[range.zip.transform.view]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-06-10 <b>Last modified:</b> 2023-01-24 10:14:05 UTC</p>
-<p><b>Priority: </b>4
+<h3 id="3886"><a href="3886">3886</a>. Monad mo' problems</h3>
+<p><b>Section:</b> 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a>, 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2023-02-13 <b>Last modified:</b> 2024-09-19</p>
+<p><b>Priority: </b>3
 </p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>View other</b> <a href="lwg-index-open.html#optional.optional.general">active issues</a> in [optional.optional.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.optional.general">issues</a> in [optional.optional.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-All C++20 range adaptors' non-single-argument constructors are not declared as <tt>explicit</tt>, which makes 
-the following initialization well-formed:
-</p>
-<blockquote><pre>
-std::vector v{42};
-std::ranges::take_view r1 = {v, 1};
-std::ranges::filter_view r2 = {v, [](int) { return true; }};
-</pre></blockquote>
-<p>
-However, the non-single-argument constructors of C++23 range adaptors, except for <tt>join_with_view</tt>, 
-are all <tt>explicit</tt>, which makes us no longer able to
-</p>
-<blockquote><pre>
-std::ranges::chunk_view r1 = {v, 1}; // <span style="color:red;font-weight:bolder">ill-formed</span>
-std::ranges::chunk_by_view r2 = {v, [](int, int) { return true; }}; // <span style="color:red;font-weight:bolder">ill-formed</span>
-</pre></blockquote>
-<p>
-This seems unnecessary since I don't see the observable benefit of preventing this. In the standard, 
-non-single-argument constructors are rarely specified as <tt>explicit</tt> unless it is really undesirable, 
-I think the above initialization is what the user expects since it's clearly intentional, and I don't see 
-any good reason to reject it from C++23.
-</p>
-<p><i>[2022-06-11; Daniel comments]</i></p>
-
-<p>
-Another possible candidate could be 26.7.11.3 <a href="https://timsong-cpp.github.io/cppwp/range.take.while.sentinel">[range.take.while.sentinel]</a>'s
-</p>
-<blockquote><pre>
-constexpr explicit <i>sentinel</i>(sentinel_t&lt;<i>Base</i>&gt; end, const Pred* pred);
-</pre></blockquote>
-
-<p><i>[2022-06-21; Reflector poll]</i></p>
-
-<p>
-Set priority to 4 after reflector poll. Send to LEWG.
-</p>
-
-<p><i>[2023-01-24; LEWG in Kona]</i></p>
-
-<p>Use alternative approach in <a href="https://wg21.link/P2711">P2711</a> instead.</p>
-
-
-
-<p id="res-3714"><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
-</p>
-
-<ol>
-<li><p>Modify 26.7.25.2 <a href="https://timsong-cpp.github.io/cppwp/range.zip.transform.view">[range.zip.transform.view]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;copy_constructible F, input_range... Views&gt;
-    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
-              regular_invocable&lt;F&amp;, range_reference_t&lt;Views&gt;...&gt; &amp;&amp;
-              <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;Views&gt;...&gt;&gt;
-  class zip_transform_view : public view_interface&lt;zip_transform_view&lt;F, Views...&gt;&gt; {
-    <i>copyable-box</i>&lt;F&gt; <i>fun_</i>;                   <i>// exposition only</i>
-    zip_view&lt;Views...&gt; <i>zip_</i>;                <i>// exposition only</i>
-    [&hellip;]
-  public:
-    zip_transform_view() = default;
-
-    constexpr <del>explicit</del> zip_transform_view(F fun, Views... views);
-    [&hellip;]
-  };
-  [&hellip;]
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> zip_transform_view(F fun, Views... views);
-</pre>
-<blockquote>
-<p>
--1- <i>Effects</i>: Initializes <tt><i>fun_</i></tt> with <tt>std::move(fun)</tt> and <tt><i>zip_</i></tt> 
-with <tt>std::move(views)...</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 26.7.27.2 <a href="https://timsong-cpp.github.io/cppwp/range.adjacent.transform.view">[range.adjacent.transform.view]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;forward_range V, copy_constructible F, size_t N&gt;
-    requires view&lt;V&gt; &amp;&amp; (N &gt; 0) &amp;&amp; is_object_v&lt;F&gt; &amp;&amp;
-             regular_invocable&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt; &amp;&amp;
-             <i>can-reference</i>&lt;invoke_result_t&lt;F&amp;, <i>REPEAT</i>(range_reference_t&lt;V&gt;, N)...&gt;&gt;
-  class adjacent_transform_view : public view_interface&lt;adjacent_transform_view&lt;V, F, N&gt;&gt; {
-    <i>copyable-box</i>&lt;F&gt; <i>fun_</i>;                       <i>// exposition only</i>
-    adjacent_view&lt;V, N&gt; <i>inner_</i>;                 <i>// exposition only</i>
-    [&hellip;]
-  public:
-    adjacent_transform_view() = default;
-    constexpr <del>explicit</del> adjacent_transform_view(V base, F fun);
-    [&hellip;]
-  };
-  [&hellip;]
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> adjacent_transform_view(V base, F fun);
-</pre>
-<blockquote>
-<p>
--1- <i>Effects</i>: Initializes <tt><i>fun_</i></tt> with <tt>std::move(fun)</tt> and 
-<tt><i>inner_</i></tt> with <tt>std::move(base)</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 26.7.28.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.input">[range.chunk.view.input]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  [&hellip;]
-  template&lt;view V&gt;
-    requires input_range&lt;V&gt;
-  class chunk_view : public view_interface&lt;chunk_view&lt;V&gt;&gt; {
-    V <i>base_</i> = V();                                        <i>// exposition only</i>
-    range_difference_t&lt;V&gt; <i>n_</i> = 0;                         <i>// exposition only</i>
-    [&hellip;]
-  public:
-    chunk_view() requires default_initializable&lt;V&gt; = default;
-    constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
-    [&hellip;]
-  };
-  [&hellip;]
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
-</pre>
-<blockquote>
-<p>
--1- <i>Preconditions:</i> <tt>n &gt; 0</tt> is <tt>true</tt>.
+While implementing <a href="https://wg21.link/P2505R5">P2505R5</a> "Monadic Functions for <code>std::expected</code>" we found it odd that
+the template type parameter for the assignment operator that accepts an argument by forwarding reference is
+defaulted, but the template type parameter for <code>value_or</code> is not. For consistency, it would seem that
+<code><i>meow</i>.value_or(<i>woof</i>)</code> should accept the same arguments <code><i>woof</i></code> as does
+<code><i>meow</i> = <i>woof</i></code>, even when those arguments are braced-initializers.
 <p/>
--2- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
-<tt><i>n_</i></tt> with <tt>n</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 26.7.28.6 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.view.fwd">[range.chunk.view.fwd]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;view V&gt;
-    requires forward_range&lt;V&gt;
-  class chunk_view&lt;V&gt; : public view_interface&lt;chunk_view&lt;V&gt;&gt; {
-    V <i>base_</i> = V();                      <i>// exposition only</i>
-    range_difference_t&lt;V&gt; <i>n_</i> = 0;       <i>// exposition only</i>
-    [&hellip;]
-  public:
-    chunk_view() requires default_initializable&lt;V&gt; = default;
-    constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
-    [&hellip;]
-  };
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> chunk_view(V base, range_difference_t&lt;V&gt; n);
-</pre>
-<blockquote>
-<p>
--1- <i>Preconditions:</i> <tt>n &gt; 0</tt> is <tt>true</tt>.
+That said, it would be peculiar to default the template type parameter of <code>value_or</code> to <code>T</code>
+instead of <code>remove_cv_t&lt;T&gt;</code>. For <code>expected&lt;const vector&lt;int&gt;, int&gt; <i>meow</i>{unexpect, 42};</code>,
+for example, <code><i>meow</i>.value_or({1, 2, 3})</code> would create a temporary <code>const vector&lt;int&gt;</code>
+for the argument and return a copy of that argument. Were the default template argument instead
+<code>remove_cv_t&lt;T&gt;</code>, <code><i>meow</i>.value_or({1, 2, 3})</code> could move construct its return value
+from the argument <code>vector&lt;int&gt;</code>. For the same reason, the constructor that accepts a forwarding
+reference with a default template argument of <code>T</code> should default that argument to <code>remove_cv_t&lt;T&gt;</code>.
 <p/>
--2- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
-<tt><i>n_</i></tt> with <tt>n</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 26.7.29.2 <a href="https://timsong-cpp.github.io/cppwp/range.slide.view">[range.slide.view]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  [&hellip;]
-  template&lt;forward_range V&gt;
-    requires view&lt;V&gt;
-  class slide_view : public view_interface&lt;slide_view&lt;V&gt;&gt; {
-    V <i>base_</i> = V();                      <i>// exposition only</i>
-    range_difference_t&lt;V&gt; <i>n_</i> = 0;       <i>// exposition only</i>
-    [&hellip;]
-  public:
-    slide_view() requires default_initializable&lt;V&gt; = default;
-    constexpr <del>explicit</del> slide_view(V base, range_difference_t&lt;V&gt; n);
-    [&hellip;]
-  };
-  [&hellip;]
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> slide_view(V base, range_difference_t&lt;V&gt; n);
-</pre>
-<blockquote>
-<p>
--1- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
-<tt><i>n_</i></tt> with <tt>n</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-<li><p>Modify 26.7.30.2 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.by.view">[range.chunk.by.view]</a> as indicated:</p>
-
-<blockquote>
-<blockquote>
-<pre>
-namespace std::ranges {
-  template&lt;forward_range V, indirect_binary_predicate&lt;iterator_t&lt;V&gt;, iterator_t&lt;V&gt;&gt; Pred&gt;
-    requires view&lt;V&gt; &amp;&amp; is_object_v&lt;Pred&gt;
-  class chunk_by_view : public view_interface&lt;chunk_by_view&lt;V, Pred&gt;&gt; {
-    V <i>base_</i> = V();                                <i>// exposition only</i>
-    <i>copyable-box</i>&lt;Pred&gt; <i>pred_</i> = Pred();            <i>// exposition only</i>
-    [&hellip;]
-  public:
-    chunk_by_view() requires default_initializable&lt;V&gt; &amp;&amp; default_initializable&lt;Pred&gt; = default;
-    constexpr <del>explicit</del> chunk_by_view(V base, Pred pred);
-    [&hellip;]
-  };
-  [&hellip;]
-}
-</pre>
-</blockquote>
-<pre>
-constexpr <del>explicit</del> chunk_by_view(V base, Pred pred);
-</pre>
-<blockquote>
-<p>
--1- <i>Effects</i>: Initializes <tt><i>base_</i></tt> with <tt>std::move(base)</tt> and 
-<tt><i>pred_</i></tt> with <tt>std::move(pred)</tt>.
-</p>
-</blockquote>
-</blockquote>
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3901" href="3901">3901.</a> Is uses-allocator construction of a <i>cv</i>-qualified object type still well-formed after LWG 3870?</h3>
-<p><b>Section:</b> 20.2.8 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses">[allocator.uses]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-05 <b>Last modified:</b> 2023-03-22 22:35:08 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-LWG <a href="3870">3870</a> made <tt>std::construct_at</tt> unable to create an object of a <i>cv</i>-qualified type, 
-which affects <tt>std::uninitialized_construct_using_allocator</tt>. However, uses-allocator construction is 
-currently not required to be equivalent to some call to <tt>std::uninitialized_construct_using_allocator</tt>, 
-which possibly implies that uses-allocator construction of a <i>cv</i>-qualified type may still be required to be 
-well-formed.
-<p/>
-Should we make such construction ill-formed?
+For consistency, it would be best to default the template argument of the perfect-forwarding construct,
+perfect-forwarding assignment operator, and <code>value_or</code> to <code>remove_cv_t&lt;T&gt;</code>. Since all of
+the arguments presented apply equally to <code>optional</code>, we believe <code>optional</code> should be changed
+consistently with <code>expected</code>. MSVCSTL has prototyped these changes successfully.
 </p>
 
 <p><i>[2023-03-22; Reflector poll]</i></p>
 
-<p>Set status to Tentatively NAD.</p>
-<p>Not all uses-allocator construction is done using <code>construct_at</code>.
-<code>std::tuple&lt;const T&gt;(allocator_arg, alloc)</code> does
-uses-allocator construction of a const type, so we can't make it ill-formed.
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
 </p>
 
 
 
-<p id="res-3901"><b>Proposed resolution:</b></p>
+<p id="res-3886"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4928">N4928</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt;
+  class optional {
+  public:
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+      constexpr explicit(<i>see below</i>) optional(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr optional&amp; operator=(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) const &amp;;
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) &amp;&amp;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/optional.ctor">[optional.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr explicit(<i>see below</i>) optional(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-23- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.4 <a href="https://timsong-cpp.github.io/cppwp/optional.assign">[optional.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr optional&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-12- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.5.3.7 <a href="https://timsong-cpp.github.io/cppwp/optional.observe">[optional.observe]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) const &amp;;
+</pre>
+<blockquote>
+<p>
+-15- <i>Mandates</i>: [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-17- <i>Mandates</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T, class E&gt;
+  class expected {
+  public:
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+      constexpr explicit(<i>see below</i>) expected(U&amp;&amp; v);
+    [&hellip;]
+    template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt; constexpr expected&amp; operator=(U&amp;&amp;);
+    [&hellip;]
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) const &amp;;
+    template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp;) &amp;&amp;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.2 <a href="https://timsong-cpp.github.io/cppwp/expected.object.cons">[expected.object.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+  constexpr explicit(!is_convertible_v&lt;U, T&gt;) expected(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-23- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.4 <a href="https://timsong-cpp.github.io/cppwp/expected.object.assign">[expected.object.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U = <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins>&gt;
+  constexpr expected&amp; operator=(U&amp;&amp; v);
+</pre>
+<blockquote>
+<p>
+-9- <i>Constraints</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.6 <a href="https://timsong-cpp.github.io/cppwp/expected.object.obs">[expected.object.obs]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) const &amp;;
+</pre>
+<blockquote>
+<p>
+-16- <i>Mandates</i>: [&hellip;]
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class U <ins>= remove_cv_t&lt;T&gt;</ins>&gt; constexpr T value_or(U&amp;&amp; v) &amp;&amp;;
+</pre>
+<blockquote>
+<p>
+-18- <i>Mandates</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
 
 
 
 
 
 <hr>
-<h3><a name="3908" href="3908">3908.</a> <code>enumerate_view::<i>iterator</i></code> constructor is explicit</h3>
-<p><b>Section:</b> 26.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-03-23 <b>Last modified:</b> 2023-06-01 14:39:24 UTC</p>
+<h3 id="3908"><a href="3908">3908</a>. <code>enumerate_view::<i>iterator</i></code> constructor is explicit</h3>
+<p><b>Section:</b> 25.7.24.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2023-03-23 <b>Last modified:</b> 2024-06-24</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.enumerate.iterator">active issues</a> in [range.enumerate.iterator].</p>
 <p><b>View all other</b> <a href="lwg-index.html#range.enumerate.iterator">issues</a> in [range.enumerate.iterator].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
@@ -568,6 +511,8 @@ draft.
 
 <p>
 Set status to Tentatively NAD after four votes in favour during reflector poll.
+The constructor is exposition-only, it doesn't make any difference to anything
+whether it's explicit or not.
 </p>
 
 
@@ -579,7 +524,7 @@ This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
 <ol>
 <li>
 <p>
-Modify the class synopsis in 26.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a>
+Modify the class synopsis in 25.7.24.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a>
 as shown:
 </p>
 <blockquote><pre><code>
@@ -590,7 +535,7 @@ as shown:
 
 <li>
 <p>
-Modify the detailed description in 26.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a>
+Modify the detailed description in 25.7.24.3 <a href="https://timsong-cpp.github.io/cppwp/range.enumerate.iterator">[range.enumerate.iterator]</a>
 as shown:
 </p>
 <blockquote>
@@ -612,15 +557,15 @@ with <code>std::move(current)</code> and <code><i>pos_</i></code> with
 
 
 <hr>
-<h3><a name="3909" href="3909">3909.</a> Issues about <code>viewable_range</code></h3>
-<p><b>Section:</b> 99 [ranges.refinements], 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-27 <b>Last modified:</b> 2023-06-01 14:31:30 UTC</p>
+<h3 id="3909"><a href="3909">3909</a>. Issues about <code>viewable_range</code></h3>
+<p><b>Section:</b> 99 [ranges.refinements], 25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-03-27 <b>Last modified:</b> 2023-06-01</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-After LWG <a href="3724">3724</a>, <code>views::all</code> is well-constrained for view types,
+After LWG <a href="3724" title="decay-copy should be constrained (Status: C++23)">3724</a>, <code>views::all</code> is well-constrained for view types,
 and the constraints are stronger than <code>viewable_range</code>.
 The difference is that given an expression such that <code>decltype</code> gives <code>R</code>,
 when <code>decay_t&lt;R&gt;</code> is a view type and the implicit conversion of <code>R</code>
@@ -634,7 +579,7 @@ I think it is still useful to express the constraints on <code>views::all</code>
 so it should be slightly adjusted to match <code>views::all</code>.
 </p>
 <p>
-Furthermore, <code>viewable_range</code> is currently used in 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>,
+Furthermore, <code>viewable_range</code> is currently used in 25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>,
 but given <a href="https://wg21.link/P2378R3">P2378R3</a> relaxed the requirements for range adaptor closure objects,
 I think we should also apply similar relaxation for range adaptor objects.
 This should have no impact on standard range adaptor objects.
@@ -646,7 +591,7 @@ This should have no impact on standard range adaptor objects.
 Set status to Tentatively NAD after three votes in favour during reflector poll.
 </p>
 <p>
-"First change is pointless. Second change is a duplicate of <a href="3896">3896</a>.
+"First change is pointless. Second change is a duplicate of <a href="3896" title="The definition of viewable_range is not quite right (Status: New)">3896</a>.
 Range adaptors return a view over their first argument, so they need to
 require it's a <code>viewable_range</code>."
 </p>
@@ -661,7 +606,7 @@ This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
 <ol>
 <li>
 <p>
-Change the definition of <code>views::all_t</code> in 26.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:
+Change the definition of <code>views::all_t</code> in 25.2 <a href="https://timsong-cpp.github.io/cppwp/ranges.syn">[ranges.syn]</a> as indicated:
 </p>
 <blockquote><pre><code>
    template&lt;<del>viewable_range</del><ins>class</ins> R&gt;
@@ -671,7 +616,7 @@ Change the definition of <code>views::all_t</code> in 26.2 <a href="https://tims
 </li>
 <li>
 <p>
-Change the definition of <code>viewable_range</code> in 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:
+Change the definition of <code>viewable_range</code> in 25.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:
 </p>
 <blockquote>
 <p>-6-
@@ -690,7 +635,7 @@ template&lt;class T&gt;
 </li>
 <li>
 <p>
-Change 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> as indicated:
+Change 25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> as indicated:
 </p>
 <blockquote>
 <p>-6-
@@ -706,7 +651,7 @@ If a range adaptor object <code>adaptor</code> accepts more than one argument,
 then let <code>range</code> be an expression such that <code>decltype((range))</code>
 models <code><del>viewable_range</del><ins>range</ins></code>,
 let <code>args...</code> be arguments such that <code>adaptor(range, args...)</code>
-is a well-formed expression as specified in the rest of subclause 26.7 <a href="https://timsong-cpp.github.io/cppwp/range.adaptors">[range.adaptors]</a>,
+is a well-formed expression as specified in the rest of subclause 25.7 <a href="https://timsong-cpp.github.io/cppwp/range.adaptors">[range.adaptors]</a>,
 and let <code>BoundArgs</code> be a pack that denotes <code>decay_t&lt;decltype((args))&gt;...</code>.
 The expression <code>adaptor(args...)</code> produces a range adaptor closure object
 <code>f</code> that is a perfect forwarding call wrapper (22.10.4 <a href="https://timsong-cpp.github.io/cppwp/func.require">[func.require]</a>)
@@ -722,187 +667,9 @@ with the following properties: [...]
 
 
 <hr>
-<h3><a name="3930" href="3930">3930.</a> Simplify type trait wording</h3>
-<p><b>Section:</b> 21 <a href="https://timsong-cpp.github.io/cppwp/meta">[meta]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2023-05-01 <b>Last modified:</b> 2023-06-01 14:21:36 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View other</b> <a href="lwg-index-open.html#meta">active issues</a> in [meta].</p>
-<p><b>View all other</b> <a href="lwg-index.html#meta">issues</a> in [meta].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-There are many traits that have a requirement that they are instantiated only if
-"<tt>T</tt> shall be a complete type, <i>cv</i> <tt>void</tt>, or an array of unknown bound."
-<p/>
-Breaking down what this means, by supporting <i>cv</i>-<tt>void</tt> and arrays of unknown
-bound (almost) the only remaining type-category is incomplete class types.
-<p/>
-The remaining edge case is incomplete enumerations, but they are required to
-have a known fixed-base, so act as complete types, they can be copied,
-assigned, etc., without knowing the names of their enumerators.
-<p/>
-Hence, I suggest clearer wording would be:
-"<tt>T</tt> shall not be an incomplete class type."
-<p/>
-This is easier to understand, as we do not need to mentally enumerate every
-type against a list to check it qualifies; it is a simpler test for the library to
-check if we were to mandate these restrictions.
-<p/>
-There are a very small number of traits with subtly different wording, where
-incomplete unions are supported, or arrays of unknown bound are not a
-concern due to invoking <tt>remove_all_extents</tt> first. The bulk of the changes
-can be made to traits with only the precise wording above though, and then
-we can review whether any of the remaining restrictions deserve a wording
-update of their own.
-</p>
-
-<p><i>[2023-06-01; Reflector poll]</i></p>
-
-<p>
-Set status to Tentatively NAD after four votes in favour during reflector poll,
-including a request to withdraw the issue from the submitter.
-</p>
-<p>
-Incomplete enumeration types are found within the <i>enum-specifier</i>
-of an enum without a fixed underlying type:
-<pre><code>
-enum E {
-    A = sizeof(E) // error, E is incomplete at this point
-};
-</code></pre>
-and we definitely can't provide an underlying type for this case.
-</p>
-
-
-
-<p id="res-3930"><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4944">N4944</a>.
-</p>
-
-<ol>
-<li>
-<p>
-Throughout 21 <a href="https://timsong-cpp.github.io/cppwp/meta">[meta]</a> replace all occurrences of
-</p>
-<blockquote><p>
-<tt>T</tt> shall be a complete type, <i>cv</i> <tt>void</tt>, or an array of unknown bound.
-</p></blockquote>
-<p>
-by
-</p>
-<blockquote><p>
-<tt>T</tt> shall not be an incomplete class type.
-</p></blockquote>
-
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3936" href="3936">3936.</a> Are implementations allowed to deprecate components not in [depr]?</h3>
-<p><b>Section:</b> D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-05-22 <b>Last modified:</b> 2023-06-01 14:06:41 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-D.1 <a href="https://timsong-cpp.github.io/cppwp/depr.general">[depr.general]</a>/2 allows implementations to apply the
-<code>deprecated</code> attribute to deprecated components.
-However, there doesn't seem to be any wording disallowing applying the
-<code>deprecated</code> attribute to non-deprecated components.
-</p>
-<p>
-Is it intended to allow implementations to deprecate every library component
-as they want? If so, should we turn the allowance into "<i>Recommended practice</i>" and move it to somewhere in 16.4 <a href="https://timsong-cpp.github.io/cppwp/requirements">[requirements]</a>?
-</p>
-<p>
-There doesn't seem to be wording which formally recommends applying
-<code>deprecated</code> attribute to deprecated components either.
-</p>
-
-<p><i>[2023-06-01; Reflector poll]</i></p>
-
-<p>
-Set status to Tentatively NAD after nine votes in favour during reflector poll.
-Let implementations decide when to apply these attributes.
-</p>
-
-
-
-<p id="res-3936"><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
-</p>
-
-<blockquote class="note">
-<p>
-[<i>Drafting Note:</i>
-There are two mutually exclusive proposed resolutions,
-depending on whether it is allowed to deprecate components not in
-D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a>.
-</p>
-</blockquote>
-
-<p><strong>Option A:</strong></p>
-
-<ol>
-<li>
-<p>Insert a paragraph at the end of 16.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/contents">[contents]</a>:</p>
-
-<blockquote>
-<p>
-<ins>
--?- <i>Recommended practice</i>:
-Implementations should not apply the <code>deprecated</code> attribute
-(9.12.5 <a href="https://timsong-cpp.github.io/cppwp/dcl.attr.deprecated">[dcl.attr.deprecated]</a>) to library entities that are not
-specified in D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a>.
-Implementations should apply the <code>deprecated</code> attribute to
-library entities specified in D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> whenever possible.
-</ins>
-</p>
-</blockquote>
-</li>
-</ol>
-
-<p><strong>Option B:</strong></p>
-
-<ol>
-<li>
-<p>Insert two paragraphs at the end of 16.4.2.2 <a href="https://timsong-cpp.github.io/cppwp/contents">[contents]</a>:</p>
-
-<blockquote>
-<p>
-<ins>
--?- Implementations shall not apply the <code>deprecated</code> attribute
-(9.12.5 <a href="https://timsong-cpp.github.io/cppwp/dcl.attr.deprecated">[dcl.attr.deprecated]</a>) to library entities that are not
-specified in D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a>.
-</ins>
-</p>
-<p>
-<ins>-?- <i>Recommended practice</i>:
-Implementations should apply the <code>deprecated</code> attribute to
-library entities specified in D <a href="https://timsong-cpp.github.io/cppwp/depr">[depr]</a> whenever possible.
-</ins>
-</p>
-</blockquote>
-</li>
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="3958" href="3958">3958.</a> <tt>ranges::to</tt> should prioritize the "<tt>reserve</tt>" branch</h3>
-<p><b>Section:</b> 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-07-17 <b>Last modified:</b> 2023-10-30 16:39:42 UTC</p>
+<h3 id="3958"><a href="3958">3958</a>. <code>ranges::to</code> should prioritize the "<code>reserve</code>" branch</h3>
+<p><b>Section:</b> 25.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-07-17 <b>Last modified:</b> 2024-01-29</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#range.utility.conv.to">active issues</a> in [range.utility.conv.to].</p>
@@ -910,9 +677,9 @@ library entities specified in D <a href="https://timsong-cpp.github.io/cppwp/dep
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-When the constructed range object has no range version constructor, <tt>ranges::to</tt> falls into a 
+When the constructed range object has no range version constructor, <code>ranges::to</code> falls into a 
 branch designed specifically for C++17-compliant containers, which calls the legacy constructor that 
-accepts an iterator pair with <tt>C(ranges::begin(r), ranges::end(r), std::forward&lt;Args&gt;(args)...)</tt>.    
+accepts an iterator pair with <code>C(ranges::begin(r), ranges::end(r), std::forward&lt;Args&gt;(args)...)</code>.    
 <p/>
 However, this kind of initialization may bring some performance issues, because we split the original 
 range into pairs of iterators, which may lose information contained in the original range, for example:
@@ -931,11 +698,11 @@ int main() {
 }
 </pre></blockquote>
 <p>
-Above, <tt>subrange</tt> saves the size information of the stream, but <tt>ranges::to</tt> only extracts 
+Above, <code>subrange</code> saves the size information of the stream, but <code>ranges::to</code> only extracts 
 its iterator pair to create the object, so that the original size information is discarded, resulting in 
 unnecessary allocations.
 <p/>
-I believe we should prefer to use the "<tt>reserve</tt>" branch here because it is really designed for this situation.
+I believe we should prefer to use the "<code>reserve</code>" branch here because it is really designed for this situation.
 </p>
 
 <p><i>[2023-10-30; Reflector poll]</i></p>
@@ -954,7 +721,7 @@ This wording is relative to <a href="https://wg21.link/N4950">N4950</a>.
 
 <ol>
 
-<li><p>Modify 26.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
+<li><p>Modify 25.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.utility.conv.to">[range.utility.conv.to]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -963,33 +730,34 @@ template&lt;class C, input_range R, class... Args&gt; requires (!view&lt;C&gt;)
 </pre>
 <blockquote>
 <p>
--1- <i>Mandates</i>: <tt>C</tt> is a cv-unqualified class type.
+-1- <i>Mandates</i>: <code>C</code> is a cv-unqualified class type.
 </p>
 <p>
--2- <i>Returns</i>: An object of type <tt>C</tt> constructed from the elements of <tt>r</tt> in the following manner:
+-2- <i>Returns</i>: An object of type <code>C</code> constructed from the elements of <code>r</code> in the following manner:
 </p>
 <ol style="list-style-type: none">
-<li><p>(2.1) &mdash; If <tt>C</tt> does not satisfy <tt>input_range</tt> or <tt>convertible_to&lt;range_reference_t&lt;R&gt;, 
-range_value_t&lt;C&gt;&gt;</tt> is <tt>true</tt>:</p></li>
+<li><p>(2.1) &mdash; If <code>C</code> does not satisfy <code>input_range</code> or <code>convertible_to&lt;range_reference_t&lt;R&gt;, 
+range_value_t&lt;C&gt;&gt;</code> is <code>true</code>:</p>
 <ol style="list-style-type: none">
-<li><p>(2.1.1) &mdash; If <tt>constructible_from&lt;C, R, Args...&gt;</tt> is <tt>true</tt>:</p>
-<blockquote><tt>C(std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</tt></blockquote></li>
-<li><p>(2.1.2) &mdash; Otherwise, if <tt>constructible_from&lt;C, from_range_t, R, Args...&gt;</tt> is <tt>true</tt>:</p>
-<blockquote><tt>C(from_range, std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</tt></blockquote></li>
-<li><p><del>(2.1.3) &mdash; Otherwise, if</del></p></li>
+<li><p>(2.1.1) &mdash; If <code>constructible_from&lt;C, R, Args...&gt;</code> is <code>true</code>:</p>
+<blockquote><code>C(std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</code></blockquote></li>
+<li><p>(2.1.2) &mdash; Otherwise, if <code>constructible_from&lt;C, from_range_t, R, Args...&gt;</code> is <code>true</code>:</p>
+<blockquote><code>C(from_range, std::forward&lt;R&gt;(r), std::forward&lt;Args&gt;(args)...)</code></blockquote></li>
+<li><p><del>(2.1.3) &mdash; Otherwise, if</del></p>
 <ol style="list-style-type: none">
-<li><p><del>(2.1.3.1) &mdash; <tt>common_range&lt;R&gt;</tt> is <tt>true</tt>,</del></p></li>
+<li><p><del>(2.1.3.1) &mdash; <code>common_range&lt;R&gt;</code> is <code>true</code>,</del></p></li>
 <li><p><del>(2.1.3.2) &mdash; the <i>qualified-id</i>  
-<tt>iterator_traits&lt;iterator_t&lt;R&gt;&gt;::iterator_category</tt> is valid and denotes a type that models 
-<tt>derived_from&lt;input_iterator_tag&gt;</tt>, and</del></p></li>
-<li><p><del>(2.1.3.3) &mdash; <tt>constructible_from&lt;C, iterator_t&lt;R&gt;, sentinel_t&lt;R&gt;, Args...&gt;</tt> 
-is <tt>true</tt>:</del></p>
+<code>iterator_traits&lt;iterator_t&lt;R&gt;&gt;::iterator_category</code> is valid and denotes a type that models 
+<code>derived_from&lt;input_iterator_tag&gt;</code>, and</del></p></li>
+<li><p><del>(2.1.3.3) &mdash; <code>constructible_from&lt;C, iterator_t&lt;R&gt;, sentinel_t&lt;R&gt;, Args...&gt;</code> 
+is <code>true</code>:</del></p>
 <blockquote><pre><del>C(ranges::begin(r), ranges::end(r), std::forward&lt;Args&gt;(args)...)</del></pre></blockquote></li>
 </ol>
-<li><p>(2.1.4) &mdash; Otherwise, if</p></li>
+</li>
+<li><p>(2.1.4) &mdash; Otherwise, if</p>
 <ol style="list-style-type: none">
-<li><p>(2.1.4.1) &mdash; <tt>constructible_from&lt;C, Args...&gt;</tt> is <tt>true</tt>, and</p></li>
-<li><p>(2.1.4.2) &mdash; <tt><i>container-insertable</i>&lt;C, range_reference_t&lt;R&gt;&gt;</tt> is <tt>true</tt>:</p>
+<li><p>(2.1.4.1) &mdash; <code>constructible_from&lt;C, Args...&gt;</code> is <code>true</code>, and</p></li>
+<li><p>(2.1.4.2) &mdash; <code><i>container-insertable</i>&lt;C, range_reference_t&lt;R&gt;&gt;</code> is <code>true</code>:</p>
 <blockquote><pre>
 C c(std::forward&lt;Args&gt;(args)...);
 if constexpr (sized_range&lt;R&gt; &amp;&amp; <i>reservable-container</i>&lt;C&gt;)
@@ -997,17 +765,20 @@ if constexpr (sized_range&lt;R&gt; &amp;&amp; <i>reservable-container</i>&lt;C&g
 ranges::copy(r, <i>container-inserter</i>&lt;range_reference_t&lt;R&gt;&gt;(c));
 </pre></blockquote></li>
 </ol>
-<li><p><ins>(?.?.?) &mdash; Otherwise, if</ins></p></li>
+</li>
+<li><p><ins>(?.?.?) &mdash; Otherwise, if</ins></p>
 <ol style="list-style-type: none">
-<li><p><ins>(?.?.?.?) &mdash; <tt>common_range&lt;R&gt;</tt> is <tt>true</tt>,</ins></p></li>
-<li><p><ins>(?.?.?.?) &mdash; the <i>qualified-id</i> <tt>iterator_traits&lt;iterator_t&lt;R&gt;&gt;::iterator_category</tt> 
-is valid and denotes a type that models <tt>derived_from&lt;input_iterator_tag&gt;</tt>, and</ins></p></li>
-<li><p><ins>(?.?.?.?) &mdash; <tt>constructible_from&lt;C, iterator_t&lt;R&gt;, sentinel_t&lt;R&gt;, Args...&gt;</tt> 
-is <tt>true</tt>:</ins></p>
+<li><p><ins>(?.?.?.?) &mdash; <code>common_range&lt;R&gt;</code> is <code>true</code>,</ins></p></li>
+<li><p><ins>(?.?.?.?) &mdash; the <i>qualified-id</i> <code>iterator_traits&lt;iterator_t&lt;R&gt;&gt;::iterator_category</code> 
+is valid and denotes a type that models <code>derived_from&lt;input_iterator_tag&gt;</code>, and</ins></p></li>
+<li><p><ins>(?.?.?.?) &mdash; <code>constructible_from&lt;C, iterator_t&lt;R&gt;, sentinel_t&lt;R&gt;, Args...&gt;</code> 
+is <code>true</code>:</ins></p>
 <blockquote><pre><ins>C(ranges::begin(r), ranges::end(r), std::forward&lt;Args&gt;(args)...)</ins></pre></blockquote></li>
 </ol>
+</li>
 </ol>
-<li><p>(2.2) &mdash; Otherwise, if <tt>input_range&lt;range_reference_t&lt;R&gt;&gt;</tt> is <tt>true</tt>:</p>
+</li>
+<li><p>(2.2) &mdash; Otherwise, if <code>input_range&lt;range_reference_t&lt;R&gt;&gt;</code> is <code>true</code>:</p>
 <blockquote><pre>
 to&lt;C&gt;(r | views::transform([](auto&amp;&amp; elem) {
   return to&lt;range_value_t&lt;C&gt;&gt;(std::forward&lt;decltype(elem)&gt;(elem));
@@ -1026,9 +797,9 @@ to&lt;C&gt;(r | views::transform([](auto&amp;&amp; elem) {
 
 
 <hr>
-<h3><a name="3980" href="3980">3980.</a> The read exclusive ownership of an atomic read-modify-write operation and whether its read and write are two operations are unclear</h3>
-<p><b>Section:</b> 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> jim x <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-11-03 18:04:50 UTC</p>
+<h3 id="3980"><a href="3980">3980</a>. The read exclusive ownership of an atomic read-modify-write operation and whether its read and write are two operations are unclear</h3>
+<p><b>Section:</b> 32.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> jim x <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-11-03</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#atomics.order">active issues</a> in [atomics.order].</p>
@@ -1039,7 +810,7 @@ to&lt;C&gt;(r | views::transform([](auto&amp;&amp; elem) {
 Such two questions are sourced from StackOverflow:
 </p>
 <ol>
-<li><p><a href="https://stackoverflow.com/questions/77126045/can-the-read-operations-in-compare-exchange-strong-in-different-two-thread-rea/77126363?noredirect=1#comment135968355_77126363">Can the read operations in <tt>compare_exchange_strong</tt> in different two thread read the same value?</a></p></li>
+<li><p><a href="https://stackoverflow.com/questions/77126045/can-the-read-operations-in-compare-exchange-strong-in-different-two-thread-rea/77126363?noredirect=1#comment135968355_77126363">Can the read operations in <code>compare_exchange_strong</code> in different two thread read the same value?</a></p></li>
 <li><p><a href="https://stackoverflow.com/questions/65568185/for-purposes-of-ordering-is-atomic-read-modify-write-one-operation-or-two">For purposes of ordering, is atomic read-modify-write one operation or two?</a></p></li>
 </ol>
 <p>
@@ -1080,7 +851,7 @@ int main(){
 </blockquote>
 <p>
 In the current draft, the relevant phrasing that can interpret that only one read-modify-write operation reads the initial 
-value false is 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> p10:
+value false is 32.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> p10:
 </p>
 <blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
 Atomic read-modify-write operations shall always read the last value (in the modification order) written before the write 
@@ -1093,7 +864,7 @@ However, the wording can have two meanings, each kind of read can result in diff
 <li><p>The check of the violation is done before the side effect of the RMW is in the modification order, i.e. the rule is 
 just checked at the read point.</p></li>
 <li><p>The check of the violation is done after the side effect of the RMW is in the modification order, i.e. the rule is 
-checked when <tt>RMW</tt> tries to add the side effect that is based on the read-value to the modification order, and that 
+checked when <code>RMW</code> tries to add the side effect that is based on the read-value to the modification order, and that 
 side effect wouldn't be added to the modification order if the rule was violated.</p></li>
 </ol>
 <p>
@@ -1108,12 +879,12 @@ Such two interpretations arise from that the wording doesn't clearly specify whe
 So, my proposed wording is:
 </p>
 <blockquote style="border-left: 3px solid #ccc;padding-left: 15px;"><p>
-Atomic read-modify-write operations shall always read the value from a side effect <tt>X</tt>, where <tt>X</tt> 
+Atomic read-modify-write operations shall always read the value from a side effect <code>X</code>, where <code>X</code> 
 immediately precedes the side effect of the read-modify-write operation in the modification order.
 </p></blockquote>
 <p>
 This wording keeps a similar utterance to 6.9.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a>, and it can clearly convey the meaning 
-that we say the value read by <tt>RWM</tt> is associated with the side effect of <tt>RMW</tt> in the modification order.
+that we say the value read by <code>RWM</code> is associated with the side effect of <code>RMW</code> in the modification order.
 <p/>
 Relevant discussion can be seen <a href="https://github.com/cplusplus/CWG/issues/423">CWG/issues/423</a> here.
 </p>
@@ -1131,7 +902,7 @@ This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
 
 <ol>
 
-<li><p>Modify 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> as indicated:</p>
+<li><p>Modify 32.5.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.order">[atomics.order]</a> as indicated:</p>
 
 <blockquote>
 <p>
@@ -1152,9 +923,9 @@ modification order<del>) written before the write associated with the read-modif
 
 
 <hr>
-<h3><a name="3981" href="3981">3981.</a> Range adaptor closure object is underspecified for its return type</h3>
-<p><b>Section:</b> 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-10-30 17:22:20 UTC</p>
+<h3 id="3981"><a href="3981">3981</a>. Range adaptor closure object is underspecified for its return type</h3>
+<p><b>Section:</b> 25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2024-06-24</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#range.adaptor.object">active issues</a> in [range.adaptor.object].</p>
@@ -1163,10 +934,10 @@ modification order<del>) written before the write associated with the read-modif
 <p><b>Discussion:</b></p>
 <p>
 In order to provide pipe support for user-defined range adaptors, <a href="https://wg21.link/P2387R3">P2387R3</a> 
-removed the specification that the adaptor closure object returns a view, which conforms to the wording of <tt>ranges::to</tt>.
+removed the specification that the adaptor closure object returns a view, which conforms to the wording of <code>ranges::to</code>.
 <p/>
 However, the current wording seems to be too low-spec so that the range adaptor closure object can return any type 
-or even <tt>void</tt>. This makes it possible to break the previous specification when returning types that don't make sense, 
+or even <code>void</code>. This makes it possible to break the previous specification when returning types that don't make sense, 
 <a href="https://godbolt.org/z/Y4nvjY3xj">for example</a>:
 </p>
 <blockquote>
@@ -1181,10 +952,10 @@ struct Closure : std::ranges::range_adaptor_closure&lt;Closure&gt; {
   const NonCopyable&amp; operator()(std::ranges::range auto&amp;&amp;);
 };
 
-auto r = std::views::iota(0) | Closure{}; // <span style="color:red;font-weight:bolder">hard error in stdlibc++ and MSVC-STL</span>
+auto r = std::views::iota(0) | Closure{}; // <span style="color:red;font-weight:bolder">hard error in libstdc++ and MSVC-STL</span>
 </pre></blockquote>
 <p>
-Above, since the return type of the pipeline operator is declared as <tt>auto</tt>, this causes the deleted 
+Above, since the return type of the pipeline operator is declared as <code>auto</code>, this causes the deleted 
 copy constructor to be invoked in the function body and produces a hard error.
 <p/>
 The proposed resolution adds a specification for the range adaptor closure object to return a <i>cv</i>-unqualified class type.
@@ -1207,25 +978,25 @@ This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
 
 <ol>
 
-<li><p>Modify 26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> as indicated:</p>
+<li><p>Modify 25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a> as indicated:</p>
 
 <blockquote>
 <p>
 -1- A <i>range adaptor closure object</i> is a unary function object that accepts a range argument. For a range adaptor
-closure object <tt>C</tt> and an expression <tt>R</tt> such that <tt>decltype((R))</tt> models <tt>range</tt>, the 
+closure object <code>C</code> and an expression <code>R</code> such that <code>decltype((R))</code> models <code>range</code>, the 
 following expressions are equivalent:
 </p>
 <p>[&hellip;]</p>
 <p>
--2- Given an object <tt>t</tt> of type <tt>T</tt>, where
+-2- Given an object <code>t</code> of type <code>T</code>, where
 </p>
 <ol style="list-style-type: none">
-<li><p>(2.1) &mdash; <tt>t</tt> is a unary function object that accepts a range argument <ins>and returns a 
+<li><p>(2.1) &mdash; <code>t</code> is a unary function object that accepts a range argument <ins>and returns a 
 <i>cv</i>-unqualified class object</ins>,</p></li>
-<p>[&hellip;]</p>
+<li><p>[&hellip;]</p></li>
 </ol>
 <p>
-then the implementation ensures that <tt>t</tt> is a range adaptor closure object.
+then the implementation ensures that <code>t</code> is a range adaptor closure object.
 </p>
 </blockquote>
 
@@ -1238,17 +1009,17 @@ then the implementation ensures that <tt>t</tt> is a range adaptor closure objec
 
 
 <hr>
-<h3><a name="3982" href="3982">3982.</a> <tt><i>is-derived-from-view-interface</i></tt> should require that <tt>T</tt> is derived from <tt>view_interface&lt;T&gt;</tt></h3>
-<p><b>Section:</b> 26.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-10-30 16:39:42 UTC</p>
+<h3 id="3982"><a href="3982">3982</a>. <code><i>is-derived-from-view-interface</i></code> should require that <code>T</code> is derived from <code>view_interface&lt;T&gt;</code></h3>
+<p><b>Section:</b> 25.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-08-22 <b>Last modified:</b> 2023-10-30</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.view">issues</a> in [range.view].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Currently, the wording of <tt><i>is-derived-from-view-interface</i></tt> only detects whether type <tt>T</tt> is unambiguously 
-derived from one base class <tt>view_interface&lt;U&gt;</tt> where <tt>U</tt> is not required to be <tt>T</tt>, which is not 
+Currently, the wording of <code><i>is-derived-from-view-interface</i></code> only detects whether type <code>T</code> is unambiguously 
+derived from one base class <code>view_interface&lt;U&gt;</code> where <code>U</code> is not required to be <code>T</code>, which is not 
 the intention of CRTP.
 </p>
 
@@ -1274,7 +1045,7 @@ This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
 
 <ol>
 
-<li><p>Modify 26.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
+<li><p>Modify 25.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.view">[range.view]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -1286,11 +1057,11 @@ template&lt;class T&gt;
 </pre>
 <blockquote>
 <p>
--6- For a type <tt>T</tt>, <tt><i>is-derived-from-view-interface</i>&lt;T&gt;</tt>
-is <tt>true</tt> if and only if <tt>T</tt> has exactly one public base class
-<tt>view_interface&lt;<ins>T</ins><del>U</del>&gt;</tt> <del>for some type <tt>U</tt></del> and
-<tt>T</tt> has no base classes of type <tt>view_interface&lt;<ins>U</ins><del>V</del>&gt;</tt> for any
-other type <tt><ins>U</ins><del>V</del></tt>.
+-6- For a type <code>T</code>, <code><i>is-derived-from-view-interface</i>&lt;T&gt;</code>
+is <code>true</code> if and only if <code>T</code> has exactly one public base class
+<code>view_interface&lt;<ins>T</ins><del>U</del>&gt;</code> <del>for some type <code>U</code></del> and
+<code>T</code> has no base classes of type <code>view_interface&lt;<ins>U</ins><del>V</del>&gt;</code> for any
+other type <code><ins>U</ins><del>V</del></code>.
 <p/>
 </p>
 </blockquote>
@@ -1305,128 +1076,20 @@ other type <tt><ins>U</ins><del>V</del></tt>.
 
 
 <hr>
-<h3><a name="3996" href="3996">3996.</a> <tt>projected&lt;I, identity&gt;</tt> should just be <tt>I</tt></h3>
-<p><b>Section:</b> 25.3.6.4 <a href="https://timsong-cpp.github.io/cppwp/projected">[projected]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-12 <b>Last modified:</b> 2023-11-03 18:04:50 UTC</p>
-<p><b>Priority: </b>Not Prioritized
-</p>
-<p><b>View all other</b> <a href="lwg-index.html#projected">issues</a> in [projected].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
-<p><b>Discussion:</b></p>
-<p>
-Currently, <tt>projected</tt> is a wrapper of the implementation type regardless of whether <tt>Proj</tt> is <tt>identity</tt>.
-<p/>
-Since <tt>identity</tt> always returns a reference, this prevents <tt>projected&lt;I, identity&gt;</tt> from fully 
-emulating the properties of the original iterator when its reference is a prvalue. 
-<p/>
-Such non-equivalence may lead to unexpected behavior in some cases (<a href="https://godbolt.org/z/KM45ndWvh">demo</a>):
-</p>
-<blockquote><pre>
-#include &lt;algorithm&gt;
-#include &lt;ranges&gt;
-#include &lt;iostream&gt;
-
-int main() {
-  auto outer = std::views::iota(0, 5)
-             | std::views::transform([](int i) {
-                 return std::views::single(i) | std::views::filter([](int) { return true; });
-               });
-  
-  for (auto&amp;&amp; inner : outer)
-    for (auto&amp;&amp; elem : inner)
-      std::cout &lt;&lt; elem &lt;&lt; " "; // 0 1 2 3 4 
-  
-  std::ranges::for_each(
-    outer,
-    [](auto&amp;&amp; inner) {
-      // <span  style="color:#C80000;font-weight:bold">error: passing 'const filter_view' as 'this' argument discards qualifiers</span>
-      for (auto&amp;&amp; elem : inner)
-        std::cout &lt;&lt; elem &lt;&lt; " ";
-    });
-}
-</pre></blockquote>
-<p>
-In the above example, <tt>ranges::for_each</tt> requires <tt>indirect_unary_predicate&lt;Pred, projected&lt;I, identity&gt;&gt;</tt>
-which ultimately requires <tt>invocable&lt;Pred&amp;, iter_common_reference_t&lt;projected&lt;I, identity&gt;&gt;&gt;</tt>.
-<p/> 
-According to the current wording, the reference and indirect value type of <tt>projected&lt;I, identity&gt;</tt> are 
-<tt>filter_view&amp;&amp;</tt> and <tt>filter_view&amp;</tt> respectively, which causes its common reference to be eventually 
-calculated as <tt>const filter_view&amp;</tt>. Since the former is not <tt>const</tt>-iterable, this results in a hard error 
-during instantiation because <tt>const begin</tt> is called unexpectedly in an unconstrained lambda.
-</p>
-<p>
-It seems like having <tt>projected&lt;I, identity&gt;</tt> just be <tt>I</tt> is a more appropriate choice, 
-which makes the concept checking really specific to <tt>I</tt> rather than a potentially incomplete iterator wrapper.
-</p>
-
-<p><i>[2023-11-03; Reflector poll]</i></p>
-
-<p>
-NAD. <a href="https://wg21.link/P2997">P2997</a> solves this, and more.
-"Applying the projection does in fact materialize prvalues,
-so this is just lying unless we special-case identity everywhere."
-</p>
-
-
-
-<p id="res-3996"><b>Proposed resolution:</b></p>
-<p>
-This wording is relative to <a href="https://wg21.link/N4958">N4958</a>.
-</p>
-
-<ol>
-
-<li><p>Modify 25.3.6.4 <a href="https://timsong-cpp.github.io/cppwp/projected">[projected]</a> as indicated:</p>
-
-<blockquote>
-<p>
--1- Class template <tt>projected</tt> is used to constrain algorithms that accept callable objects and projections 
-(3.42 <a href="https://timsong-cpp.github.io/cppwp/defns.projection">[defns.projection]</a>). It combines an <tt>indirectly_readable</tt> type <tt>I</tt> and a callable 
-object type <tt>Proj</tt> into a new <tt>indirectly_readable</tt> type whose <tt>reference</tt> type is the 
-result of applying <tt>Proj</tt> to the <tt>iter_reference_t</tt> of <tt>I</tt>.
-</p>
-<blockquote><pre>
-namespace std {
-  template&lt;class I, class Proj&gt;
-  struct <i>projected-impl</i> {                               // <i>exposition only</i>
-    struct <i>type</i> {                                       // <i>exposition only</i>
-      using value_type = remove_cvref_t&lt;indirect_result_t&lt;Proj&amp;, I&gt;&gt;;
-      using difference_type = iter_difference_t&lt;I&gt;;     // <i>present only if</i> I
-                                                        // <i>models</i> weakly_incrementable
-      indirect_result_t&lt;Proj&amp;, I&gt; operator*() const;    // <i>not defined</i>
-    };
-  };
-
-  template&lt;indirectly_readable I, indirectly_regular_unary_invocable&lt;I&gt; Proj&gt;
-    using projected = <ins>conditional_t&lt;is_same_v&lt;Proj, identity&gt;, I, typename</ins> <i>projected-impl</i>&lt;I, Proj&gt;::type<ins>&gt;</ins>;
-}
-</pre></blockquote>
-</blockquote>
-
-
-</li>
-
-</ol>
-
-
-
-
-
-<hr>
-<h3><a name="4003" href="4003">4003.</a> <tt>view_interface::back</tt> is overconstrained</h3>
-<p><b>Section:</b> 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-28 <b>Last modified:</b> 2023-11-07 18:35:04 UTC</p>
+<h3 id="4003"><a href="4003">4003</a>. <code>view_interface::back</code> is overconstrained</h3>
+<p><b>Section:</b> 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-10-28 <b>Last modified:</b> 2024-06-24</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#view.interface">issues</a> in [view.interface].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Currently, <tt>view_interface</tt> only provides the <tt>back</tt> member when the derived class satisfies both 
-<tt>bidirectional_range</tt> and <tt>common_range</tt>, which ensures that <tt>ranges::prev</tt> can act its sentinel.
+Currently, <code>view_interface</code> only provides the <code>back</code> member when the derived class satisfies both 
+<code>bidirectional_range</code> and <code>common_range</code>, which ensures that <code>ranges::prev</code> can act its sentinel.
 <p/>
-However, requiring <tt>common_range</tt> seems to be too strict because when the derived class satisfies both 
-<tt>random_access_range</tt> and <tt>sized_range</tt>, its end iterator can still be calculated in constant time, 
+However, requiring <code>common_range</code> seems to be too strict because when the derived class satisfies both 
+<code>random_access_range</code> and <code>sized_range</code>, its end iterator can still be calculated in constant time, 
 which is what some range adaptors currently do to greedily become common ranges.
 <p/>
 I think we should follow similar rules to eliminate this inconsistency (<a href="https://godbolt.org/z/1oEf58Krh">demo</a>):
@@ -1442,7 +1105,7 @@ static_assert(std::get&lt;0&gt;(z.back()) == 4); // ok
 
 <p><i>[2023-11-07; Reflector poll]</i></p>
 
-+<p>NAD. "During the <code>concat</code> discussion LEWG decided not to
+<p>NAD. "During the <code>concat</code> discussion LEWG decided not to
 support the corner case of random-access sized but not-common ranges."
 "If we did want to address such ranges, would be better to enforce commonness
 for random-access sized ranges by having <code>ranges::end</code> return
@@ -1457,7 +1120,7 @@ This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
 
 <ol>
 
-<li><p>Modify 26.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a>, class template <tt>view_interface</tt> synopsis, as indicated:</p>
+<li><p>Modify 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/view.interface">[view.interface]</a>, class template <code>view_interface</code> synopsis, as indicated:</p>
 
 <blockquote><pre>
 namespace std::ranges {
@@ -1479,7 +1142,7 @@ namespace std::ranges {
 
 </li>
 
-<li><p>Modify 26.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/view.interface.members">[view.interface.members]</a> as indicated:</p>
+<li><p>Modify 25.5.3.2 <a href="https://timsong-cpp.github.io/cppwp/view.interface.members">[view.interface.members]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -1491,7 +1154,7 @@ constexpr decltype(auto) back() const
 </pre>
 <blockquote>
 <p>
--3- <i>Preconditions</i>: <tt>!empty()</tt> is <tt>true</tt>.
+-3- <i>Preconditions</i>: <code>!empty()</code> is <code>true</code>.
 <p/>
 -4- <i>Effects</i>: Equivalent to:
 </p>
@@ -1510,6 +1173,1678 @@ return *ranges::prev(<ins><i>common-arg-end</i></ins><del>ranges::end</del>(<i>d
 
 </li>
 
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4006"><a href="4006">4006</a>. <code>chunk_view::<i>outer-iterator</i>::value_type</code> should provide <code>empty</code></h3>
+<p><b>Section:</b> 25.7.29.4 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.outer.value">[range.chunk.outer.value]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2023-11-05 <b>Last modified:</b> 2024-03-11</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.chunk.outer.value">issues</a> in [range.chunk.outer.value].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>chunk_view::<i>outer-iterator</i>::value_type</code> can determine whether it is empty by simply checking whether the 
+<code>chunk_view</code>'s <code><i>remainder_</i></code> is <code>0</code>, which makes it valuable to explicitly provide a 
+<code>noexcept empty</code> member.
+<p/>
+Otherwise, the <code>view_interface::empty</code> is synthesized only through the <code>size</code> member when the original 
+sentinel and iterator type model <code>sized_sentinel_for</code>, <a href="https://godbolt.org/z/v3MbzfT9G">which seems overkill</a>:
+</p>
+<blockquote><pre>
+#include &lt;cassert&gt;
+#include &lt;iostream&gt;
+#include &lt;sstream&gt;
+#include &lt;ranges&gt;
+
+int main() {
+  auto ints = std::istringstream{"1 2 3 4 5 6 7 8 9 10"};
+  for (auto chunk : std::views::istream&lt;int&gt;(ints) | std::views::chunk(3)) {
+    for (auto elem : chunk) {
+      assert(!chunk.empty()); // <span style="color:red;font-weight:bolder">no matching function for call to 'empty()'</span>
+      std::cout &lt;&lt; elem &lt;&lt; " ";
+    }
+    assert(chunk.empty()); // <span style="color:red;font-weight:bolder">ditto</span>
+    std::cout &lt;&lt; "\n";
+  }
+}
+</pre></blockquote>
+
+<p><i>[2024-03-11; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively NAD after reflector poll in November 2023.
+</p>
+<p>
+"The example shows you could use it if it existed, but not why that would be useful."
+</p>
+<p>
+"This is a bad idea - the fact that the chunk 'shrinks' as it is iterated over
+is an implementation detail and not supposed to be observable."
+</p>
+
+
+
+<p id="res-4006"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4964">N4964</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.7.29.4 <a href="https://timsong-cpp.github.io/cppwp/range.chunk.outer.value">[range.chunk.outer.value]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+  namespace std::ranges {
+    template&lt;view V&gt;
+      requires input_range&lt;V&gt;
+    struct chunk_view&lt;V&gt;::<i>outer-iterator</i>::value_type : view_interface&lt;value_type&gt; {
+    private:
+      chunk_view* <i>parent_</i>;                                        // <i>exposition only</i>
+
+      constexpr explicit value_type(chunk_view&amp; parent);          // <i>exposition only</i>
+
+    public:
+      constexpr <i>inner-iterator</i> begin() const noexcept;
+      constexpr default_sentinel_t end() const noexcept;
+
+      <ins>constexpr bool empty() const noexcept;</ins>
+      constexpr auto size() const
+        requires sized_sentinel_for&lt;sentinel_t&lt;V&gt;, iterator_t&lt;V&gt;&gt;;
+    };
+  }
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr default_sentinel_t end() const noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Returns</i>: <code>default_sentinel</code>.
+</p>
+</blockquote>
+<pre>
+<ins>constexpr bool empty() const noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to: <code>return <i>parent_</i>-&gt;<i>remainder_</i> == 0;</code></ins>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4084"><a href="4084">4084</a>. <code>std::fixed</code> ignores <code>std::uppercase</code></h3>
+<p><b>Section:</b> 28.3.4.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.put.virtuals">[facet.num.put.virtuals]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-04-30 <b>Last modified:</b> 2024-09-19</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#facet.num.put.virtuals">active issues</a> in [facet.num.put.virtuals].</p>
+<p><b>View all other</b> <a href="lwg-index.html#facet.num.put.virtuals">issues</a> in [facet.num.put.virtuals].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In Table 114 &ndash; Floating-point conversions [tab:facet.num.put.fp]
+we specify that a floating-point value should be printed as if by <code class='backtick'>%f</code>
+when <code>(flags &amp; floatfield) == fixed</code>.
+This ignores whether <code class='backtick'>uppercase</code> is also set in <code class='backtick'>flags</code>,
+meaning there is no way to use the conversion specifier <code class='backtick'>%F</code>
+that was added to <code class='backtick'>printf</code> in C99.
+</p>
+<p>
+That's fine for finite values, because 1.23 in fixed format has
+no exponent character and no hex digits that would need to use uppercase.
+But <code class='backtick'>%f</code> and <code class='backtick'>%F</code> are not equivalent for non-finite values,
+because <code class='backtick'>%F</code> prints <code class='backtick'>"NAN"</code> and <code class='backtick'>"INF"</code> (or <code class='backtick'>"INFINITY"</code>).
+It seems there is no way to print <code class='backtick'>"NAN"</code> or <code class='backtick'>"INF"</code> using <code class='backtick'>std::num_put</code>.
+</p>
+<p>
+Libstdc++ and MSVC print <code class='backtick'>"inf"</code> for the following code,
+but libc++ prints <code class='backtick'>"INF"</code> which I think is non-conforming:
+</p>
+<pre><code>    std::cout &lt;&lt; std::uppercase &lt;&lt; std::fixed &lt;&lt; std::numeric_limits&lt;double&gt;::infinity();
+</code></pre>
+<p>
+The libc++ behaviour seems more useful and less surprising.
+</p>
+
+<p><i>[2024-05-08; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll. Send to LEWG.
+</p>
+<p><i>[2024-09-17; LEWG mailing list vote]</i></p>
+
+<p>
+Set status to Open after LEWG approved the proposed change.
+</p>
+<p><i>[2024-09-19; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4084"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+<ol>
+<li><p>Modify 28.3.4.3.3.3 <a href="https://timsong-cpp.github.io/cppwp/facet.num.put.virtuals">[facet.num.put.virtuals]</a> as indicated:</p>
+
+<blockquote>
+<table style="border: 1px solid">
+<caption style="caption-side: top">
+Table 114 &ndash; Floating-point conversions [tab:facet.num.put.fp]
+</caption>
+<tr style="text-align: center">
+<th style="border-bottom: 1px solid">State</th>
+<th style="border-bottom: 1px solid"><code class='backtick'>stdio</code> equivalent</th>
+</tr>
+<tr>
+<td>
+<code class='backtick'>floatfield == ios_base::fixed</code> <ins><code>&amp;&amp; !uppercase</code></ins>
+</td>
+<td style="text-align: center"><code class='backtick'>%f</code></td>
+</tr>
+<tr>
+<td><ins><code class='backtick'>floatfield == ios_base::fixed</code></ins></td>
+<td style="text-align: center"><ins><code class='backtick'>%F</code></ins></td>
+</tr>
+<tr>
+<td><code>floatfield == ios_base::scientific &amp;&amp; !uppercase</code></td>
+<td style="text-align: center"><code class='backtick'>%e</code></td>
+</tr>
+<tr>
+<td><code>floatfield == ios_base::scientific</code></td>
+<td style="text-align: center"><code class='backtick'>%E</code></td>
+</tr>
+<tr>
+<td>
+<code>
+floatfield == (ios_base::fixed | ios_base::scientific)` &amp;&amp; !uppercase
+</code>
+</td>
+<td style="text-align: center"><code class='backtick'>%a</code></td>
+</tr>
+<tr>
+<td><code>floatfield == (ios_base::fixed | ios_base::scientific)</code></td>
+<td style="text-align: center"><code class='backtick'>%A</code></td>
+</tr>
+<tr>
+<td><code class='backtick'>!uppercase</code></td>
+<td style="text-align: center"><code class='backtick'>%g</code></td>
+</tr>
+<tr>
+<td><em>otherwise</em></td>
+<td style="text-align: center"><code class='backtick'>%G</code></td>
+</tr>
+</table>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4088"><a href="4088">4088</a>. <code>println</code> ignores the locale imbued in <code>std::ostream</code></h3>
+<p><b>Section:</b> 31.7.6.3.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.print">[ostream.formatted.print]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jens Maurer <b>Opened:</b> 2024-04-30 <b>Last modified:</b> 2024-10-03</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#ostream.formatted.print">active issues</a> in [ostream.formatted.print].</p>
+<p><b>View all other</b> <a href="lwg-index.html#ostream.formatted.print">issues</a> in [ostream.formatted.print].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+31.7.6.3.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.print">[ostream.formatted.print]</a> specifies that <code>std::print</code> uses the locale
+imbued in the <code>std::ostream&amp;</code> argument for formatting, by using this equivalence:
+</p>
+<blockquote>
+<pre>
+vformat(os.getloc(), fmt, args);
+</pre>
+</blockquote>
+<p>
+(in the <code>vformat_(non)unicode</code> delegation).
+<p/>
+However, <code>std::println</code> ignores the <code>std::ostream</code>'s locale
+for its locale-dependent formatting:
+</p>
+<blockquote>
+<pre>
+print(os, "{}\n", format(fmt, std::forward&lt;Args&gt;(args)...));
+</pre>
+</blockquote>
+<p>
+This is inconsistent.
+</p>
+
+<p><i>[2024-10-03; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4088"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 31.7.6.3.5 <a href="https://timsong-cpp.github.io/cppwp/ostream.formatted.print">[ostream.formatted.print]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class... Args&gt;
+  void println(ostream&amp; os, format_string&lt;Args...&gt; fmt, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-2- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote>
+<pre>
+print(os, "{}\n", format(<ins>os.getloc(),</ins> fmt, std::forward&lt;Args&gt;(args)...));
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4095"><a href="4095">4095</a>. <code>ranges::fold_<i>meow</i></code> should explicitly spell out the return type</h3>
+<p><b>Section:</b> 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-03 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#algorithm.syn">issues</a> in [algorithm.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Unlike other algorithms, the return types of <code>ranges::fold_<i>meow</i></code> are specified in terms of
+<code>auto</code> and <code><i>see below</i></code>, and its implementation details depend on the return types of 
+other overloads through <code>decltype(fold_<i>meow</i>(...))</code>.
+<p/>
+This makes determining the return type of a certain overload (such as <code>fold_right_last</code>) 
+extremely difficult even for experts, requiring several trips back and forth to different overloads 
+to finally understand what the actual return type is. The situation is even worse for newbies because 
+such a form of specifying the return type makes it impossible for the IDE to deduce the real return type, 
+which is extremely user-unfriendly.
+<p/>
+I think that explicitly specifying the return type for these overloads not only greatly improves 
+readability but also offloads the compiler from deducing the return type, which can definitely be 
+considered an improvement.
+<p/>
+The proposed resolution does not touch the <i>Effects</i> clause and only changes the function signature 
+to seek minimal changes.
+</p>
+
+<p><i>[2024-06-24; Reflector poll: NAD]</i></p>
+
+<p>Implementations are free to spell this out if desired.</p>
+
+
+
+<p id="res-4095"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <code>&lt;algorithm&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+
+namespace std {
+  [&hellip;]
+  namespace ranges {
+    [&hellip;]
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+             <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+      constexpr auto fold_left(I first, S last, T init, F f) <ins>-&gt;
+        decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;</ins>;
+
+    template&lt;input_range R, class T = range_value_t&lt;R&gt;,
+             <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+      constexpr auto fold_left(R&amp;&amp; r, T init, F f) <ins>-&gt;
+        decay_t&lt;invoke_result_t&lt;F&amp;, T, range_reference_t&lt;R&gt;&gt;&gt;</ins>;
+
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S,
+             <i>indirectly-binary-left-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+      requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+      constexpr auto fold_left_first(I first, S last, F f) <ins>-&gt;
+        optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;input_range R, <i>indirectly-binary-left-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+      requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+      constexpr auto fold_left_first(R&amp;&amp; r, F f) <ins>-&gt;
+        optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+             <i>indirectly-binary-right-foldable</i>&lt;T, I&gt; F&gt;
+      constexpr auto fold_right(I first, S last, T init, F f) <ins>-&gt;
+        decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;</ins>;
+
+    template&lt;bidirectional_range R, class T = range_value_t&lt;R&gt;,
+             <i>indirectly-binary-right-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+      constexpr auto fold_right(R&amp;&amp; r, T init, F f) <ins>-&gt;
+        decay_t&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;R&gt;, T&gt;&gt;</ins>;
+
+    template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S,
+             <i>indirectly-binary-right-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+      requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+    constexpr auto fold_right_last(I first, S last, F f) <ins>-&gt;
+      optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, iter_value_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;bidirectional_range R,
+             <i>indirectly-binary-right-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+      requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+    constexpr auto fold_right_last(R&amp;&amp; r, F f) <ins>-&gt;
+      optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;R&gt;, range_value_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;class I, class T&gt;
+      using fold_left_with_iter_result = in_value_result&lt;I, T&gt;;
+    template&lt;class I, class T&gt;
+      using fold_left_first_with_iter_result = in_value_result&lt;I, T&gt;;
+
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+             <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+      constexpr <del><i>see below</i></del><ins>auto</ins> fold_left_with_iter(I first, S last, T init, F f) <ins>-&gt;
+        fold_left_with_iter_result&lt;I, decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;input_range R, class T = range_value_t&lt;R&gt;,
+             <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+      constexpr <del><i>see below</i></del><ins>auto</ins> fold_left_with_iter(R&amp;&amp; r, T init, F f) <ins>-&gt;
+        fold_left_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;,
+                                   decay_t&lt;invoke_result_t&lt;F&amp;, T, range_reference_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;input_iterator I, sentinel_for&lt;I&gt; S,
+             <i>indirectly-binary-left-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+      requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+      constexpr <del><i>see below</i></del><ins>auto</ins> fold_left_first_with_iter(I first, S last, F f) <ins>-&gt;
+        fold_left_first_with_iter_result&lt;
+          I, optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;&gt;&gt;&gt;</ins>;
+
+    template&lt;input_range R,
+             <i>indirectly-binary-left-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+      requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+      constexpr <del><i>see below</i></del><ins>auto</ins> fold_left_first_with_iter(R&amp;&amp; r, F f) <ins>-&gt;
+        fold_left_first_with_iter_result&lt;
+          borrowed_iterator_t&lt;R&gt;,
+          optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;&gt;&gt;&gt;</ins>;
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+constexpr auto ranges::fold_left(I first, S last, T init, F f) <ins>-&gt;
+  decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;</ins>;
+
+template&lt;input_range R, class T = range_value_t&lt;R&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+constexpr auto ranges::fold_left(R&amp;&amp; r, T init, F f) <ins>-&gt;
+  decay_t&lt;invoke_result_t&lt;F&amp;, T, range_reference_t&lt;R&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-1- <i>Returns</i>:
+</p>
+<blockquote><pre>
+ranges::fold_left_with_iter(std::move(first), last, std::move(init), f).value
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S,
+         <i>indirectly-binary-left-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+  requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+  constexpr auto ranges::fold_left_first(I first, S last, F f) <ins>-&gt;
+    optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+template&lt;input_range R, <i>indirectly-binary-left-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+  requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+  constexpr auto ranges::fold_left_first(R&amp;&amp; r, F f) <ins>-&gt;
+    optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-2- <i>Returns</i>:
+</p>
+<blockquote><pre>
+ranges::fold_left_first_with_iter(std::move(first), last, f).value
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+         <i>indirectly-binary-right-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr auto ranges::fold_right(I first, S last, T init, F f) <ins>-&gt;
+    decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;</ins>;
+
+template&lt;bidirectional_range R, class T = range_value_t&lt;R&gt;,
+        <i>indirectly-binary-right-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr auto ranges::fold_right(R&amp;&amp; r, T init, F f) <ins>-&gt;
+    decay_t&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;R&gt;, T&gt;&gt;</ins>;  
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+using U = decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, T&gt;&gt;;
+if (first == last)
+  return U(std::move(init));
+I tail = ranges::next(first, last);
+U accum = invoke(f, *--tail, std::move(init));
+while (first != tail)
+  accum = invoke(f, *--tail, std::move(accum));
+return accum;
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;bidirectional_iterator I, sentinel_for&lt;I&gt; S,
+        <i>indirectly-binary-right-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+  requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+constexpr auto ranges::fold_right_last(I first, S last, F f) <ins>-&gt;
+  optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_reference_t&lt;I&gt;, iter_value_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+template&lt;bidirectional_range R,
+         <i>indirectly-binary-right-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+ requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+constexpr auto ranges::fold_right_last(R&amp;&amp; r, F f) <ins>-&gt;
+  optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_reference_t&lt;R&gt;, range_value_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-4- Let <code>U</code> be <code>decltype(ranges::fold_right(first, last, iter_value_t&lt;I&gt;(*first), f))</code>.
+<p/>
+-5- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return optional&lt;U&gt;();
+I tail = ranges::prev(ranges::next(first, std::move(last)));
+return optional&lt;U&gt;(in_place,
+  ranges::fold_right(std::move(first), tail, iter_value_t&lt;I&gt;(*tail), std::move(f)));
+</pre></blockquote>
+</blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S, class T = iter_value_t&lt;I&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, I&gt; F&gt;
+  constexpr <del><i>see below</i></del><ins>auto</ins> ranges::fold_left_with_iter(I first, S last, T init, F f) <ins>-&gt;
+    fold_left_with_iter_result&lt;I, decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;&gt;</ins>;
+
+template&lt;input_range R, class T = range_value_t&lt;R&gt;,
+         <i>indirectly-binary-left-foldable</i>&lt;T, iterator_t&lt;R&gt;&gt; F&gt;
+  constexpr <del><i>see below</i></del><ins>auto</ins> ranges::fold_left_with_iter(R&amp;&amp; r, T init, F f) <ins>-&gt;
+    fold_left_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;,
+                               decay_t&lt;invoke_result_t&lt;F&amp;, T, range_reference_t&lt;R&gt;&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-6- Let <code>U</code> be <code>decay_t&lt;invoke_result_t&lt;F&amp;, T, iter_reference_t&lt;I&gt;&gt;&gt;</code>.
+<p/>
+-7- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return {std::move(first), U(std::move(init))};
+U accum = invoke(f, std::move(init), *first);
+for (++first; first != last; ++first)
+  accum = invoke(f, std::move(accum), *first);
+return {std::move(first), std::move(accum)};
+</pre></blockquote>
+<p>
+<del>-8- <i>Remarks</i>: The return type is <code>fold_left_with_iter_result&lt;I, U&gt;</code>
+for the first overload and <code>fold_left_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;, U&gt;</code> 
+for the second overload.</del>
+</p>
+</blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S,
+         <i>indirectly-binary-left-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+  requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+  constexpr <del><i>see below</i></del><ins>auto</ins> ranges::fold_left_first_with_iter(I first, S last, F f) <ins>-&gt;
+    fold_left_first_with_iter_result&lt;
+      I, optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;&gt;&gt;&gt;</ins>;
+
+template&lt;input_range R,
+         <i>indirectly-binary-left-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+  requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+  constexpr <del><i>see below</i></del><ins>auto</ins> ranges::fold_left_first_with_iter(R&amp;&amp; r, F f) <ins>-&gt;
+    fold_left_first_with_iter_result&lt;
+      borrowed_iterator_t&lt;R&gt;,
+      optional&lt;decay_t&lt;invoke_result_t&lt;F&amp;, range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;&gt;&gt;&gt;</ins>;
+</pre>
+<blockquote>
+<p>
+-9- Let <code>U</code> be
+</p>
+<blockquote><pre>
+decltype(ranges::fold_left(std::move(first), last, iter_value_t&lt;I&gt;(*first), f))
+</pre></blockquote>
+<p>
+-10- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return {std::move(first), optional&lt;U&gt;()};
+optional&lt;U&gt; init(in_place, *first);
+for (++first; first != last; ++first)
+  *init = invoke(f, std::move(*init), *first);
+return {std::move(first), std::move(init)};
+</pre></blockquote>
+<p>
+<del>-11- <i>Remarks</i>: The return type is <code>fold_left_first_with_iter_result&lt;I, optional&lt;U&gt;&gt;</code>
+for the first overload and <code>fold_left_first_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;,
+  optional&lt;U&gt;&gt;</code> for the second overload.</del>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4113"><a href="4113">4113</a>. Disallow <code>has_unique_object_representations&lt;Incomplete[]&gt;</code></h3>
+<p><b>Section:</b> 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-06-25 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The type completeness requirements for <code class='backtick'>has_unique_object_representations</code> say:
+<blockquote>
+<code class='backtick'>T</code> shall be a complete type, <i>cv</i> <code class='backtick'>void</code>, or an array of unknown bound.
+</blockquote>
+</p>
+<p>
+This implies that the trait works for all arrays of unknown bound,
+whether the element type is complete or not. That seems to be incorrect,
+because <code>has_unique_object_representations_v&lt;Incomplete[]&gt;</code>
+is required to have the same result as
+<code>has_unique_object_representations_v&lt;Incomplete&gt;</code>
+which is ill-formed if <code class='backtick'>Incomplete</code> is an incomplete class type.
+</p>
+
+<p>
+I think we need the element type to be complete to be able to give an answer.
+Alternatively, if the intended result for an array of unknown bound is false
+(maybe because there can be no objects of type <code class='backtick'>T[]</code>, or because we can't
+know that two objects declared as <code class='backtick'>extern T a[];</code> and <code class='backtick'>extern T b[];</code> have
+the same number of elements?) then the condition for the trait needs to be
+special-cased as <code class='backtick'>false</code> for arrays of unknown bound.
+The current spec is inconsistent, we can't allow arrays of unknown bound
+and apply the current rules to determine the trait's result.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4113"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> as indicated:</p>
+
+<blockquote>
+<table style="border: 1px solid; border-spacing: 1.5em">
+<thead style="text-align: center">
+<tr><th>Template</th><th>Condition</th><th>Preconditions</th></tr>
+</thead>
+<tbody style="vertical-align: top">
+<tr><td>&hellip;</td><td>&hellip;</td><td>&hellip;</td></tr>
+<tr>
+<td>
+<pre><code>template&lt;class T&gt;
+struct has_unique_object_representations;</code></pre>
+</td>
+<td>
+For an array type <code class='backtick'>T</code>, the same result as
+<code>has_unique_object_representations_v&lt;remove_all_extents_t&lt;T&gt;&gt;</code>,
+otherwise <i>see below</i>.
+</td>
+<td>
+<ins><code>remove_all_extents_t&lt;T&gt;</code></ins>
+<del><code>T</code></del>
+shall be a complete type<del>,</del>
+<ins>or</ins> <i>cv</i> <code class='backtick'>void</code><del>, or an array of unknown bound</del>.
+</td>
+</tr>
+</tbody>
+</table>
+</blockquote>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: We could use <code>remove_extent_t&lt;T&gt;</code>
+to remove just the first array dimension, because only that first one can
+have an unknown bound.
+The proposed resolution uses <code>remove_all_extents_t&lt;T&gt;</code>
+for consistency with the <b>Condition</b> column.]
+</p>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4119"><a href="4119">4119</a>. <code>generator::promise_type::yield_value(ranges::elements_of&lt;R, Alloc&gt;)</code>'s nested <code>generator</code> may be ill-formed</h3>
+<p><b>Section:</b> 25.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-07-11 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#coro.generator.promise">active issues</a> in [coro.generator.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#coro.generator.promise">issues</a> in [coro.generator.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The nested coroutine is specified to return <code>generator&lt;yielded, ranges::range_value_t&lt;R&gt;, Alloc&gt;</code> 
+which can be problematic as the value type of <code>R</code> is really irrelevant to <code>yielded</code>, 
+unnecessarily violating the <code>generator</code>'s <i>Mandates</i> (<a href="https://godbolt.org/z/PzGP3G7rr">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;generator&gt;
+#include &lt;vector&gt;
+
+std::generator&lt;std::span&lt;int&gt;&gt; f() {
+  std::vector&lt;int&gt; v;
+  co_yield v; // ok
+}
+
+std::generator&lt;std::span&lt;int&gt;&gt; g() {
+  std::vector&lt;std::vector&lt;int&gt;&gt; v;
+  co_yield std::ranges::elements_of(v); // <span style="color:red;font-weight:bolder">hard error</span>
+}
+</pre></blockquote>
+<p>
+This proposed resolution is to change the second template parameter from <code>range_value_t&lt;R&gt;</code> 
+to <code>void</code> since that type doesn't matter to us.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4119"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+<ol>
+<li><p>Modify 25.8.5 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.promise">[coro.generator.promise]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;ranges::input_range R, class Alloc&gt;
+  requires convertible_to&lt;ranges::range_reference_t&lt;R&gt;, yielded&gt;
+  auto yield_value(ranges::elements_of&lt;R, Alloc&gt; r);
+</pre>
+<blockquote>
+<p>
+-13- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto nested = [](allocator_arg_t, Alloc, ranges::iterator_t&lt;R&gt; i, ranges::sentinel_t&lt;R&gt; s)
+  -&gt; generator&lt;yielded, <del>ranges::range_value_t&lt;R&gt;</del><ins>void</ins>, Alloc&gt; {
+    for (; i != s; ++i) {
+      co_yield static_cast&lt;yielded&gt;(*i);
+    }
+  };
+return yield_value(ranges::elements_of(nested(
+  allocator_arg, r.allocator, ranges::begin(r.range), ranges::end(r.range))));
+</pre></blockquote>
+[&hellip;]
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4124"><a href="4124">4124</a>. Cannot format <code class='backtick'>zoned_time</code> with resolution coarser than seconds</h3>
+<p><b>Section:</b> 30.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-07-26 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The
+<code>std::formatter&lt;std::chrono::zoned_time&lt;Duration, TimeZonePtr&gt;&gt;</code>
+specialization calls <code class='backtick'>tp.get_local_time()</code> for the object it passes to its
+base class' <code class='backtick'>format</code> function. But <code class='backtick'>get_local_time()</code> does not return a
+<code>local_time&lt;Duration&gt;</code>, it returns
+<code>local_time&lt;common_type_t&lt;Duration, seconds&gt;&gt;</code>.
+The base class' <code class='backtick'>format</code> function is only defined for
+<code>local_time&lt;Duration&gt;</code>.
+That means this is ill-formed, even though the static assert passes:
+<pre><code>using namespace std::chrono;
+  static_assert( std::formattable&lt;zoned_time&lt;minutes&gt;, char&gt; );
+  zoned_time&lt;minutes&gt; zt;
+  (void) std::format("{}", zt); // error: cannot convert local_time&lt;seconds&gt; to local_time&lt;minutes&gt;
+</code></pre>
+</p>
+
+<p>
+Additionally, it's not specified what output you should get for:
+<pre><code><code class='backtick'>std::format("{}", local_time_format(zt.get_local_time()));</code>
+</code></pre>
+30.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> p7 says it's formatted as if by streaming to an
+<code class='backtick'>ostringstream</code>,
+but there is no <code>operator&lt;&lt;</code> for <i><code class='backtick'>local-time-format-t</code></i>.
+Presumably it should give the same result as <code>operator&lt;&lt;</code> for 
+a <code class='backtick'>zoned_time</code>, i.e. <code class='backtick'>"{:L%F %T %Z}"</code> with padding adjustments etc.
+</p>
+<p>
+The proposed resolution below has been implemented in libstdc++.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4124"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+<li><p>Modify 30.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;classDuration, class charT&gt;
+  struct formatter&lt;chrono::<i>local-time-format-t</i>&lt;Duration&gt;, charT&gt;;
+</pre>
+<p>-17-
+Let <code class='backtick'>f</code> be a <code><i>locale-time-format-t</i>&lt;Duration&gt;</code> object
+passed to <code class='backtick'>formatter::format</code>.
+</p>
+<p>-18- <i>Remarks</i>:
+<ins>If the <i>chrono-specs</i> is omitted, the result is equivalent to
+using <code class='backtick'>%F %T %Z</code> as the <i>chrono-specs</i>.</ins>
+If <code class='backtick'>%Z</code> is used,
+it is replaced with <code class='backtick'>*f.abbrev</code> if <code class='backtick'>f.abbrev</code> is not a null pointer value.
+If <code class='backtick'>%Z</code> is used and <code class='backtick'>f.abbrev</code> is a null pointer value,
+an exception of type <code class='backtick'>format_error</code> is thrown.
+If <code class='backtick'>%z</code> (or a modified variant of <code class='backtick'>%z</code>) is used,
+it is formatted with the value of <code class='backtick'>*f.offset_sec</code> if <code class='backtick'>f.offset_sec</code> is
+not a null pointer value.
+If <code class='backtick'>%z</code> (or a modified variant of <code class='backtick'>%z</code>) is used and <code class='backtick'>f.offset_sec</code>
+is a null pointer value, then an exception of type <code class='backtick'>format_error</code> is thrown.
+</p>
+<pre>
+  template&lt;class Duration, class TimeZonePtr, class charT&gt;
+  struct formatter&lt;chrono::zoned_time&lt;Duration, TimeZonePtr&gt;, charT&gt;
+      : formatter&lt;chrono::<i>local-time-format-t</i>&lt;<ins>common_type_t&lt;</ins>Duration<ins>, seconds&gt;</ins>&gt;, charT&gt; {
+    template&lt;class FormatContext&gt;
+      typename FormatContext::iterator
+      format(const chrono::zoned_time&lt;Duration, TimeZonePtr&gt;&amp; tp, FormatContext&amp; ctx) const;
+  };
+</pre>
+<pre>
+template&lt;class FormatContext&gt;
+  typename FormatContext::iterator
+    format(const chrono::zoned_time&lt;Duration, TimeZonePtr&gt;&amp; tp, FormatContext&amp; ctx) const;
+</pre>
+<p>-19- <i>Effects</i>: Equivalent to:
+<blockquote>
+<pre>
+sys_info info = tp.get_info();
+return formatter&lt;chrono::<i>local-time-format-t</i>&lt;<ins>common_type_t&lt;</ins>Duration<ins>, seconds&gt;</ins>&gt;, charT&gt;::
+         format({tp.get_local_time(), &amp;info.abbrev, &amp;info.offset}, ctx);
+</pre>
+</blockquote>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4126"><a href="4126">4126</a>. Some feature-test macros for fully freestanding features are not yet marked freestanding</h3>
+<p><b>Section:</b> 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-07-24 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#version.syn">active issues</a> in [version.syn].</p>
+<p><b>View all other</b> <a href="lwg-index.html#version.syn">issues</a> in [version.syn].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently (<a href="https://wg21.link/N4986">N4986</a>), it's a bit weird in 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> that some feature-test
+macros are not marked freestanding, despite the indicated features being fully freestanding. The 
+freestanding status seems sometimes implicitly covered by "also in" headers that are mostly or all 
+freestanding, but sometimes not.
+<p/>
+I think it's more consistent to ensure feature-test macros for fully freestanding features are also freestanding.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 and set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4126"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.3.2 <a href="https://timsong-cpp.github.io/cppwp/version.syn">[version.syn]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>:  <code>&lt;charconv&gt;</code> is not fully freestanding, but all functions made <code>constexpr</code> 
+by <a href="https://wg21.link/P2291R3">P2291R3</a> are furtherly made freestanding by <a href="https://wg21.link/P2338R4">P2338R4</a>. ]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+[&hellip;]
+#define __cpp_lib_common_reference                  202302L // <i><ins>freestanding,</ins> also in</i> &lt;type_traits&gt;
+#define __cpp_lib_common_reference_wrapper          202302L // <i><ins>freestanding,</ins> also in</i> &lt;functional&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_constexpr_charconv                202207L // <i><ins>freestanding,</ins> also in</i> &lt;charconv&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_coroutine                         201902L // <i><ins>freestanding,</ins> also in</i> &lt;coroutine&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_is_implicit_lifetime              202302L // <i><ins>freestanding,</ins> also in</i> &lt;type_traits&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_is_virtual_base_of                202406L // <i><ins>freestanding,</ins> also in</i> &lt;type_traits&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_is_within_lifetime                202306L // <i><ins>freestanding,</ins> also in</i> &lt;type_traits&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_mdspan                            202406L // <i><ins>freestanding,</ins> also in</i> &lt;mdspan&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_ratio                             202306L // <i><ins>freestanding,</ins> also in</i> &lt;ratio&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_span_initializer_list             202311L // <i><ins>freestanding,</ins> also in</i> &lt;span&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_submdspan                         202403L // <i><ins>freestanding,</ins> also in</i> &lt;mdspan&gt;
+[&hellip;]                                                                              
+#define __cpp_lib_to_array                          201907L // <i><ins>freestanding,</ins> also in</i> &lt;array&gt;
+[&hellip;]
+</pre>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4135"><a href="4135">4135</a>. The helper lambda of <code>std::erase</code> for <code>list</code> should specify return type as
+  <code>bool</code></h3>
+<p><b>Section:</b> 23.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/forward.list.erasure">[forward.list.erasure]</a>, 23.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/list.erasure">[list.erasure]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-08-07 <b>Last modified:</b> 2024-08-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>std::erase</code> for <code>list</code> is specified to return
+<code>erase_if(c, [&amp;](auto&amp; elem) { return elem == value; })</code>.
+However, the template parameter <code>Predicate</code> of <code>erase_if</code> only requires that the
+type of <code>decltype(pred(...))</code> satisfies <code><i>boolean-testable</i></code>, i.e., the
+return type of <code>elem == value</code> is not necessarily <code>bool</code>.
+<p/>
+This means it's worth explicitly specifying the lambda's return type as <code>bool</code> to avoid some 
+pedantic cases (<a href="https://godbolt.org/z/xPvYYnvY6">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;list&gt;
+
+struct Bool {
+  Bool(const Bool&amp;) = delete;
+  operator bool() const;
+};
+
+struct Int {
+  Bool&amp; operator==(Int) const;
+};
+
+int main() {
+  std::list&lt;Int&gt; l;
+  std::erase(l, Int{}); // <span  style="color:#C80000;font-weight:bold">unnecessary hard error</span>
+}
+</pre></blockquote>
+
+<p><i>[2024-08-21; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4135"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/forward.list.erasure">[forward.list.erasure]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class Allocator, class U = T&gt;
+  typename forward_list&lt;T, Allocator&gt;::size_type
+    erase(forward_list&lt;T, Allocator&gt;&amp; c, const U&amp; value);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Equivalent to:
+  <code>return erase_if(c, [&amp;](<ins>const</ins> auto&amp; elem) <ins>-&gt; bool</ins> { return elem == value; });</code>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.3.9.6 <a href="https://timsong-cpp.github.io/cppwp/list.erasure">[list.erasure]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T, class Allocator, class U = T&gt;
+  typename list&lt;T, Allocator&gt;::size_type
+    erase(list&lt;T, Allocator&gt;&amp; c, const U&amp; value);
+</pre>
+<blockquote>
+<p>
+-1- <i>Effects</i>: Equivalent to:
+  <code>return erase_if(c, [&amp;](<ins>const</ins> auto&amp; elem) <ins>-&gt; bool</ins> { return elem == value; });</code>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4140"><a href="4140">4140</a>. Useless default constructors for bit reference types</h3>
+<p><b>Section:</b> 22.9.2.1 <a href="https://timsong-cpp.github.io/cppwp/template.bitset.general">[template.bitset.general]</a>, 23.3.12.1 <a href="https://timsong-cpp.github.io/cppwp/vector.bool.pspc">[vector.bool.pspc]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-08-21 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard shows a private default constructor for
+<code>bitset&lt;N&gt;::reference</code>
+but does not define its semantics, and nothing in the spec refers to it.
+It was present in C++98, then in C++11 it got <code class='backtick'>noexcept</code> added to it,
+and in C++23 it was made <code class='backtick'>constexpr</code> by <a href="https://wg21.link/P2417R2">P2417R2</a>. That's quite
+a lot of churn for an unusuable member function with no definition.
+</p>
+<p>
+In libstdc++ it's declared as private, but never defined.
+In libc++ it doesn't exist at all.
+In MSVC it is private and defined (and presumably used somewhere).
+There's no reason for the standard to declare it.
+Implementers can define it as private if they want to, or not.
+The spec doesn't need to say anything for that to be true.
+We can also remove the friend declaration, because implementers know how to
+do that too.
+</p>
+<p>
+I suspect it was added as private originally so that it didn't look like
+<code class='backtick'>reference</code> should have an implicitly-defined default constructor,
+which would have been the case in previous standards with no other
+constructors declared.
+However, C++20 added <code>reference(const reference&amp;) = default;</code>
+which suppresses the implicit default constructor, so declaring the
+default constructor as private is now unnecessary.
+</p>
+<p>
+Jiang An pointed out in an editorial pull request that
+<code>vector&lt;bool, Alloc&gt;::reference</code>
+has exactly the same issue.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4140"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.9.2.1 <a href="https://timsong-cpp.github.io/cppwp/template.bitset.general">[template.bitset.general]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;size_t N&gt; class bitset {
+  public:
+    <i>// bit reference</i>
+    class reference {
+      <del>friend class bitset;</del>
+      <del>constexpr reference() noexcept;</del>
+
+    public:
+      constexpr reference(const reference&amp;) = default;
+      constexpr ~reference();
+      constexpr reference&amp; operator=(bool x) noexcept;            <i>// for</i> b[i] = x;
+      constexpr reference&amp; operator=(const reference&amp;) noexcept;  <i>// for</i> b[i] = b[j];
+      constexpr bool operator~() const noexcept;                  <i>// flips the bit</i>
+      constexpr operator bool() const noexcept;                   <i>// for</i> x = b[i];
+      constexpr reference&amp; flip() noexcept;                       <i>// for</i> b[i].flip();
+    };
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.3.12.1 <a href="https://timsong-cpp.github.io/cppwp/vector.bool.pspc">[vector.bool.pspc]</a>, <code>vector&lt;bool, Allocator&gt;</code> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Allocator&gt;
+  class vector&lt;bool, Allocator&gt; {
+  public:
+    <i>// types</i>
+    [&hellip;]
+    <i>// bit reference</i>
+    class reference {
+      <del>friend class vector;</del>
+      <del>constexpr reference() noexcept;</del>
+
+    public:
+      constexpr reference(const reference&amp;) = default;
+      constexpr ~reference();
+      constexpr operator bool() const noexcept;
+      constexpr reference&amp; operator=(bool x) noexcept;
+      constexpr reference&amp; operator=(const reference&amp; x) noexcept;
+      constexpr const reference&amp; operator=(bool x) const noexcept;
+      constexpr void flip() noexcept;   <i>// flips the bit</i>
+    };
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4141"><a href="4141">4141</a>. Improve prohibitions on "additional storage"</h3>
+<p><b>Section:</b> 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a>, 22.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/variant.variant.general">[variant.variant.general]</a>, 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a>, 22.8.7.1 <a href="https://timsong-cpp.github.io/cppwp/expected.void.general">[expected.void.general]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-08-22 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#optional.optional.general">active issues</a> in [optional.optional.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.optional.general">issues</a> in [optional.optional.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This issue was split out from issue <a href="4015" title="LWG 3973 broke const overloads of std::optional monadic operations (Status: Open)">4015</a>.
+</p>
+<p>
+<code class='backtick'>optional</code>, <code class='backtick'>variant</code> and <code class='backtick'>expected</code> all use similar wording to require
+their contained value to be a subobject, rather than dynamically allocated
+and referred to by a pointer, e.g.
+<blockquote>
+When an instance of <code>optional&lt;T&gt;</code> contains a value,
+it means that an object of type <code>T</code>, referred to as the
+optional object’s <i>contained value</i>,
+is allocated within the storage of the optional object.
+Implementations are not permitted to use additional storage,
+such as dynamic memory, to allocate its contained value.
+</blockquote>
+</p>
+
+<p>
+During the LWG reviews of <a href="https://wg21.link/P2300">P2300</a> in St. Louis, concerns were
+raised about the form of this wording and whether it's normatively meaningful.
+Except for the special case of standard-layout class types, the standard has
+very few requirements on where or how storage for subobjects is allocated.
+The library should not be trying to dictate more than the language guarantees.
+It would be better to refer to wording from 6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>
+such as <i>subobject</i>, <i>provides storage</i>, or <i>nested within</i>.
+Any of these terms would provide the desired properties, without using
+different (and possibly inconsistent) terminology.
+</p>
+<p>
+Using an array of bytes to <i>provide storage</i> for the contained value would
+make it tricky to meet the constexpr requirements of types like <code class='backtick'>optional</code>.
+This means in practice, the most restrictive of these terms, <i>subobject</i>,
+is probably accurate and the only plausible implementation strategy.
+However, I don't see any reason to outlaw other implementation strategies that
+might be possible in future (say, with a constexpr type cast, or non-standard
+compiler-specific instrinics).
+For this reason, the proposed resolution below uses <i>nested within</i>,
+which provides the desired guarantee without imposing additional restrictions
+on implementations.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4141"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.5.3.1 <a href="https://timsong-cpp.github.io/cppwp/optional.optional.general">[optional.optional.general]</a> as indicated:</p>
+
+<blockquote class="note">
+[<i>Drafting note</i>:
+This edit modifies the same paragraph as issue <a href="4015" title="LWG 3973 broke const overloads of std::optional monadic operations (Status: Open)">4015</a>,
+but that other issue intentionally doesn't touch the affected sentence here
+(except for removing the italics on "contained value").
+The intention is that the merge conflict can be resolved in the obvious way:
+"An optional object's contained value
+is nested within (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>) the optional object."]
+</blockquote>
+
+<blockquote>
+<p>
+-1-
+Any instance of <code>optional&lt;T&gt;</code> at any given time either
+contains a value or does not contain a value.
+When an instance of <code>optional&lt;T&gt;</code> <i>contains a value</i>,
+it means that an object of type <code>T</code>,
+referred to as the optional object's <i>contained value</i>,
+is
+<del>allocated within the storage of</del>
+<ins>nested within (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>)</ins>
+the optional object.
+<del>
+Implementations are not permitted to use additional storage,
+such as dynamic memory, to allocate its contained value.
+</del>
+When an object of type <code>optional&lt;T&gt;</code>
+is contextually converted to <code>bool</code>,
+the conversion returns <code class='backtick'>true</code> if the object contains a value;
+otherwise the conversion returns <code class='backtick'>false</code>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 22.6.3.1 <a href="https://timsong-cpp.github.io/cppwp/variant.variant.general">[variant.variant.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1-
+Any instance of <code>variant</code> at any given time either
+holds a value of one of its alternative types or holds no value.
+When an instance of <code>variant</code> holds a value of alternative type <code class='backtick'>T</code>,
+it means that a value of type <code>T</code>,
+referred to as the <code class='backtick'>variant</code> object's <i>contained value</i>,
+is
+<del>allocated within the storage of</del>
+<ins>nested within (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>)</ins>
+the <code class='backtick'>variant</code> object.
+<del>
+Implementations are not permitted to use additional storage,
+such as dynamic memory, to allocate the contained value.
+</del>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1-
+Any object of type <code>expected&lt;T, E&gt;</code> either contains
+a value of type <code class='backtick'>T</code> or a value of type <code class='backtick'>E</code>
+<del>within its own storage</del>
+<ins>nested within (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>) it</ins>.
+<del>
+Implementations are not permitted to use additional storage,
+such as dynamic memory,
+to allocate the object of type <code class='backtick'>T</code> or the object of type <code class='backtick'>E</code>.
+</del>
+Member <i><code>has_val</code></i> indicates whether the
+<code>expected&lt;T, E&gt;</code> object contains an object of type <code class='backtick'>T</code>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 22.8.7.1 <a href="https://timsong-cpp.github.io/cppwp/expected.void.general">[expected.void.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1-
+Any object of type <code>expected&lt;T, E&gt;</code> either represents
+a value of type <code class='backtick'>T</code>, or contains a value of type <code class='backtick'>E</code>
+<del>within its own storage</del>
+<ins>nested within (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>) it</ins>.
+<del>
+Implementations are not permitted to use additional storage,
+such as dynamic memory, to allocate the object of type <code class='backtick'>E</code>.
+</del>
+Member <i><code>has_val</code></i> indicates whether the
+<code>expected&lt;T, E&gt;</code> represents a value of type <code class='backtick'>T</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4142"><a href="4142">4142</a>. <code>format_parse_context::check_dynamic_spec</code> should require at least one type</h3>
+<p><b>Section:</b> 28.5.6.6 <a href="https://timsong-cpp.github.io/cppwp/format.parse.ctx">[format.parse.ctx]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-08-28 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.parse.ctx">issues</a> in [format.parse.ctx].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <i>Mandates</i>: conditions for <code class='backtick'>format_parse_context::check_dynamic_spec</code>
+are:
+<blockquote>
+-14- <i>Mandates</i>:
+The types in <code class='backtick'>Ts...</code> are unique. Each type in <code class='backtick'>Ts...</code> is one of <code class='backtick'>bool</code>,
+<code class='backtick'>char_type</code>, <code class='backtick'>int</code>, <code class='backtick'>unsigned int</code>, <code class='backtick'>long long int</code>, <code class='backtick'>unsigned long long int</code>,
+<code class='backtick'>float</code>, <code class='backtick'>double</code>, <code class='backtick'>long double</code>, <code class='backtick'>const char_type*</code>,
+<code>basic_string_view&lt;char_type&gt;</code>, or <code class='backtick'>const void*</code>.
+</blockquote>
+</p>
+<p>
+There seems to be no reason to allow <code class='backtick'>Ts</code> to be an empty pack,
+that's not useful. There is no valid arg-id value that can be passed to it
+if the list of types is empty, since <code class='backtick'>arg(n)</code> will never be one of the types
+in an empty pack. So it's never a constant expression if the pack is empty.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4142"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 28.5.6.6 <a href="https://timsong-cpp.github.io/cppwp/format.parse.ctx">[format.parse.ctx]</a> as indicated:</p>
+
+<pre><code>template&lt;class... Ts&gt;
+  constexpr void check_dynamic_spec(size_t id) noexcept;
+</code></pre>
+<blockquote>
+<p>
+-14- <i>Mandates</i>:
+<ins><code class='backtick'>sizeof...(Ts)</code> &ge; 1.</ins>
+The types in <code class='backtick'>Ts...</code> are unique. Each type in <code class='backtick'>Ts...</code> is one of <code class='backtick'>bool</code>,
+<code class='backtick'>char_type</code>, <code class='backtick'>int</code>, <code class='backtick'>unsigned int</code>, <code class='backtick'>long long int</code>, <code class='backtick'>unsigned long long int</code>,
+<code class='backtick'>float</code>, <code class='backtick'>double</code>, <code class='backtick'>long double</code>, <code class='backtick'>const char_type*</code>,
+<code>basic_string_view&lt;char_type&gt;</code>, or <code class='backtick'>const void*</code>.
+</p>
+<p>
+-15- <i>Remarks</i>:
+A call to this function is a core constant expression only if:
+<ol style="list-style-type: none">
+<li>(15.1) &mdash; <code>id &lt; num_args_</code> is <code class='backtick'>true</code> and</li>
+<li>(15.2) &mdash; the type of the corresponding format argument
+(after conversion to <code>basic_format_arg&lt;Context&gt;</code>)
+is one of the types in <code class='backtick'>Ts...</code>.</li>
+</ol>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4147"><a href="4147">4147</a>. Precondition on <code>inplace_vector::emplace</code></h3>
+<p><b>Section:</b> 23.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2024-08-26 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#sequence.reqmts">active issues</a> in [sequence.reqmts].</p>
+<p><b>View all other</b> <a href="lwg-index.html#sequence.reqmts">issues</a> in [sequence.reqmts].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Inserting into the middle of an <code>inplace_vector</code>, just like inserting into the middle of a 
+<code>vector</code> or <code>deque</code>, requires that we construct the new element out-of-line, shift 
+down the trailing elements (<i>Cpp17MoveAssignable</i>), and then move-construct the new element 
+into place (<i>Cpp17MoveInsertable</i>). <a href="https://wg21.link/P0843R14">P0843R14</a> failed to make this change, but 
+it should have.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4147"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> as indicated:</p>
+
+<blockquote><pre>
+a.emplace(p, args)
+</pre>
+<blockquote>
+<p>
+-19- <i>Result</i>: <code>iterator</code>.
+<p/>
+-20- <i>Preconditions</i>: <code>T</code> is <i>Cpp17EmplaceConstructible</i> into <code>X</code> 
+from <code>args</code>. For <code>vector</code><ins>, inplace_vector,</ins> and <code>deque</code>, 
+<code>T</code> is also <i>Cpp17MoveInsertable</i> into <code>X</code> and <i>Cpp17MoveAssignable</i>.
+<p/>
+-21- <i>Effects</i>: Inserts an object of type <code>T</code> constructed with 
+<code>std::forward&lt;Args&gt;(args)...</code> before <code>p</code>.
+<p/>
+[<i>Note 1</i>: <code>args</code> can directly or indirectly refer to a value in <code>a</code>. 
+&mdash; <i>end note</i>]
+<p/>
+-22- <i>Returns</i>: An iterator that points to the new element constructed from <code>args</code> 
+into <code>a</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4148"><a href="4148">4148</a>. <code>unique_ptr::operator*</code> should not allow dangling references</h3>
+<p><b>Section:</b> 20.3.1.3.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.observers">[unique.ptr.single.observers]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-09-02 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#unique.ptr.single.observers">active issues</a> in [unique.ptr.single.observers].</p>
+<p><b>View all other</b> <a href="lwg-index.html#unique.ptr.single.observers">issues</a> in [unique.ptr.single.observers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+If <code>unique_ptr&lt;T,D&gt;::element_type*</code> and <code>D::pointer</code>
+are not the same type, it's possible for <code class='backtick'>operator*()</code> to return a dangling
+reference that has undefined behaviour.
+</p>
+<pre><code>
+  struct deleter {
+    using pointer = long*;
+    void operator()(pointer) const {}
+  };
+  long l = 0;
+  std::unique_ptr&lt;const int, deleter&gt; p(&amp;l);
+  int i = *p; <i><strong>// undefined</strong></i>
+</code></pre>
+<p>
+We should make this case ill-formed.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4148"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+<ol>
+<li><p>Modify 20.3.1.3.5 <a href="https://timsong-cpp.github.io/cppwp/unique.ptr.single.observers">[unique.ptr.single.observers]</a> as indicated:</p>
+<blockquote>
+<pre>
+constexpr add_lvalue_reference_t&lt;T&gt; operator*() const noexcept(noexcept(*declval&lt;pointer&gt;()));
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Mandates</i>:
+<code>reference_converts_from_temporary_v&lt;add_lvalue_reference_t&lt;T&gt;,
+decltype(*declval&lt;pointer&gt;())&gt;</code>
+is <code class='backtick'>false</code>.
+</ins>
+</p>
+<p>
+-1- <i>Preconditions</i>: <code class='backtick'>get() != nullptr</code> <ins>is <code class='backtick'>true</code></ins>.
+</p>
+<p>
+-2- <i>Returns</i>: <code class='backtick'>*get()</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4153"><a href="4153">4153</a>. Fix extra "-1" for <code>philox_engine::max()</code></h3>
+<p><b>Section:</b> 29.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/rand.eng.philox">[rand.eng.philox]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Ruslan Arutyunyan <b>Opened:</b> 2024-09-18 <b>Last modified:</b> 2024-10-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#rand.eng.philox">active issues</a> in [rand.eng.philox].</p>
+<p><b>View all other</b> <a href="lwg-index.html#rand.eng.philox">issues</a> in [rand.eng.philox].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+There is a typo in <code class='backtick'>philox_engine</code> wording that makes "-1" two times
+instead of one for <code class='backtick'>max()</code> method.
+The reason for that typo is that the wording was originally inspired by
+<code class='backtick'>mersenne_twister_engine</code> but after getting feedback that what is written in
+the <code class='backtick'>philox_engine</code> synopsis is not C++ code, the authors introduced the
+<i>m</i> variable (as in <code class='backtick'>subtract_with_carry_engine</code>) but forgot to remove
+"-1" in the <i>m</i> definition.
+</p>
+<p>
+Note: after the proposed resolution below is applied the <i>m</i> variable
+could be reused in other places: basically in all places where the <code class='backtick'>mod  2^w</code>
+pattern appears (like <code class='backtick'>subtract_with_carry_engine</code> does).
+The authors don’t think it’s worth changing the rest of the wording to reuse
+the <i>m</i> variable.
+If somebody thinks otherwise, please provide such feedback.
+</p>
+
+<p><i>[2024-10-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4153"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 29.5.4.5 <a href="https://timsong-cpp.github.io/cppwp/rand.eng.philox">[rand.eng.philox]</a> as indicated:</p>
+<blockquote>
+-1-
+A <code class='backtick'>philox_engine</code> random number engine produces unsigned integer random numbers
+in the <del>closed</del> interval [0, <i>m</i><del>]</del><ins>)</ins>,
+where <i>m</i> = 2<sup><i>w</i></sup><del> − 1</del>
+and the template parameter <i>w</i> defines the range of the produced numbers.
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4157"><a href="4157">4157</a>. The resolution of LWG3465 was damaged by P2167R3</h3>
+<p><b>Section:</b> 17.11.6 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-09-18 <b>Last modified:</b> 2024-10-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#cmp.alg">active issues</a> in [cmp.alg].</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmp.alg">issues</a> in [cmp.alg].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In the resolution of LWG <a href="3465" title="compare_partial_order_fallback requires F &lt; E (Status: C++23)">3465</a>,
+<code>F &lt; E</code> was required to be well-formed and
+implicitly convertible to <code class='backtick'>bool</code>.
+However, <a href="https://wg21.link/P2167R3">P2167R3</a> replaced the convertibility requirements
+with just "each of <code class='backtick'>decltype(E == F)</code> and <code>decltype(E &lt; F)</code>
+models <i><code class='backtick'>boolean-testable</code></i>",
+which rendered the type of <code>F &lt; E</code> underconstrained.
+</p>
+
+<p><i>[2024-10-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4157"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+<ol>
+<li><p>Modify 17.11.6 <a href="https://timsong-cpp.github.io/cppwp/cmp.alg">[cmp.alg]</a> as indicated:</p>
+<blockquote>
+(6.3) &mdash;
+Otherwise, if the expressions
+<code>E == F</code>, <code>E &lt; F</code>, and <code>F &lt; E</code>
+are all well-formed and each of <code class='backtick'>decltype(E == F)</code>
+<del>and</del><ins>,</ins>
+<code>decltype(E &lt; F)</code>
+<ins>, and <code>decltype(F &lt; E)</code></ins>
+models <i><code class='backtick'>boolean-testable</code></i>,
+<pre><code>
+  E == F ? partial_ordering::equivalent :
+  E &lt; F  ? partial_ordering::less :
+  F &lt; E  ? partial_ordering::greater :
+           partial_ordering::unordered
+</code></pre>
+except that <code class='backtick'>E</code> and <code class='backtick'>F</code> are evaluated only once.
+</blockquote>
+</li>
 </ol>
 
 

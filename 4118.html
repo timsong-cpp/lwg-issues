@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4118: How should duration formatters format custom rep types?</title>
+<meta property="og:title" content="Issue 4118: How should duration formatters format custom rep types?">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4118.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4118"><a href="lwg-active.html#4118">4118</a>. How should <code class='backtick'>duration</code> formatters format custom <code class='backtick'>rep</code> types?</h3>
+<p><b>Section:</b> 30.12 <a href="https://timsong-cpp.github.io/cppwp/time.format">[time.format]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-07-08 <b>Last modified:</b> 2024-07-31</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#time.format">active issues</a> in [time.format].</p>
+<p><b>View all other</b> <a href="lwg-index.html#time.format">issues</a> in [time.format].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <code>formatter&lt;chrono::duration&lt;Rep, Period&gt;, charT&gt;</code>
+partial specialization needs to be able to format the <code class='backtick'>Rep</code> type, because
+the <code class='backtick'>%Q</code> conversion specifier says to format the value returned by <code class='backtick'>.count()</code>
+which is of type <code class='backtick'>Rep</code>. This implies that the <code class='backtick'>Rep</code> type must be formattable,
+although the precise method of formatting it is not specified. Presumably
+either <code>format("{}", d.count())</code> or
+<code>ostrm &lt;&lt; d.count()</code> needs to work.
+</p>
+
+<p>
+28.5.6.4 <a href="https://timsong-cpp.github.io/cppwp/format.formatter.spec">[format.formatter.spec]</a> p2 (2.3) says:
+<blockquote>
+For each <code class='backtick'>charT</code>, for each cv-unqualified arithmetic type <code class='backtick'>ArithmeticT</code>
+other than <code class='backtick'>char</code>, <code class='backtick'>wchar_t</code>, <code class='backtick'>char8_t</code>, <code class='backtick'>char16_t</code>, or <code class='backtick'>char32_t</code>,
+a specialization:
+<code>template&lt;&gt; struct formatter&lt;ArithmeticT, charT&gt;;</code>
+</blockquote>
+However, nothing prevents the excluded types being used as the <code class='backtick'>rep</code> for a
+<code class='backtick'>chrono::duration</code>.
+This means you can use <code>chrono::duration&lt;wchar_t&gt;</code> and
+<code>chrono::duration&lt;char8_t&gt;</code> as durations,
+but you can't format them to <code class='backtick'>char</code> strings.
+</p>
+
+<p>
+I think only the <code class='backtick'>%Q</code> conversion specifier formats the <code class='backtick'>rep</code> type directly
+(without converting durations to formattable types like <code class='backtick'>hours</code> or <code class='backtick'>seconds</code>),
+and so I don't think this problem exists for other chrono <code class='backtick'>formatter</code>
+specializations, because <code class='backtick'>%Q</code> can only be used for durations
+(that's not <i>entirely</i> clear, since <code class='backtick'>%q</code> and <code class='backtick'>%Q</code> are specified to format
+"the duration's unit suffix" and "the duration's numeric value",
+but presumably that means they can only be used for <code class='backtick'>duration</code> types).
+</p>
+
+<p>
+Should the specialization of <code class='backtick'>formatter</code> for <code class='backtick'>chrono::duration</code> be constrained
+to require that the <code class='backtick'>rep</code> type can be formatted?
+Or should the <code class='backtick'>%Q</code> conversion specifier say that the numeric value is
+formatted by inserting into an <code class='backtick'>ostream</code> (which would treat <code class='backtick'>wchar_t</code> and
+<code class='backtick'>char8_t</code> rep types as characters, not integers)?
+Or should <code class='backtick'>%Q</code> say that the numeric value is converted to an integral type,
+which we know how to format?
+</p>
+
+<p>
+This is somewhat related to issue <a href="953" title="Various threading bugs #3 (Status: Resolved)">953</a>, since it's unclear
+which operations "a class emulating an arithmetic type" needs to support.
+</p>
+
+
+<p><i>[2024-07-31; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"Don't convert to an integer type, that would be wrong for
+<code>duration&lt;long double&gt;</code> and could overflow for
+<code>duration&lt;BigInt&gt;</code>."
+</p>
+<p>"<code class='backtick'>%Q</code> could format using <code class='backtick'>+d.count()</code>"</p>
+<p>
+Some requests to disallow using code unit types as duration reps,
+e.g. <code>duration&lt;char&gt;</code>. Alternatively it just shouldn't
+be formattable. Alternatively, don't bother preventing dumb things.
+</p>
+<p>
+There's a similar issue in <code>operator&lt;&lt;</code> for
+<code class='backtick'>duration</code>, which writes <code class='backtick'>d.count()</code> to the stream. For a custom rep type
+that might be ill-formed. For character types it might print as a character
+not an integer.
+</p>
+
+
+
+<p id="res-4118"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+<ol>
+<li><p>Modify 30.2 <a href="https://timsong-cpp.github.io/cppwp/time.syn">[time.syn]</a> as indicated:</p>
+
+<blockquote>
+<pre><code>
+namespace std {
+  template&lt;class Rep, class Period, class charT&gt;
+    <ins>requires formattable&lt;Rep, charT&gt;</ins>
+    struct formatter&lt;chrono::duration&lt;Rep, Period&gt;, charT&gt;;
+  template&lt;class Duration, class charT&gt;
+    struct formatter&lt;chrono::sys_time&lt;Duration&gt;, charT&gt;;
+</code></pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

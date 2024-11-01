@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4072: std::optional comparisons: constrain harder</title>
+<meta property="og:title" content="Issue 4072: std::optional comparisons: constrain harder">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4072.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4072"><a href="lwg-active.html#4072">4072</a>. <code class='backtick'>std::optional</code> comparisons: constrain harder</h3>
+<p><b>Section:</b> 22.5.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-04-19 <b>Last modified:</b> 2024-08-21</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.comp.with.t">issues</a> in [optional.comp.with.t].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P2944R3">P2944R3</a> added constraints to <code class='backtick'>std::optional</code>'s comparisons, e.g.
+</p>
+<blockquote>
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const optional&lt;U&gt;&amp; y);
+</code></pre>
+-1- <em><del>Mandates</del><ins>Constraints</ins></em>:
+The expression <code class='backtick'>*x == *y</code> is well-formed and its result is convertible to <code class='backtick'>bool</code>.
+<p> &hellip; </p>
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+-1- <em><del>Mandates</del><ins>Constraints</ins></em>:
+The expression <code class='backtick'>*x == v</code> is well-formed and its result is convertible to <code class='backtick'>bool</code>.
+</blockquote>
+
+<p>
+But I don't think the constraint on the second one (the "compare with value")
+is correct. If we try to compare two optionals that can't be compared,
+such as <code>optional&lt;void*&gt;</code> and <code>optional&lt;int&gt;</code>,
+then the first overload is not valid due to the new constraints, and so does
+not participate in overload resolution.  But that means we now consider the
+second overload, but that's ambiguous. We could either use
+<code>operator==&lt;void*, optional&lt;int&gt;&gt;</code> or we could use
+<code>operator==&lt;optional&lt;void*&gt;, int&gt;</code> with the arguments
+reversed (using the C++20 default comparison rules).
+We never even get as far as checking the new constraints on those overloads,
+because they're simply ambiguous.
+</p>
+<p>
+Before <a href="https://wg21.link/P2944R3">P2944R3</a> overload resolution always would have selected
+the first overload, for comparing two optionals. But because that is now
+constrained away, we consider an overload that should never be used for
+comparing two optionals. The solution is to add an additional constraint
+to the "compare with value" overloads so that they won't be used when the
+"value" is really another optional.
+</p>
+
+<p>
+A similar change was made to <code class='backtick'>optional</code>'s <code>operator&lt;=&gt;</code> by
+LWG <a href="3566" title="Constraint recursion for operator&lt;=&gt;(optional&lt;T&gt;, U) (Status: C++23)">3566</a>, and modified by LWG <a href="3746" title="optional's spaceship with U with a type derived from optional 
+causes infinite constraint meta-recursion (Status: C++23)">3746</a>.
+I haven't analyzed whether we need the modification here too.
+</p>
+
+<p>
+The proposed resolution (without <em><code class='backtick'>is-derived-from-optional</code></em>)
+has been implemented and tested in libstdc++.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 1 after reflector poll.
+LWG <a href="3746" title="optional's spaceship with U with a type derived from optional 
+causes infinite constraint meta-recursion (Status: C++23)">3746</a> changes might be needed here too,
+i.e, consider types derived from <code class='backtick'>optional</code>, not only <code class='backtick'>optional</code> itself.
+</p>
+
+<p><i>[2024-08-21; Move to Ready at LWG telecon]</i></p>
+
+
+
+
+<p id="res-4072"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.5.8 <a href="https://timsong-cpp.github.io/cppwp/optional.comp.with.t">[optional.comp.with.t]</a> as indicated:</p>
+
+<blockquote>
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator==(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-1-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>*x == v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator==(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-3-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v == *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator!=(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-5-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>*x != v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator!=(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-7-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v != *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&lt;(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-9-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>*x &lt; v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&lt;(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-11-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v &lt; *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&gt;(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-13-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>*x &gt; v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&gt;(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-15-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v &gt; *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&lt;=(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-17-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>*x &lt;= v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&lt;=(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-19-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v &lt;= *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&gt;=(const optional&lt;T&gt;&amp; x, const U&amp; v);
+</code></pre>
+<p>-21-
+<em>Constraints</em>:
+<ins><code class='backtick'>U</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code class='backtick'>*x &amp;gt;= v</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+
+<pre><code>
+template&lt;class T, class U&gt; constexpr bool operator&gt;=(const T&amp; v, const optional&lt;U&gt;&amp; x);
+</code></pre>
+<p>-23-
+<em>Constraints</em>:
+<ins><code class='backtick'>T</code> is not a specialization of <code class='backtick'>optional</code>.</ins>
+The expression <code>v &gt;= *x</code> is well-formed
+and its result is convertible to <code class='backtick'>bool</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

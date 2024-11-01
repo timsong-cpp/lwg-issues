@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4060: submdspan preconditions do not forbid creating invalid pointer</title>
+<meta property="og:title" content="Issue 4060: submdspan preconditions do not forbid creating invalid pointer">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4060.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4060"><a href="lwg-defects.html#4060">4060</a>. <code>submdspan</code> preconditions do not forbid creating invalid pointer</h3>
+<p><b>Section:</b> 23.7.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/mdspan.sub.sub">[mdspan.sub.sub]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Mark Hoemmen <b>Opened:</b> 2024-03-26 <b>Last modified:</b> 2024-07-08</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Oliver Lee and Ryan Wooster pointed out to us that creating a <code>submdspan</code> with zero-length 
+<code><i>tuple-like</i></code> or <code>strided_slice</code> slice specifiers at the upper extent can cause 
+the Standard <code>submdspan_mapping</code> overloads to access the input <code>mdspan</code>'s mapping 
+out of bounds.
+This happens in the following line of specification (23.7.3.7.6 <a href="https://timsong-cpp.github.io/cppwp/mdspan.sub.map">[mdspan.sub.map]</a> p8 in
+<a href="https://wg21.link/N4971">N4971</a> moved to [mdspan.sub.map.common] p8 <b>after</b> the merge of
+<a href="https://wg21.link/P2642R6">P2642R6</a>).
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Let <code>offset</code> be a value of type <code>size_t</code> equal to <code>(*this)(<i>first_</i>&lt;index_type, P&gt;(slices...)...)</code>.
+</p>
+</blockquote>
+<p>
+If <code>data_handle_type</code> is a pointer to an array, then the resulting offset can be larger than 
+<code>required_span_size()</code>, thus making the pointer invalid (not just one past the end). In a 
+constexpr context, the result is ill-formed. With the <a href="https://github.com/kokkos/mdspan">reference 
+<code>mdspan</code> implementation</a>, Clang can actually report a build error (e.g., for out-of-bounds access 
+to a <code>std::array</code>). The contributed example illustrates this.
+<p/>
+Oliver and Ryan offer the following example and analysis:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Example 1:
+</p>
+<blockquote><pre>
+auto x = std::array&lt;int, 3&gt;{};
+auto A = mdspan{x.data(), extents{3}}; 
+auto B = submdspan(A, pair{3, 3});
+</pre></blockquote>
+<p>
+B is an <code>mdspan</code> with zero elements.
+<p/>
+Example 2:
+</p>
+<blockquote><pre>
+auto y = std::array&lt;int, 9&gt;{};
+auto C = mdspan{y.data(), extents{3, 3}}; 
+auto D = submdspan(C, pair{3, 3}, pair{3, 3});
+</pre></blockquote>
+<p>
+A precondition for each slice specifier is (23.7.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/mdspan.sub.extents">[mdspan.sub.extents]</a>):
+</p>
+<blockquote><pre>
+0 &le; <i>first_</i>&lt;index_type, <i>k</i>&gt;(slices...) &le; <i>last_</i>&lt;<i>k</i>&gt;(src.extents(), slices...) &le; src.extent(<i>k</i>).
+</pre></blockquote>
+<p>
+Our understanding is that precondition is satisfied. In the second example, <code><i>first_</i>&lt;0&gt;</code> 
+is 3 and <code><i>first_</i>&lt;1&gt;</code> is also 3.
+<p/>
+However, the submapping offset is defined as <code>(*this)(<i>first_</i>&lt;index_type, P&gt;(slices...)...)</code>, 
+which then can result in an invalid data handle of the <code>submdspan</code>, even if the data handle is never 
+accessed/dereferenced.
+<p/>
+<a href="https://godbolt.org/z/zaMTbMEK7">godbolt demo</a>
+</p>
+</blockquote>
+<p>
+We expect this situation to come up in practice.
+<p/>
+Suppose we have an <code>N x N</code> mdspan representing a matrix <code>A</code>, and we want to partition it 
+into a <code>2 x 2</code> "matrix of matrices" (also called a "block matrix"). This partitioning is a 
+common operation in linear algebra algorithms such as matrix factorizations.  
+Examples of this <code>2 x 2</code> partitioning appear in <a href="https://wg21.link/P2642">P2642</a> and <a href="https://wg21.link/P1673">P1673</a>.
+</p>
+<blockquote><pre>
+mdspan A{A_ptr, N, N};
+
+size_t p = partition_point(N); // <i>integer in 0, 1, &hellip;, N (inclusive)</i>
+auto A_00 = submdspan(A, tuple{0, p}, tuple{0, p});
+auto A_10 = submdspan(A, tuple{p, N}, tuple{0, 0});
+auto A_01 = submdspan(A, tuple{0, p}, tuple{p, N});
+auto A_11 = submdspan(A, tuple{p, N}, tuple{p, N});
+</pre></blockquote>
+<p>
+Table illustrating the resulting <code>2 x 2</code> block matrix follows:
+</p>
+<table border="1">
+<tr>
+  <td><code>A_00</code></td>
+  <td><code>A_01</code></td>
+</tr>
+<tr>
+  <td><code>A_10</code></td>
+  <td><code>A_11</code></td>
+</tr>
+</table> 
+<p>
+It's valid for <code>p</code> to be <code>0</code>. That makes every block but <code>A_11</code> have zero size.
+Thus, it should also be valid for <code>p</code> to be <code>N</code>. That makes every block but 
+<code>A_00</code> have zero size. However, that leads to the aforementioned UB.
+<p/>
+It doesn't make sense to change <code><i>first_</i></code> or <code><i>last_</i></code>. The definitions of 
+<code><i>first_</i></code> and <code><i>last_</i></code> are meant to turn the slice specifier into a pair of bounds.
+Since <code>submdspan(A, tuple{p, N}, tuple{p, N})</code> is valid even if <code>p</code> equals <code>N</code>,
+then that strongly suggests that <code><i>first_</i>&lt;0&gt;</code> and <code><i>first_</i>&lt;1&gt;</code> 
+should always be <code>p</code>, even if <code>p</code> equals <code>N</code>.
+<p/>
+As a result, we find ourselves needing to change <code>submdspan_mapping</code>. This will affect both 
+the Standard <code>submdspan_mapping</code> overloads, and any custom (user-defined) overloads.
+</p>
+
+<p><i>[2024-05-08; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after five votes in favour during reflector poll.
+</p>
+
+<p><i>[St. Louis 2024-06-29; Status changed: Voting &rarr; WP.]</i></p>
+
+
+
+<p id="res-4060"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a> <b>after</b> the merge of <a href="https://wg21.link/P2642R6">P2642R6</a>.
+</p>
+
+<ol>
+<li><p>Modify the new 23.7.3.7.6.1 <a href="https://timsong-cpp.github.io/cppwp/mdspan.sub.map.common">[mdspan.sub.map.common]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-8- <ins>If <code><i>first_</i>&lt;index_type, <i>k</i>&gt;(slices...)</code> equals <code>extents().extent(<i>k</i>)</code> 
+for any rank index <code><i>k</i></code> of <code>extents()</code>, then l</ins><del>L</del>et <code>offset</code> be 
+a value of type <code>size_t</code> equal to <ins><code>(*this).required_span_size()</code>. Otherwise, let 
+<code>offset</code> be a value of type <code>size_t</code> equal to</ins> 
+<code>(*this)(<i>first_</i>&lt;index_type, P&gt;(slices...)...)</code>.
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 23.7.3.7.7 <a href="https://timsong-cpp.github.io/cppwp/mdspan.sub.sub">[mdspan.sub.sub]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+As a drive-by readability fix, we also propose changing a variable name in paragraph 6
+as indicated below.
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class ElementType, class Extents, class LayoutPolicy,
+         class AccessorPolicy, class... SliceSpecifiers&gt;
+  constexpr auto submdspan(
+    const mdspan&lt;ElementType, Extents, LayoutPolicy, AccessorPolicy&gt;&amp; src,
+    SliceSpecifiers... slices) -&gt; <i>see below</i>;
+</pre>
+<blockquote>
+<p>
+-1- Let <code>index_type</code> be <code>typename Extents::index_type</code>.
+<p/>
+-2- Let <code>sub_map_offset</code> be the result of <code>submdspan_mapping(src.mapping(), slices...)</code>.
+<p/>
+[&hellip;]
+<p/>
+-3- <i>Constraints</i>: [&hellip;]
+<p/>
+-4- <i>Mandates</i>: [&hellip;]
+<p/>
+-5-<i>Preconditions</i>: [&hellip;]
+<p/>
+-6- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto sub_map_<ins>result</ins><del>offset</del> = submdspan_mapping(src.mapping(), slices...);
+return mdspan(src.accessor().offset(src.data(), sub_map_<ins>result</ins><del>offset</del>.offset),
+              sub_map_<ins>result</ins><del>offset</del>.mapping,
+              AccessorPolicy::offset_policy(src.accessor()));
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

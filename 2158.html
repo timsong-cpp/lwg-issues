@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2158: Conditional copy&#47;move in std::vector</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2158: Conditional copy&#47;move in std::vector">
+<meta property="og:description" content="C++ library issue. Status: Open">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2158.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="2158" href="lwg-active.html#2158">2158.</a> Conditional copy&#47;move in <tt>std::vector</tt></h3>
-<p><b>Section:</b> 24.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Nikolay Ivchenkov <b>Opened:</b> 2012-05-08 <b>Last modified:</b> 2022-11-06 10:55:28 UTC</p>
+<h3 id="2158"><a href="lwg-active.html#2158">2158</a>. Conditional copy&#47;move in <code>std::vector</code></h3>
+<p><b>Section:</b> 23.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Nikolay Ivchenkov <b>Opened:</b> 2012-05-08 <b>Last modified:</b> 2022-11-06</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#vector.capacity">active issues</a> in [vector.capacity].</p>
@@ -55,47 +72,47 @@
 <p><b>Discussion:</b></p>
 
 <p>
-There are various operations on <tt>std::vector</tt> that can cause elements of the vector to be 
+There are various operations on <code>std::vector</code> that can cause elements of the vector to be 
 moved from one location to another. A move operation can use either rvalue or const lvalue as 
-argument; the choice depends on the value of <tt>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp;
-is_copy_constructible&lt;T&gt;::value</tt>, where <tt>T</tt> is the element type. Thus, some operations 
-on <tt>std::vector</tt> (e.g. 'resize' with single parameter, 'reserve', 'emplace_back') should have 
+argument; the choice depends on the value of <code>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp;
+is_copy_constructible&lt;T&gt;::value</code>, where <code>T</code> is the element type. Thus, some operations 
+on <code>std::vector</code> (e.g. 'resize' with single parameter, 'reserve', 'emplace_back') should have 
 conditional requirements. For example, let's consider the requirement for 'reserve' in N3376 &ndash; 
-24.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>&#47;2:
+23.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a>&#47;2:
 </p>
 <blockquote><p>
-<i>Requires</i>: <tt>T</tt> shall be <tt>MoveInsertable</tt> into <tt>*this</tt>.
+<i>Requires</i>: <code>T</code> shall be <code>MoveInsertable</code> into <code>*this</code>.
 </p></blockquote>
 <p>
 This requirement is not sufficient if an implementation is free to select copy constructor when 
-<tt>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp; is_copy_constructible&lt;T&gt;::value</tt> 
-evaluates to true. Unfortunately, <tt>is_copy_constructible</tt> cannot reliably determine whether 
-<tt>T</tt> is really copy-constructible. A class may contain public non-deleted copy constructor whose 
+<code>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp; is_copy_constructible&lt;T&gt;::value</code> 
+evaluates to true. Unfortunately, <code>is_copy_constructible</code> cannot reliably determine whether 
+<code>T</code> is really copy-constructible. A class may contain public non-deleted copy constructor whose 
 definition does not exist or cannot be instantiated successfully (e.g., 
-<tt>std::vector&lt;std::unique_ptr&lt;int&gt;&gt;</tt> has copy constructor, but this type is not 
+<code>std::vector&lt;std::unique_ptr&lt;int&gt;&gt;</code> has copy constructor, but this type is not 
 copy-constructible). Thus, the actual requirements should be:
 </p>
 <ul>
 <li><p>
-if <tt>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp; is_copy_constructible&lt;T&gt;::value</tt> 
-then <tt>T</tt> shall be <tt>CopyInsertable</tt> into <tt>*this</tt>;
+if <code>!is_nothrow_move_constructible&lt;T&gt;::value &amp;&amp; is_copy_constructible&lt;T&gt;::value</code> 
+then <code>T</code> shall be <code>CopyInsertable</code> into <code>*this</code>;
 </p></li>
 <li><p>
-otherwise <tt>T</tt> shall be <tt>MoveInsertable</tt> into <tt>*this</tt>.
+otherwise <code>T</code> shall be <code>MoveInsertable</code> into <code>*this</code>.
 </p></li>
 </ul>
 <p>
 Maybe it would be useful to introduce a new name for such conditional requirement (in addition to 
-"<tt>CopyInsertable</tt>" and "<tt>MoveInsertable</tt>").
+"<code>CopyInsertable</code>" and "<code>MoveInsertable</code>").
 </p>
 
 <p><i>[2016-08 Chicago]</i></p>
 
 <p>
-The problem does not appear to be as severe as described. The <tt>MoveInsertable</tt>
+The problem does not appear to be as severe as described. The <code>MoveInsertable</code>
 requirements are consistently correct, but an issue may arise on the
 exception-safety guarantees when we check for
-<tt>is_copy_constructible_v&lt;T&gt;</tt>.  The problem, as described, is
+<code>is_copy_constructible_v&lt;T&gt;</code>.  The problem, as described, is
 typically for templates that appear to have a copy constructor, but one that
 fails to compile once instantiated, and so gives a misleading result for the
 trait.
@@ -104,15 +121,15 @@ trait.
 In general, users should not provide such types, and the standard would not
 serve users well by trying to address support for such types.  However, the
 standard should not be providing such types either, such as
-<tt>vector&lt;unique_ptr&lt;T&gt;&gt;</tt>.  A possible resolution would be
+<code>vector&lt;unique_ptr&lt;T&gt;&gt;</code>.  A possible resolution would be
 to tighten the constraints in Table 80 &mdash; Container Requirements, so that if
 the Requirements for the copy constructor/assingment operator of a container
 are not satisfied, that operation shall be deleted.
 </p>
 <p>
 A futher problem highlighted by this approach is that there are no constraints on
-the copy-assignment operator, so that <tt>vector&lt;unique_ptr&lt;T&gt;&gt;</tt>
-should be <tt>CopyAssignable</tt>! However, we can lift the equivalent constraints from
+the copy-assignment operator, so that <code>vector&lt;unique_ptr&lt;T&gt;&gt;</code>
+should be <code>CopyAssignable</code>! However, we can lift the equivalent constraints from
 the Allocator-aware container requirements.
 </p>
 
@@ -140,7 +157,7 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
 
 <p>
 <table border="1">
-<caption> 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 80 &mdash; Container requirements </caption>
+<caption> 23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 80 &mdash; Container requirements </caption>
 <tr>
   <td><b>Expression</b></td>
   <td><b>Return type</b></td>
@@ -149,24 +166,24 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
   <td><b>Complexity</b></td>
 </tr>
 <tr>
-  <td><tt>X(a)</tt></td>
+  <td><code>X(a)</code></td>
   <td></td>
   <td></td>
   <td>
-    <i>Requires:</i> <tt>T</tt> is <tt>CopyInsertable</tt> into
-    <tt>X</tt> (see below)<del>.</del><ins>, otherwise this expression shall be ill-formed.</ins><br/>
-    post: <tt>a == X(a)</tt>.
+    <i>Requires:</i> <code>T</code> is <code>CopyInsertable</code> into
+    <code>X</code> (see below)<del>.</del><ins>, otherwise this expression shall be ill-formed.</ins><br/>
+    post: <code>a == X(a)</code>.
   </td>
   <td>linear</td>
 </tr>
 <tr>
-  <td><tt>X u(a)</tt><br/><tt>X u = a;</tt></td>
+  <td><code>X u(a)</code><br/><code>X u = a;</code></td>
   <td></td>
   <td></td>
   <td>
-    <i>Requires:</i> <tt>T</tt> is <tt>CopyInsertable</tt> into
-    <tt>X</tt> (see below)<del>.</del><ins>, otherwise this expression shall be ill-formed.</ins><br/>
-    post: <tt>u == a</tt>.
+    <i>Requires:</i> <code>T</code> is <code>CopyInsertable</code> into
+    <code>X</code> (see below)<del>.</del><ins>, otherwise this expression shall be ill-formed.</ins><br/>
+    post: <code>u == a</code>.
   </td>
   <td>linear</td>
 </tr>
@@ -178,13 +195,13 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
   <td>...</td>
 </tr>
 <tr>
-  <td><tt>r = a</tt></td>
-  <td><tt>X&amp;</tt></td>
+  <td><code>r = a</code></td>
+  <td><code>X&amp;</code></td>
   <td></td>
   <td>
-    <ins><i>Requires:</i> <tt>T</tt> is <tt>CopyInsertable</tt> into <tt>X</tt>
-    and <tt>CopyAssignable</tt>, otherwise this expression shall be ill-formed.</ins><br/>
-    post: <tt>r == a</tt>.</td>
+    <ins><i>Requires:</i> <code>T</code> is <code>CopyInsertable</code> into <code>X</code>
+    and <code>CopyAssignable</code>, otherwise this expression shall be ill-formed.</ins><br/>
+    post: <code>r == a</code>.</td>
   <td>linear</td>
 </tr>
 </table>
@@ -192,7 +209,7 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
 
 <p>
 <table border="1">
-<caption> 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 83 &mdash; Allocator-aware container requirements </caption>
+<caption> 23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 83 &mdash; Allocator-aware container requirements </caption>
 <tr>
   <td><b>Expression</b></td>
   <td><b>Return type</b></td>
@@ -201,14 +218,14 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
   <td><b>Complexity</b></td>
 </tr>
 <tr>
-  <td><tt>a = t</tt></td>
-  <td><tt>X&amp;</tt></td>
+  <td><code>a = t</code></td>
+  <td><code>X&amp;</code></td>
   <td></td>
   <td>
-    <i>Requires:</i> <tt>T</tt> is <tt>CopyInsertable</tt> into <tt>X</tt> and
-    <tt>CopyAssignable</tt><del>.</del><ins>, otherwise this  expression shall
+    <i>Requires:</i> <code>T</code> is <code>CopyInsertable</code> into <code>X</code> and
+    <code>CopyAssignable</code><del>.</del><ins>, otherwise this  expression shall
     be ill-formed</ins><br/>
-    post: <tt>r == a</tt>.</td>
+    post: <code>r == a</code>.</td>
   <td>linear</td>
 </tr>
 </table>
@@ -217,14 +234,15 @@ This wording is relative to <a href="https://wg21.link/n4606">N4606</a>.
 
 <p><i>[2018-08-23 Batavia Issues processing. Priority to 3]</i></p>
 
-<p>Changed <tt>CopyInsertable</tt> -&gt; <tt>Cpp17CopyInsertable</tt> in the resolution.</p>
+<p>Changed <code>CopyInsertable</code> -&gt; <code>Cpp17CopyInsertable</code> in the resolution.</p>
 <p>Tim says that the wording is not quite right &mdash; it imposes additional requirements.</p>
 
 
 <p><i>[2022-11-06; Daniel comments]</i></p>
 
 <p>
-This issue has considerable overlap with LWG <a href="3758">3758</a>.
+This issue has considerable overlap with LWG <a href="3758" title="Element-relocating operations of std::vector and std::deque 
+should conditionally require Cpp17CopyInsertable in their preconditions (Status: New)">3758</a>.
 </p>
 
 
@@ -244,7 +262,7 @@ Standard Library.
 
 <p>
 <table border="1">
-<caption> 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 77 &mdash; Container requirements </caption>
+<caption> 23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 77 &mdash; Container requirements </caption>
 <tr>
   <td><b>Expression</b></td>
   <td><b>Return type</b></td>
@@ -253,28 +271,28 @@ Standard Library.
   <td><b>Complexity</b></td>
 </tr>
 <tr>
-  <td><tt>X(a)</tt></td>
+  <td><code>X(a)</code></td>
   <td></td>
   <td></td>
   <td>
-    <ins><i>Mandates:</i> Syntactic requirements of <tt>T</tt><br/> 
-    is <tt>Cpp17CopyInsertable</tt> into <tt>X</tt> (see below).</ins><br/>
-    <i>Requires:</i> <tt>T</tt> is <tt>Cpp17CopyInsertable</tt> into
-    <tt>X</tt> <del>(see below)</del>.<br/>
-    post: <tt>a == X(a)</tt>.
+    <ins><i>Mandates:</i> Syntactic requirements of <code>T</code><br/> 
+    is <code>Cpp17CopyInsertable</code> into <code>X</code> (see below).</ins><br/>
+    <i>Requires:</i> <code>T</code> is <code>Cpp17CopyInsertable</code> into
+    <code>X</code> <del>(see below)</del>.<br/>
+    post: <code>a == X(a)</code>.
   </td>
   <td>linear</td>
 </tr>
 <tr>
-  <td><tt>X u(a)</tt><br/><tt>X u = a;</tt></td>
+  <td><code>X u(a)</code><br/><code>X u = a;</code></td>
   <td></td>
   <td></td>
   <td>
-    <ins><i>Mandates:</i> Syntactic requirements of <tt>T</tt><br/> 
-    is <tt>Cpp17CopyInsertable</tt> into <tt>X</tt> (see below).</ins><br/>
-    <i>Requires:</i> <tt>T</tt> is <tt>Cpp17CopyInsertable</tt> into
-    <tt>X</tt> <del>(see below)</del>.<br/>
-    post: <tt>u == a</tt>.
+    <ins><i>Mandates:</i> Syntactic requirements of <code>T</code><br/> 
+    is <code>Cpp17CopyInsertable</code> into <code>X</code> (see below).</ins><br/>
+    <i>Requires:</i> <code>T</code> is <code>Cpp17CopyInsertable</code> into
+    <code>X</code> <del>(see below)</del>.<br/>
+    post: <code>u == a</code>.
   </td>
   <td>linear</td>
 </tr>
@@ -286,16 +304,16 @@ Standard Library.
   <td>...</td>
 </tr>
 <tr>
-  <td><tt>r = a</tt></td>
-  <td><tt>X&amp;</tt></td>
+  <td><code>r = a</code></td>
+  <td><code>X&amp;</code></td>
   <td></td>
   <td>
-    <ins><i>Mandates:</i> Syntactic requirements of <tt>T</tt><br/> 
-    is <tt>Cpp17CopyInsertable</tt> into <tt>X</tt> (see below) and
-    <tt>CopyAssignable</tt>.<br/></ins>
-    <ins><i>Requires:</i> <tt>T</tt> is <tt>Cpp17CopyInsertable</tt> into <tt>X</tt>
-    and <tt>CopyAssignable</tt>.</ins><br/>
-    post: <tt>r == a</tt>.</td>
+    <ins><i>Mandates:</i> Syntactic requirements of <code>T</code><br/> 
+    is <code>Cpp17CopyInsertable</code> into <code>X</code> (see below) and
+    <code>CopyAssignable</code>.<br/></ins>
+    <ins><i>Requires:</i> <code>T</code> is <code>Cpp17CopyInsertable</code> into <code>X</code>
+    and <code>CopyAssignable</code>.</ins><br/>
+    post: <code>r == a</code>.</td>
   <td>linear</td>
 </tr>
 </table>
@@ -303,7 +321,7 @@ Standard Library.
 
 <p>
 <table border="1">
-<caption> 24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 80 &mdash; Allocator-aware container requirements </caption>
+<caption> 23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a> Table 80 &mdash; Allocator-aware container requirements </caption>
 <tr>
   <td><b>Expression</b></td>
   <td><b>Return type</b></td>
@@ -312,15 +330,15 @@ Standard Library.
   <td><b>Complexity</b></td>
 </tr>
 <tr>
-  <td><tt>a = t</tt></td>
-  <td><tt>X&amp;</tt></td>
+  <td><code>a = t</code></td>
+  <td><code>X&amp;</code></td>
   <td></td>
   <td>
-    <ins><i>Mandates:</i> Syntactic requirements of <tt>T</tt> is<br/> 
-    <tt>Cpp17CopyInsertable</tt> into <tt>X</tt> and <tt>CopyAssignable</tt>.<br/></ins>
-    <i>Requires:</i> <tt>T</tt> is <tt>Cpp17CopyInsertable</tt> into <tt>X</tt> and
-    <tt>CopyAssignable</tt>.<br/>
-    post: <tt>r == a</tt>.</td>
+    <ins><i>Mandates:</i> Syntactic requirements of <code>T</code> is<br/> 
+    <code>Cpp17CopyInsertable</code> into <code>X</code> and <code>CopyAssignable</code>.<br/></ins>
+    <i>Requires:</i> <code>T</code> is <code>Cpp17CopyInsertable</code> into <code>X</code> and
+    <code>CopyAssignable</code>.<br/>
+    post: <code>r == a</code>.</td>
   <td>linear</td>
 </tr>
 </table>

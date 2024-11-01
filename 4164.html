@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4164: Missing guarantees for forward_list modifiers</title>
+<meta property="og:title" content="Issue 4164: Missing guarantees for forward_list modifiers">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4164.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4164"><a href="lwg-active.html#4164">4164</a>. Missing guarantees for <code class='backtick'>forward_list</code> modifiers</h3>
+<p><b>Section:</b> 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-10-05 <b>Last modified:</b> 2024-10-09</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#forward.list.modifiers">issues</a> in [forward.list.modifiers].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The new <code class='backtick'>std::list</code> members added by <a href="https://wg21.link/P1206R7">P1206R7</a>,
+<code>insert_range(const_iterator, R&amp;&amp;)</code>,
+<code>prepend_range(R&amp;&amp;)</code>, and
+<code>append_range(R&amp;&amp;)</code>,
+have the same exception safety guarantee as
+<code class='backtick'>std::list::insert(const_iterator, InputIterator, InputIterator)</code>, which is:
+<blockquote>
+<i>Remarks</i>:
+Does not affect the validity of iterators and references.
+If an exception is thrown, there are no effects.
+</blockquote>
+</p>
+<p>
+This guarantee was achieved for the new <code class='backtick'>list</code> functions simply by placing
+them in the same set of declarations as the existing <code class='backtick'>insert</code> overloads,
+at the start of 23.3.9.4 <a href="https://timsong-cpp.github.io/cppwp/list.modifiers">[list.modifiers]</a>.
+</p>
+
+<p>
+However, the new <code class='backtick'>std::forward_list</code> members,
+<code>insert_range_after(const_iterator, R&amp;&amp;)</code> and
+<code>prepend_range(R&amp;&amp;)</code>,
+do not have the same guarantee as <code class='backtick'>forward_list::insert_after</code>.
+This looks like an omission caused by the fact that <code class='backtick'>insert_after</code>'s
+exception safety guarantee is given in a separate paragraph at the start
+of 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a>:
+<blockquote>
+None of the overloads of <code class='backtick'>insert_after</code>
+shall affect the validity of iterators and references,
+and <code class='backtick'>erase_after</code> shall invalidate only iterators and references
+to the erased elements.
+If an exception is thrown during <code class='backtick'>insert_after</code> there shall be no effect.
+</blockquote>
+</p>
+
+<p>
+I think we should give similar guarantees for <code class='backtick'>insert_range_after</code>
+and <code class='backtick'>prepend_range</code>.
+The change might also be appropriate for <code class='backtick'>emplace_after</code> as well.
+A "no effects" guarantee is already given for <code class='backtick'>push_front</code> and <code class='backtick'>emplace_front</code>
+in 23.2.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.reqmts">[container.reqmts]</a> p66, although that doesn't say anything
+about iterator invalidation so we might want to add that to
+23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a> too.
+For the functions that insert a single element, it's trivial to not modify
+the list if allocating a new node of constructing the element throws.
+The strong exception safety guarantee for the multi-element insertion functions
+is easily achieved by inserting into a temporary <code class='backtick'>forward_list</code> first,
+then using <code class='backtick'>splice_after</code> which is non-throwing.
+</p>
+
+
+<p><i>[2024-10-09; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>It was suggested to change
+"If an exception is thrown by any of these member functions
+that insert elements there is no effect on the forward_list"
+to simply
+"If an exception is thrown by any of these member functions
+there is no effect on the forward_list"
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.</p>
+
+<ol>
+<li>
+<p>Change 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a> as indicated:</p>
+<blockquote>
+None of the <del>overloads of <code class='backtick'>insert_after</code> shall</del>
+<ins>member functions in this subclause that insert elements</ins>
+affect the validity of iterators and references,
+and <code class='backtick'>erase_after</code> <del>shall invalidate</del> <ins>invalidates</ins>
+only iterators and references to the erased elements.
+If an exception is thrown
+<del>during <code class='backtick'>insert_after</code></del>
+<ins>by any of these member functions</ins>
+there <del>shall be</del> <ins>is</ins> no effect
+<ins>on the <code class='backtick'>forward_list</code></ins>.
+</blockquote>
+
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2024-10-09; LWG suggested improved wording]</i></p>
+
+<p>
+The proposed resolution potentially mandates a change to <code class='backtick'>resize</code> when
+increasing the size, requiring implementations to "roll back" earlier
+insertions if a later one throws, so that the size is left unchanged.
+It appears that libstdc++ and MSVC already do this, libc++ does not.
+</p>
+
+<p><i>[2024-10-09; LWG telecon: Move to Ready]</i></p>
+
+
+
+
+<p id="res-4164"><b>Proposed resolution:</b></p>
+<p>This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.</p>
+
+<ol>
+<li>
+<p>Change 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a> as indicated:</p>
+<blockquote>
+<del>
+None of the overloads of <code class='backtick'>insert_after</code> shall
+affect the validity of iterators and references,
+and <code class='backtick'>erase_after</code> shall invalidate
+only iterators and references to the erased elements.
+</del>
+<ins>The member functions in this subclause do not
+affect the validity of iterators and references when inserting elements,
+and when erasing elements invalidate iterators and references
+to the erased elements only.
+</ins>
+If an exception is thrown
+<del>during <code class='backtick'>insert_after</code></del>
+<ins>by any of these member functions</ins>
+there <del>shall be</del> <ins>is</ins> no effect
+<ins>on the container</ins>.
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+
+</body>
+</html>

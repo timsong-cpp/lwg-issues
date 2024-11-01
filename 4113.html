@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4113: Disallow has_unique_object_representations&lt;Incomplete[]&gt;</title>
+<meta property="og:title" content="Issue 4113: Disallow has_unique_object_representations&lt;Incomplete[]&gt;">
+<meta property="og:description" content="C++ library issue. Status: Tentatively Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4113.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4113"><a href="lwg-active.html#4113">4113</a>. Disallow <code>has_unique_object_representations&lt;Incomplete[]&gt;</code></h3>
+<p><b>Section:</b> 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-06-25 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The type completeness requirements for <code class='backtick'>has_unique_object_representations</code> say:
+<blockquote>
+<code class='backtick'>T</code> shall be a complete type, <i>cv</i> <code class='backtick'>void</code>, or an array of unknown bound.
+</blockquote>
+</p>
+<p>
+This implies that the trait works for all arrays of unknown bound,
+whether the element type is complete or not. That seems to be incorrect,
+because <code>has_unique_object_representations_v&lt;Incomplete[]&gt;</code>
+is required to have the same result as
+<code>has_unique_object_representations_v&lt;Incomplete&gt;</code>
+which is ill-formed if <code class='backtick'>Incomplete</code> is an incomplete class type.
+</p>
+
+<p>
+I think we need the element type to be complete to be able to give an answer.
+Alternatively, if the intended result for an array of unknown bound is false
+(maybe because there can be no objects of type <code class='backtick'>T[]</code>, or because we can't
+know that two objects declared as <code class='backtick'>extern T a[];</code> and <code class='backtick'>extern T b[];</code> have
+the same number of elements?) then the condition for the trait needs to be
+special-cased as <code class='backtick'>false</code> for arrays of unknown bound.
+The current spec is inconsistent, we can't allow arrays of unknown bound
+and apply the current rules to determine the trait's result.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after nine votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4113"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> as indicated:</p>
+
+<blockquote>
+<table style="border: 1px solid; border-spacing: 1.5em">
+<thead style="text-align: center">
+<tr><th>Template</th><th>Condition</th><th>Preconditions</th></tr>
+</thead>
+<tbody style="vertical-align: top">
+<tr><td>&hellip;</td><td>&hellip;</td><td>&hellip;</td></tr>
+<tr>
+<td>
+<pre><code>template&lt;class T&gt;
+struct has_unique_object_representations;</code></pre>
+</td>
+<td>
+For an array type <code class='backtick'>T</code>, the same result as
+<code>has_unique_object_representations_v&lt;remove_all_extents_t&lt;T&gt;&gt;</code>,
+otherwise <i>see below</i>.
+</td>
+<td>
+<ins><code>remove_all_extents_t&lt;T&gt;</code></ins>
+<del><code>T</code></del>
+shall be a complete type<del>,</del>
+<ins>or</ins> <i>cv</i> <code class='backtick'>void</code><del>, or an array of unknown bound</del>.
+</td>
+</tr>
+</tbody>
+</table>
+</blockquote>
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: We could use <code>remove_extent_t&lt;T&gt;</code>
+to remove just the first array dimension, because only that first one can
+have an unknown bound.
+The proposed resolution uses <code>remove_all_extents_t&lt;T&gt;</code>
+for consistency with the <b>Condition</b> column.]
+</p>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

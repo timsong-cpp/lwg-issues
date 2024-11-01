@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4093: ranges::fold_left_first_with_iter incorrectly constructs optional&lt;U&gt;</title>
+<meta property="og:title" content="Issue 4093: ranges::fold_left_first_with_iter incorrectly constructs optional&lt;U&gt;">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4093.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4093"><a href="lwg-active.html#4093">4093</a>. <code>ranges::fold_left_first_with_iter</code> incorrectly constructs <code>optional&lt;U&gt;</code></h3>
+<p><b>Section:</b> 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-03 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#alg.fold">active issues</a> in [alg.fold].</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.fold">issues</a> in [alg.fold].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>ranges::fold_left_first_with_iter</code> constructs the initial value through 
+<code>optional&lt;U&gt;(in_place, *first)</code> which is not quite right, because the exposure 
+constraint only ensures that <code>U</code> can be constructed from the value type of the iterator 
+rather than its reference (<a href="https://godbolt.org/z/xbEqdxoK8">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;algorithm&gt;
+
+struct Op {
+  Op() = default;
+  Op(std::tuple&lt;int&gt;);
+  Op(std::tuple&lt;int&amp;&gt;) = delete;
+  Op operator()(Op, std::tuple&lt;int&amp;&gt;) const;
+};
+
+int main() {
+  std::ranges::fold_left_first_with_iter(
+    std::views::zip(std::views::single(0)), 
+    Op{}
+  ); // <span style="color:red;font-weight:bolder">hard error in libstdc++ and MSVC-STL</span>
+}
+</pre></blockquote>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+Unclear what "exposure constraint" means.
+"Don't want to require an extra copy to accommodate this corner case."
+</p>
+
+
+
+<p id="res-4093"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.6.18 <a href="https://timsong-cpp.github.io/cppwp/alg.fold">[alg.fold]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_iterator I, sentinel_for&lt;I&gt; S
+         <i>indirectly-binary-left-foldable</i>&lt;iter_value_t&lt;I&gt;, I&gt; F&gt;
+  requires constructible_from&lt;iter_value_t&lt;I&gt;, iter_reference_t&lt;I&gt;&gt;
+  constexpr <i>see below</i> ranges::fold_left_first_with_iter(I first, S last, F f);
+template&lt;input_range R, <i>indirectly-binary-left-foldable</i>&lt;range_value_t&lt;R&gt;, iterator_t&lt;R&gt;&gt; F&gt;
+  requires constructible_from&lt;range_value_t&lt;R&gt;, range_reference_t&lt;R&gt;&gt;
+  constexpr <i>see below</i> ranges::fold_left_first_with_iter(R&amp;&amp; r, F f);
+</pre>
+<blockquote>
+<p>
+-9- Let <code>U</code> be
+</p>
+<blockquote><pre>
+decltype(ranges::fold_left(std::move(first), last, iter_value_t&lt;I&gt;(*first), f))
+</pre></blockquote>
+<p>
+-10- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+if (first == last)
+  return {std::move(first), optional&lt;U&gt;()};
+optional&lt;U&gt; init(in_place, <ins>iter_value_t&lt;I&gt;(</ins>*first<ins>)</ins>);
+for (++first; first != last; ++first)
+  *init = invoke(f, std::move(*init), *first);
+return {std::move(first), std::move(init)};
+</pre></blockquote>
+<p>
+-11- <i>Remarks</i>: The return type is <code>fold_left_first_with_iter_result&lt;I, optional&lt;U&gt;&gt;</code>
+for the first overload and <code>fold_left_first_with_iter_result&lt;borrowed_iterator_t&lt;R&gt;, optional&lt;U&gt;&gt;</code> 
+for the second overload.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

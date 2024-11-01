@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4085: ranges::generate_random's helper lambda should specify the return type</title>
+<meta property="og:title" content="Issue 4085: ranges::generate_random's helper lambda should specify the return type">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4085.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4085"><a href="lwg-active.html#4085">4085</a>. <code>ranges::generate_random</code>'s helper lambda should specify the return type</h3>
+<p><b>Section:</b> 26.12.2 <a href="https://timsong-cpp.github.io/cppwp/alg.rand.generate">[alg.rand.generate]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-04-28 <b>Last modified:</b> 2024-10-09</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#alg.rand.generate">active issues</a> in [alg.rand.generate].</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.rand.generate">issues</a> in [alg.rand.generate].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The non-specialized case of <code>generate_random(r, g, d)</code> would call
+<code>ranges::generate(r, [&amp;d, &amp;g] { return invoke(d, g); })</code>.
+However, the lambda does not explicitly specify the return type, which leads
+to a hard error when <code>invoke</code> returns a reference to the object that is not copyable or
+<code>R</code> is not the <code>output_range</code> for <code>decay_t&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt;</code>.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.12.2 <a href="https://timsong-cpp.github.io/cppwp/alg.rand.generate">[alg.rand.generate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R, class G, class D&gt;
+  requires output_range&lt;R, invoke_result_t&lt;D&amp;, G&amp;&gt;&gt; &amp;&amp; invocable&lt;D&amp;, G&amp;&gt; &amp;&amp;
+           uniform_random_bit_generator&lt;remove_cvref_t&lt;G&gt;&gt;
+constexpr borrowed_iterator_t&lt;R&gt; ranges::generate_random(R&amp;&amp; r, G&amp;&amp; g, D&amp;&amp; d);
+</pre>
+<p>-5- <i>Effects</i>:</p>
+<ol style="list-style-type: none">
+<li><p>(5.1) &mdash; [&hellip;]</p></li>
+<li><p>(5.2) &mdash; [&hellip;]</p></li>
+<li><p>(5.3) &mdash; Otherwise, calls:</p>
+<blockquote><pre>
+ranges::generate(std::forward&lt;R&gt;(r), [&amp;d, &amp;g] <ins>-&gt; decltype(auto)</ins> { return invoke(d, g); });
+</pre></blockquote>
+</li>
+</ol>
+<p>-6- <i>Returns</i>: <code>ranges::end(r)</code></p>
+<p>-7- <i>Remarks</i>: The effects of <code>generate_random(r, g, d)</code> shall be equivalent to</p>
+<blockquote><pre>
+ranges::generate(std::forward&lt;R&gt;(r), [&amp;d, &amp;g] <ins>-&gt; decltype(auto)</ins> { return invoke(d, g); })
+</pre></blockquote>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2024-05-12, Hewill Kang provides improved wording]</i></p>
+
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><i>[2024-10-09; LWG telecon: Move to Ready]</i></p>
+
+
+
+
+<p id="res-4085"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 29.5.2 <a href="https://timsong-cpp.github.io/cppwp/rand.synopsis">[rand.synopsis]</a>, header <code>&lt;random&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+#include &lt;initializer_list&gt;     // <i>see 17.10.2 <a href="https://timsong-cpp.github.io/cppwp/initializer.list.syn">[initializer.list.syn]</a></i>
+
+namespace std {
+  [&hellip;]
+  namespace ranges {
+    [&hellip;]
+    template&lt;class R, class G, class D&gt;
+      requires output_range&lt;R, invoke_result_t&lt;D&amp;, G&amp;&gt;&gt; &amp;&amp; invocable&lt;D&amp;, G&amp;&gt; &amp;&amp;
+               uniform_random_bit_generator&lt;remove_cvref_t&lt;G&gt;&gt; <ins>&amp;&amp;
+               is_arithmetic_v&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt;</ins>
+    constexpr borrowed_iterator_t&lt;R&gt; generate_random(R&amp;&amp; r, G&amp;&amp; g, D&amp;&amp; d);
+
+    template&lt;class G, class D, output_iterator&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt; O, sentinel_for&lt;O&gt; S&gt;
+      requires invocable&lt;D&amp;, G&amp;&gt; &amp;&amp; uniform_random_bit_generator&lt;remove_cvref_t&lt;G&gt;&gt; <ins>&amp;&amp;
+               is_arithmetic_v&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt;</ins>
+    constexpr O generate_random(O first, S last, G&amp;&amp; g, D&amp;&amp; d);
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 26.12.2 <a href="https://timsong-cpp.github.io/cppwp/alg.rand.generate">[alg.rand.generate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class R, class G, class D&gt;
+  requires output_range&lt;R, invoke_result_t&lt;D&amp;, G&amp;&gt;&gt; &amp;&amp; invocable&lt;D&amp;, G&amp;&gt; &amp;&amp;
+           uniform_random_bit_generator&lt;remove_cvref_t&lt;G&gt;&gt; <ins>&amp;&amp;
+           is_arithmetic_v&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt;</ins>
+constexpr borrowed_iterator_t&lt;R&gt; ranges::generate_random(R&amp;&amp; r, G&amp;&amp; g, D&amp;&amp; d);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>:
+</p>
+[&hellip;]
+</blockquote>
+<pre>
+template&lt;class G, class D, output_iterator&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt; O, sentinel_for&lt;O&gt; S&gt;
+  requires invocable&lt;D&amp;, G&amp;&gt; &amp;&amp; uniform_random_bit_generator&lt;remove_cvref_t&lt;G&gt;&gt; <ins>&amp;&amp;
+           is_arithmetic_v&lt;invoke_result_t&lt;D&amp;, G&amp;&gt;&gt;</ins>
+constexpr O ranges::generate_random(O first, S last, G&amp;&amp; g, D&amp;&amp; d);
+</pre>
+<blockquote>
+<p>
+-8- <i>Effects</i>: Equivalent to:
+</p>
+[&hellip;]
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

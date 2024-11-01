@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4056: The effects of std::swap are under-specified</title>
+<meta property="og:title" content="Issue 4056: The effects of std::swap are under-specified">
+<meta property="og:description" content="C++ library issue. Status: NAD">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4056.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4056"><a href="lwg-closed.html#4056">4056</a>. The effects of <code>std::swap</code> are under-specified</h3>
+<p><b>Section:</b> 22.2.2 <a href="https://timsong-cpp.github.io/cppwp/utility.swap">[utility.swap]</a> <b>Status:</b> <a href="lwg-active.html#NAD">NAD</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2024-02-28 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#utility.swap">issues</a> in [utility.swap].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#NAD">NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Subclause 22.2.2 <a href="https://timsong-cpp.github.io/cppwp/utility.swap">[utility.swap]</a> describes the effect of <code>std::swap</code> as follows:
+</p>
+<blockquote>
+<p>
+<i>Effects</i>: Exchanges values stored in two locations.
+</p>
+</blockquote>
+<p>
+This description is extremely vague. A possible implementation which complies with this wording is:
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+constexpr void swap(T&amp;, T&amp;) noexcept(/* ... */)
+{
+    int __x = 0, __y = 0;
+    int __z = __x;
+    __x = __y;
+    __y = __z;
+}
+</pre>
+</blockquote>
+<p>
+This exchanges values stored in two locations; namely in the locations of two objects with automatic 
+storage duration within <code>swap</code>. Since this has no observable effect and complies, it is also 
+valid to implement <code>swap</code> as follows:
+</p>
+<blockquote>
+<pre>
+template&lt;class T&gt;
+constexpr void swap(T&amp;, T&amp;) noexcept(/* ... */) { }
+</pre>
+</blockquote>
+<p>
+Furthermore, there is implementation divergence. 
+<a href="https://github.com/llvm/llvm-project/blob/26402777ebf4eb3d8f3d5a45943b451c740b2d76/libcxx/include/__utility/swap.h#L42">
+libc++ uses direct-initialization</a> to construct a temporary <code>T</code>, but 
+<a href="https://github.com/gcc-mirror/gcc/blob/80c386cb20d38ebc55f30a79418fabfbed904b87/libstdc%2B%2B-v3/include/bits/move.h#L221">
+libstdc++ uses copy-initialization</a>. For most types, this hopefully calls the same constructor, however, 
+this is not universally true. The standard should specify in more detail what is meant to happen.
+</p>
+
+<p><i>[2024-03-15; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively NAD Editorial after reflector poll.
+</p>
+<p>
+<em>Cpp17MoveConstructible</em> require direct-init and copy-init to be
+semantically equivalent, so the different implementation techniques can
+only be observed by types which fail to meet the function's preconditions.
+</p>
+<p>
+Replace the unusual "stored in two locations" wording
+<a href="https://github.com/cplusplus/draft/pull/6857">editorially</a>.
+</p>
+
+<p><i>[St. Louis 2024-06-24 Status changed: Tentatively NAD &rarr; NAD.]</i></p>
+
+
+
+<p id="res-4056"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.2.2 <a href="https://timsong-cpp.github.io/cppwp/utility.swap">[utility.swap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr void swap(T&amp; a, T&amp; b) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: <code>is_move_constructible_v&lt;T&gt;</code> is <code>true</code> and 
+<code>is_move_assignable_v&lt;T&gt;</code> is <code>true</code>.
+<p/>
+-2-<i>Preconditions</i>: Type <code>T</code> meets the <i>Cpp17MoveConstructible</i> (Table 31) and 
+<i>Cpp17MoveAssignable</i> (Table 33) requirements.
+<p/>
+-3- <i>Effects</i>: <del>Exchanges values stored in two locations.</del><ins>Equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>auto t(std::move(a));
+a = std::move(b);
+b = std::move(t);</ins>
+</pre></blockquote>
+<p>
+-4- <i>Remarks</i>: The exception specification is equivalent to: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

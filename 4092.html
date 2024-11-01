@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4092: The monotonic version of common_iterator::operator== is underconstrained</title>
+<meta property="og:title" content="Issue 4092: The monotonic version of common_iterator::operator== is underconstrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4092.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4092"><a href="lwg-active.html#4092">4092</a>. The monotonic version of <code>common_iterator::operator==</code> is underconstrained</h3>
+<p><b>Section:</b> 24.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a>, 24.5.5.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-01 <b>Last modified:</b> 2024-07-21</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#common.iterator">active issues</a> in [common.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#common.iterator">issues</a> in [common.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>common_iterator</code> has the following equality operator:
+</p>
+<blockquote><pre>
+template&lt;class I2, sentinel_for&lt;I&gt; S2&gt;
+    requires sentinel_for&lt;S, I2&gt;
+  friend constexpr bool operator==(
+    const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+</pre></blockquote>
+<p>
+which is quite useful when wrapping a C++20 <code>input_iterator</code> that does not model <code>equality_comparable</code> 
+so that the quality operator required by the <i>Cpp17InputIterator</i> can still be synthesized.
+<p/>
+However, the function signature does not check the correlation between <code>I2</code> and <code>I</code>, 
+which allows a <code>common_iterator</code> wrapping two completely unrelated iterators to validly compare 
+(<a href="https://godbolt.org/z/Erce8dETT">demo</a>):
+</p>
+<blockquote><pre>
+common_iterator&lt;string::iterator, unreachable_sentinel_t&gt; i1;
+common_iterator&lt;list&lt;int&gt;::iterator, unreachable_sentinel_t&gt; i2;
+i1 == i2; // <span style="color:red;font-weight:bolder">unfortunately compile</span>
+</pre></blockquote>
+<p>
+The proposed resolution requires <code>common_with&lt;I, I2&gt;</code> to be satisfied to enhance semantics, 
+which is also consistent with the signature of <code>counted_iterator::operator==</code>.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+Seems unlikely to be a problem in practice.
+Proposed resolution would make the two <code class='backtick'>operator==</code> overloads ambiguous.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 24.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; &amp;&amp; copyable&lt;I&gt;)
+  class common_iterator {
+  public:
+    [&hellip;]
+    template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+      requires sentinel_for&lt;S, I2&gt;
+    friend constexpr bool operator==(
+      const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.5.5.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+  requires sentinel_for&lt;S, I2&gt;
+friend constexpr bool operator==(
+  const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions</i>: <code>x.v_.valueless_by_exception()</code> and <code>y.v_.valueless_by_exception()</code> 
+are each <code>false</code>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2024-07-09; Hewill provides improved wording]</i></p>
+
+
+
+<p id="res-4092"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 24.5.5.1 <a href="https://timsong-cpp.github.io/cppwp/common.iterator">[common.iterator]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+    requires (!same_as&lt;I, S&gt; &amp;&amp; copyable&lt;I&gt;)
+  class common_iterator {
+  public:
+    [&hellip;]
+    template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+      requires sentinel_for&lt;S, I2&gt;
+    friend constexpr bool operator==(
+      const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+    template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+      requires sentinel_for&lt;S, I2&gt; &amp;&amp; equality_comparable_with&lt;I, I2&gt;
+    friend constexpr bool operator==(
+      const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 24.5.5.6 <a href="https://timsong-cpp.github.io/cppwp/common.iter.cmp">[common.iter.cmp]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+  requires sentinel_for&lt;S, I2&gt;
+friend constexpr bool operator==(
+  const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-1- <i>Preconditions</i>: <code>x.v_.valueless_by_exception()</code> and <code>y.v_.valueless_by_exception()</code> 
+are each <code>false</code>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;<del>class</del><ins>common_with&lt;I&gt;</ins> I2, sentinel_for&lt;I&gt; S2&gt;
+  requires sentinel_for&lt;S, I2&gt; &amp;&amp; equality_comparable_with&lt;I, I2&gt;
+friend constexpr bool operator==(
+  const common_iterator&amp; x, const common_iterator&lt;I2, S2&gt;&amp; y);
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions</i>: <code>x.v_.valueless_by_exception()</code> and <code>y.v_.valueless_by_exception()</code> 
+are each <code>false</code>.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

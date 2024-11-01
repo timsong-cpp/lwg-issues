@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4140: Useless default constructors for bit reference types</title>
+<meta property="og:title" content="Issue 4140: Useless default constructors for bit reference types">
+<meta property="og:description" content="C++ library issue. Status: Tentatively Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4140.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4140"><a href="lwg-active.html#4140">4140</a>. Useless default constructors for bit reference types</h3>
+<p><b>Section:</b> 22.9.2.1 <a href="https://timsong-cpp.github.io/cppwp/template.bitset.general">[template.bitset.general]</a>, 23.3.12.1 <a href="https://timsong-cpp.github.io/cppwp/vector.bool.pspc">[vector.bool.pspc]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-08-21 <b>Last modified:</b> 2024-09-18</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The standard shows a private default constructor for
+<code>bitset&lt;N&gt;::reference</code>
+but does not define its semantics, and nothing in the spec refers to it.
+It was present in C++98, then in C++11 it got <code class='backtick'>noexcept</code> added to it,
+and in C++23 it was made <code class='backtick'>constexpr</code> by <a href="https://wg21.link/P2417R2">P2417R2</a>. That's quite
+a lot of churn for an unusuable member function with no definition.
+</p>
+<p>
+In libstdc++ it's declared as private, but never defined.
+In libc++ it doesn't exist at all.
+In MSVC it is private and defined (and presumably used somewhere).
+There's no reason for the standard to declare it.
+Implementers can define it as private if they want to, or not.
+The spec doesn't need to say anything for that to be true.
+We can also remove the friend declaration, because implementers know how to
+do that too.
+</p>
+<p>
+I suspect it was added as private originally so that it didn't look like
+<code class='backtick'>reference</code> should have an implicitly-defined default constructor,
+which would have been the case in previous standards with no other
+constructors declared.
+However, C++20 added <code>reference(const reference&amp;) = default;</code>
+which suppresses the implicit default constructor, so declaring the
+default constructor as private is now unnecessary.
+</p>
+<p>
+Jiang An pointed out in an editorial pull request that
+<code>vector&lt;bool, Alloc&gt;::reference</code>
+has exactly the same issue.
+</p>
+
+<p><i>[2024-09-18; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+
+
+<p id="res-4140"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.9.2.1 <a href="https://timsong-cpp.github.io/cppwp/template.bitset.general">[template.bitset.general]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;size_t N&gt; class bitset {
+  public:
+    <i>// bit reference</i>
+    class reference {
+      <del>friend class bitset;</del>
+      <del>constexpr reference() noexcept;</del>
+
+    public:
+      constexpr reference(const reference&amp;) = default;
+      constexpr ~reference();
+      constexpr reference&amp; operator=(bool x) noexcept;            <i>// for</i> b[i] = x;
+      constexpr reference&amp; operator=(const reference&amp;) noexcept;  <i>// for</i> b[i] = b[j];
+      constexpr bool operator~() const noexcept;                  <i>// flips the bit</i>
+      constexpr operator bool() const noexcept;                   <i>// for</i> x = b[i];
+      constexpr reference&amp; flip() noexcept;                       <i>// for</i> b[i].flip();
+    };
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 23.3.12.1 <a href="https://timsong-cpp.github.io/cppwp/vector.bool.pspc">[vector.bool.pspc]</a>, <code>vector&lt;bool, Allocator&gt;</code> synopsis, as indicated:</p>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Allocator&gt;
+  class vector&lt;bool, Allocator&gt; {
+  public:
+    <i>// types</i>
+    [&hellip;]
+    <i>// bit reference</i>
+    class reference {
+      <del>friend class vector;</del>
+      <del>constexpr reference() noexcept;</del>
+
+    public:
+      constexpr reference(const reference&amp;) = default;
+      constexpr ~reference();
+      constexpr operator bool() const noexcept;
+      constexpr reference&amp; operator=(bool x) noexcept;
+      constexpr reference&amp; operator=(const reference&amp; x) noexcept;
+      constexpr const reference&amp; operator=(bool x) const noexcept;
+      constexpr void flip() noexcept;   <i>// flips the bit</i>
+    };
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

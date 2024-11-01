@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3481: viewable_range mishandles lvalue move-only views</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3481: viewable_range mishandles lvalue move-only views">
+<meta property="og:description" content="C++ library issue. Status: C++23">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3481.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,30 +61,30 @@
 </head>
 <body>
 <hr>
-<h3><a name="3481" href="lwg-defects.html#3481">3481.</a> <tt>viewable_range</tt> mishandles lvalue move-only views</h3>
-<p><b>Section:</b> 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
- <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-29 <b>Last modified:</b> 2023-11-22 15:47:43 UTC</p>
+<h3 id="3481"><a href="lwg-defects.html#3481">3481</a>. <code>viewable_range</code> mishandles lvalue move-only views</h3>
+<p><b>Section:</b> 25.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
+ <b>Submitter:</b> Casey Carter <b>Opened:</b> 2020-08-29 <b>Last modified:</b> 2023-11-22</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.refinements">issues</a> in [range.refinements].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++23">C++23</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The <tt>viewable_range concept</tt> (26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a>) and the <tt>views:all</tt> 
-range adaptor (26.7.6 <a href="https://timsong-cpp.github.io/cppwp/range.all">[range.all]</a>) are duals: <tt>viewable_range</tt> is intended to admit 
-exactly types <tt>T</tt> for which <tt>views::all(declval&lt;T&gt;())</tt> is well-formed. (Recall 
-that <tt>views::all(<i>meow</i>)</tt> is a prvalue whose type models <tt>view</tt> when it is 
+The <code>viewable_range concept</code> (25.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a>) and the <code>views:all</code> 
+range adaptor (25.7.6 <a href="https://timsong-cpp.github.io/cppwp/range.all">[range.all]</a>) are duals: <code>viewable_range</code> is intended to admit 
+exactly types <code>T</code> for which <code>views::all(declval&lt;T&gt;())</code> is well-formed. (Recall 
+that <code>views::all(<i>meow</i>)</code> is a prvalue whose type models <code>view</code> when it is 
 well-formed.) Before the addition of move-only view types to the design, this relationship was in 
-place (modulo an incredibly pathological case: a <tt>volatile</tt> value of a view type with 
-<tt>volatile</tt>-qualified <tt>begin</tt> and <tt>end</tt> models <tt>viewable_range</tt> but is 
-rejected by <tt>views::all</tt> unless it also has a <tt>volatile</tt>-qualified copy constructor 
+place (modulo an incredibly pathological case: a <code>volatile</code> value of a view type with 
+<code>volatile</code>-qualified <code>begin</code> and <code>end</code> models <code>viewable_range</code> but is 
+rejected by <code>views::all</code> unless it also has a <code>volatile</code>-qualified copy constructor 
 and copy assignment operator). Adding move-only views to the design punches a bigger hole, however: 
-<tt>viewable_range</tt> admits lvalues of move-only view types for which <tt>views::all</tt> is 
+<code>viewable_range</code> admits lvalues of move-only view types for which <code>views::all</code> is 
 ill-formed because these lvalues cannot be decay-copied.
 <p/>
-It behooves us to restore the correspondence between <tt>viewable_range</tt> and <tt>views::all</tt> 
-so that instantiations of components constrained with <tt>viewable_range</tt> (which often appears 
-indirectly as <tt>views::all_t&lt;R&gt;</tt> in deduction guides) continue to be well-formed when 
+It behooves us to restore the correspondence between <code>viewable_range</code> and <code>views::all</code> 
+so that instantiations of components constrained with <code>viewable_range</code> (which often appears 
+indirectly as <code>views::all_t&lt;R&gt;</code> in deduction guides) continue to be well-formed when 
 the constraints are satisfied.
 </p>
 
@@ -93,12 +110,12 @@ This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
-<li><p>Modify 26.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
+<li><p>Modify 25.4.5 <a href="https://timsong-cpp.github.io/cppwp/range.refinements">[range.refinements]</a> as indicated:</p>
 
 <blockquote>
 <p>
--5- The <tt>viewable_range</tt> concept specifies the requirements of a <tt>range</tt> 
-type that can be converted to a <tt>view</tt> safely.
+-5- The <code>viewable_range</code> concept specifies the requirements of a <code>range</code> 
+type that can be converted to a <code>view</code> safely.
 </p>
 <pre>
 template&lt;class T&gt;

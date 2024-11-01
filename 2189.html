@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2189: Throwing swap breaks unordered containers' state</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2189: Throwing swap breaks unordered containers' state">
+<meta property="og:description" content="C++ library issue. Status: Open">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2189.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,29 +61,29 @@
 </head>
 <body>
 <hr>
-<h3><a name="2189" href="lwg-active.html#2189">2189.</a> Throwing <tt>swap</tt> breaks unordered containers' state</h3>
-<p><b>Section:</b> 24.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/unord.req.except">[unord.req.except]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2012-09-23 <b>Last modified:</b> 2019-07-22 17:12:46 UTC</p>
+<h3 id="2189"><a href="lwg-active.html#2189">2189</a>. Throwing <code>swap</code> breaks unordered containers' state</h3>
+<p><b>Section:</b> 23.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/unord.req.except">[unord.req.except]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Alisdair Meredith <b>Opened:</b> 2012-09-23 <b>Last modified:</b> 2019-07-22</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
 <p><b>Discussion:</b></p>
 
 <p>
-The hash functor and key-comparison functor of unordered containers are allowed to throw on <tt>swap</tt>.
+The hash functor and key-comparison functor of unordered containers are allowed to throw on <code>swap</code>.
 </p>
 <p>
-24.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/unord.req.except">[unord.req.except]</a>p3 "For unordered associative containers, no <tt>swap</tt> function throws
+23.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/unord.req.except">[unord.req.except]</a>p3 "For unordered associative containers, no <code>swap</code> function throws
 an exception unless that exception is thrown by the swap of the container's Hash or Pred object (if any)."
 </p>
 <p>
 In such a case we must offer the basic exception safety guarantee, where both objects are left in valid
 but unspecified states, and no resources are leaked.  This yields a corrupt, un-usable container if the
-first <tt>swap</tt> succeeds, but the second fails by throwing, as the functors form a matched pair.
+first <code>swap</code> succeeds, but the second fails by throwing, as the functors form a matched pair.
 </p>
 <p>
 So our basic scenario is first, swap the allocators if the allocators propagate on swap, according to
-<tt>allocator_traits</tt>.  Next we swap the pointers to our internal hash table data structures, so that
+<code>allocator_traits</code>.  Next we swap the pointers to our internal hash table data structures, so that
 they match the allocators that allocated them.  (Typically, this operation cannot throw).  Now our containers
 are back in a safely destructible state if an exception follows.
 </p>
@@ -87,14 +104,14 @@ elements.
 1. A colleague pointed out that the solution for this is to dynamically allocate the two functors, and then
 we need only swap pointers, which is not a throwing operation.  And if we don't want to allocate on default
 construction (a common QoI request), we might consider moving to a dynamically allocated functors whenever
-<tt>swap</tt> is called, or on first insertion.  Of course, allocating memory in <tt>swap</tt> is a whole
+<code>swap</code> is called, or on first insertion.  Of course, allocating memory in <code>swap</code> is a whole
 new can of worms, but this does not really sound like the design we had intended.
 </p>
 
 <p>
 2. The simplest option is to say that we do not support hasher or equality functors that throw on ADL
-<tt>swap</tt>.  Note that the requirement is simply to not throw, rather than to be explicitly
-marked as <tt>noexcept</tt>.  Throwing functors are allowed, so long as we never use values that
+<code>swap</code>.  Note that the requirement is simply to not throw, rather than to be explicitly
+marked as <code>noexcept</code>.  Throwing functors are allowed, so long as we never use values that
 would actually manifest a throw when used in an unordered container.
 </p>
 
@@ -110,7 +127,7 @@ corresponding propagation trait is true.). Of course, the question
 becomes: which functor is allowed to throw and which one is not?
 </p>
 <p>
-4. Require that any successful functor <tt>swap</tt> be reliably reversible.  
+4. Require that any successful functor <code>swap</code> be reliably reversible.  
 This is very inventive.  I know of no other place in the standard where 
 such a requirement is stated, though I have occasionally wanted such a 
 guarantee.

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4168: std::start_lifetime_as inadvertently has undefined behavior due to use of std::bit_cast</title>
+<meta property="og:title" content="Issue 4168: std::start_lifetime_as inadvertently has undefined behavior due to use of std::bit_cast">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4168.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4168"><a href="lwg-active.html#4168">4168</a>. <code class='backtick'>std::start_lifetime_as</code> inadvertently has undefined behavior due to use of <code class='backtick'>std::bit_cast</code></h3>
+<p><b>Section:</b> 20.2.6 <a href="https://timsong-cpp.github.io/cppwp/obj.lifetime">[obj.lifetime]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2024-10-23 <b>Last modified:</b> 2024-10-31</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the motivating example from 
+<a href="https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2590r2.pdf">P2590R2: Explicit lifetime management</a>:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<pre>
+struct X { int a, b; };
+
+X* make_x() {
+  X* p = std::start_lifetime_as&lt;X&gt;(myMalloc(sizeof(struct X));
+  p-&gt;a = 1;
+  p-&gt;b = 2;
+  return p;
+}
+</pre>
+</blockquote>
+<p>
+Assuming that <code class='backtick'>myMalloc</code> does not initialize the bytes of storage, this example has undefined behavior because 
+the value of the resulting object of trivially copyable type <code class='backtick'>X</code> is determined as if by calling 
+<code>std::bit_cast&lt;X&gt;(a)</code> for the implicitly-created object <code class='backtick'>a</code> of type <code class='backtick'>X</code> 
+(20.2.6 <a href="https://timsong-cpp.github.io/cppwp/obj.lifetime">[obj.lifetime]</a> paragraph 3), whose object representation is filled with indeterminate bytes 
+obtained from <code class='backtick'>myMalloc</code>. Such a call to <code class='backtick'>std::bit_cast</code> has undefined behavior because <code class='backtick'>std::bit_cast</code> 
+does not tolerate the creation of an <code class='backtick'>int</code> where bits in the value representation are indeterminate 
+(22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a> paragraph 2), and such an <code class='backtick'>int</code> is the smallest enclosing object of some of the 
+indeterminate bits.
+</p>
+
+
+<p id="res-4168"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4993">N4993</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.2.6 <a href="https://timsong-cpp.github.io/cppwp/obj.lifetime">[obj.lifetime]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The proposed resolution does not alter the behavior for erroneous bits. Therefore, 
+a call to <code>std::start_lifetime_as</code> may have erroneous behavior when used on storage with indeterminate 
+bits, despite not accessing that storage. An alternative resolution would be to produce objects whose value 
+is erroneous.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  T* start_lifetime_as(void* p) noexcept;
+template&lt;class T&gt;
+  const T* start_lifetime_as(const void* p) noexcept;
+template&lt;class T&gt;
+  volatile T* start_lifetime_as(volatile void* p) noexcept;
+template&lt;class T&gt;
+  const volatile T* start_lifetime_as(const volatile void* p) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: [&hellip;]
+<p/>
+-2- <i>Preconditions</i>: [&hellip;]
+<p/>
+-3- <i>Effects</i>: Implicitly creates objects (6.7.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>) within the denoted region 
+consisting of an object <code><i>a</i></code> of type <code class='backtick'>T</code> whose address is <code class='backtick'>p</code>, and objects nested within 
+<code><i>a</i></code>, as follows: The object representation of <code><i>a</i></code> is the contents of the 
+storage prior to the call to <code class='backtick'>start_lifetime_as</code>. The value of each created object <code><i>o</i></code> 
+of trivially copyable type (6.8.1 <a href="https://timsong-cpp.github.io/cppwp/basic.types.general">[basic.types.general]</a>) <code class='backtick'>U</code> is determined in the same manner 
+as for a call to <code>bit_cast&lt;U&gt;(E)</code> (22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a>), where <code class='backtick'>E</code> is an lvalue of 
+type <code class='backtick'>U</code> denoting <code><i>o</i></code>, except that the storage is not accessed <ins>and that 
+for each indeterminate bit <code><i>b</i></code> in the value representation of the result, the smallest 
+object containing that bit <code><i>b</i></code> has indeterminate value where the behavior would otherwise 
+be undefined</ins>. The value of any other created object is unspecified.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+</body>
+</html>

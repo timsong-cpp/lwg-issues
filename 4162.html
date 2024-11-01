@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4162: Worst time complexity of non-parallel versions of nth_element is underspecified</title>
+<meta property="og:title" content="Issue 4162: Worst time complexity of non-parallel versions of nth_element is underspecified">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4162.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4162"><a href="lwg-active.html#4162">4162</a>. Worst time complexity of non-parallel versions of <code>nth_element</code> is underspecified</h3>
+<p><b>Section:</b> 26.8.3 <a href="https://timsong-cpp.github.io/cppwp/alg.nth.element">[alg.nth.element]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-09-29 <b>Last modified:</b> 2024-10-09</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#alg.nth.element">issues</a> in [alg.nth.element].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, 26.8.3 <a href="https://timsong-cpp.github.io/cppwp/alg.nth.element">[alg.nth.element]</a> doesn't specify the worst time complexity for <code>nth_element</code>
+without <code>ExecutionPolicy</code> parameter, which seemingly allows a complexity that is
+<code>&#x1d4aa;(<i>N</i><sup>2</sup>)</code> or even worse. Presumably we should make the worst time complexity
+consistent between parallel and non-parallel versions. For <code>sort</code>, LWG <a href="713" title="sort() complexity is too lax (Status: CD1)">713</a> already
+strengthened complexity requirements.
+</p>
+
+<p><i>[2024-10-09; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"This seems to require changes to implementations for them to meet this
+complexity guarantee."
+</p>
+
+
+
+<p id="res-4162"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4988">N4988</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.8.3 <a href="https://timsong-cpp.github.io/cppwp/alg.nth.element">[alg.nth.element]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class RandomAccessIterator&gt;
+  constexpr void nth_element(RandomAccessIterator first, RandomAccessIterator nth,
+                             RandomAccessIterator last);
+template&lt;class ExecutionPolicy, class RandomAccessIterator&gt;
+  void nth_element(ExecutionPolicy&amp;&amp; exec,
+                   RandomAccessIterator first, RandomAccessIterator nth,
+                   RandomAccessIterator last);
+template&lt;class RandomAccessIterator, class Compare&gt;
+  constexpr void nth_element(RandomAccessIterator first, RandomAccessIterator nth,
+                             RandomAccessIterator last, Compare comp);
+template&lt;class ExecutionPolicy, class RandomAccessIterator, class Compare&gt;
+  void nth_element(ExecutionPolicy&amp;&amp; exec,
+                   RandomAccessIterator first, RandomAccessIterator nth,
+                   RandomAccessIterator last, Compare comp);
+template&lt;random_access_iterator I, sentinel_for&lt;I&gt; S, class Comp = ranges::less,
+         class Proj = identity&gt;
+  requires sortable&lt;I, Comp, Proj&gt;
+  constexpr I
+    ranges::nth_element(I first, I nth, S last, Comp comp = {}, Proj proj = {});
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-5- <i>Complexity</i>: <del>For the overloads with no <code>ExecutionPolicy</code>, linear on average.
+For the overloads with an <code>ExecutionPolicy</code>,</del> <code>&#x1d4aa;(<i>N</i>)</code> applications
+of the predicate<del>,</del> and <code>&#x1d4aa;(<i>N</i> log <i>N</i>)</code> swaps, where <code><i>N</i> =
+last - first</code>. <ins>For the overloads with no <code>ExecutionPolicy</code>, <code>&#x1d4aa;(<i>N</i>)</code>
+on average.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

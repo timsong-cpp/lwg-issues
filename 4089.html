@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4089: concat_view::iterator's iter_swap is overconstrained</title>
+<meta property="og:title" content="Issue 4089: concat_view::iterator's iter_swap is overconstrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4089.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4089"><a href="lwg-active.html#4089">4089</a>. <code>concat_view::<i>iterator</i></code>'s <code>iter_swap</code> is overconstrained</h3>
+<p><b>Section:</b> 25.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.concat.iterator">[range.concat.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-04-30 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.concat.iterator">active issues</a> in [range.concat.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.concat.iterator">issues</a> in [range.concat.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+When the underlying iterator of two <code>concat_view::<i>iterator</i></code>s are of different types,
+their <code>iter_swap</code> will dispatch <code>ranges::swap</code> to swap elements, which is reflected 
+in its constraints of <code>swappable_with&lt;iter_reference_t&lt;<i>iterator</i>&gt;,
+iter_reference_t&lt;<i>iterator</i>&gt;&gt;</code>.
+<p/>
+However, when the underlying iterators are all of the same type, <code>ranges::swap</code> will never 
+be invoked, making checking for <code>swappable_with</code> unnecessary in this case.
+<p/>
+This results in the current wording rejecting the following:
+</p>
+<blockquote>
+<pre>
+struct I {
+  using value_type = int;
+  using difference_type = int;
+  std::reference_wrapper&lt;int&gt; operator*() const;
+  I&amp; operator++();
+  void operator++(int);
+  bool operator==(const I&amp;) const;
+  friend void iter_swap(const I&amp;, const I&amp;); // custom iter_swap
+};
+
+static_assert(std::indirectly_swappable&lt;I&gt;);
+
+int main() {
+  std::ranges::subrange&lt;I, I&gt; s1, s2;
+  std::ranges::swap_ranges(s1, s2);
+  std::ranges::concat_view c1{s1}, c2{s2};
+  std::ranges::swap_ranges(c1, c2); // <span style="color:red;font-weight:bolder">ill-formed</span>
+}
+</pre>
+</blockquote>
+<p>
+Because <code>reference_wrapper</code> does not satisfy <code>swappable_with</code>, <code>concat_view::<i>iterator</i></code>
+does not have a valid <code>iter_swap</code>, leading to the constraints of <code>swap_ranges</code> being unsatisfied.
+<p/>
+This doesn't seem like it should be, and I think providing a simplified homogeneous <code>iter_swap</code> specialization
+for <code>concat_view::<i>iterator</i></code> is reasonable.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+An extreme corner case, probably not worth caring about.
+</p>
+
+
+
+<p id="res-4089"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.concat.iterator">[range.concat.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range... Views&gt;
+    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) &amp;&amp;
+              <i>concatable</i>&lt;Views...&gt;
+  template&lt;bool Const&gt;
+  class concat_view&lt;Views...&gt;::<i>iterator</i> {
+
+  public:
+    using iterator_category = <i>see below</i>;                                // <i>not always present.</i>
+    using iterator_concept = <i>see below</i>;
+    using value_type = <i>concat-value-t</i>&lt;<i>maybe-const</i>&lt;Const, Views&gt;...&gt;;
+    using difference_type = common_type_t&lt;range_difference_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;...&gt;;
+
+  private:
+    <ins>static constexpr bool <i>concat-is-homogeneous</i> = <i>see below</i>;                // <i>exposition only</i></ins>
+    using <i>base-iter</i> =                                                       // <i>exposition only</i>
+      variant&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;...&gt;;
+    
+    [&hellip;]
+
+    <ins>friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) noexcept(<i>see below</i>)
+      requires <i>concat-is-homogeneous</i> &amp;&amp; 
+               indirectly_swappable&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views...[0]&gt;&gt;&gt;;</ins>
+    friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) noexcept(<i>see below</i>)
+      requires <del><i>see below</i></del><ins>(!<i>concat-is-homogeneous</i>) &amp;&amp;
+               swappable_with&lt;iter_reference_t&lt;<i>iterator</i>&gt;, iter_reference_t&lt;<i>iterator</i>&gt;&gt; &amp;&amp;
+               (... &amp;&amp; indirectly_swappable&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;&gt;)</ins>;
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+<p>
+<ins>-?- <code><i>concat-is-homogeneous</i></code> is <code>true</code> if and only if the pack of types
+<code>iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;...</code> are all the same.</ins>
+<p/>
+-1- <code>iterator::<i>iterator_concept</i></code> is defined as follows:
+<p/>
+[&hellip;]
+</p>
+<pre>
+<ins>friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) noexcept(<i>see below</i>)
+  requires <i>concat-is-homogeneous</i> &amp;&amp;
+           indirectly_swappable&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views...[0]&gt;&gt;&gt;;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Preconditions</i>: <code>x.<i>it_</i>.valueless_by_exception()</code> and
+<code>y.<i>it_</i>.valueless_by_exception()</code> are each <code>false</code>.</ins>
+<p/>
+<ins>-?- <i>Effects</i>: Equivalent to:</ins>
+</p>
+<blockquote><pre>
+<ins>std::visit(ranges::iter_swap, x.<i>it_</i>, y.<i>it_</i>);</ins>
+</pre></blockquote>
+<p>
+<ins>-?- <i>Remarks</i>: The exception specification is equivalent to</ins>
+</p>
+<blockquote><pre>
+<ins>noexcept(ranges::iter_swap(std::get&lt;0&gt;(x.<i>it_</i>), std::get&lt;0&gt;(y.<i>it_</i>)))</ins>
+</pre></blockquote>
+</blockquote>
+<pre>
+friend constexpr void iter_swap(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y) noexcept(<i>see below</i>)
+  requires <del><i>see below</i></del><ins>(!<i>concat-is-homogeneous</i>) &amp;&amp;
+           swappable_with&lt;iter_reference_t&lt;<i>iterator</i>&gt;, iter_reference_t&lt;<i>iterator</i>&gt;&gt; &amp;&amp;
+           (... &amp;&amp; indirectly_swappable&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;&gt;)</ins>;
+</pre>
+<blockquote>
+<p>
+-42- <i>Preconditions</i>: <code>x.<i>it_</i>.valueless_by_exception()</code> and
+<code>y.<i>it_</i>.valueless_by_exception()</code> are each <code>false</code>.
+<p/>
+-43- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote>
+<pre>
+std::visit([&amp;](const auto&amp; it1, const auto&amp; it2) {
+    if constexpr (is_same_v&lt;decltype(it1), decltype(it2)&gt;) {
+      ranges::iter_swap(it1, it2);
+    } else {
+      ranges::swap(*x, *y);
+    }
+  },
+  x.<i>it_</i>, y.<i>it_</i>);
+</pre>
+</blockquote>
+<p>
+-44- <i>Remarks</i>: The exception specification is equivalent to
+</p>
+<blockquote><pre>
+(noexcept(ranges::swap(*x, *y)) &amp;&amp; ... &amp;&amp; noexcept(ranges::iter_swap(its, its)))
+</pre></blockquote>
+<p>
+where <code>its</code> is a pack of lvalues of type <code>const iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;</code> 
+respectively.
+</p>
+<p>
+<del>The expression in the <i>requires-clause</i> is equivalent to</del>
+</p>
+<blockquote><pre>
+<del>swappable_with&lt;iter_reference_t&lt;<i>iterator</i>&gt;, iter_reference_t&lt;<i>iterator</i>&gt;&gt; &amp;&amp;
+(... &amp;&amp; indirectly_swappable&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;&gt;)</del>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

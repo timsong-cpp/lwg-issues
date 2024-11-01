@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2929: basic_string misuses "Effects: Equivalent to"</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2929: basic_string misuses &quot;Effects: Equivalent to&quot;">
+<meta property="og:description" content="C++ library issue. Status: Resolved">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2929.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,47 +61,47 @@
 </head>
 <body>
 <hr>
-<h3><a name="2929" href="lwg-defects.html#2929">2929.</a> <tt>basic_string</tt> misuses "<i>Effects:</i> Equivalent to"</h3>
-<p><b>Section:</b> 23.4.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+<h3 id="2929"><a href="lwg-defects.html#2929">2929</a>. <code>basic_string</code> misuses "<i>Effects:</i> Equivalent to"</h3>
+<p><b>Section:</b> 27.4.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2017-02-03 <b>Last modified:</b> 2020-09-06</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#string.assign">issues</a> in [string.assign].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Resolved">Resolved</a> status.</p>
 <p><b>Discussion:</b></p>
-<p><tt>basic_string::assign(size_type n, charT c);</tt> says:</p>
+<p><code>basic_string::assign(size_type n, charT c);</code> says:</p>
 <blockquote><p>
-<i>Effects:</i> Equivalent to <tt>assign(basic_string(n, c))</tt>.
+<i>Effects:</i> Equivalent to <code>assign(basic_string(n, c))</code>.
 </p></blockquote>
 <p>
-This requires that a new <tt>basic_string</tt> is constructed, using a
+This requires that a new <code>basic_string</code> is constructed, using a
 default-constructed allocator, potentially allocating memory, and then
-that new string is copy-assigned to <tt>*this</tt>, potentially propagating the
-allocator. This must be done even if <tt>this-&gt;capacity() &gt; n</tt>,
+that new string is copy-assigned to <code>*this</code>, potentially propagating the
+allocator. This must be done even if <code>this-&gt;capacity() &gt; n</code>,
 because memory allocation and allocator propagation are observable side
 effects. If the allocator doesn't propagate and isn't equal to
-<tt>this-&gt;get_allocator()</tt> then a second allocation may be required. This
+<code>this-&gt;get_allocator()</code> then a second allocation may be required. This
 can't be right; it won't even compile if the allocator isn't default
 constructible.
 <p/>
-<tt>basic_string::assign(InputIterator first, InputIterator last)</tt> has a
+<code>basic_string::assign(InputIterator first, InputIterator last)</code> has a
 similar problem, even if the iterators are random access and
-<tt>this-&gt;capacity() &gt; distance(first, last)</tt>.
+<code>this-&gt;capacity() &gt; distance(first, last)</code>.
 <p/>
-<tt>basic_string::assign(std::initializer_list&lt;charT&gt;</tt> doesn't say
+<code>basic_string::assign(std::initializer_list&lt;charT&gt;</code> doesn't say
 "Equivalent to" so maybe it's OK to not allocate anything if the list
 fits in the existing capacity.
 <p/>
-<tt>basic_string::append(size_type, charT)</tt> and
-<tt>basic_string::append(InputIterator, InputIterator)</tt> have the same
+<code>basic_string::append(size_type, charT)</code> and
+<code>basic_string::append(InputIterator, InputIterator)</code> have the same
 problem, although they don't propagate the allocator, but still
 require at least one, maybe two allocations.
 <p/>
 A partial fix would be to ensure all the temporaries are constructed
-with <tt>get_allocator()</tt> so that they don't require default constructible
+with <code>get_allocator()</code> so that they don't require default constructible
 allocators, and so propagation won't alter allocators. The problem of
 observable side effects is still present (the temporary might need to
-allocate memory, even if <tt>this-&gt;capacity()</tt> is large) but arguably it's
+allocate memory, even if <code>this-&gt;capacity()</code> is large) but arguably it's
 unspecified when construction allocates, to allow for small-string
 optimisations.
 </p>
@@ -96,7 +113,7 @@ optimisations.
 <p><i>[2017-03-07, LWG reflector discussion]</i></p>
 
 <p>
-Thomas and Jonathan remark that LWG <a href="2788">2788</a> fixed most cases except
+Thomas and Jonathan remark that LWG <a href="2788" title="basic_string range mutators unintentionally require a default constructible allocator (Status: C++17)">2788</a> fixed most cases except
 the allocator respectance and provide wording for this:
 </p>
 
@@ -108,7 +125,7 @@ the allocator respectance and provide wording for this:
 This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
 </p>
 <ol>
-<li><p>Change 23.4.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
+<li><p>Change 27.4.3.7.3 <a href="https://timsong-cpp.github.io/cppwp/string.assign">[string.assign]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -116,7 +133,7 @@ basic_string&amp; assign(size_type n, charT c);
 </pre>
 <blockquote>
 <p>
--22- <i>Effects:</i> Equivalent to <tt>assign(basic_string(n, c<ins>, get_allocator()</ins>))</tt>.
+-22- <i>Effects:</i> Equivalent to <code>assign(basic_string(n, c<ins>, get_allocator()</ins>))</code>.
 </p>
 </blockquote>
 </blockquote>

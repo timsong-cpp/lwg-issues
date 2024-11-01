@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4087: Standard exception messages have unspecified encoding</title>
+<meta property="og:title" content="Issue 4087: Standard exception messages have unspecified encoding">
+<meta property="og:description" content="C++ library issue. Status: SG16">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4087.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4087"><a href="lwg-active.html#4087">4087</a>. Standard exception messages have unspecified encoding</h3>
+<p><b>Section:</b> 17.9.3 <a href="https://timsong-cpp.github.io/cppwp/exception">[exception]</a> <b>Status:</b> <a href="lwg-active.html#SG16">SG16</a>
+ <b>Submitter:</b> Victor Zverovich <b>Opened:</b> 2024-04-28 <b>Last modified:</b> 2024-05-08</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#exception">issues</a> in [exception].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#SG16">SG16</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The null-terminated multibyte string returned by the <code>what</code> method of <code>std::exception</code> 
+and its subclasses in the standard has an unspecified encoding. The closest thing in the specification 
+is the "suitable for conversion and display as a <code>wstring</code>" part in <i>Remarks</i> 
+(17.9.3 <a href="https://timsong-cpp.github.io/cppwp/exception">[exception]</a> p6) but it is too vague to be useful because anything can be converted to 
+<code>wstring</code> in one way or another:
+</p>
+<blockquote>
+<pre>
+virtual const char* what() const noexcept;
+</pre>
+<blockquote>
+<p>
+<i>Returns</i>: An implementation-defined <span style="font-variant:small-caps">ntbs</span>.
+<p/>
+<i>Remarks</i>: The message may be a null-terminated multibyte string (16.3.3.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/multibyte.strings">[multibyte.strings]</a>), 
+suitable for conversion and display as a <code>wstring</code> (27.4 <a href="https://timsong-cpp.github.io/cppwp/string.classes">[string.classes]</a>, 
+28.3.4.2.5 <a href="https://timsong-cpp.github.io/cppwp/locale.codecvt">[locale.codecvt]</a>). The return value remains valid until the exception object from which it 
+is obtained is destroyed or a non-<code>const</code> member function of the exception object is called.
+</p>
+</blockquote>
+</blockquote>
+<p>
+As a result, it is impossible to portably use the exception message, e.g. print it. Since exception 
+messages are commonly combined with string literals and are often constructed from string literals, 
+at the very least the standard should say that the message is compatible with them, i.e. that it is 
+in the ordinary literal encoding or its subset.
+<p/>
+To give a specific example of this problem, consider the following code compiled on Windows with 
+Microsoft Visual C++, the ordinary literal encoding of UTF-8 and the system locale set to Belarusian 
+(the language of the text in this example):
+</p>
+<blockquote>
+<pre>
+std::uintmax_t size = 0;
+try {
+  size = std::filesystem::file_size(L"Шчучыншчына");
+} catch (const std::exception&amp; e) {
+  std::print("Памылка: {}", e.what());
+}
+</pre>
+</blockquote>
+<p>
+Since both <code>std::filesystem::path</code> and <code>std::print</code> support Unicode one would expect this 
+to work and, when run, print a readable error message if the file "Шчучыншчына" doesn't exist. However, 
+the output will be corrupted instead. The reason for the corruption is that <code>filesystem_error</code> 
+requires including the path in the message but doesn't say that it should be transcoded 
+(31.12.7.2 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.error.members">[fs.filesystem.error.members]</a> p7):
+</p>
+<blockquote>
+<pre>
+virtual const char* what() const noexcept;
+</pre>
+<blockquote>
+<p>
+<i>Returns</i>: An <span style="font-variant:small-caps">ntbs</span> that incorporates the <code>what_arg</code> 
+argument supplied to the constructor. The exact format is unspecified. Implementations should include the 
+<code>system_error::what()</code> string and the pathnames of <code>path1</code> and <code>path2</code> in the native 
+format in the returned string.
+</p>
+</blockquote>
+</blockquote>
+<p>
+Therefore, the message will contain literal text in the ordinary literal encoding (UTF-8) combined with a 
+path, most likely in the operating system dependent current encoding for pathnames which in this case is CP1251. 
+So different parts of the output will be in two incompatible encodings and therefore unusable with 
+<code>std::print</code> or any other facility.
+<p/>
+The actual observable behavior for the above example is no output in the Windows console which 
+is extremely broken but appears to be conformant with the current specification. It was reproduced with 
+{fmt}'s implementation of <code>print</code> since Microsoft STL doesn't implement <code>std::print</code> yet. 
+Replacing <code>std::print</code> with another output facility produces a different but equally unusable form 
+of mojibake.
+</p>
+
+<p><i>[2024-05-04; Daniel comments]</i></p>
+
+<p>
+The proposed wording is incomplete. There are about 12 other <code>what</code> specifications in the Standard
+Library with exactly the same specification as <code>exception::what</code> that would either need to get the 
+same treatment or we would need general wording somewhere that says that the specification "contract" of 
+<code>exception::what</code> extends to all of its derived classes. A third choice could be that we introduce 
+a new definition such as an <span style="font-variant:small-caps">lntbs</span> (or maybe "literal 
+<span style="font-variant:small-caps">ntbs</span>") that is essentially an 
+<span style="font-variant:small-caps">ntbs</span> in the ordinary literal encoding.
+</p>
+
+<p><i>[2024-05-08; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll. Send to SG16.
+</p>
+
+
+
+<p id="res-4087"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 17.9.3 <a href="https://timsong-cpp.github.io/cppwp/exception">[exception]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+virtual const char* what() const noexcept;
+</pre>
+<blockquote>
+<p>
+<i>Returns</i>: An implementation-defined <span style="font-variant:small-caps">ntbs</span> 
+<ins>in the ordinary literal encoding</ins>.
+<p/>
+<i>Remarks</i>: The message may be a null-terminated multibyte string (16.3.3.3.4.3 <a href="https://timsong-cpp.github.io/cppwp/multibyte.strings">[multibyte.strings]</a>), 
+suitable for conversion and display as a <code>wstring</code> (27.4 <a href="https://timsong-cpp.github.io/cppwp/string.classes">[string.classes]</a>, 
+28.3.4.2.5 <a href="https://timsong-cpp.github.io/cppwp/locale.codecvt">[locale.codecvt]</a>). The return value remains valid until the exception object from which it 
+is obtained is destroyed or a non-<code>const</code> member function of the exception object is called.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4058: std::to_address() should be SFINAE-friendly</title>
+<meta property="og:title" content="Issue 4058: std::to_address() should be SFINAE-friendly">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4058.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4058"><a href="lwg-active.html#4058">4058</a>. <code>std::to_address()</code> should be SFINAE-friendly</h3>
+<p><b>Section:</b> 20.2.4 <a href="https://timsong-cpp.github.io/cppwp/pointer.conversion">[pointer.conversion]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Peter Kasting <b>Opened:</b> 2024-03-13 <b>Last modified:</b> 2024-03-15</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#pointer.conversion">issues</a> in [pointer.conversion].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3545" title="std::pointer_traits should be SFINAE-friendly (Status: C++23)">3545</a> made <code>std::pointer_traits</code> SFINAE-friendly.
+However, <code>std::to_address</code> is still not required to be SFINAE-friendly.
+</p>
+<p>
+This requires callers who wish to accept both pointer-like and non-pointer-like
+types to guard calls with a constraint that reimplements the core logic of
+<code>to_address</code>, such as the following:
+</p>
+<pre><code>
+template&lt;typename T&gt;
+concept IsPointerLike = requires { typename std::pointer_traits&lt;T&gt;::pointer; }
+                         || requires (const T&amp; t) { t.operator-&gt;(); };
+</code></pre>
+<p>
+Making <code class='backtick'>to_address</code> not be SFINAE-friendly
+<a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=113074#c7">was seen as desirable</a>,
+so <code class='backtick'>std::contiguous_iterator</code> would produce a hard error for types marked with
+<code class='backtick'>contiguous_iterator_tag</code> that do not properly support <code class='backtick'>to_address</code>.
+Thus any fix should not regress that unless LWG explicitly decides to do so.
+Also note that libc++'s current implementation of <code class='backtick'>to_address</code>,
+which is SFINAE-friendly,
+<a href="https://godbolt.org/z/e681Ynhf1">does not produce such a hard error</a>.
+</p>
+
+
+<p id="res-4058"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 20.2.4 <a href="https://timsong-cpp.github.io/cppwp/pointer.conversion">[pointer.conversion]</a> as indicated:</p>
+<blockquote>
+<p><code>
+template&lt;class Ptr&gt; constexpr auto to_address(const Ptr&amp; p) noexcept;
+</code></p>
+<p><ins>
+-?- <em>Constraints</em>:
+Either the expression
+<code>pointer_traits&lt;Ptr&gt;::to_address(p)</code> is well-formed
+(see 20.2.3.4 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.optmem">[pointer.traits.optmem]</a>),
+or the expression <code>p.operator-&gt;()</code> is well-formed.
+</ins></p>
+<p>
+-3- <em>Returns</em>:
+<code>pointer_traits&lt;Ptr&gt;::to_address(p)</code>
+if that expression is well-formed
+<del>(see 20.2.3.4 <a href="https://timsong-cpp.github.io/cppwp/pointer.traits.optmem">[pointer.traits.optmem]</a>)</del>,
+otherwise <code>to_address(p.operator-&gt;())</code>.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 24.3.4.14 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.contiguous">[iterator.concept.contiguous]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- The <code>contiguous_iterator</code> concept provides a guarantee that
+the denoted elements are stored contiguously in memory.
+</p>
+<pre><code>
+template&lt;class I&gt;
+  concept contiguous_iterator =
+    random_access_iterator&lt;I&gt; &amp;&amp;
+    derived_from&lt;ITER_CONCEPT(I), contiguous_iterator_tag&gt; &amp;&amp;
+    is_lvalue_reference_v&lt;iter_reference_t&lt;I&gt;&gt; &amp;&amp;
+    same_as&lt;iter_value_t&lt;I&gt;, remove_cvref_t&lt;iter_reference_t&lt;I&gt;&gt;&gt; &amp;&amp;
+    <del>requires(const I&amp; i) {
+      { to_address(i) } -&gt; same_as&lt;add_pointer_t&lt;iter_reference_t&lt;I&gt;&gt;&gt;;
+    }</del>
+    <ins>std::same_as&lt;decltype([] { return std::to_address(std::declval&lt;I&gt;()); }()),
+                 std::add_pointer_t&lt;std::iter_reference_t&lt;I&gt;&gt;&gt;</ins>;
+</code></pre>
+</blockquote>
+<p><i>[The submitter welcomes less awkward alternatives to achieve the desired hard error for <code>contiguous_iterator</code>.]</i></p>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

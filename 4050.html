@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4050: Should views::iota(0) | views::take(5) be views::iota(0, 5)?</title>
+<meta property="og:title" content="Issue 4050: Should views::iota(0) | views::take(5) be views::iota(0, 5)?">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4050.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4050"><a href="lwg-active.html#4050">4050</a>. Should <code>views::iota(0) | views::take(5)</code> be <code>views::iota(0, 5)</code>?</h3>
+<p><b>Section:</b> 25.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a>, 25.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-01-28 <b>Last modified:</b> 2024-01-28</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.take.overview">issues</a> in [range.take.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Given that C++20 ranges does not introduce the <i>infinite range</i> notification present in range/v3, 
+this means that <code>views::iota(0) | views::take(5)</code> will currently return a <code>take_view</code> object 
+that does not model <code>sized_range</code>.
+</p>
+<p>
+However, with the introduction of C++23 <code>repeat_view</code>, its interaction with <code>views::take</code>/<code>drop</code> 
+does have special handling depending on whether it is an infinite range, which causes 
+<code>views::repeat(0) | views::take(5)</code> to return a <code>repeat_view</code> objects that satisfy <code>sized_range</code>.
+</p>
+<p>
+This inconsistency leads to very different behavior of these two range factories in the case of infinite ranges 
+(<a href="https://godbolt.org/z/4bvToE96x">demo</a>):
+</p>
+<blockquote>
+<pre>
+#include &lt;ranges&gt;
+
+auto take_and_drop = std::views::drop(5)
+                   | std::views::take(4)
+                   | std::views::drop(3)
+                   | std::views::take(2)
+                   | std::views::drop(1);
+
+// The type of iota is drop_view&lt;take_view&lt;drop_view&lt;take_view&lt;drop_view&lt;iota_view&lt;int, unreachable_sentinel_t&gt;&gt;&gt;&gt;&gt;&gt;, which is indeed a template bloat.
+auto iota = std::views::iota(0) | take_and_drop;
+static_assert(std::ranges::sized_range&lt;decltype(iota)&gt;); // <span style="color:red;font-weight:bolder">failed</span>
+
+// The type of repeat is simply std::ranges::repeat_view&lt;int, long&gt;
+std::ranges::sized_range auto repeat = std::views::repeat(0) | take_and_drop; // ok
+</pre>
+</blockquote>
+<p>
+If we do account for the infinity of <code>repeat_view</code>, then I see no reason not to do it for <code>iota_view</code>, 
+as this is obviously intuitive and can indeed be considered an enhancement.
+</p>
+
+
+<p id="res-4050"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.7.10.1 <a href="https://timsong-cpp.github.io/cppwp/range.take.overview">[range.take.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+  -2- The name <code>views::take</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+  Let <code>E</code> and <code>F</code> be expressions, let <code>T</code> be <code>remove_cvref_t&lt;decltype((E))&gt;</code>,
+  and let <code>D</code> be <code>range_difference_t&lt;decltype((E))&gt;</code>.
+  If <code>decltype((F))</code> does not model <code>convertible_to&lt;D&gt;</code>, <code>views::take(E, F)</code>
+  is ill-formed. Otherwise, the expression <code>views::take(E, F)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+  <li>
+    <p>(2.1) &mdash; if <code>T</code> is a specialization of <code>empty_view</code> (25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
+      then <code>((void)F, <i>decay-copy</i>(E))</code>, except that the evaluations of <code>E</code>
+      and <code>F</code> are indeterminately sequenced.
+    </p>
+  </li>
+  <li>
+    <p>(2.2) &mdash; Otherwise, if <code>T</code> models <code>random_access_range</code> and <code>sized_range</code>
+      and is a specialization of <code>span</code> (23.7.2.2 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>),
+      <code>basic_string_view</code> (27.3 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>), or <code>ranges::subrange</code> 
+      (25.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>), then <code>U(ranges::begin(E), ranges::begin(E) + 
+      std::min&lt;D&gt;(ranges::distance(E), F))</code>, except that <code>E</code> is evaluated only once, 
+      where <code>U</code> is a type determined as follows:
+    </p>
+    <ol style="list-style-type: none">
+      <li>
+        <p>(2.2.1) &mdash; if <code>T</code> is a specialization of <code>span</code>, then <code>U</code> is
+          <code>span&lt;typename T::element_type&gt;</code>;
+        </p>
+      </li>
+      <li>
+        <p>(2.2.2) &mdash; otherwise, if <code>T</code> is a specialization of <code>basic_string_view</code>, then
+          <code>U</code> is <code>T</code>;
+        </p>
+      </li>
+      <li>
+        <p>(2.2.3) &mdash; otherwise, <code>T</code> is a specialization of <code>subrange</code>,
+          and <code>U</code> is <code>subrange&lt;iterator_t&lt;T&gt;&gt;</code>;</p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p>(2.3) &mdash; otherwise, if <code>T</code> is a specialization of <code>iota_view</code> 
+      (25.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>) that models <code>random_access_range</code> and <code>sized_range</code>, then
+      <code>iota_view(*ranges::begin(E), *(ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F)))</code>,
+      except that <code>E</code> is evaluated only once.
+    </p>
+  </li>
+  <li>
+    <p>(2.?) &mdash; <ins>Otherwise, if <code>T</code> is a specialization of <code>iota_view</code>
+        that models <code>random_access_range</code> and <code>same_as&lt;sentinel_t&lt;T&gt;,
+          unreachable_sentinel_t&gt;</code> is <code>true</code>, then
+        <code>views::iota(*ranges::begin(E), *(ranges::begin(E) + static_cast&lt;D&gt;(F)))</code>,
+        except that <code>E</code> is evaluated only once.</ins></p>
+  </li>
+
+  <li>
+    <p>(2.4) &mdash; Otherwise, if <code>T</code> is a specialization of <code>repeat_view</code> 
+       (25.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a>):
+    </p>
+    <ol style="list-style-type: none">
+      <li>
+        <p>(2.4.1) &mdash; if <code>T</code> models <code>sized_range</code>, then
+        <pre>  views::repeat(*E.<i>value_</i>, std::min&lt;D&gt;(ranges::distance(E), F))</pre>
+        except that <code>E</code> is evaluated only once;</p>
+      </li>
+      <li>
+        <p>(2.4.2) &mdash; otherwise, <code>views::repeat(*E.<i>value_</i>, static_cast&lt;D&gt;(F))</code>.
+        </p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p>(2.5) &mdash; Otherwise, <code>take_view(E, F)</code>.</p>
+  </li>
+</ol>
+</blockquote>
+</li>
+
+<li><p>Modify 25.7.12.1 <a href="https://timsong-cpp.github.io/cppwp/range.drop.overview">[range.drop.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+  -2- The name <code>views::drop</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+  Let <code>E</code> and <code>F</code> be expressions, let <code>T</code> be <code>remove_cvref_t&lt;decltype((E))&gt;</code>,
+  and let <code>D</code> be <code>range_difference_t&lt;decltype((E))&gt;</code>.
+  If <code>decltype((F))</code> does not model <code>convertible_to&lt;D&gt;</code>, <code>views::drop(E, F)</code>
+  is ill-formed. Otherwise, the expression <code>views::drop(E, F)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+  <li>
+    <p>(2.1) &mdash; if <code>T</code> is a specialization of <code>empty_view</code> (25.6.2.2 <a href="https://timsong-cpp.github.io/cppwp/range.empty.view">[range.empty.view]</a>),
+      then <code>((void)F, <i>decay-copy</i>(E))</code>, except that the evaluations of <code>E</code>
+      and <code>F</code> are indeterminately sequenced.
+    </p>
+  </li>
+  <li>
+    <p>(2.2) &mdash; Otherwise, if <code>T</code> models <code>random_access_range</code> and <code>sized_range</code>
+      and is
+    </p>
+    <ol style="list-style-type: none">
+      <li>
+        <p>(2.2.1) &mdash; a specialization of <code>span</code> (23.7.2.2 <a href="https://timsong-cpp.github.io/cppwp/views.span">[views.span]</a>),</p>
+      </li>
+      <li>
+        <p>(2.2.2) &mdash; a specialization of <code>basic_string_view</code> (27.3 <a href="https://timsong-cpp.github.io/cppwp/string.view">[string.view]</a>), </p>
+      </li>
+      <li>
+        <p>(2.2.3) &mdash; a specialization of <code>iota_view</code> (25.6.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iota.view">[range.iota.view]</a>), or</p>
+      </li>
+      <li>
+        <p>(2.2.4) &mdash; a specialization of <code>subrange</code> (25.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>)
+          where <code>T::<i>StoreSize</i></code> is <code>false</code>,</p>
+      </li>
+    </ol>
+    <p>then <code>U(ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F), ranges::end(E))</code>,
+      except that <code>E</code> is evaluated only once, where <code>U</code> is <code>span&lt;typename
+        T::element_type&gt;</code>
+      if <code>T</code> is a specialization of <code>span</code> and <code>T</code> otherwise.
+    </p>
+  </li>
+  <li>
+    <p>(2.?) &mdash; <ins>Otherwise, if <code>T</code> is a specialization of <code>iota_view</code>
+        that models
+        <code>random_access_range</code> and <code>same_as&lt;sentinel_t&lt;T&gt;,
+          unreachable_sentinel_t&gt;</code> is <code>true</code>, then
+        <code>views::iota(*(ranges::begin(E) + static_cast&lt;D&gt;(F)))</code>.</ins>
+    </p>
+  </li>
+  <li>
+    <p>(2.3) &mdash; Otherwise, if <code>T</code> is a specialization of <code>subrange</code>
+      (25.5.4 <a href="https://timsong-cpp.github.io/cppwp/range.subrange">[range.subrange]</a>) that models
+      <code>random_access_range</code> and <code>sized_range</code>, then
+      <code>T(ranges::begin(E) + std::min&lt;D&gt;(ranges::distance(E), F), ranges::end(E),
+        <i>to-unsigned-like</i>(ranges::distance(E) - std::min&lt;D&gt;(ranges::distance(E), F)))</code>,
+      except that <code>E</code> and <code>F</code> are each evaluated only once.
+    </p>
+  </li>
+  <li>
+    <p>(2.4) &mdash; Otherwise, if <code>T</code> is a specialization of <code>repeat_view</code> (25.6.5.2 <a href="https://timsong-cpp.github.io/cppwp/range.repeat.view">[range.repeat.view]</a>):
+    </p>
+    <ol style="list-style-type: none">
+      <li>
+        <p>(2.4.1) &mdash; if <code>T</code> models <code>sized_range</code>, then
+        <pre>  views::repeat(*E.<i>value_</i>, ranges::distance(E) - std::min&lt;D&gt;(ranges::distance(E), F))</pre>
+        except that <code>E</code> is evaluated only once;</p>
+      </li>
+      <li>
+        <p>(2.4.2) &mdash; otherwise, <code>((void)F, <i>decay-copy</i>(E))</code>, except that the evaluations of
+          <code>E</code> and <code>F</code> are indeterminately sequenced.</p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p>(2.5) &mdash; Otherwise, <code>drop_view(E, F)</code>.
+    </p>
+  </li>
+
+</ol>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

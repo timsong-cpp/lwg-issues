@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4114: elements_view::iterator::operator* missing conditional noexcept specification</title>
+<meta property="og:title" content="Issue 4114: elements_view::iterator::operator* missing conditional noexcept specification">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4114.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4114"><a href="lwg-active.html#4114">4114</a>. <code>elements_view::<i>iterator</i>::operator*</code> missing conditional <code>noexcept</code> specification</h3>
+<p><b>Section:</b> 25.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-07-02 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.elements.iterator">active issues</a> in [range.elements.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.elements.iterator">issues</a> in [range.elements.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>views::elements</code>, which can be seen as a specialization of <code>views::transform</code>, 
+is used to <i>transform</i> the original tuple into its elements.
+<p/>
+Since neither has a specialization for <code>iter_move</code>, the customization point is dispatched 
+to the default implementation. However, unlike the latter, <code>elements_view::<i>iterator</i>::operator*</code> 
+does not have a <code>noexcept</code> specification, which makes calls to <code>iter_move</code> never 
+<code>noexcept</code>, which seems to be an oversight (<a href="https://godbolt.org/z/aGe8EP6Wd">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+#include &lt;vector&gt;
+
+std::vector v{std::pair{1, "a"}, {2, "b"}};
+
+auto r1 = v | std::views::keys;
+auto i1 = r1.begin();
+static_assert(noexcept(*i1));                        // <span  style="color:#C80000;font-weight:bold">failed</span>
+static_assert(noexcept(std::ranges::iter_move(i1))); // <span  style="color:#C80000;font-weight:bold">failed</span>
+
+auto get_key = [](auto&amp; t) noexcept -&gt; auto&amp; { return std::get&lt;0&gt;(t); };
+auto r2 = v | std::views::transform(get_key);
+auto i2 = r2.begin();
+static_assert(noexcept(*i2));
+static_assert(noexcept(std::ranges::iter_move(i2)));
+</pre></blockquote>
+<p>
+The proposed resolution is aligned with the <i>strengthened</i> implementation of MSVC-STL.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
+
+<p id="res-4114"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.7.23.3 <a href="https://timsong-cpp.github.io/cppwp/range.elements.iterator">[range.elements.iterator]</a> as indicated:</p>
+
+<blockquote><pre>
+namespace std::ranges {
+  template&lt;input_range V, size_t N&gt;
+    requires view&lt;V&gt; &amp;&amp; <i>has-tuple-element</i>&lt;range_value_t&lt;V&gt;, N&gt; &amp;&amp;
+             <i>has-tuple-element</i>&lt;remove_reference_t&lt;range_reference_t&lt;V&gt;&gt;, N&gt; &amp;&amp;
+             <i>returnable-element</i>&lt;range_reference_t&lt;V&gt;, N&gt;
+  template&lt;bool Const&gt;
+  class elements_view&lt;V, N&gt;::<i>iterator</i> {
+    [&hellip;]
+
+    static constexpr decltype(auto) <i>get-element</i>(const iterator_t&lt;<i>Base</i>&gt;&amp; i)<del>;</del>     // <i>exposition only</i>
+      <ins>noexcept(noexcept(std::get&lt;N&gt;(*i))) requires is_reference_v&lt;range_reference_t&lt;<i>Base</i>&gt;&gt; {
+      return std::get&lt;N&gt;(*i);
+    }</ins>
+    <ins>
+    static constexpr decltype(auto) <i>get-element</i>(const iterator_t&lt;<i>Base</i>&gt;&amp; i)      // <i>exposition only</i>
+      noexcept(noexcept(std::get&lt;N&gt;(*i)) &amp;&amp;
+               is_nothrow_move_constructible_v&lt;tuple_element_t&lt;N, range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;) {
+      using E = remove_cv_t&lt;tuple_element_t&lt;N, range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;;
+      return static_cast&lt;E&gt;(std::get&lt;N&gt;(*i));
+    }</ins>
+
+  public:
+    [&hellip;]
+
+    constexpr decltype(auto) operator*() const
+      <ins>noexcept(noexcept(<i>get-element</i>(<i>current_</i>)))</ins>
+    { return <i>get-element</i>(<i>current_</i>); }
+
+    [&hellip;]
+  };
+}
+</pre></blockquote>
+<p>
+[&hellip;]
+</p>
+<pre><del>static constexpr decltype(auto) <i>get-element</i>(const iterator_t&lt;<i>Base</i>&gt;&amp; i);</del></pre>
+<p>
+<del>-3- <i>Effects</i>: Equivalent to:</del>
+</p>
+<blockquote><pre>
+<del>if constexpr (is_reference_v&lt;range_reference_t&lt;<i>Base</i>&gt;&gt;) {
+  return std::get&lt;N&gt;(*i);
+} else {
+  using E = remove_cv_t&lt;tuple_element_t&lt;N, range_reference_t&lt;<i>Base</i>&gt;&gt;&gt;;
+  return static_cast&lt;E&gt;(std::get&lt;N&gt;(*i));
+}</del>
+</pre></blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

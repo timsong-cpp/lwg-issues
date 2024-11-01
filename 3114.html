@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3114: [networking.ts] Permit efficient composition when using DynamicBuffer</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3114: [networking.ts] Permit efficient composition when using DynamicBuffer">
+<meta property="og:description" content="C++ library issue. Status: LEWG">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3114.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3114" href="lwg-active.html#3114">3114.</a> [networking.ts] Permit efficient composition when using <tt>DynamicBuffer</tt></h3>
+<h3 id="3114"><a href="lwg-active.html#3114">3114</a>. [networking.ts] Permit efficient composition when using <code>DynamicBuffer</code></h3>
 <p><b>Section:</b> 16 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer">[networking.ts::buffer]</a>, 17 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.stream">[networking.ts::buffer.stream]</a> <b>Status:</b> <a href="lwg-active.html#LEWG">LEWG</a>
- <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2018-05-18 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+ <b>Submitter:</b> Vinnie Falco <b>Opened:</b> 2018-05-18 <b>Last modified:</b> 2020-09-06</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#LEWG">LEWG</a> status.</p>
@@ -55,8 +72,8 @@
 <p>
 Asynchronous algorithms are started by a call to an <em>initiating function</em>.
 When these algorithms are constructed from calls to other initiating functions,
-the result is called a <em>composed operation</em>. For example, <tt>async_read</tt> may be 
-implemented in terms of zero or more calls to a stream's <tt>async_read_some</tt> algorithm. 
+the result is called a <em>composed operation</em>. For example, <code>async_read</code> may be 
+implemented in terms of zero or more calls to a stream's <code>async_read_some</code> algorithm. 
 For operations where the caller cannot easily determine ahead of time the storage requirements 
 needed for an algorithm to meet its post-conditions, [networking.ts] introduces the
 <b>DynamicBuffer</b> concept:
@@ -162,7 +179,7 @@ async_read_until(
 Given the semantics of dynamic buffers implied by the wording, instances of
 dynamic buffers behave more like references to storage types rather than
 storage types, as copies refer to the same underlying storage. This can be
-seen in the declaration of <tt>dynamic_string_buffer</tt> which meets
+seen in the declaration of <code>dynamic_string_buffer</code> which meets
 the requirements of <b>DynamicBuffer</b>:
 </p>
 <blockquote><pre>
@@ -179,7 +196,7 @@ private:
 <p>
 A dynamic string buffer contains a reference to the underlying string. Copies
 of a dynamic string buffer refer to the same string. Note that the dynamic
-string buffer also contains some state: the <tt>size_</tt> and <tt>max_size_</tt>
+string buffer also contains some state: the <code>size_</code> and <code>max_size_</code>
 data members. This additional metadata informs the dynamic string buffer of
 the boundaries between the readable and writable bytes, as well as the maximum
 allowed size of the total of the readable and writable bytes.
@@ -187,14 +204,14 @@ allowed size of the total of the readable and writable bytes.
 When only one composed operation handles the dynamic buffer, things seem to
 work. However, if a composed operation wishes to invoke another composed
 operation and pass that dynamic buffer, a problem arises. Consider two composed
-operations <tt>f</tt> and <tt>g</tt>, which both operate on an instance of
-dynamic buffer. When <tt>f</tt> is invoked, it makes a copy of the dynamic
-buffer and then calls <tt>g</tt> with the copy. At this point, <tt>g</tt> must
+operations <code>f</code> and <code>g</code>, which both operate on an instance of
+dynamic buffer. When <code>f</code> is invoked, it makes a copy of the dynamic
+buffer and then calls <code>g</code> with the copy. At this point, <code>g</code> must
 also make a copy. Copies share the underlying storage, but in the case of
 dynamic string buffers each copy maintains its own distinct metadata. When
-<tt>g</tt> has finished mutating the dynamic buffer and returns control back
-to <tt>f</tt> by invoking the completion handler, the metadata in the copy of
-the dynamic buffer held by <tt>f</tt> will not have the changes made by <tt>g</tt>.
+<code>g</code> has finished mutating the dynamic buffer and returns control back
+to <code>f</code> by invoking the completion handler, the metadata in the copy of
+the dynamic buffer held by <code>f</code> will not have the changes made by <code>g</code>.
 <p/>
 Another design problem caused by adding metadata to the dynamic buffer concept
 is illustrated in the following example code:
@@ -255,13 +272,13 @@ From <a href="https://github.com/cplusplus/papers/issues/337">Cologne 2019 paper
 
 <blockquote class="note">
 <p>[<i>Drafting note:</i> The project editor is kindly asked to replace all occurrences of 
-<tt>DynamicBuffer&amp;&amp;</tt> with <tt>DynamicBuffer&amp;</tt> as indicated by the provided
+<code>DynamicBuffer&amp;&amp;</code> with <code>DynamicBuffer&amp;</code> as indicated by the provided
 wording changes below. &mdash; <i>end drafting note</i>]
 </p>
 </blockquote>
 
 <ol>
-<li><p>Modify 16.1 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.synop">[networking.ts::buffer.synop]</a>, header <tt>&lt;experimental/buffer&gt;</tt> synopsis, 
+<li><p>Modify 16.1 <a href="https://timsong-cpp.github.io/cppwp/networking-ts/buffer.synop">[networking.ts::buffer.synop]</a>, header <code>&lt;experimental/buffer&gt;</code> synopsis, 
 as indicated:</p>
 <blockquote><pre>
 [&hellip;]
@@ -381,9 +398,9 @@ template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt
 <p>
 -1- [&hellip;]
 <p/>
--2- A type <tt>X</tt> meets the <tt>DynamicBuffer</tt> requirements if it satisfies
-the requirements of <tt>Destructible</tt> (C++ 2014 [destructible])
-<del>and <tt>MoveConstructible</tt> (C++ 2014 [moveconstructible]),</del>
+-2- A type <code>X</code> meets the <code>DynamicBuffer</code> requirements if it satisfies
+the requirements of <code>Destructible</code> (C++ 2014 [destructible])
+<del>and <code>MoveConstructible</code> (C++ 2014 [moveconstructible]),</del>
 as well as the additional requirements listed in Table 14.
 </p>
 </blockquote>
@@ -441,8 +458,8 @@ private:
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Effects:</em> Default-constructs <tt>vec_</tt>. Initializes <tt>size_</tt> with <tt>0</tt>, and 
-<tt>max_size_</tt> with <tt>maximum_size</tt>.</ins>
+<ins>-?- <em>Effects:</em> Default-constructs <code>vec_</code>. Initializes <code>size_</code> with <code>0</code>, and 
+<code>max_size_</code> with <code>maximum_size</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -450,8 +467,8 @@ explicit dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec) <
 </pre>
 <blockquote>
 <p>
--4- <em>Effects:</em> Initializes <tt>vec_</tt> with <tt><ins>move(</ins>vec<ins>)</ins></tt>,
-  <tt>size_</tt> with <tt>vec<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>vec<ins>_</ins>.max_size()</tt>
+-4- <em>Effects:</em> Initializes <code>vec_</code> with <code><ins>move(</ins>vec<ins>)</ins></code>,
+  <code>size_</code> with <code>vec<ins>_</ins>.size()</code>, and <code>max_size_</code> with <code>vec<ins>_</ins>.max_size()</code>
 </p>
 </blockquote>
 <pre>
@@ -460,10 +477,10 @@ dynamic_vector_buffer(vector&lt;T, Allocator&gt;<del>&amp;</del> vec,
 </pre>
 <blockquote>
 <p>
--5- <em>Requires:</em> <tt>vec.size() &lt;= maximum_size</tt>
+-5- <em>Requires:</em> <code>vec.size() &lt;= maximum_size</code>
 <p/>
--6- <em>Effects:</em> Initializes <tt>vec_</tt> with <tt><ins>move(</ins>vec<ins>)</ins></tt>,
-  <tt>size_</tt> with <tt>vec<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>maximum_size</tt>.
+-6- <em>Effects:</em> Initializes <code>vec_</code> with <code><ins>move(</ins>vec<ins>)</ins></code>,
+  <code>size_</code> with <code>vec<ins>_</ins>.size()</code>, and <code>max_size_</code> with <code>maximum_size</code>.
 <p/>
 [&hellip;]
 </p>
@@ -473,7 +490,7 @@ size_t max_size() const noexcept;
 </pre>
 <blockquote>
 <p>
--8- <i>Returns:</i> <tt>max_size_</tt>.
+-8- <i>Returns:</i> <code>max_size_</code>.
 </p>
 </blockquote>
 <pre>
@@ -481,7 +498,7 @@ size_t max_size() const noexcept;
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Effects:</em> Performs <tt>max_size_ = maximum_size</tt>.</ins>
+<ins>-?- <em>Effects:</em> Performs <code>max_size_ = maximum_size</code>.</ins>
 </p>
 </blockquote>
 [&hellip;]
@@ -498,7 +515,7 @@ void consume(size_t n);
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Returns:</em> <tt>span&lt;const T&gt;(vec_.data(), size_)</tt>.</ins>
+<ins>-?- <em>Returns:</em> <code>span&lt;const T&gt;(vec_.data(), size_)</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -506,7 +523,7 @@ void consume(size_t n);
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Returns:</em> <tt>move(vec_)</tt>.</ins>
+<ins>-?- <em>Returns:</em> <code>move(vec_)</code>.</ins>
 </p>
 </blockquote>
 </blockquote>
@@ -564,8 +581,8 @@ private:
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Effects:</em> Default-constructs <tt>str_</tt>. Initializes <tt>size_</tt> with <tt>0</tt>, and 
-<tt>max_size_</tt> with <tt>maximum_size</tt>.</ins>
+<ins>-?- <em>Effects:</em> Default-constructs <code>str_</code>. Initializes <code>size_</code> with <code>0</code>, and 
+<code>max_size_</code> with <code>maximum_size</code>.</ins>
 </p>
 <p>[&hellip;]</p>
 </blockquote>
@@ -574,8 +591,8 @@ explicit <ins>basic_</ins>dynamic_string_buffer(basic_string&lt;CharT, Traits, A
 </pre>
 <blockquote>
 <p>
--4- <em>Effects:</em> Initializes <tt>str_</tt> with <tt><ins>move(</ins>str<ins>)</ins></tt>,
-  <tt>size_</tt> with <tt>str<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>str<ins>_</ins>.max_size()</tt>
+-4- <em>Effects:</em> Initializes <code>str_</code> with <code><ins>move(</ins>str<ins>)</ins></code>,
+  <code>size_</code> with <code>str<ins>_</ins>.size()</code>, and <code>max_size_</code> with <code>str<ins>_</ins>.max_size()</code>
 </p>
 </blockquote>
 <pre>
@@ -584,11 +601,11 @@ explicit <ins>basic_</ins>dynamic_string_buffer(basic_string&lt;CharT, Traits, A
 </pre>
 <blockquote>
 <p>
--5- <em>Requires:</em> <tt>str.size() &lt;= maximum_size</tt>.
+-5- <em>Requires:</em> <code>str.size() &lt;= maximum_size</code>.
 </p>
 <p>
--6- <em>Effects:</em> Initializes <tt>str_</tt> with <tt><ins>move(</ins>str<ins>)</ins></tt>,
-  <tt>size_</tt> with <tt>str<ins>_</ins>.size()</tt>, and <tt>max_size_</tt> with <tt>maximum_size</tt>.
+-6- <em>Effects:</em> Initializes <code>str_</code> with <code><ins>move(</ins>str<ins>)</ins></code>,
+  <code>size_</code> with <code>str<ins>_</ins>.size()</code>, and <code>max_size_</code> with <code>maximum_size</code>.
 </p>
 <p>[&hellip;]</p>
 </blockquote>
@@ -597,7 +614,7 @@ size_t max_size() const noexcept;
 </pre>
 <blockquote>
 <p>
--8- <em>Returns:</em> <tt>max_size_</tt>.
+-8- <em>Returns:</em> <code>max_size_</code>.
 </p>
 </blockquote>
 <pre>
@@ -605,7 +622,7 @@ size_t max_size() const noexcept;
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Effects:</em> Performs <tt>max_size_ = maximum_size</tt>.</ins>
+<ins>-?- <em>Effects:</em> Performs <code>max_size_ = maximum_size</code>.</ins>
 </p>
 </blockquote>
 <p>[&hellip;]</p>
@@ -622,7 +639,7 @@ void consume(size_t n);
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Returns:</em> <tt>basic_string_view&lt;CharT, Traits&gt;(str_)</tt>.</ins>
+<ins>-?- <em>Returns:</em> <code>basic_string_view&lt;CharT, Traits&gt;(str_)</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -630,7 +647,7 @@ void consume(size_t n);
 </pre>
 <blockquote>
 <p>
-<ins>-?- <em>Returns:</em> <tt>move(str_)</tt>.</ins>
+<ins>-?- <em>Returns:</em> <code>move(str_)</code>.</ins>
 </p>
 </blockquote>
 </blockquote>
@@ -680,8 +697,8 @@ template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionConditio
 [&hellip;]
 </pre>
 <p>
--14- The program shall ensure <ins>both</ins> the <tt>AsyncReadStream</tt>
-object <tt>stream</tt> <ins>and the <tt>DynamicBuffer</tt> object <tt>b</tt>
+-14- The program shall ensure <ins>both</ins> the <code>AsyncReadStream</code>
+object <code>stream</code> <ins>and the <code>DynamicBuffer</code> object <code>b</code>
 are</ins><del> is</del> valid until the completion handler for the asynchronous
 operation is invoked.
 </p>
@@ -725,9 +742,9 @@ template&lt;class AsyncWriteStream, class DynamicBuffer, class CompletionConditi
 [&hellip;]
 </pre>
 <p>
--14- The program shall ensure both the <tt>AsyncWriteStream</tt> object
-<tt>stream</tt> and the <ins><tt>DynamicBuffer</tt> object <tt>b</tt></ins>
-<del>memory associated with the dynamic buffer <tt>b</tt></del>
+-14- The program shall ensure both the <code>AsyncWriteStream</code> object
+<code>stream</code> and the <ins><code>DynamicBuffer</code> object <code>b</code></ins>
+<del>memory associated with the dynamic buffer <code>b</code></del>
 are valid until the completion handler for the asynchronous operation
 is invoked.
 </p>
@@ -765,8 +782,8 @@ template&lt;class AsyncReadStream, class DynamicBuffer, class CompletionToken&gt
 [&hellip;]
 </pre>
 <p>
--6- The program shall ensure <ins>both</ins> the <tt>AsyncReadStream</tt> object
-<tt>stream</tt> <ins>and the <tt>DynamicBuffer</tt> object <tt>b</tt>
+-6- The program shall ensure <ins>both</ins> the <code>AsyncReadStream</code> object
+<code>stream</code> <ins>and the <code>DynamicBuffer</code> object <code>b</code>
 are</ins><del> is</del> valid until the completion handler for the
 asynchronous operation is invoked.
 </p>

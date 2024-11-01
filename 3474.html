@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3474: Nesting join_views is broken because of CTAD</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3474: Nesting join_views is broken because of CTAD">
+<meta property="og:description" content="C++ library issue. Status: C++23">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3474.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3474" href="lwg-defects.html#3474">3474.</a> Nesting <tt>join_view</tt>s is broken because of CTAD</h3>
-<p><b>Section:</b> 26.7.14 <a href="https://timsong-cpp.github.io/cppwp/range.join">[range.join]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
- <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-04 <b>Last modified:</b> 2023-11-22 15:47:43 UTC</p>
+<h3 id="3474"><a href="lwg-defects.html#3474">3474</a>. Nesting <code>join_view</code>s is broken because of CTAD</h3>
+<p><b>Section:</b> 25.7.14 <a href="https://timsong-cpp.github.io/cppwp/range.join">[range.join]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
+ <b>Submitter:</b> Barry Revzin <b>Opened:</b> 2020-08-04 <b>Last modified:</b> 2023-11-22</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#range.join">issues</a> in [range.join].</p>
@@ -54,7 +71,7 @@
 <p><b>Discussion:</b></p>
 <p>
 Let's say I had a range of range of ranges and I wanted to recursively flatten it. That would involve 
-repeated invocations of <tt>join</tt>. But this doesn't work:
+repeated invocations of <code>join</code>. But this doesn't work:
 </p>
 <blockquote><pre>
 std::vector&lt;std::vector&lt;std::vector&lt;int&gt;&gt;&gt; nested_vectors = {
@@ -65,29 +82,29 @@ std::vector&lt;std::vector&lt;std::vector&lt;int&gt;&gt;&gt; nested_vectors = {
 auto joined = nested_vectors | std::views::join | std::views::join;
 </pre></blockquote>
 <p>
-The expectation here is that the <tt>value_type</tt> of joined is <tt>int</tt>, but it's actually 
-<tt>vector&lt;int&gt;</tt> &mdash; because the 2nd invocation of <tt>join</tt> ends up just copying 
-the first. This is because <tt>join</tt> is specified to do:
+The expectation here is that the <code>value_type</code> of joined is <code>int</code>, but it's actually 
+<code>vector&lt;int&gt;</code> &mdash; because the 2nd invocation of <code>join</code> ends up just copying 
+the first. This is because <code>join</code> is specified to do:
 </p>
 <blockquote><p>
-The name <tt>views::join</tt> denotes a range adaptor object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
-Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
-<tt>join_view{E}</tt>.
+The name <code>views::join</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <code>E</code>, the expression <code>views::join(E)</code> is expression-equivalent to 
+<code>join_view{E}</code>.
 </p></blockquote>
 <p>
-And <tt>join_view{E}</tt> for an <tt>E</tt> that's already a specialization of a <tt>join_view</tt> 
-just gives you the same <tt>join_view</tt> back. Yay CTAD. We need to do the same thing with <tt>join</tt> 
-that we did with <tt>reverse</tt> in <a href="https://wg21.link/p1252">P1252</a>. We can do that either in 
-exposition (<b>Option A</b>) my modifying 26.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> p2
+And <code>join_view{E}</code> for an <code>E</code> that's already a specialization of a <code>join_view</code> 
+just gives you the same <code>join_view</code> back. Yay CTAD. We need to do the same thing with <code>join</code> 
+that we did with <code>reverse</code> in <a href="https://wg21.link/p1252">P1252</a>. We can do that either in 
+exposition (<b>Option A</b>) my modifying 25.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> p2
 </p>
 <blockquote><p>
-The name <tt>views::join</tt> denotes a range adaptor object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given 
-a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
-<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+The name <code>views::join</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). Given 
+a subexpression <code>E</code>, the expression <code>views::join(E)</code> is expression-equivalent to 
+<code>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</code>.
 </p>
 </blockquote>
 <p>
-Or in code (<b>Option B</b>) add a deduction guide to 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>:
+Or in code (<b>Option B</b>) add a deduction guide to 25.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>:
 </p>
 <blockquote><pre>
   template&lt;class R&gt;
@@ -116,13 +133,13 @@ This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
 <b>Option A:</b>
 </p>
 <ol>
-<li><p>Modify 26.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
+<li><p>Modify 25.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
 
 <blockquote>
 <p>
--2- <tt>The name views::join</tt> denotes a range adaptor object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
-Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
-<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+-2- <code>The name views::join</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <code>E</code>, the expression <code>views::join(E)</code> is expression-equivalent to 
+<code>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</code>.
 </p>
 </blockquote>
 </li>
@@ -133,7 +150,7 @@ Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expr
 <b>Option B:</b>
 </p>
 <ol>
-<li><p>Modify 26.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> as indicated:</p>
+<li><p>Modify 25.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a> as indicated:</p>
 
 <blockquote>
 <pre>
@@ -162,13 +179,13 @@ This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
-<li><p>Modify 26.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
+<li><p>Modify 25.7.14.1 <a href="https://timsong-cpp.github.io/cppwp/range.join.overview">[range.join.overview]</a> as indicated:</p>
 
 <blockquote>
 <p>
--2- <tt>The name views::join</tt> denotes a range adaptor object (26.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
-Given a subexpression <tt>E</tt>, the expression <tt>views::join(E)</tt> is expression-equivalent to 
-<tt>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</tt>.
+-2- <code>The name views::join</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>). 
+Given a subexpression <code>E</code>, the expression <code>views::join(E)</code> is expression-equivalent to 
+<code>join_view<ins>&lt;views::all_t&lt;decltype((E))&gt;&gt;</ins>{E}</code>.
 </p>
 </blockquote>
 </li>

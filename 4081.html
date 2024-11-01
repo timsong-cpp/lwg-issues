@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4081: concat_view::iterator::operator- is overconstrained</title>
+<meta property="og:title" content="Issue 4081: concat_view::iterator::operator- is overconstrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4081.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4081"><a href="lwg-active.html#4081">4081</a>. <code>concat_view::<i>iterator</i>::operator-</code> is overconstrained</h3>
+<p><b>Section:</b> 25.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.concat.iterator">[range.concat.iterator]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-04-26 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.concat.iterator">active issues</a> in [range.concat.iterator].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.concat.iterator">issues</a> in [range.concat.iterator].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, two <code>concat_view::<i>iterator</i></code>s can only be subtracted if
+<code><i>concat-is-random-access</i></code> is satisfied, which seems overconstrained since the implementation
+does not rely on all underlying ranges being <code>random_access_range</code> or <code>common_range</code>.
+<p/>
+Generally speaking, iterators provide <code>operator-</code> mainly based on whether it satisfies 
+<code>sized_sentinel_for</code> rather than being category-specific.
+For example, <code>counted_iterator</code>s that only model <code>input_iterator</code> can still be subtracted.
+We have no reason to reject the following:
+</p>
+<blockquote><pre>
+std::list l = {1, 2, 3};
+auto r = l | std::views::take(3);
+auto c = std::ranges::concat_view{r};
+auto it = c.begin();
+it++;
+auto d = it - c.begin(); // <span style="color:red;font-weight:bolder">error: no match for 'operator-'</span>
+</pre></blockquote>
+<p>
+The proposed resolution lists a minimal constraint formula based on the implementation details of <code>operator-</code>.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+
+
+<p id="res-4081"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.7.18.3 <a href="https://timsong-cpp.github.io/cppwp/range.concat.iterator">[range.concat.iterator]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range... Views&gt;
+    requires (view&lt;Views&gt; &amp;&amp; ...) &amp;&amp; (sizeof...(Views) &gt; 0) &amp;&amp;
+              <i>concatable</i>&lt;Views...&gt;
+  template&lt;bool Const&gt;
+  class concat_view&lt;Views...&gt;::<i>iterator</i> {
+
+  public:
+    [&hellip;]
+    friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+      requires <del><i>concat-is-random-access</i>&lt;Const, Views...&gt;</del><ins><i>see below</i></ins>;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+friend constexpr difference_type operator-(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+  requires <del><i>concat-is-random-access</i>&lt;Const, Views...&gt;</del><ins><i>see below</i></ins>;
+</pre>
+<blockquote>
+<p>
+-32- <i>Preconditions</i>: <code>x.<i>it_</i>.valueless_by_exception()</code> and
+<code>y.<i>it_</i>.valueless_by_exception()</code> are each <code>false</code>.
+</p>
+<p>
+-33- <i>Effects</i>: Let <code><i>i</i><sub>x</sub></code> denote <code>x.<i>it_</i>.index()</code> and
+<code><i>i</i><sub>y</sub></code> denote <code>y.<i>it_</i>.index()</code>.
+</p>
+<ol style="list-style-type: none">
+<li>
+<p>(33.1) &mdash; if <code><i>i</i><sub>x</sub> &gt; <i>i</i><sub>y</sub></code>, let
+  <code><i>d</i><sub>y</sub></code> be <code>ranges::distance(std::get&lt;<i>i</i><sub>y</sub>&gt;(y.<i>it_</i>),
+    ranges::end(std::get&lt;<i>i</i><sub>y</sub>&gt;(y.<i>parent_</i>-&gt;<i>views_</i>)))</code>,
+  <code><i>d</i><sub>x</sub></code> be
+  <code>ranges::distance(ranges::begin(std::get&lt;<i>i</i><sub>x</sub>&gt;(x.<i>parent_</i>-&gt;<i>views_</i>)),
+    std::get&lt;<i>i</i><sub>x</sub>&gt;(x.<i>it_</i>))</code>. 
+  Let <code><i>s</i></code> denote the sum of the sizes of all the ranges
+  <code>std::get&lt;<i>i</i>&gt;(x.<i>parent_</i>-><i>views_</i>)</code> for every integer <code><i>i</i></code> in
+  the range <code>[<i>i</i><sub>y</sub> + 1, <i>i</i><sub>x</sub>)</code>
+  if there is any, and <code>0</code> otherwise, of type <code>difference_type</code>, equivalent to:
+</p>
+<blockquote>
+<pre>return <i>d</i><sub>y</sub> + <i>s</i> + <i>d</i><sub>x</sub>;</pre>
+</blockquote>
+<p>(33.2) &mdash; otherwise, if <code><i>i</i><sub>x</sub> &lt; <i>i</i><sub>y</sub></code>
+  is <code>true</code>, equivalent to:</p>
+<blockquote>
+<pre>return -(y - x);</pre>
+</blockquote>
+<p>(33.3) &mdash; otherwise, equivalent to:</p>
+<blockquote>
+<pre>return std::get&lt;<i>i</i><sub>x</sub>&gt;(x.<i>it_</i>) - std::get&lt;<i>i</i><sub>y</sub>&gt;(y.<i>it_</i>);</pre>
+</blockquote>
+</li>
+</ol>
+<p>
+<ins>-?- <i>Remarks</i>: Let <code>Fs</code> be the pack that consists of all elements of <code>Views</code> except the
+last element, and let <code>Rs</code> be the pack that consists of all elements of <code>Views</code> except the first
+element. The expression in the <i>requires-clause</i> is equivalent to:</ins>
+</p>
+<blockquote>
+<pre><ins>(sized_sentinel_for&lt;iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;,
+                    iterator_t&lt;<i>maybe-const</i>&lt;Const, Views&gt;&gt;&gt; &amp;&amp; ...) &amp;&amp;
+(sized_sentinel_for&lt;sentinel_t&lt;<i>maybe-const</i>&lt;Const, Fs&gt;&gt;,
+                    iterator_t&lt;<i>maybe-const</i>&lt;Const, Fs&gt;&gt;&gt; &amp;&amp; ...) &amp;&amp;
+<i>all-forward</i>&lt;Const, Rs...&gt;</ins></pre>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4101: LWG 117 loses the sign for negative NaN on some architectures</title>
+<meta property="og:title" content="Issue 4101: LWG 117 loses the sign for negative NaN on some architectures">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4101.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4101"><a href="lwg-active.html#4101">4101</a>. LWG 117 loses the sign for negative NaN on some architectures</h3>
+<p><b>Section:</b> 31.7.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/ostream.inserters.arithmetic">[ostream.inserters.arithmetic]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-05-10 <b>Last modified:</b> 2024-05-15</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#ostream.inserters.arithmetic">issues</a> in [ostream.inserters.arithmetic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="117" title="basic_ostream uses nonexistent num_put member functions (Status: CD1)">117</a> fixed insertion of a <code class='backtick'>float</code> into an ostream by
+requiring a cast to <code class='backtick'>double</code>. This gives a surprising result on RISC-V when
+inserting a negative NaN, because RISC-V floating-point instructions do
+not preserve the sign or payload of NaN values. This means that
+<code>std::cout &lt;&lt; -std::numeric_limits&lt;float&gt;::quiet_NaN()</code>
+prints <code class='backtick'>"nan"</code> rather than <code class='backtick'>"-nan"</code> as most users probably expect.
+</p>
+<p>
+11.3 section of the RISC-V ISA manual (20191213): 
+</p>
+<blockquote>
+Except when otherwise stated, if the result of a floating-point operation
+is NaN, it is the canonical NaN. The canonical NaN has a positive sign
+and all significand bits clear except the MSB, a.k.a. the quiet bit.
+For single-precision floating-point, this corresponds to the pattern
+0x7fc00000.
+</blockquote>
+<p>
+This is allowed by IEEE 754 (2019), as per section 6.3:
+</p>
+<blockquote>
+When either an input or result is a NaN, this standard does not interpret
+the sign of a NaN.
+</blockquote>
+
+<p>
+So it is standard-conforming for <code>static_cast&lt;double&gt;(val)</code>
+to lose the sign (and payload) of a NaN.
+This might also affect Apple M1 chips, if they use the ARMv8 default-NaN mode.
+</p>
+<p>
+The current wording does not permit an implementation to use something like
+<code>std::copysign(static_cast&lt;double&gt;(val), std::signbit(val) ? -1.0 : +1.0)</code>
+to restore the sign bit. Should this be allowed? Maybe we should say that it's
+unspecified whether the cast to <code class='backtick'>double</code> preserves the sign of a NaN?
+If not, should we add a note about the surprising behaviour?
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+<ol>
+<li>
+<p>Modify 31.7.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/ostream.inserters.arithmetic">[ostream.inserters.arithmetic]</a> as indicated:</p>
+<blockquote>
+-3-
+When <code class='backtick'>val</code> is of type <code class='backtick'>float</code> the formatting conversion occurs as if
+it performed the following code fragment:
+<pre><code>
+  bool failed = use_facet&lt;
+    num_put&lt;charT, ostreambuf_iterator&lt;charT, traits&gt;&gt;
+      >(getloc()).put(*this, *this, fill(),
+        static_cast&lt;double&gt;(val)).failed();
+</code></pre>
+<ins>
+[<i>Note ?</i>: When <code class='backtick'>val</code> is a NaN value, the conversion to <code class='backtick'>double</code>
+can alter the sign and payload. &mdash; <i>end note</i>]
+</ins>
+</blockquote>
+</li>
+</ol>
+</blockquote>
+
+<p><i>[2024-05-15; Reflector poll]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+
+<p><i>[2024-05-15; Peter Dimov provides improved wording]</i></p>
+
+<p>Jonathan observes that the same problem exists for
+<code>operator&lt;&lt;(<em>extended-floating-point-type</em>)</code>.
+</p>
+
+
+
+<p id="res-4101"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+<ol>
+<li>
+<p>Modify 31.7.6.3.2 <a href="https://timsong-cpp.github.io/cppwp/ostream.inserters.arithmetic">[ostream.inserters.arithmetic]</a> as indicated:</p>
+<blockquote>
+-3-
+When <code class='backtick'>val</code> is of type <code class='backtick'>float</code> the formatting conversion occurs as if
+it performed the following code fragment:
+<pre><code>
+  bool failed = use_facet&lt;
+    num_put&lt;charT, ostreambuf_iterator&lt;charT, traits&gt;&gt;
+      >(getloc()).put(*this, *this, fill(),
+        <del>static_cast&lt;double&gt;(val)</del><ins><em>dval</em></ins>).failed();
+</code></pre>
+<ins>
+where <code><em>dval</em></code> is <code class='backtick'>val</code> converted to type <code class='backtick'>double</code>
+as if by <code>static_cast&lt;double&gt;(val)</code>,
+except that the sign and payload of NaN values may be preserved
+rather than discarded.
+</ins>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

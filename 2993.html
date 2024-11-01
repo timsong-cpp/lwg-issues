@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2993: reference_wrapper&lt;T&gt; conversion from T&amp;&amp;</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2993: reference_wrapper&lt;T&gt; conversion from T&amp;&amp;">
+<meta property="og:description" content="C++ library issue. Status: C++20">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2993.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,22 +61,22 @@
 </head>
 <body>
 <hr>
-<h3><a name="2993" href="lwg-defects.html#2993">2993.</a> <tt>reference_wrapper&lt;T&gt;</tt> conversion from <tt>T&amp;&amp;</tt></h3>
+<h3 id="2993"><a href="lwg-defects.html#2993">2993</a>. <code>reference_wrapper&lt;T&gt;</code> conversion from <code>T&amp;&amp;</code></h3>
 <p><b>Section:</b> 22.10.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a> <b>Status:</b> <a href="lwg-active.html#C++20">C++20</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2021-02-25 10:48:01 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-06-28 <b>Last modified:</b> 2021-02-25</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#refwrap">issues</a> in [refwrap].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++20">C++20</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-<tt>reference_wrapper&lt;T&gt;</tt> has a deleted constructor taking <tt>T&amp;&amp;</tt> in order to
+<code>reference_wrapper&lt;T&gt;</code> has a deleted constructor taking <code>T&amp;&amp;</code> in order to
 prevent accidentally wrapping an rvalue (which can otherwise happen with the 
-<tt>reference_wrapper(T&amp;)</tt> constructor if <tt>T</tt> is a non-<tt>volatile</tt>
-<tt>const</tt>-qualified type). Unfortunately, a deleted constructor can still
-be used to form implicit conversion sequences, so the deleted <tt>T&amp;&amp;</tt>
+<code>reference_wrapper(T&amp;)</code> constructor if <code>T</code> is a non-<code>volatile</code>
+<code>const</code>-qualified type). Unfortunately, a deleted constructor can still
+be used to form implicit conversion sequences, so the deleted <code>T&amp;&amp;</code>
 constructor has the (presumably unintended) effect of creating an implicit conversion sequence from 
-a <tt>T</tt> rvalue to a <tt>reference_wrapper&lt;T&gt;</tt>, even though such a conversion would be
+a <code>T</code> rvalue to a <code>reference_wrapper&lt;T&gt;</code>, even though such a conversion would be
 ill-formed if actually used. This is visible in overload resolution:
 </p>
 <blockquote><pre>
@@ -68,7 +85,7 @@ void meow(convertible_from_int); //#2
 meow(0); // <span style="color:#C80000;font-weight:bold">error, ambiguous</span>; would unambiguously call #2 if #1 instead took int&amp;
 </pre></blockquote>
 <p>
-and in conditional expressions (and hence <tt>std::common_type</tt>) after <a href="https://wg21.link/cwg1895">core issue 1895</a>:
+and in conditional expressions (and hence <code>std::common_type</code>) after <a href="https://wg21.link/cwg1895">core issue 1895</a>:
 </p>
 <blockquote><pre>
 std::reference_wrapper&lt;int&gt; purr();
@@ -80,36 +97,36 @@ using t = std::common_type_t&lt;std::reference_wrapper&lt;int&gt;, int&gt;; // <
                                                                 // expression is ill-formed
 </pre></blockquote>
 <p>
-The latter in turn interferes with the use of <tt>reference_wrapper</tt> as a
+The latter in turn interferes with the use of <code>reference_wrapper</code> as a
 proxy reference type with proxy iterators.
 <p/>
-We should ensure that there is no implicit conversion sequence from <tt>T</tt>
-rvalues to <tt>reference_wrapper&lt;T&gt;</tt>, not just that the conversion will be
+We should ensure that there is no implicit conversion sequence from <code>T</code>
+rvalues to <code>reference_wrapper&lt;T&gt;</code>, not just that the conversion will be
 ill-formed when used. This can be done by using a suitably constrained
 constructor template taking a forwarding reference instead of the
-current pair of constructors taking <tt>T&amp;</tt> and <tt>T&amp;&amp;</tt>.
+current pair of constructors taking <code>T&amp;</code> and <code>T&amp;&amp;</code>.
 </p>
 <p><i>[2017-06-29, Tim adds P/R and comments]</i></p>
 
 <p>
-The draft P/R below uses a conditional <tt>noexcept</tt> specification to ensure that converting a <tt>T&amp;</tt> to
-a <tt>reference_wrapper&lt;T&gt;</tt> remains <tt>noexcept</tt> and make it not usable when the source type is a 
-<tt>reference_wrapper</tt> of the same type so as to avoid affecting <tt>is_trivially_constructible</tt>. It adds a deduction
+The draft P/R below uses a conditional <code>noexcept</code> specification to ensure that converting a <code>T&amp;</code> to
+a <code>reference_wrapper&lt;T&gt;</code> remains <code>noexcept</code> and make it not usable when the source type is a 
+<code>reference_wrapper</code> of the same type so as to avoid affecting <code>is_trivially_constructible</code>. It adds a deduction
 guide as the new constructor template will not support class template argument deduction.
 <p/>
-The constructor template has the additional effect of making <tt>reference_wrapper&lt;T&gt;</tt> convertible from everything
-that is convertible to <tt>T&amp;</tt>. This implies, for instance, that <tt>reference_wrapper&lt;int&gt;</tt> is now
-convertible to <tt>reference_wrapper&lt;const int&gt;</tt> when it wasn't before (the conversion would have required 
+The constructor template has the additional effect of making <code>reference_wrapper&lt;T&gt;</code> convertible from everything
+that is convertible to <code>T&amp;</code>. This implies, for instance, that <code>reference_wrapper&lt;int&gt;</code> is now
+convertible to <code>reference_wrapper&lt;const int&gt;</code> when it wasn't before (the conversion would have required 
 two user-defined conversions previously). This more closely emulates the behavior of an actual reference, but does represent
 a change to the existing behavior.
 <p/>
 If perfectly emulating the existing behavior is desired, a conditionally-explicit constructor that is only implicit if 
-<tt>T</tt> is reference-compatible with <tt>remove_reference_t&lt;U&gt;</tt> (see 9.4.4 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.ref">[dcl.init.ref]</a>) can be used.
+<code>T</code> is reference-compatible with <code>remove_reference_t&lt;U&gt;</code> (see 9.4.4 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.ref">[dcl.init.ref]</a>) can be used.
 </p>
 
 <p><i>[2017-07 Toronto Tuesday PM issue prioritization]</i></p>
 
-<p>Priority 3; what else in the library does this affect? <tt>ref</tt> or <tt>cref</tt>?</p>
+<p>Priority 3; what else in the library does this affect? <code>ref</code> or <code>cref</code>?</p>
 
 <p><i>[2016-07, Toronto Saturday afternoon issues processing]</i></p>
 
@@ -121,7 +138,7 @@ If perfectly emulating the existing behavior is desired, a conditionally-explici
 This wording is relative to <a href="https://wg21.link/n4659">N4659</a>.
 </p>
 <ol>
-<li><p>Edit 22.10.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>, class template <tt>reference_wrapper</tt> synopsis, as indicated:</p>
+<li><p>Edit 22.10.6 <a href="https://timsong-cpp.github.io/cppwp/refwrap">[refwrap]</a>, class template <code>reference_wrapper</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 namespace std {
@@ -147,7 +164,7 @@ namespace std {
 <del>reference_wrapper(T&amp; t) noexcept;</del>
 </pre>
 <blockquote>
-<p><del>-1- <i>Effects:</i> Constructs a <tt>reference_wrapper</tt> object that stores a reference to <tt>t</tt>.</del></p>
+<p><del>-1- <i>Effects:</i> Constructs a <code>reference_wrapper</code> object that stores a reference to <code>t</code>.</del></p>
 </blockquote>
 <pre>
 <ins>template&lt;class U&gt;
@@ -155,17 +172,17 @@ namespace std {
 </pre>
 <blockquote>
 <p><ins>
--?- <i>Remarks:</i> Let <tt><i>FUN</i></tt> denote the exposition-only functions</ins>
+-?- <i>Remarks:</i> Let <code><i>FUN</i></code> denote the exposition-only functions</ins>
 <blockquote><pre>
 <ins>void <i>FUN</i>(T&amp;) noexcept;
 void <i>FUN</i>(T&amp;&amp;) = delete;</ins>
 </pre></blockquote>
-<ins>This constructor shall not participate in overload resolution unless the expression <tt><i>FUN</i>(declval&lt;U&gt;())</tt> is well-formed
-and <tt>is_same_v&lt;decay_t&lt;U&gt;, reference_wrapper&gt;</tt> is <tt>false</tt>.
-The expression inside <tt>noexcept</tt> is equivalent to <tt>noexcept(<i>FUN</i>(declval&lt;U&gt;()))</tt>.</ins>
+<ins>This constructor shall not participate in overload resolution unless the expression <code><i>FUN</i>(declval&lt;U&gt;())</code> is well-formed
+and <code>is_same_v&lt;decay_t&lt;U&gt;, reference_wrapper&gt;</code> is <code>false</code>.
+The expression inside <code>noexcept</code> is equivalent to <code>noexcept(<i>FUN</i>(declval&lt;U&gt;()))</code>.</ins>
 <p/>
-<ins>-?- <i>Effects:</i> Creates a variable <tt>r</tt> as if by <tt>T&amp; r = std::forward&lt;U&gt;(u)</tt>, then constructs a
-<tt>reference_wrapper</tt> object that stores a reference to <tt>r</tt>.</ins>
+<ins>-?- <i>Effects:</i> Creates a variable <code>r</code> as if by <code>T&amp; r = std::forward&lt;U&gt;(u)</code>, then constructs a
+<code>reference_wrapper</code> object that stores a reference to <code>r</code>.</ins>
 </p>
 </blockquote>
 </blockquote>

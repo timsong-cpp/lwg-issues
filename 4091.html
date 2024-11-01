@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4091: concat_view rejects non-movable references</title>
+<meta property="og:title" content="Issue 4091: concat_view rejects non-movable references">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4091.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4091"><a href="lwg-active.html#4091">4091</a>. <code>concat_view</code> rejects non-movable references</h3>
+<p><b>Section:</b> 25.7.18.2 <a href="https://timsong-cpp.github.io/cppwp/range.concat.view">[range.concat.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-01 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.concat.view">active issues</a> in [range.concat.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.concat.view">issues</a> in [range.concat.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In order to prevent non-equality-preserving behavior of <code>operator*</code> and <code>iter_move</code>, 
+<code>concat_view</code> introduces the <code><i>concat-indirectly-readable</i></code> concept, part of which is:
+</p>
+<blockquote><pre>
+template&lt;class Ref, class RRef, class It&gt;
+  concept <i>concat-indirectly-readable-impl</i> =                         // <i>exposition only</i>
+    requires (const It it) {
+      { *it } -&gt; convertible_to&lt;Ref&gt;;
+      { ranges::iter_move(it) } -&gt; convertible_to&lt;RRef&gt;;
+    };
+</pre></blockquote>
+<p>
+This isn't quite right because <code>convertible_to</code> checks <code>is_convertible_v</code> which doesn't 
+understand copy elision. This makes the current <code>concat_view</code> unable to work with ranges whose 
+reference is non-movable prvalue:
+</p>
+<blockquote><pre>
+auto r = std::views::iota(0, 5)
+       | std::views::transform([](int) { return NonMovable{}; });
+auto c1 = std::ranges::concat_view(r);    // <span style="color:red;font-weight:bolder">ill-formed, concat_indirectly_readable not satisfied</span>
+auto c2 = std::ranges::concat_view(r, r); // <span style="color:red;font-weight:bolder">ditto</span>
+</pre></blockquote>
+<p>
+Since <code>std::visit&lt;R&gt;</code> is used in the implementation to perform reference conversion for the 
+underlying iterator, the more accurate one should be <code>is_invocable_r</code> which does understand guaranteed 
+elision.
+<p/>
+Note that <code>join_with_view</code> has the same issue because <code><i>compatible-joinable-ranges</i></code> 
+requires that the <code>value_type</code> of the inner range and pattern range must satisfy <code>common_with</code>, 
+which always fails for non-movable types. However, this can be automatically resolved by LWG 
+<a href="4074" title="compatible-joinable-ranges is underconstrained (Status: WP)">4074</a>'s resolution.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 4 after reflector poll.
+"Proposed resolution loses the existing requirement that the conversion
+is equality-preserving."
+"Don't care about rejecting non-movable reference types."
+</p>
+
+
+
+<p id="res-4091"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.7.18.2 <a href="https://timsong-cpp.github.io/cppwp/range.concat.view">[range.concat.view]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The exposition-only <code><i>concat-indirectly-readable</i></code> concept is equivalent to:
+</p>
+<blockquote>
+<pre>
+<ins>template&lt;class Ref, class CRef&gt;
+concept <i>concat-ref-compatible-with</i> = is_invocable_r_v&lt;CRef, Ref()&gt;;  // <i>exposition only</i></ins>
+  
+template&lt;class Ref, class RRef, class It&gt;
+concept <i>concat-indirectly-readable-impl</i> =                         // <i>exposition only</i>
+  requires (const It it) {
+    { *it } -&gt; <del>convertible_to</del><ins><i>concat-ref-compatible-with</i></ins>&lt;Ref&gt;;
+    { ranges::iter_move(it) } -&gt; <del>convertible_to</del><ins><i>concat-ref-compatible-with</i></ins>&lt;RRef&gt;;
+  };
+
+template&lt;class... Rs&gt;
+  concept <i>concat-indirectly-readable</i> =                              // <i>exposition only</i>
+    common_reference_with&lt;<i>concat-reference-t</i>&lt;Rs...&gt;&amp;&amp;,
+                          <i>concat-value-t</i>&lt;Rs...&gt;&amp;&gt; &amp;&amp;
+    common_reference_with&lt;<i>concat-reference-t</i>&lt;Rs...&gt;&amp;&amp;,
+                          <i>concat-rvalue-reference-t</i>&lt;Rs...&gt;&amp;&amp;&gt; &amp;&amp;
+    common_reference_with&lt;<i>concat-rvalue-reference-t</i>&lt;Rs...&gt;&amp;&amp;,
+                          <i>concat-value-t</i>&lt;Rs...&gt; const&amp;&gt; &amp;&amp;
+    (<i>concat-indirectly-readable-impl</i>&lt;<i>concat-reference-t</i>&lt;Rs...&gt;,
+                                     <i>concat-rvalue-reference-t</i>&lt;Rs...&gt;,
+                                     iterator_t&lt;Rs&gt;&gt; &amp;&amp; ...);
+</pre>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

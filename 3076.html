@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3076: basic_string CTAD ambiguity</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3076: basic_string CTAD ambiguity">
+<meta property="og:description" content="C++ library issue. Status: C++20">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3076.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3076" href="lwg-defects.html#3076">3076.</a> <tt>basic_string</tt> CTAD ambiguity</h3>
-<p><b>Section:</b> 23.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> <b>Status:</b> <a href="lwg-active.html#C++20">C++20</a>
- <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2018-03-03 <b>Last modified:</b> 2021-02-25 10:48:01 UTC</p>
+<h3 id="3076"><a href="lwg-defects.html#3076">3076</a>. <code>basic_string</code> CTAD ambiguity</h3>
+<p><b>Section:</b> 27.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> <b>Status:</b> <a href="lwg-active.html#C++20">C++20</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2018-03-03 <b>Last modified:</b> 2021-02-25</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#string.cons">issues</a> in [string.cons].</p>
@@ -78,23 +95,23 @@ int main()
 }
 </pre></blockquote>
 <p>
-For <tt>s1</tt> and <tt>s2</tt>, the signature <tt>basic_string(size_type, charT, const Allocator&amp;)</tt> participates in CTAD. <tt>size_type</tt> is non-deduced (it will be substituted later, so the compiler 
-can't immediately realize that <tt>s0</tt> or <tt>"cat"sv</tt> are totally non-viable arguments). 
-<tt>charT</tt> is deduced to be <tt>int</tt> (weird, but not the problem). Finally, <tt>Allocator</tt> 
-is deduced to be <tt>int</tt>. Then the compiler tries to substitute for <tt>size_type</tt>, but 
-this ends up giving int to <tt>allocator_traits</tt> in a non-SFINAE context, so compilation fails.
+For <code>s1</code> and <code>s2</code>, the signature <code>basic_string(size_type, charT, const Allocator&amp;)</code> participates in CTAD. <code>size_type</code> is non-deduced (it will be substituted later, so the compiler 
+can't immediately realize that <code>s0</code> or <code>"cat"sv</code> are totally non-viable arguments). 
+<code>charT</code> is deduced to be <code>int</code> (weird, but not the problem). Finally, <code>Allocator</code> 
+is deduced to be <code>int</code>. Then the compiler tries to substitute for <code>size_type</code>, but 
+this ends up giving int to <code>allocator_traits</code> in a non-SFINAE context, so compilation fails.
 <p/>
-<tt>s3</tt> fails for a slightly different reason. <tt>basic_string(const charT *, const Allocator&amp;)</tt> participates in CTAD, deducing <tt>charT</tt> to be <tt>char</tt> (good) and <tt>Allocator</tt> to be 
-<tt>int</tt>. This is an exact match, which is better than the constructor that the user actually wants 
-(where <tt>int</tt> would need to be converted to <tt>size_type</tt>, which is unsigned). So CTAD deduces <tt>basic_string&lt;char, char_traits&lt;char&gt;, int&gt;</tt>, which is the wrong type.
+<code>s3</code> fails for a slightly different reason. <code>basic_string(const charT *, const Allocator&amp;)</code> participates in CTAD, deducing <code>charT</code> to be <code>char</code> (good) and <code>Allocator</code> to be 
+<code>int</code>. This is an exact match, which is better than the constructor that the user actually wants 
+(where <code>int</code> would need to be converted to <code>size_type</code>, which is unsigned). So CTAD deduces <code>basic_string&lt;char, char_traits&lt;char&gt;, int&gt;</code>, which is the wrong type.
 <p/>
-This problem appears to be unique to <tt>basic_string</tt> and its heavily overloaded set of constructors. 
+This problem appears to be unique to <code>basic_string</code> and its heavily overloaded set of constructors. 
 I haven't figured out how to fix it by adding (non-greedy) deduction guides. The conflicting constructors 
 are always considered during CTAD, regardless of whether deduction guides are provided that correspond 
 to the desired or conflicting constructors. (That's because deduction guides are preferred as a late 
 tiebreaker in overload resolution; if a constructor provides a better match it will be chosen before 
 tiebreaking.) It appears that we need to constrain the conflicting constructors themselves; this will 
-have no effect on actual usage (where <tt>Allocator</tt> will be an allocator) but will prevent CTAD 
+have no effect on actual usage (where <code>Allocator</code> will be an allocator) but will prevent CTAD 
 from considering them for non-allocators. As this is unusual, I believe it deserves a <i>Note</i>. 
 This has been implemented in MSVC.
 </p>
@@ -113,26 +130,26 @@ This wording is relative to <a href="https://wg21.link/n4727">N4727</a>.
 
 <ol>
 <li>
-<p>Edit 23.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
+<p>Edit 27.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/string.cons">[string.cons]</a> as indicated:</p>
 <blockquote>
 <pre>
 basic_string(const charT* s, const Allocator&amp; a = Allocator());
 </pre>
 <blockquote>
 <p>
--14- <i>Requires:</i> <tt>s</tt> points to an array of at least <tt>traits::length(s) + 1</tt> elements of 
-<tt>charT</tt>.
+-14- <i>Requires:</i> <code>s</code> points to an array of at least <code>traits::length(s) + 1</code> elements of 
+<code>charT</code>.
 <p/>
--15- <i>Effects:</i> Constructs an object of class <tt>basic_string</tt> and determines its initial 
-string value from the array of <tt>charT</tt> of length <tt>traits::length(s)</tt> whose first element 
-is designated by <tt>s</tt>.
+-15- <i>Effects:</i> Constructs an object of class <code>basic_string</code> and determines its initial 
+string value from the array of <code>charT</code> of length <code>traits::length(s)</code> whose first element 
+is designated by <code>s</code>.
 <p/>
--16- <i>Postconditions:</i> <tt>data()</tt> points at the first element of an allocated copy of the 
-array whose first element is pointed at by <tt>s</tt>, <tt>size()</tt> is equal to <tt>traits::length(s)</tt>, 
-and <tt>capacity()</tt> is a value at least as large as <tt>size()</tt>.
+-16- <i>Postconditions:</i> <code>data()</code> points at the first element of an allocated copy of the 
+array whose first element is pointed at by <code>s</code>, <code>size()</code> is equal to <code>traits::length(s)</code>, 
+and <code>capacity()</code> is a value at least as large as <code>size()</code>.
 <p/>
-<ins>-?- <i>Remarks:</i> Shall not participate in overload resolution if <tt>Allocator</tt> is a type 
-that does not qualify as an allocator (24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). [<i>Note:</i> 
+<ins>-?- <i>Remarks:</i> Shall not participate in overload resolution if <code>Allocator</code> is a type 
+that does not qualify as an allocator (23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). [<i>Note:</i> 
 This affects class template argument deduction. &mdash; <i>end note</i>]</ins>
 </p>
 </blockquote>
@@ -141,17 +158,17 @@ basic_string(size_type n, charT c, const Allocator&amp; a = Allocator());
 </pre>
 <blockquote>
 <p>
--17- <i>Requires:</i> <tt>n &lt; npos</tt>.
+-17- <i>Requires:</i> <code>n &lt; npos</code>.
 <p/>
--18- <i>Effects:</i> Constructs an object of class <tt>basic_string</tt> and determines its initial string 
-value by repeating the char-like object <tt>c</tt> for all <tt>n</tt> elements.
+-18- <i>Effects:</i> Constructs an object of class <code>basic_string</code> and determines its initial string 
+value by repeating the char-like object <code>c</code> for all <code>n</code> elements.
 <p/>
--19- <i>Postconditions:</i> <tt>data()</tt> points at the first element of an allocated array of <tt>n</tt>
-elements, each storing the initial value <tt>c</tt>, <tt>size()</tt> is equal to <tt>n</tt>, and 
-<tt>capacity()</tt> is a value at least as large as <tt>size()</tt>.
+-19- <i>Postconditions:</i> <code>data()</code> points at the first element of an allocated array of <code>n</code>
+elements, each storing the initial value <code>c</code>, <code>size()</code> is equal to <code>n</code>, and 
+<code>capacity()</code> is a value at least as large as <code>size()</code>.
 <p/>
-<ins>-?- <i>Remarks:</i> Shall not participate in overload resolution if <tt>Allocator</tt> is a type that 
-does not qualify as an allocator (24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). [<i>Note:</i> This 
+<ins>-?- <i>Remarks:</i> Shall not participate in overload resolution if <code>Allocator</code> is a type that 
+does not qualify as an allocator (23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>). [<i>Note:</i> This 
 affects class template argument deduction. &mdash; <i>end note</i>]</ins>
 </p>
 </blockquote>

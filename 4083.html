@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4083: views::as_rvalue should reject non-input ranges</title>
+<meta property="og:title" content="Issue 4083: views::as_rvalue should reject non-input ranges">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4083.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4083"><a href="lwg-defects.html#4083">4083</a>. <code>views::as_rvalue</code> should reject non-input ranges</h3>
+<p><b>Section:</b> 25.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.overview">[range.as.rvalue.overview]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-04-27 <b>Last modified:</b> 2024-07-08</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.as.rvalue.overview">issues</a> in [range.as.rvalue.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>views::as_rvalue(r)</code> equivalent to <code>views::all(r)</code> when <code>r</code>'s reference and rvalue reference are
+of the same type, which means that in this case we only need to check whether the type of <code>r</code> models <code>viewable_range</code>.
+<p/>
+However, libstdc++'s implementation always requires <code>as_rvalue_view{r}</code> to be valid, which leads to
+divergence when <code>r</code> is not an <code>input_range</code> (<a href="https://godbolt.org/z/EbzEsK88Y">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;ranges&gt;
+
+struct I {
+  int operator*();
+  using difference_type = int;
+  I&amp; operator++();
+  void operator++(int);
+};
+
+std::ranges::range auto r = std::ranges::subrange{I{}, std::unreachable_sentinel}
+                          | std::views::as_rvalue; // <span style="color:red;font-weight:bolder">// well-formed in libc++/MSVC-STL, ill-formed in libstdc++</span>
+</pre></blockquote>
+<p>
+Although this is precisely a bug in libstdc++ that does not conform to the current wording, it is reasonable to
+require <code>r</code> to be an <code>input_range</code> to be consistent with the constraints of <code>as_rvalue_view</code>.
+</p>
+
+<p><i>[2024-05-08; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after seven votes in favour during reflector poll.
+</p>
+
+<p><i>[St. Louis 2024-06-29; Status changed: Voting &rarr; WP.]</i></p>
+
+
+
+<p id="res-4083"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.overview">[range.as.rvalue.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code>views::as_rvalue</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+Let <code>E</code> be an expression and let <code>T</code> be <code>decltype((E))</code>. The expression 
+<code>views::as_rvalue(E)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <code>views::all(E)</code> if <ins><code>T</code> models <code>input_range</code> and</ins> 
+<code>same_as&lt;range_rvalue_reference_t&lt;T&gt;, range_reference_t&lt;T&gt;&gt;</code> is <code>true</code>.</p></li>
+<li><p>(2.2) &mdash; Otherwise, <code>as_rvalue_view(E)</code>.</p></li>
+</ol>
+
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

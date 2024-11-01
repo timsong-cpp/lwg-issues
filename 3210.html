@@ -1,13 +1,21 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Issue 3210: allocate_shared is inconsistent about removing const from the pointer 
+<title>Issue 3210: allocate_shared is inconsistent about removing const from the pointer
 passed to allocator construct and destroy</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3210: allocate_shared is inconsistent about removing const from the pointer
+passed to allocator construct and destroy">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3210.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -18,7 +26,17 @@ passed to allocator construct and destroy</title>
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -45,10 +63,10 @@ passed to allocator construct and destroy</title>
 </head>
 <body>
 <hr>
-<h3><a name="3210" href="lwg-active.html#3210">3210.</a> <tt>allocate_shared</tt> is inconsistent about removing <tt>const</tt> from the pointer 
-passed to allocator <tt>construct</tt> and <tt>destroy</tt></h3>
+<h3 id="3210"><a href="lwg-active.html#3210">3210</a>. <code>allocate_shared</code> is inconsistent about removing <code>const</code> from the pointer
+passed to allocator <code>construct</code> and <code>destroy</code></h3>
 <p><b>Section:</b> 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2019-05-29 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+ <b>Submitter:</b> Billy O'Neal III <b>Opened:</b> 2019-05-29 <b>Last modified:</b> 2024-10-02</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared.create">active issues</a> in [util.smartptr.shared.create].</p>
@@ -56,34 +74,34 @@ passed to allocator <tt>construct</tt> and <tt>destroy</tt></h3>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-I implemented the fix for LWG <a href="3008">3008</a> and Stephan pointed out there's an inconsistency here 
-for <tt>allocate_shared&lt;const T&gt;</tt>.
+I implemented the fix for LWG <a href="3008" title="make_shared (sub)object destruction semantics are not specified (Status: C++20)">3008</a> and Stephan pointed out there's an inconsistency here
+for <code>allocate_shared&lt;const T&gt;</code>.
 <p/>
-20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> p3 says that the allocator construct call is done without removing 
-<i>cv</i> qualifiers, but 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> p7.12 says that the <tt>destroy</tt> 
+20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> p3 says that the allocator construct call is done without removing
+<i>cv</i> qualifiers, but 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> p7.12 says that the <code>destroy</code>
 call is done with removed <i>cv</i> qualifiers.
 <p/>
-The fallback for <tt>allocator_traits::construct</tt> rejects <tt>const T*</tt> (since it <tt>static_casts</tt> 
-to <tt>void*</tt>), so the most likely outcome of attempting to do this today is to fail to compile, which 
+The fallback for <code>allocator_traits::construct</code> rejects <code>const T*</code> (since it <code>static_casts</code>
+to <code>void*</code>), so the most likely outcome of attempting to do this today is to fail to compile, which
 is a break with C++17.
 <p/>
 Our options are:
 </p>
 <ol>
-<li><p>Fix the allocator model to deal with <tt>const</tt> elements somehow, which breaks compatibility 
-with existing allocators unprepared for <tt>const</tt> elements here. We would need to extend the allocator 
-requirements to allow <tt>const T*</tt> to be passed here, and fix our default to <tt>const_cast</tt>.</p></li>
-<li><p>Fix <tt>allocate_shared</tt> to remove <tt>const</tt> before calling <tt>construct</tt>, which 
-changes the experience for C++17 customers because <tt>allocate_shared</tt> constructs a <tt>T</tt> 
-instead of a <tt>const T</tt>, but not in a way substantially different to edits 
+<li><p>Fix the allocator model to deal with <code>const</code> elements somehow, which breaks compatibility
+with existing allocators unprepared for <code>const</code> elements here. We would need to extend the allocator
+requirements to allow <code>const T*</code> to be passed here, and fix our default to <code>const_cast</code>.</p></li>
+<li><p>Fix <code>allocate_shared</code> to remove <code>const</code> before calling <code>construct</code>, which
+changes the experience for C++17 customers because <code>allocate_shared</code> constructs a <code>T</code>
+instead of a <code>const T</code>, but not in a way substantially different to edits
 <a href="https://wg21.link/p0674">P0674</a> already made here.</p></li>
-<li><p>Back out <tt>allocate_shared</tt>'s interaction with this part of the allocator model (reverting 
-this part of <a href="https://wg21.link/p0674">P0674</a> and reopening LWG <a href="3008">3008</a>).</p></li>
-<li><p>Go around the problem by prohibiting <tt>allocate_shared&lt;const T&gt;</tt>, which breaks 
+<li><p>Back out <code>allocate_shared</code>'s interaction with this part of the allocator model (reverting
+this part of <a href="https://wg21.link/p0674">P0674</a> and reopening LWG <a href="3008" title="make_shared (sub)object destruction semantics are not specified (Status: C++20)">3008</a>).</p></li>
+<li><p>Go around the problem by prohibiting <code>allocate_shared&lt;const T&gt;</code>, which breaks
 existing C++17 customers.</p></li>
 </ol>
 <p>
-Billy O'Neal argues that only (2) preserves the design intent <a href="https://wg21.link/p0674">P0674</a> 
+Billy O'Neal argues that only (2) preserves the design intent <a href="https://wg21.link/p0674">P0674</a>
 while maintaining compatibility for most allocators and most C++17 customers.
 <p/>
 Peter Dimov argues that (1) isn't likely to break enough to matter.
@@ -92,9 +110,10 @@ Peter Dimov argues that (1) isn't likely to break enough to matter.
 <p><i>[2019-06-16 Priority set to 3 based on reflector discussion]</i></p>
 
 
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 
-<p id="res-3210"><b>Proposed resolution:</b></p>
-<p>This wording is relative to <a href="https://wg21.link/n4810">N4810</a>.</p>
+<p>This wording is relative to <a href="https://wg21.link/N4810">N4810</a>.</p>
 
 <blockquote class="note">
 <p>
@@ -127,19 +146,19 @@ template&lt;class T, class A, ...&gt;
 <ol style="list-style-type: none">
 <li><p>(7.1) &mdash; [&hellip;]</p></li>
 <li><p>[&hellip;]</p></li>
-<li><p>(7.5) &mdash; When a (sub)object of a non-array type <tt>U</tt> is specified to have an initial 
-value of <tt>v</tt>, or <tt>U(l...)</tt>, where <tt>l...</tt> is a list of constructor arguments, 
-<tt>allocate_shared</tt> shall initialize this (sub)object via the expression
+<li><p>(7.5) &mdash; When a (sub)object of a non-array type <code>U</code> is specified to have an initial
+value of <code>v</code>, or <code>U(l...)</code>, where <code>l...</code> is a list of constructor arguments,
+<code>allocate_shared</code> shall initialize this (sub)object via the expression
 </p>
 <ol style="list-style-type: none">
-<li><p>(7.5.1) &mdash; <tt>allocator_traits&lt;A2&gt;::construct(a2, pv, v)</tt> or</p></li>
-<li><p>(7.5.2) &mdash; <tt>allocator_traits&lt;A2&gt;::construct(a2, pv, l...)</tt></p></li>
+<li><p>(7.5.1) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, pv, v)</code> or</p></li>
+<li><p>(7.5.2) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, pv, l...)</code></p></li>
 </ol>
 <p>
-respectively, where <tt>pv</tt> points to storage suitable to hold an object of type 
-<tt><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></tt> and <tt>a2</tt> of type <tt>A2</tt> is a 
-rebound copy of the allocator <tt>a</tt> passed to <tt>allocate_shared</tt> such that its <tt>value_type</tt> 
-is <tt>remove_cv_t&lt;U&gt;</tt>.
+respectively, where <code>pv</code> points to storage suitable to hold an object of type
+<code><ins>remove_cv_t&lt;</ins>U<ins>&gt;</ins></code> and <code>a2</code> of type <code>A2</code> is a
+rebound copy of the allocator <code>a</code> passed to <code>allocate_shared</code> such that its <code>value_type</code>
+is <code>remove_cv_t&lt;U&gt;</code>.
 </p>
 </li>
 </ol>
@@ -147,6 +166,86 @@ is <tt>remove_cv_t&lt;U&gt;</tt>.
 </blockquote>
 </li>
 
+</ol>
+</blockquote>
+
+<p><i>[2024-04-13; Jiang An comments and provides improved wording]</i></p>
+
+<p>
+The currently proposed resolution is meaningless, because "(allocated) storage suitable to hold an object of type
+<code>remove_cv_t&lt;U&gt;</code>" is always "storage suitable to hold an object of type <code>U</code>", and vice versa.
+Also, the current specification doesn't seem to specify the type of <code>pv</code> in the cases of <code>allocator_shared</code>,
+because <code>pv</code> is merely specified to point some storage instead of an object.
+</p>
+
+<p><i>[2024-10-02; will be resolved by issue <a href="3216" title="Rebinding the allocator before calling construct/destroy in allocate_shared (Status: Tentatively Ready)">3216</a>.]</i></p>
+
+
+
+<p id="res-3210"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 20.3.2.2.7 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.create">[util.smartptr.shared.create]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note:</i> As the issue submitter prefers option (2), this is wording for that.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&amp;lt;class T, ...>
+  shared_ptr&amp;lt;T&amp;gt; make_shared(<i>args</i>);
+template&amp;lt;class T, class A, ...>
+  shared_ptr&amp;lt;T&amp;gt; allocate_shared(const A&amp; a, <i>args</i>);
+template&amp;lt;class T, ...>
+  shared_ptr&amp;lt;T&amp;gt; make_shared_for_overwrite(<i>args</i>);
+template&amp;lt;class T, class A, ...>
+  shared_ptr&amp;lt;T&amp;gt; allocate_shared_for_overwrite(const A&amp; a, <i>args</i>);
+</pre>
+<blockquote>
+<p>
+-2- <i>Preconditions:</i> [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+-7- <i>Remarks:</i>
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.1) &mdash; [&hellip;]</p></li>
+<li><p>[&hellip;]</p></li>
+<li><p>(7.5) &mdash; When a (sub)object of a non-array type <code>U</code> is specified to have an initial
+value of <code>v</code>, or <code>U(l...)</code>, where <code>l...</code> is a list of constructor arguments,
+<code>allocate_shared</code> shall initialize this (sub)object via the expression
+</p>
+<ol style="list-style-type: none">
+<li><p>(7.5.1) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, pv, v)</code> or</p></li>
+<li><p>(7.5.2) &mdash; <code>allocator_traits&lt;A2&gt;::construct(a2, pv, l...)</code></p></li>
+</ol>
+<p>
+respectively, where <code>pv</code> <ins>has type <code>remove_cv_t&lt;U&gt;*</code> and</ins> points to storage
+suitable to hold an object of type <code>U</code> and <code>a2</code> of type <code>A2</code> is a rebound copy of
+the allocator a passed to <code>allocate_shared</code> such that its <code>value_type</code> is
+<code>remove_cv_t&lt;U&gt;</code>.
+</p>
+</li>
+<li><p>(7.6) &mdash; [&hellip;]</p></li>
+<li><p>(7.7) &mdash; When a (sub)object of non-array type <code>U</code> is specified to have a default
+initial value, <code>allocate_shared</code> shall initialize this (sub)object via the expression
+<code>allocator_traits&lt;A2&gt;::construct(a2, pv)</code>, where <code>pv</code> <ins>has type <code>remove_cv_t&lt;U&gt;*</code>
+and</ins> points to storage suitable to hold an object of type <code>U</code> and <code>a2</code> of type <code>A2</code>
+is a rebound copy of the allocator a passed to <code>allocate_shared</code> such that its <code>value_type</code>
+is <code>remove_cv_t&lt;U&gt;</code>.
+</p>
+</li>
+</ol>
+</blockquote>
+</blockquote>
+</li>
 </ol>
 
 

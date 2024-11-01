@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2108: No way to identify allocator types that always compare equal</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2108: No way to identify allocator types that always compare equal">
+<meta property="og:description" content="C++ library issue. Status: Resolved">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2108.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="2108" href="lwg-defects.html#2108">2108.</a> No way to identify allocator types that always compare equal</h3>
+<h3 id="2108"><a href="lwg-defects.html#2108">2108</a>. No way to identify allocator types that always compare equal</h3>
 <p><b>Section:</b> 16.4.4.6 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2011-12-01 <b>Last modified:</b> 2018-12-03 18:22:13 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2011-12-01 <b>Last modified:</b> 2018-12-03</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
@@ -58,59 +75,59 @@
 Whether two allocator objects compare equal affects the complexity of
 container copy and move assignments and also the possibility of an
 exception being thrown by container move assignments. The latter point
-means container move assignment cannot be <tt>noexcept</tt> when
-<tt>propagate_on_container_move_assignment</tt> (POCMA) is false for the
+means container move assignment cannot be <code>noexcept</code> when
+<code>propagate_on_container_move_assignment</code> (POCMA) is false for the
 allocator because there is no way to detect at compile-time if two
-allocators will compare equal. LWG <a href="2013">2013</a> means this affects all
-containers using <tt>std::allocator</tt>, but even if that is resolved, this
+allocators will compare equal. LWG <a href="2013" title="Do library implementers have the freedom to add constexpr? (Status: C++14)">2013</a> means this affects all
+containers using <code>std::allocator</code>, but even if that is resolved, this
 affects all stateless allocators which do not explicitly define POCMA
-to <tt>true_type</tt>.
+to <code>true_type</code>.
 <p/>
 One solution would be to add an "always_compare_equal" trait to
-<tt>allocator_traits</tt>, but that would be duplicating information that is
+<code>allocator_traits</code>, but that would be duplicating information that is
 already defined by the type's equality operator if that operator
-always returns true. Requiring users to write <tt>operator==</tt> that simply
+always returns true. Requiring users to write <code>operator==</code> that simply
 returns true and also explicitly override a trait to repeat the same
 information would be unfortunate and risk user errors that allow the
-trait and actual <tt>operator==</tt> to disagree.
+trait and actual <code>operator==</code> to disagree.
 <p/>
 Dave Abrahams suggested a better solution in message c++std-lib-31532,
-namely to allow <tt>operator==</tt> to return <tt>true_type</tt>, which is convertible
-to <tt>bool</tt> but also detectable at compile-time. Adopting this as the
+namely to allow <code>operator==</code> to return <code>true_type</code>, which is convertible
+to <code>bool</code> but also detectable at compile-time. Adopting this as the
 recommended way to identify allocator types that always compare equal
 only requires a slight relaxation of the allocator requirements so
-that <tt>operator==</tt> is not required to return <tt>bool</tt> exactly.
+that <code>operator==</code> is not required to return <code>bool</code> exactly.
 <p/>
 The allocator requirements do not make it clear that it is well-defined 
 to compare non-const values, that should be corrected too.
 <p/>
-In message c++std-lib-31615 Pablo Halpern suggested an <tt>always_compare_equal</tt> 
+In message c++std-lib-31615 Pablo Halpern suggested an <code>always_compare_equal</code> 
 trait that could still be defined, but with a sensible default value rather 
 than requiring users to override it, and using that to set sensible values for 
 other allocator traits:
 </p>
 <blockquote><p>
-Do we still need <tt>always_compare_equal</tt> if we can have an <tt>operator==</tt>
-that returns <tt>true_type</tt>?  What would its default value be? <tt>is_empty&lt;A&gt;
-|| is_convertible&lt;decltype(a == a), true_type&gt;::value</tt>, perhaps?  One
+Do we still need <code>always_compare_equal</code> if we can have an <code>operator==</code>
+that returns <code>true_type</code>?  What would its default value be? <code>is_empty&lt;A&gt;
+|| is_convertible&lt;decltype(a == a), true_type&gt;::value</code>, perhaps?  One
 benefit I see to such a definition is that stateless C++03 allocators
-that don't use the <tt>true_type</tt> idiom will still benefit from the new
+that don't use the <code>true_type</code> idiom will still benefit from the new
 trait.
 <p/>
 [&hellip;]
 <p/>
 One point that I want to ensure doesn't get lost is that if we adopt some sort of 
-<tt>always_compare_equal</tt>-like trait, then <tt>propagate_on_container_swap</tt> 
-and <tt>propagate_on_container_move_assignment</tt> should default to 
-<tt>always_compare_equal</tt>. Doing this will eliminate unnecessary requirements 
-on the container element type, as per [LWG <a href="2103">2103</a>].
+<code>always_compare_equal</code>-like trait, then <code>propagate_on_container_swap</code> 
+and <code>propagate_on_container_move_assignment</code> should default to 
+<code>always_compare_equal</code>. Doing this will eliminate unnecessary requirements 
+on the container element type, as per [LWG <a href="2103" title="std::allocator_traits&lt;std::allocator&lt;T&gt;&gt;::propagate_on_container_move_assignment (Status: C++14)">2103</a>].
 </p></blockquote>
 <p>
-Optionally, <tt>operator==</tt> for <tt>std::allocator</tt> could be made to return 
-<tt>true_type</tt>, however if LWG <a href="2103">2103</a> is adopted that is less important.
+Optionally, <code>operator==</code> for <code>std::allocator</code> could be made to return 
+<code>true_type</code>, however if LWG <a href="2103" title="std::allocator_traits&lt;std::allocator&lt;T&gt;&gt;::propagate_on_container_move_assignment (Status: C++14)">2103</a> is adopted that is less important.
 <p/>
-Alberto Ganesh Barbati: Suggest either <tt>always_compare_equal</tt>,
-<tt>all_objects_(are_)equivalent</tt>, or <tt>all_objects_compare_equal</tt>.
+Alberto Ganesh Barbati: Suggest either <code>always_compare_equal</code>,
+<code>all_objects_(are_)equivalent</code>, or <code>all_objects_compare_equal</code>.
 </p>
 
 <p><i>[2014-11-07 Urbana]</i></p>
@@ -136,19 +153,19 @@ Resolved by <a href="https://wg21.link/n4258">N4258</a>
 
 <tr>
 <td>
-<tt>a3<ins>, a4</ins></tt>
+<code>a3<ins>, a4</ins></code>
 </td>
 <td>
-<del>an rvalue of</del><ins>values of (possibly <tt>const</tt>)</ins> type <tt>X</tt>
+<del>an rvalue of</del><ins>values of (possibly <code>const</code>)</ins> type <code>X</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<tt>b</tt>
+<code>b</code>
 </td>
 <td>
-a value of <ins>(possibly <tt>const</tt>)</ins> type <tt>Y</tt>
+a value of <ins>(possibly <code>const</code>)</ins> type <code>Y</code>
 </td>
 </tr>
 
@@ -169,16 +186,16 @@ a value of <ins>(possibly <tt>const</tt>)</ins> type <tt>Y</tt>
 
 <tr>
 <td>
-<tt><del>a1 == a2</del><ins>a3 == a4</ins></tt>
+<code><del>a1 == a2</del><ins>a3 == a4</ins></code>
 </td>
 <td>
-<ins>convertible to</ins> <tt>bool</tt>
+<ins>convertible to</ins> <code>bool</code>
 </td>
 <td>
 returns true only if storage<br/>
 allocated from each can be<br/>
 deallocated via the other.<br/>
-<tt>operator==</tt> shall be reflexive,<br/>
+<code>operator==</code> shall be reflexive,<br/>
 symmetric, and transitive, and<br/>
 shall not exit via an exception.
 </td>
@@ -188,28 +205,13 @@ shall not exit via an exception.
 
 <tr>
 <td>
-<tt><del>a1 != a2</del><ins>a3 != a4</ins></tt>
+<code><del>a1 != a2</del><ins>a3 != a4</ins></code>
 </td>
 <td>
-<ins>convertible to</ins> <tt>bool</tt>
+<ins>convertible to</ins> <code>bool</code>
 </td>
 <td>
-same as <tt><del>!(a1 == a2)</del><ins>!(a3 == a4)</ins></tt>
-</td>
-<td>
-</td>
-</tr>
-
-<tr>
-<td>
-<tt>a<ins>3</ins> == b</tt>
-</td>
-<td>
-<ins>convertible to</ins> <tt>bool</tt>
-</td>
-<td>
-same as <tt>a<ins>3</ins> ==<br/>
-Y::rebind&lt;T&gt;::other(b)</tt>
+same as <code><del>!(a1 == a2)</del><ins>!(a3 == a4)</ins></code>
 </td>
 <td>
 </td>
@@ -217,13 +219,28 @@ Y::rebind&lt;T&gt;::other(b)</tt>
 
 <tr>
 <td>
-<tt>a<ins>3</ins> != b</tt>
+<code>a<ins>3</ins> == b</code>
 </td>
 <td>
-<ins>convertible to</ins> <tt>bool</tt>
+<ins>convertible to</ins> <code>bool</code>
 </td>
 <td>
-same as <tt>!(a<ins>3</ins> == b)</tt>
+same as <code>a<ins>3</ins> ==<br/>
+Y::rebind&lt;T&gt;::other(b)</code>
+</td>
+<td>
+</td>
+</tr>
+
+<tr>
+<td>
+<code>a<ins>3</ins> != b</code>
+</td>
+<td>
+<ins>convertible to</ins> <code>bool</code>
+</td>
+<td>
+same as <code>!(a<ins>3</ins> == b)</code>
 </td>
 <td>
 </td>
@@ -231,53 +248,53 @@ same as <tt>!(a<ins>3</ins> == b)</tt>
 
 <tr>
 <td colspan="4" align="center">
-<tt>[&hellip;]</tt>
+<code>[&hellip;]</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<tt>a.select_on_-<br/>
+<code>a.select_on_-<br/>
 container_copy_-<br/>
-construction()</tt>
+construction()</code>
 </td>
 <td>
-<tt>X</tt>
+<code>X</code>
 </td>
 <td>
-Typically returns either <tt>a</tt> or<br/>
-<tt>X()</tt>
+Typically returns either <code>a</code> or<br/>
+<code>X()</code>
 </td>
 <td>
-<tt>return a;</tt>
+<code>return a;</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<ins><tt>X::always_compares_equal</tt></ins>
+<ins><code>X::always_compares_equal</code></ins>
 </td>
 <td>
 <ins>Identical to or derived<br/>
-from <tt>true_type</tt> or<br/>
-<tt>false_type</tt></ins>
+from <code>true_type</code> or<br/>
+<code>false_type</code></ins>
 </td>
 <td>
-<ins><tt>true_type</tt> if the expression <tt>x1 == x2</tt> is<br/>
-guaranteed to be <tt>true</tt> for any two (possibly<br/>
-<tt>const</tt>) values <tt>x1, x2</tt> of type <tt>X</tt>, when<br/>
-implicitly converted to <tt>bool</tt>. See Note B, below.</ins>
+<ins><code>true_type</code> if the expression <code>x1 == x2</code> is<br/>
+guaranteed to be <code>true</code> for any two (possibly<br/>
+<code>const</code>) values <code>x1, x2</code> of type <code>X</code>, when<br/>
+implicitly converted to <code>bool</code>. See Note B, below.</ins>
 </td>
 <td>
-<ins><tt>true_type</tt>, if <tt>is_empty&lt;X&gt;::value</tt> is <tt>true</tt> or if<br/>
-<tt>decltype(declval&lt;const X&amp;&gt;() == declval&lt;const X&amp;&gt;())</tt><br/> 
-is convertible to <tt>true_type</tt>, otherwise <tt>false_type</tt>.</ins>
+<ins><code>true_type</code>, if <code>is_empty&lt;X&gt;::value</code> is <code>true</code> or if<br/>
+<code>decltype(declval&lt;const X&amp;&gt;() == declval&lt;const X&amp;&gt;())</code><br/> 
+is convertible to <code>true_type</code>, otherwise <code>false_type</code>.</ins>
 </td>
 </tr>
 
 <tr>
 <td colspan="4" align="center">
-<tt>[&hellip;]</tt>
+<code>[&hellip;]</code>
 </td>
 </tr>
 
@@ -285,15 +302,15 @@ is convertible to <tt>true_type</tt>, otherwise <tt>false_type</tt>.</ins>
 <p>
 Note A: [&hellip;]
 <p/>
-<ins>Note B: If <tt>X::always_compares_equal::value</tt> or <tt>XX::always_compares_equal::value</tt> evaluate 
-to <tt>true</tt> and an expression equivalent to <tt>x1 == x2</tt> or <tt>x1 != x2</tt> for any two values 
-<tt>x1, x2</tt> of type <tt>X</tt> evaluates to <tt>false</tt> or <tt>true</tt>, respectively, the behaviour 
+<ins>Note B: If <code>X::always_compares_equal::value</code> or <code>XX::always_compares_equal::value</code> evaluate 
+to <code>true</code> and an expression equivalent to <code>x1 == x2</code> or <code>x1 != x2</code> for any two values 
+<code>x1, x2</code> of type <code>X</code> evaluates to <code>false</code> or <code>true</code>, respectively, the behaviour 
 is undefined.</ins>
 </p>
 
 </li>
 
-<li><p>Change class template <tt>allocator_traits</tt> synopsis, 20.2.9 <a href="https://timsong-cpp.github.io/cppwp/allocator.traits">[allocator.traits]</a> as indicated:</p>
+<li><p>Change class template <code>allocator_traits</code> synopsis, 20.2.9 <a href="https://timsong-cpp.github.io/cppwp/allocator.traits">[allocator.traits]</a> as indicated:</p>
 
 <blockquote><pre>
 namespace std {
@@ -314,10 +331,10 @@ namespace std {
 <ins>typedef <i>see below</i> always_compares_equal;</ins>
 </pre><blockquote>
 <p>
-<ins>-?- <i>Type</i>: <tt>Alloc::always_compares_equal</tt> if such a type exists; otherwise, 
-<tt>true_type</tt> if <tt>is_empty&lt;Alloc&gt;::value</tt> is <tt>true</tt> or if 
-<tt>decltype(declval&lt;const Alloc&amp;&gt;() == declval&lt;const Alloc&amp;&gt;())</tt> 
-is convertible to <tt>true_type</tt>; otherwise, <tt>false_type</tt>
+<ins>-?- <i>Type</i>: <code>Alloc::always_compares_equal</code> if such a type exists; otherwise, 
+<code>true_type</code> if <code>is_empty&lt;Alloc&gt;::value</code> is <code>true</code> or if 
+<code>decltype(declval&lt;const Alloc&amp;&gt;() == declval&lt;const Alloc&amp;&gt;())</code> 
+is convertible to <code>true_type</code>; otherwise, <code>false_type</code>
 .</ins>
 </p>
 </blockquote></blockquote>
@@ -325,24 +342,24 @@ is convertible to <tt>true_type</tt>; otherwise, <tt>false_type</tt>
 typedef <i>see below</i> propagate_on_container_copy_assignment;
 </pre><blockquote>
 <p>
--7- <i>Type</i>: <tt>Alloc::propagate_on_container_copy_assignment</tt> if such a type exits, 
-otherwise <tt>false_type</tt>.
+-7- <i>Type</i>: <code>Alloc::propagate_on_container_copy_assignment</code> if such a type exits, 
+otherwise <code>false_type</code>.
 </p>
 </blockquote></blockquote>
 </li>
 
-<li><p>Change class template <tt>allocator</tt> synopsis, 20.2.10 <a href="https://timsong-cpp.github.io/cppwp/default.allocator">[default.allocator]</a> as indicated:</p>
+<li><p>Change class template <code>allocator</code> synopsis, 20.2.10 <a href="https://timsong-cpp.github.io/cppwp/default.allocator">[default.allocator]</a> as indicated:</p>
 
 <blockquote><pre>
 namespace std {
   template &lt;class T&gt; class allocator;
 
-  <i>// specialize for <tt>void</tt>:</i>
+  <i>// specialize for <code>void</code>:</i>
   template &lt;&gt; class allocator&lt;void&gt; {
   public:
     typedef void* pointer;
     typedef const void* const_pointer;
-    <i>// reference-to-<tt>void</tt> members are impossible.</i>
+    <i>// reference-to-<code>void</code> members are impossible.</i>
     typedef void value_type;
     template &lt;class U&gt; struct rebind { typedef allocator&lt;U&gt; other; };
   };

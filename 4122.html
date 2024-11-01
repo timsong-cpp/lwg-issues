@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4122: Ill-formed operator&lt;=&gt; can cause hard error when instantiating std::inplace_vector</title>
+<meta property="og:title" content="Issue 4122: Ill-formed operator&lt;=&gt; can cause hard error when instantiating std::inplace_vector">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4122.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4122"><a href="lwg-active.html#4122">4122</a>. Ill-formed <code>operator&lt;=&gt;</code> can cause hard error when instantiating <code>std::inplace_vector</code></h3>
+<p><b>Section:</b> 23.3.14.1 <a href="https://timsong-cpp.github.io/cppwp/inplace.vector.overview">[inplace.vector.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2024-07-20 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+This is almost the same problem as LWG <a href="4071" title="reference_wrapper comparisons are not SFINAE-friendly (Status: WP)">4071</a> except that it happens to <code>std::inplace_vector</code>. 
+As the <code>operator&lt;=&gt;</code> overload for <code>std::inplace_vector</code> is a non-template function whose return 
+type (<code><i>synth-three-way-result</i>&lt;T&gt;</code>) is not deduced, when the return type is ill-formed, hard 
+error occurs in the instantiation of the enclosing <code>std::inplace_vector&lt;T, N&gt;</code>.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+
+<p id="res-4122"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4986">N4986</a>.
+</p>
+
+<ol>
+<li><p>Modify 23.3.14.1 <a href="https://timsong-cpp.github.io/cppwp/inplace.vector.overview">[inplace.vector.overview]</a>, class template <code>std::inplace_vector</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T, size_t N&gt;
+  class inplace_vector {
+  public:
+    [&hellip;]
+    constexpr friend bool operator==(const inplace_vector&amp; x,
+                                     const inplace_vector&amp; y);
+    constexpr friend <del><i>synth-three-way-result</i>&lt;T&gt;</del><ins>auto</ins>
+      operator&lt;=&gt;(const inplace_vector&amp; x, const inplace_vector&amp; y)<del>;</del><ins>
+        requires requires (const T t) { <i>synth-three-way</i>(t, t); } 
+      {
+        return lexicographical_compare_three_way(x.begin(), x.end(), y.begin(), y.end(),
+                                                 <i>synth-three-way</i>);
+      }</ins>
+    constexpr friend void swap(inplace_vector&amp; x, inplace_vector&amp; y)
+      noexcept(N == 0 || (is_nothrow_swappable_v&lt;T&gt; &amp;&amp;
+                          is_nothrow_move_constructible_v&lt;T&gt;))
+    { x.swap(y); }
+  };
+};
+</pre>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

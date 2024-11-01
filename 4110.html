@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4110: shared_ptr(nullptr_t, Deleter) is overconstrained, breaking some sensible deleters</title>
+<meta property="og:title" content="Issue 4110: shared_ptr(nullptr_t, Deleter) is overconstrained, breaking some sensible deleters">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4110.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4110"><a href="lwg-active.html#4110">4110</a>. <code class='backtick'>shared_ptr(nullptr_t, Deleter)</code> is overconstrained, breaking some sensible deleters</h3>
+<p><b>Section:</b> 20.3.2.2.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Louis Dionne <b>Opened:</b> 2024-06-11 <b>Last modified:</b> 2024-06-11</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#util.smartptr.shared.const">active issues</a> in [util.smartptr.shared.const].</p>
+<p><b>View all other</b> <a href="lwg-index.html#util.smartptr.shared.const">issues</a> in [util.smartptr.shared.const].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The following code doesn't compile on conforming implementations:
+<pre><code>
+    #include &lt;memory&gt;
+
+    void f() {
+        std::shared_ptr&lt;int&gt;(new int, [](auto pointer) { delete pointer; });
+    }
+</code></pre>
+<a href="https://gcc.godbolt.org/z/7hs34ded7">(Godbolt)</a>
+</p><p>
+This is caused by the constraint on <code class='backtick'>shared_ptr(nullptr_t p, D d);</code>
+being that <code class='backtick'>d(p)</code> is valid (20.3.2.2.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a> p9),
+which leads to a hard error inside the lambda since it is called with a
+<code class='backtick'>nullptr_t</code>. This seems unintended.
+</p><p>
+See <a href="https://github.com/llvm/llvm-project/pull/93071#issuecomment-2158494851">LLVM issue 93071 comment</a> for additional context.
+</p>
+
+
+<p id="res-4110"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+<ol>
+<li>
+In 20.3.2.2.2 <a href="https://timsong-cpp.github.io/cppwp/util.smartptr.shared.const">[util.smartptr.shared.const]</a>/9, specify that
+<code class='backtick'>shared_ptr(nullptr_t p, D d);</code> checks whether
+<code>d(static_cast&lt;T*&gt;(nullptr))</code>
+is well-formed. This requires expressing the the constraints for
+the <code class='backtick'>Y*</code> constructors and the <code class='backtick'>nullptr_t</code> constructors separately,
+which is mostly editorial:
+<blockquote>
+<pre><code>
+template&lt;class Y, class D&gt; shared_ptr(Y* p, D d);
+template&lt;class Y, class D, class A&gt; shared_ptr(Y* p, D d, A a);
+<del>template&lt;class D&gt; shared_ptr(nullptr_t p, D d);
+template&lt;class D, class A&gt; shared_ptr(nullptr_t p, D d, A a);</del>
+</code></pre>
+<p>-9-
+<i>Constraints</i>:
+<code>is_move_constructible_v&lt;D&gt;</code> is <code class='backtick'>true</code>,
+and <code class='backtick'>d(p)</code> is a well-formed expression.
+<del>For the first two overloads:</del>
+<ol style="list-style-type:none">
+<li>
+(9.1) If <code class='backtick'>T</code> is an array type, then either <code class='backtick'>T</code> is <code class='backtick'>U[N]</code> and <code class='backtick'>Y(*)[N]</code>
+is convertible to <code class='backtick'>T*</code>, or <code class='backtick'>T</code> is <code class='backtick'>U[]</code> and <code class='backtick'>Y(*)[]</code> is convertible to <code class='backtick'>T*</code>.
+</li>
+<li>
+(9.2) If <code class='backtick'>T</code> is not an array type, then <code class='backtick'>Y*</code> is convertible to <code class='backtick'>T*</code>.
+</li>
+</ol>
+</p>
+<pre><code>
+<ins>template&lt;class D&gt; shared_ptr(nullptr_t p, D d);
+template&lt;class D, class A&gt; shared_ptr(nullptr_t p, D d, A a);</ins>
+</code></pre>
+<p><ins>-?-
+<i>Constraints</i>:
+<code>is_move_constructible_v&lt;D&gt;</code> is <code class='backtick'>true</code>,
+and <code>d(static_cast&lt;T*&gt;(p))</code> is a well-formed expression.
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

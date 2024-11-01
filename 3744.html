@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3744: copy_symlink(junction, new_symlink)'s behavior is unclear</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3744: copy_symlink(junction, new_symlink)'s behavior is unclear">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3744.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,27 +61,27 @@
 </head>
 <body>
 <hr>
-<h3><a name="3744" href="lwg-active.html#3744">3744.</a> <tt>copy_symlink(junction, new_symlink)</tt>'s behavior is unclear</h3>
+<h3 id="3744"><a href="lwg-active.html#3744">3744</a>. <code>copy_symlink(junction, new_symlink)</code>'s behavior is unclear</h3>
 <p><b>Section:</b> 31.12.13.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy.symlink">[fs.op.copy.symlink]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Nicole Mazzuca <b>Opened:</b> 2022-07-25 <b>Last modified:</b> 2022-08-23 15:25:16 UTC</p>
+ <b>Submitter:</b> Nicole Mazzuca <b>Opened:</b> 2022-07-25 <b>Last modified:</b> 2022-08-23</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-The specification for <tt>copy_symlink</tt> is (31.12.13.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy.symlink">[fs.op.copy.symlink]</a>):
+The specification for <code>copy_symlink</code> is (31.12.13.6 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy.symlink">[fs.op.copy.symlink]</a>):
 </p>
 <blockquote><p>
-<i>Effects</i>: Equivalent to <tt><i>function</i>(read_symlink(existing_symlink), new_symlink)</tt> 
-or <tt><i>function</i>(read_symlink(existing_symlink, ec), new_symlink, ec)</tt>, respectively,
-where in each case <tt><i>function</i></tt> is <tt>create_symlink</tt> or 
-<tt>create_directory_symlink</tt> as appropriate.
+<i>Effects</i>: Equivalent to <code><i>function</i>(read_symlink(existing_symlink), new_symlink)</code> 
+or <code><i>function</i>(read_symlink(existing_symlink, ec), new_symlink, ec)</code>, respectively,
+where in each case <code><i>function</i></code> is <code>create_symlink</code> or 
+<code>create_directory_symlink</code> as appropriate.
 </p></blockquote>
 <p>
-The specification for <tt>read_symlink</tt> is (31.12.13.29 <a href="https://timsong-cpp.github.io/cppwp/fs.op.read.symlink">[fs.op.read.symlink]</a>):
+The specification for <code>read_symlink</code> is (31.12.13.29 <a href="https://timsong-cpp.github.io/cppwp/fs.op.read.symlink">[fs.op.read.symlink]</a>):
 </p>
 <blockquote><p>
-<i>Returns</i>: If <tt>p</tt> resolves to a symbolic link, a path object containing the contents of 
+<i>Returns</i>: If <code>p</code> resolves to a symbolic link, a path object containing the contents of 
 that symbolic link.
 </p></blockquote>
 <p>
@@ -75,13 +92,13 @@ A <i>symbolic link</i> is a type of file with the property that when the file is
 resolution (31.12.6 <a href="https://timsong-cpp.github.io/cppwp/fs.class.path">[fs.class.path]</a>), a string stored by the file is used to modify the pathname resolution.
 </p></blockquote>
 <p>
-On Unix, <tt>symlink</tt> is the only kind of symbolic link. However, on Windows, there are symbolic 
-link files which are <em>not</em> <tt>symlink</tt>s (app execution aliases and junctions) &mdash; this 
-means that <tt>read_symlink</tt> should almost certainly get the target of these files if possible. 
-However, <tt>copy_symlink</tt> specifically requires creating a <em><tt>symlink</tt></em>, not whatever 
-type of file was there originally. IMO, <tt>copy_symlink</tt> should require its target to be a symlink. 
-I think the original assumption was that <tt>read_symlink</tt> would take care of that for 
-<tt>copy_symlink</tt>; this is clearly not the case on Windows, though.
+On Unix, <code>symlink</code> is the only kind of symbolic link. However, on Windows, there are symbolic 
+link files which are <em>not</em> <code>symlink</code>s (app execution aliases and junctions) &mdash; this 
+means that <code>read_symlink</code> should almost certainly get the target of these files if possible. 
+However, <code>copy_symlink</code> specifically requires creating a <em><code>symlink</code></em>, not whatever 
+type of file was there originally. IMO, <code>copy_symlink</code> should require its target to be a symlink. 
+I think the original assumption was that <code>read_symlink</code> would take care of that for 
+<code>copy_symlink</code>; this is clearly not the case on Windows, though.
 </p>
 
 <p><i>[2022-08-23; Reflector poll]</i></p>

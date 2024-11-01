@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4106: basic_format_args should not be default-constructible</title>
+<meta property="og:title" content="Issue 4106: basic_format_args should not be default-constructible">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4106.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4106"><a href="lwg-defects.html#4106">4106</a>. <code>basic_format_args</code> should not be default-constructible</h3>
+<p><b>Section:</b> 28.5.8.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-17 <b>Last modified:</b> 2024-07-08</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.args">issues</a> in [format.args].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It's unclear why <code>basic_format_args</code> originally provided a default constructor and its actual use cases,
+all three major libraries declare them as <code>default</code>, which allows value initialization of 
+<code>basic_format_args</code> at compile time.
+<p/>
+This does not fully conform to the current wording as its signature does not have the <code>constexpr</code>
+specifier.
+<p/>
+Additionally, the current wording only initializes the <code>size_</code> member in the default constructor, which
+may lead to undefined behavior when copying <code>basic_format_args</code> as uninitialized <code>data_</code> member 
+is copied. There is also an implementation divergence (<a href="https://godbolt.org/z/nYEje7zzj">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;format&gt;
+constexpr std::format_args fmt_args; // <span style="color:red;font-weight:bolder">only well-formed in MSVC-STL</span>
+</pre></blockquote>
+<p>
+One option is to add default member initializers for all members and <code>default</code> the default constructor 
+to best match the status quo, which guarantees that <code>basic_format_args</code> is <code>constexpr</code>-able.
+<p/>
+However, given that <code>basic_format_args</code> has different implementation details in the three libraries, 
+its actual members may not be <code>size_</code> and <code>data_</code>. It is unnecessary to ensure that all
+the internal members are initialized when default-constructed <code>basic_format_args</code>, indicating that not
+providing one is reasonable.
+<p/>
+The proposed solution is to prefer the more aggressive one.
+</p>
+
+<p><i>[2024-05-19; Daniel comments]</i></p>
+
+<p>
+The here suggested proposal to remove the default constructor implicitly depends on the decision of
+LWG <a href="4061" title="Should std::basic_format_context be default-constructible/copyable/movable? (Status: WP)">4061</a> to remove <code>basic_format_context</code>'s default constructor, since its usage
+would require that the exposition-only member <code>args_</code> of type <code>basic_format_args&lt;basic_format_context&gt;</code> 
+can be default-constructed as well.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+
+<p><i>[St. Louis 2024-06-29; Status changed: Voting &rarr; WP.]</i></p>
+
+
+
+<p id="res-4106"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 28.5.8.3 <a href="https://timsong-cpp.github.io/cppwp/format.args">[format.args]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class Context&gt;
+  class basic_format_args {
+    size_t size_;                               // <i>exposition only</i>
+    const basic_format_arg&lt;Context&gt;* data_;     // <i>exposition only</i>
+
+  public:
+    <del>basic_format_args() noexcept;</del>
+
+    template&lt;class... Args&gt;
+      basic_format_args(const <i>format-arg-store</i>&lt;Context, Args...&gt;&amp; store) noexcept;
+
+    basic_format_arg&lt;Context&gt; get(size_t i) const noexcept;
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+<del>basic_format_args() noexcept;</del>
+</pre>
+<blockquote>
+<p>
+<del>-2- <i>Effects</i> Initializes <code>size_</code> with <code>0</code>.</del>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

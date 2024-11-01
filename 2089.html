@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2089: std::allocator::construct should use uniform initialization</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2089: std::allocator::construct should use uniform initialization">
+<meta property="og:description" content="C++ library issue. Status: Resolved">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2089.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="2089" href="lwg-defects.html#2089">2089.</a> <tt>std::allocator::construct</tt> should use uniform initialization</h3>
+<h3 id="2089"><a href="lwg-defects.html#2089">2089</a>. <code>std::allocator::construct</code> should use uniform initialization</h3>
 <p><b>Section:</b> 20.2.10.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.members">[allocator.members]</a> <b>Status:</b> <a href="lwg-active.html#Resolved">Resolved</a>
- <b>Submitter:</b> David Krauss <b>Opened:</b> 2011-10-07 <b>Last modified:</b> 2020-09-06 13:52:31 UTC</p>
+ <b>Submitter:</b> David Krauss <b>Opened:</b> 2011-10-07 <b>Last modified:</b> 2020-09-06</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#allocator.members">issues</a> in [allocator.members].</p>
@@ -54,33 +71,33 @@
 <p><b>Discussion:</b></p>
 
 <p>
-When the <tt>EmplaceConstructible</tt> (24.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>&#47;13) requirement is used 
-to initialize an object, direct-initialization occurs. Initializing an aggregate or using a <tt>std::initializer_list</tt> 
+When the <code>EmplaceConstructible</code> (23.2.2 <a href="https://timsong-cpp.github.io/cppwp/container.requirements.general">[container.requirements.general]</a>&#47;13) requirement is used 
+to initialize an object, direct-initialization occurs. Initializing an aggregate or using a <code>std::initializer_list</code> 
 constructor with emplace requires naming the initialized type and moving a temporary. This is a result of 
-<tt>std::allocator::construct</tt> using direct-initialization, not list-initialization (sometimes called "uniform 
+<code>std::allocator::construct</code> using direct-initialization, not list-initialization (sometimes called "uniform 
 initialization") syntax.
 <p/>
-Altering <tt>std::allocator&lt;T&gt;::construct</tt> to use list-initialization would, among other things, give 
-preference to <tt>std::initializer_list</tt> constructor overloads, breaking valid code in an unintuitive and 
-unfixable way &mdash; there would be no way for <tt>emplace_back</tt> to access a constructor preempted by 
-<tt>std::initializer_list</tt> without essentially reimplementing <tt>push_back</tt>.
+Altering <code>std::allocator&lt;T&gt;::construct</code> to use list-initialization would, among other things, give 
+preference to <code>std::initializer_list</code> constructor overloads, breaking valid code in an unintuitive and 
+unfixable way &mdash; there would be no way for <code>emplace_back</code> to access a constructor preempted by 
+<code>std::initializer_list</code> without essentially reimplementing <code>push_back</code>.
 </p>
 <blockquote><pre>
 std::vector&lt;std::vector&lt;int&gt;&gt; v;
 v.emplace_back(3, 4); // v[0] == {4, 4, 4}, not {3, 4} as in list-initialization
 </pre></blockquote>
 <p>
-The proposed compromise is to use SFINAE with <tt>std::is_constructible</tt>, which tests whether direct-initialization 
-is well formed. If <tt>is_constructible</tt> is false, then an alternative <tt>std::allocator::construct</tt> overload 
+The proposed compromise is to use SFINAE with <code>std::is_constructible</code>, which tests whether direct-initialization 
+is well formed. If <code>is_constructible</code> is false, then an alternative <code>std::allocator::construct</code> overload 
 is chosen which uses list-initialization. Since list-initialization always falls back on direct-initialization, the 
 user will see diagnostic messages as if list-initialization (uniform-initialization) were always being used, because 
 the direct-initialization overload cannot fail.
 <p/>
 I can see two corner cases that expose gaps in this scheme. One occurs when arguments intended for 
-<tt>std::initializer_list</tt> satisfy a constructor, such as trying to emplace-insert a value of <tt>{3, 4}</tt> in 
-the above example. The workaround is to explicitly specify the <tt>std::initializer_list</tt> type, as in 
-<tt>v.emplace_back(std::initializer_list&lt;int&gt;(3, 4))</tt>. Since this matches the semantics as if 
-<tt>std::initializer_list</tt> were deduced, there seems to be no real problem here.
+<code>std::initializer_list</code> satisfy a constructor, such as trying to emplace-insert a value of <code>{3, 4}</code> in 
+the above example. The workaround is to explicitly specify the <code>std::initializer_list</code> type, as in 
+<code>v.emplace_back(std::initializer_list&lt;int&gt;(3, 4))</code>. Since this matches the semantics as if 
+<code>std::initializer_list</code> were deduced, there seems to be no real problem here.
 <p/>
 The other case is when arguments intended for aggregate initialization satisfy a constructor. Since aggregates cannot 
 have user-defined constructors, this requires that the first nonstatic data member of the aggregate be implicitly 
@@ -89,7 +106,7 @@ initializer for the second member. It remains impossible to in-place construct a
 data member by conversion from a type convertible to the aggregate's own type. This seems like an acceptably small 
 hole.
 <p/>
-The change is quite small because <tt>EmplaceConstructible</tt> is defined in terms of whatever allocator is specified, 
+The change is quite small because <code>EmplaceConstructible</code> is defined in terms of whatever allocator is specified, 
 and there is no need to explicitly mention SFINAE in the normative text.
 </p>
 
@@ -111,7 +128,7 @@ that EWG may have an interest in this area of language consistency as well.
 <p><i>[2013-10-13, Ville]</i></p>
 
 <p>
-This issue is related to <a href="2070">2070</a>.
+This issue is related to <a href="2070" title="allocate_shared should use allocator_traits&lt;A&gt;::construct (Status: Resolved)">2070</a>.
 </p>
 
 <p><i>[2015-02 Cologne]</i></p>
@@ -148,8 +165,8 @@ template &lt;class U, class... Args&gt;
   void construct(U* p, Args&amp;&amp;... args);
 </pre><blockquote>
 <p>
-12 <i>Effects</i>: <tt>::new((void *)p) U(std::forward&lt;Args&gt;(args)...)</tt> <ins>if <tt>is_constructible&lt;U, Args...&gt;::value</tt> 
-is <tt>true</tt>, else <tt>::new((void *)p) U{std::forward&lt;Args&gt;(args)...}</tt></ins>
+12 <i>Effects</i>: <code>::new((void *)p) U(std::forward&lt;Args&gt;(args)...)</code> <ins>if <code>is_constructible&lt;U, Args...&gt;::value</code> 
+is <code>true</code>, else <code>::new((void *)p) U{std::forward&lt;Args&gt;(args)...}</code></ins>
 </p>
 </blockquote></blockquote>
 

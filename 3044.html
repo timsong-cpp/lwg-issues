@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3044: Strange specification of max_size() for an allocator</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3044: Strange specification of max_size() for an allocator">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3044.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3044" href="lwg-active.html#3044">3044.</a> Strange specification of <tt>max_size()</tt> for an allocator</h3>
+<h3 id="3044"><a href="lwg-active.html#3044">3044</a>. Strange specification of <code>max_size()</code> for an allocator</h3>
 <p><b>Section:</b> 16.4.4.6 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements">[allocator.requirements]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jon Cohen <b>Opened:</b> 2017-12-06 <b>Last modified:</b> 2023-06-26 15:25:17 UTC</p>
+ <b>Submitter:</b> Jon Cohen <b>Opened:</b> 2017-12-06 <b>Last modified:</b> 2024-01-29</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#allocator.requirements">active issues</a> in [allocator.requirements].</p>
@@ -54,34 +71,34 @@
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Table 31 in the C++17 standard specifies <tt>X::max_size()</tt> (where <tt>X</tt> is an allocator type) as "The largest value 
-that can meaningfully be passed to <tt>X::allocate()</tt>". Noticeably missing is the statement "<i>Throws:</i> Nothing".
+Table 31 in the C++17 standard specifies <code>X::max_size()</code> (where <code>X</code> is an allocator type) as "The largest value 
+that can meaningfully be passed to <code>X::allocate()</code>". Noticeably missing is the statement "<i>Throws:</i> Nothing".
 <p/>
-As an example of why this is an issue, note that <tt>vector::max_size()</tt> and <tt>allocator_traits::max_size()</tt> are 
-both marked <tt>noexcept</tt>. We must then interpret <tt>max_size()</tt> as being allowed to sometimes call 
-<tt>std::terminate</tt>, or else <tt>{vector, allocator_traits, ...}::max_size()</tt> must be allowed to directly calculate 
-<tt>numeric_limits&lt;size_type&gt;::max() / sizeof(value_type)</tt> instead of querying the allocator, even if 
-<tt>Alloc::max_size()</tt> exists. This seems like a bug in the wording for the requirements of <tt>max_size()</tt> in an 
+As an example of why this is an issue, note that <code>vector::max_size()</code> and <code>allocator_traits::max_size()</code> are 
+both marked <code>noexcept</code>. We must then interpret <code>max_size()</code> as being allowed to sometimes call 
+<code>std::terminate</code>, or else <code>{vector, allocator_traits, ...}::max_size()</code> must be allowed to directly calculate 
+<code>numeric_limits&lt;size_type&gt;::max() / sizeof(value_type)</code> instead of querying the allocator, even if 
+<code>Alloc::max_size()</code> exists. This seems like a bug in the wording for the requirements of <code>max_size()</code> in an 
 allocator type. I think an issue should be opened on this subject to add <i>Throws:</i> Nothing or similar to the requirements 
-of <tt>max_size()</tt> for an allocator.
+of <code>max_size()</code> for an allocator.
 <p/>
 As an example consider writing up a framework to test the exception-safety of types in a given framework, since they were all 
 written in an exception-free environment. One of the types in the framework is an allocator which, in a controlled way, 
 can throw an exception at any point where it is allowed by the standard. It's important that the test framework be as pedantic 
-as possible, so the allocator type throws on <tt>max_size()</tt>, since it is currently allowed to by the standard. When a 
-reasonable <tt>vector</tt> implementation (at least those in libstdc++ and msvc) is, for example, asked to construct a 
-<tt>vector</tt> from an <tt>initializer_list</tt>, it will call <tt>allocator_traits&lt;Alloc&gt;::max_size()</tt>, which will 
-terminate the program because the exception thrown in <tt>Alloc::max_size()</tt> propagated through the <tt>noexcept</tt> 
+as possible, so the allocator type throws on <code>max_size()</code>, since it is currently allowed to by the standard. When a 
+reasonable <code>vector</code> implementation (at least those in libstdc++ and msvc) is, for example, asked to construct a 
+<code>vector</code> from an <code>initializer_list</code>, it will call <code>allocator_traits&lt;Alloc&gt;::max_size()</code>, which will 
+terminate the program because the exception thrown in <code>Alloc::max_size()</code> propagated through the <code>noexcept</code> 
 traits function. Although this is conformant behavior, I think it's a bug in the standard that a function as benign as 
-<tt>max_size()</tt> can terminate the program in this manner, and I think the fix is that a conformant allocator should be 
-required to supply a non-throwing <tt>max_size()</tt> member function.
+<code>max_size()</code> can terminate the program in this manner, and I think the fix is that a conformant allocator should be 
+required to supply a non-throwing <code>max_size()</code> member function.
 <p/>
 Daniel:
 <p/>
-This problem was shortly discussed during review of LWG <a href="2162">2162</a> (see comment 2012-08-05). At that time
-the more drastic but also more consistent requirement that an allocator's <tt>max_size</tt> function shall not throw
+This problem was shortly discussed during review of LWG <a href="2162" title="allocator_traits::max_size missing noexcept (Status: C++14)">2162</a> (see comment 2012-08-05). At that time
+the more drastic but also more consistent requirement that an allocator's <code>max_size</code> function shall not throw
 exceptions has not been added. IMO this position should be reconsidered to follow the spirit of the new issue LWG 
-<a href="3044">3044</a>.
+<a href="3044" title="Strange specification of max_size() for an allocator (Status: New)">3044</a>.
 </p>
 
 <p><i>[2018-01; Priority set to 3 after mailing list discussion]</i></p>
@@ -90,15 +107,15 @@ exceptions has not been added. IMO this position should be reconsidered to follo
 <p><i>[2018-08-21, Jonathan comments and provides wording]</i></p>
 
 <p>
-The phrase "the largest value that can meaningfully be passed to <tt>X::allocate()</tt>" is meaningless. Is it a 
+The phrase "the largest value that can meaningfully be passed to <code>X::allocate()</code>" is meaningless. Is it a 
 requirement on the caller, so that larger values must not be passed? Or a hint from the allocator implementor that larger 
-values will produce a <tt>bad_alloc</tt> exception? Can the return value change dynamically, based on the free memory
-available to the allocator?! &mdash; LWG <a href="197">197</a> says it can't change.
+values will produce a <code>bad_alloc</code> exception? Can the return value change dynamically, based on the free memory
+available to the allocator?! &mdash; LWG <a href="197" title="max_size() underspecified (Status: NAD)">197</a> says it can't change.
 <p/>
-As noted in the LWG <a href="2162">2162</a> comments, we don't currently guarantee it can be called on a <tt>const</tt> object 
-(so <tt>allocator_traits</tt> will not use the allocator's <tt>max_size()</tt> if it's non-<tt>const</tt>, although that was 
-unclear before DR <a href="2284">2284</a>). In addition to adding "<i>Throws:</i> nothing" we should ensure it's callable 
-on <tt>const</tt> lvalues, and clarify what "meaningfully" means and who is supposed to care about it. My proposed 
+As noted in the LWG <a href="2162" title="allocator_traits::max_size missing noexcept (Status: C++14)">2162</a> comments, we don't currently guarantee it can be called on a <code>const</code> object 
+(so <code>allocator_traits</code> will not use the allocator's <code>max_size()</code> if it's non-<code>const</code>, although that was 
+unclear before DR <a href="2284" title="Inconsistency in allocator_traits::max_size (Status: C++14)">2284</a>). In addition to adding "<i>Throws:</i> nothing" we should ensure it's callable 
+on <code>const</code> lvalues, and clarify what "meaningfully" means and who is supposed to care about it. My proposed 
 resolution doesn't achieve all of this, but is a start.
 </p>
 
@@ -122,7 +139,7 @@ This wording is relative to <a href="https://wg21.link/N4762">N4762</a>.
 
 <tr>
 <td>
-<tt>T, U, C</tt>
+<code>T, U, C</code>
 </td>
 <td>
 any <i>cv</i>-unqualified object type (3.9)
@@ -131,31 +148,31 @@ any <i>cv</i>-unqualified object type (3.9)
 
 <tr>
 <td colspan="2" align="center">
-<tt>&hellip;</tt>
+<code>&hellip;</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<tt>a, a1, a2</tt>
+<code>a, a1, a2</code>
 </td>
 <td>
-lvalues of type <tt>X</tt>
+lvalues of type <code>X</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<ins><tt>a3</tt></ins>
+<ins><code>a3</code></ins>
 </td>
 <td>
-<ins>an lvalue of type <tt>const X</tt></ins>
+<ins>an lvalue of type <code>const X</code></ins>
 </td>
 </tr>
 
 <tr>
 <td colspan="2" align="center">
-<tt>&hellip;</tt>
+<code>&hellip;</code>
 </td>
 </tr>
 
@@ -176,34 +193,34 @@ lvalues of type <tt>X</tt>
 
 <tr>
 <td colspan="4" align="center">
-<tt>&hellip;</tt>
+<code>&hellip;</code>
 </td>
 </tr>
 
 <tr>
 <td>
-<tt>a<ins>3</ins>.max_size()</tt>
+<code>a<ins>3</ins>.max_size()</code>
 </td>
 <td>
-<tt>X::size_type</tt>
+<code>X::size_type</code>
 </td>
 <td>
 the largest value that can<br/>
 meaningfully be passed to<br/>
-<tt>X::allocate()</tt><ins>.<br/> 
+<code>X::allocate()</code><ins>.<br/> 
 [<i>Note:</i> Larger values might cause<br/> 
 an exception to be thrown. &mdash; <i>end note</i>]<br/> 
 <i>Throws:</i> Nothing.</ins>
 </td>
 <td>
-<tt>numeric_limits&lt;size_type&gt;::max()<br/>
-/ sizeof(value_type)</tt>
+<code>numeric_limits&lt;size_type&gt;::max()<br/>
+/ sizeof(value_type)</code>
 </td>
 </tr>
 
 <tr>
 <td colspan="4" align="center">
-<tt>&hellip;</tt>
+<code>&hellip;</code>
 </td>
 </tr>
 
@@ -234,8 +251,8 @@ This wording is relative to <a href="https://wg21.link/N4910">N4910</a>.
 <ol style="list-style-type:none">
 <li><p>(2.1) &mdash; [&hellip;]</p></li>
 <li><p>[&hellip;]</p></li>
-<li><p>(2.6) &mdash; <tt>a</tt>, <tt>a1</tt>, <tt>a2</tt> denote lvalues of type <tt>X</tt>,</p></li>
-<li><p><ins>(?.?) &mdash; <tt>a3</tt> denotes an lvalue of type <tt>const X</tt>,</ins></p></li>
+<li><p>(2.6) &mdash; <code>a</code>, <code>a1</code>, <code>a2</code> denote lvalues of type <code>X</code>,</p></li>
+<li><p><ins>(?.?) &mdash; <code>a3</code> denotes an lvalue of type <code>const X</code>,</ins></p></li>
 <li><p>[&hellip;]</p></li>
 </ol>
 <p>[&hellip;]</p>
@@ -244,15 +261,15 @@ a<ins>3</ins>.max_size()
 </pre>
 <blockquote>
 <p>
--50- <i>Result:</i> <tt>X::size_type</tt>
+-50- <i>Result:</i> <code>X::size_type</code>
 <p/>
--51- <i>Returns:</i> The largest value that can meaningfully be passed to <tt>X::allocate()</tt>.
+-51- <i>Returns:</i> The largest value that can meaningfully be passed to <code>X::allocate()</code>.
 <p/>
 <ins>[<i>Note:</i> Larger values might cause an exception to be thrown. &mdash; <i>end note</i>]</ins> 
 <p/>
 <ins>-?- <i>Throws:</i> Nothing.</ins>
 <p/>
--52- <i>Remarks:</i> Default: <tt>numeric_limits&lt;size_type&gt;::max() / sizeof(value_type)</tt>
+-52- <i>Remarks:</i> Default: <code>numeric_limits&lt;size_type&gt;::max() / sizeof(value_type)</code>
 </p>
 </blockquote>
 </blockquote>

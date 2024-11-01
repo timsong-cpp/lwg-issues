@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4051: A less hacky and more useful way to compare comparison category types</title>
+<meta property="og:title" content="Issue 4051: A less hacky and more useful way to compare comparison category types">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4051.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4051"><a href="lwg-active.html#4051">4051</a>. A less hacky and more useful way to compare comparison category types</h3>
+<p><b>Section:</b> 17.11.2 <a href="https://timsong-cpp.github.io/cppwp/cmp.categories">[cmp.categories]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Corentin Jabot <b>Opened:</b> 2024-01-31 <b>Last modified:</b> 2024-02-04</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#cmp.categories">issues</a> in [cmp.categories].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Comparison categories can only be compared to the literal <code>0</code>.
+It does not make sense for them to be comparable to anything else, so conceptually, the design of 
+<a href="https://wg21.link/P0515">P0515</a> makes sense, however in practice it's a pain point from users and implementations
+alike, as the desired semantics is barely implementable.
+</p>
+<ul>
+<li><p>One implementation strategy is to use <code>nullptr_t</code>. This produces warnings in implementations
+because using a <code>0</code> pointer constant is not recommended, and filtering out these warnings would be unreliable.</p></li>
+<li><p>Another implementation strategy is to require a <code>consteval</code> expression but</p>
+<ul>
+<li><p>This permits <code>1-1</code>, which ought to be totally fine and yet it exposes users to UB</p></li>
+<li><p>It is not SFINAE friendly (and attempts at SFINAE are presumably UB).</p></li>
+</ul>
+</li>
+</ul>
+<p>
+And there are use cases where SFINAE friendliness is important, notably testing frameworks.
+<p/>
+The status quo has engendered multiple issues being reported to at least 3 vendors
+<p/>
+Suggestion:
+</p>
+<ul>
+<li><p>Allow any <code>0</code> constant expression</p></li>
+<li><p>Require compile magic to SFINAE on non zero values</p></li>
+<li><p>Remove the gratuitous UB</p></li>
+</ul>
+<p>
+The proposed wording requires compiler magic and has been 
+<a href="https://godbolt.org/z/1xr9Wx38T">implemented in clang</a>.
+(Other possible way to implement that would for example be a magic type attribute, or a magic type)
+<p/>
+Related vendor issues:
+<p/>
+<a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=96278">GCC Bugzilla issue 96278</a>
+<p/>
+<a href="https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100903">GCC Bugzilla issue 100903</a>
+<p/>
+<a href="https://github.com/llvm/llvm-project/issues/43670">LLVM issue 43670</a>
+<p/>
+<a href="https://github.com/llvm/llvm-project/pull/79465">LLVM pulls request 79465</a>
+<p/>
+<a href="https://github.com/microsoft/STL/issues/4359">Microsoft STL issue 4359</a>
+<p/>
+<a href="https://github.com/microsoft/STL/pull/3581">Microsoft STL pull request 3581</a>
+<p/>
+<a href="https://developercommunity.visualstudio.com/t/Regression:-False-positive-C7595:-std::/10509214">Visual Studio issue 10509214</a>
+<p/>
+<a href="https://github.com/snitch-org/snitch/issues/140">snitch issue 140</a>
+</p>
+
+
+<p id="res-4051"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4971">N4971</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.11.2.1 <a href="https://timsong-cpp.github.io/cppwp/cmp.categories.pre">[cmp.categories.pre]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- The relational and equality operators for the comparison category types are specified with an anonymous
+parameter of unspecified type. This type shall be selected by the implementation such that these parameters
+can <ins>only</ins> accept <ins>an integral constant expression evaluating to</ins><del>literal</del> <code>0</code> 
+as a corresponding argument.
+<p/>
+<del>[<i>Example 1</i>: <code>nullptr_t</code> meets this requirement. &mdash; <i>end example</i>]</del>
+<p/>
+<del>In this context, the behavior of a program that supplies an argument other than a literal <code>0</code> is undefined.</del>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

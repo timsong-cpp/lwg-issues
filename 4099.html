@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4099: The simple case of views::as_rvalue and views::common are not strictly correct</title>
+<meta property="og:title" content="Issue 4099: The simple case of views::as_rvalue and views::common are not strictly correct">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4099.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4099"><a href="lwg-active.html#4099">4099</a>. The simple case of <code>views::as_rvalue</code> and <code>views::common</code> are not strictly correct</h3>
+<p><b>Section:</b> 25.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.overview">[range.as.rvalue.overview]</a>, 25.7.20.1 <a href="https://timsong-cpp.github.io/cppwp/range.common.overview">[range.common.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-05-10 <b>Last modified:</b> 2024-06-24</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.as.rvalue.overview">issues</a> in [range.as.rvalue.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, these two adaptors return <code>views::all(E)</code> when the type of subexpression <code>E</code> 
+models <code>common_range</code> or its reference is the same as the rvalue reference.
+<p/>
+However, the current wording does not require that a <code>const</code>-qualified object of a <code>range</code> 
+type must have the same non-commonality or value category of the reference as the non-<code>const</code> one,
+this makes it theoretically possible for these two to still return non-common ranges or ranges whose reference 
+are lvalue when acting on a <code>const</code>-qualified lvalue <code>view</code> object, because 
+<code>views::all(E)</code> will remove the <code>const</code>-qualifier.
+<p/>
+The proposed wording pedantically checks <code>views::all_t&lt;decltype((E))&gt;</code> instead of <code>decltype((E))</code>.
+</p>
+
+<p><i>[2024-06-24; Reflector poll]</i></p>
+
+<p>
+Set priority to 4 after reflector poll.
+"Not aware of any use case for making <code class='backtick'>const</code> affect those properties".
+</p>
+
+
+
+<p id="res-4099"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 25.7.7.1 <a href="https://timsong-cpp.github.io/cppwp/range.as.rvalue.overview">[range.as.rvalue.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code>views::as_rvalue</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+Let <code>E</code> be an expression and let <code>T</code> be <code>decltype((E))</code>. The expression
+<code>views::as_rvalue(E)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(2.1) &mdash; <code>views::all(E)</code> if <code>same_as&lt;range_rvalue_reference_t&lt;<ins>views::all_t&lt;</ins>T<ins>&gt;</ins>&gt;,
+range_reference_t&lt;<ins>views::all_t&lt;</ins>T<ins>&gt;</ins>&gt;&gt;</code> is <code>true</code>.
+</p></li>
+<li><p>
+(2.2) &mdash; Otherwise, <code>as_rvalue_view(E)</code>.
+</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+<li><p>Modify 25.7.20.1 <a href="https://timsong-cpp.github.io/cppwp/range.common.overview">[range.common.overview]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-3- The name <code>views::common</code> denotes a range adaptor object (25.7.2 <a href="https://timsong-cpp.github.io/cppwp/range.adaptor.object">[range.adaptor.object]</a>).
+Given a subexpression <code>E</code>, the expression
+<code>views::common(E)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(3.1) &mdash; <code>views::all(E)</code>, if <del><code>decltype((E))</code></del><ins><code>views::all_t&lt;T&gt;</code></ins> 
+models <code>common_range</code> <del>and <code>views::all(E)</code> is a well-formed expression</del>.
+</p></li>
+<li><p>
+(3.2) &mdash; Otherwise, <code>common_view{E}</code>.
+</p></li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3769: basic_const_iterator::operator== causes infinite constraint recursion</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3769: basic_const_iterator::operator== causes infinite constraint recursion">
+<meta property="og:description" content="C++ library issue. Status: C++23">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3769.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3769" href="lwg-defects.html#3769">3769.</a> <tt>basic_const_iterator::operator==</tt> causes infinite constraint recursion</h3>
-<p><b>Section:</b> 25.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
- <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-05 <b>Last modified:</b> 2023-11-22 15:57:15 UTC</p>
+<h3 id="3769"><a href="lwg-defects.html#3769">3769</a>. <code>basic_const_iterator::operator==</code> causes infinite constraint recursion</h3>
+<p><b>Section:</b> 24.5.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators">[const.iterators]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2022-09-05 <b>Last modified:</b> 2023-11-22</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#const.iterators">active issues</a> in [const.iterators].</p>
@@ -54,17 +71,17 @@
 <p><b>View all issues with</b> <a href="lwg-status.html#C++23">C++23</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Currently, <tt>basic_const_iterator::operator==</tt> is defined as a <tt>friend</tt> function:
+Currently, <code>basic_const_iterator::operator==</code> is defined as a <code>friend</code> function:
 </p>
 <blockquote><pre>
 template&lt;sentinel_for&lt;Iterator&gt; S&gt;
   friend constexpr bool operator==(const basic_const_iterator&amp; x, const S&amp; s);
 </pre></blockquote>
 <p>
-which only requires <tt>S</tt> to model <tt>sentinel_for&lt;Iterator&gt;</tt>, and since 
-<tt>basic_const_iterator</tt> has a conversion constructor that accepts <tt>I</tt>, this will 
-result in infinite constraint checks when comparing  <tt>basic_const_iterator&lt;int*&gt;</tt> 
-with <tt>int*</tt> (<a href="https://godbolt.org/z/bGhccroz4">online example</a>):
+which only requires <code>S</code> to model <code>sentinel_for&lt;Iterator&gt;</code>, and since 
+<code>basic_const_iterator</code> has a conversion constructor that accepts <code>I</code>, this will 
+result in infinite constraint checks when comparing  <code>basic_const_iterator&lt;int*&gt;</code> 
+with <code>int*</code> (<a href="https://godbolt.org/z/bGhccroz4">online example</a>):
 </p>
 <blockquote><pre>
 #include &lt;iterator&gt;
@@ -80,13 +97,13 @@ struct basic_const_iterator {
 static_assert(std::sentinel_for&lt;basic_const_iterator&lt;int*&gt;, int*&gt;); // <span style="color:red;font-weight:bolder">infinite meta-recursion</span>
 </pre></blockquote>    
 <p>
-That is, <tt>sentinel_for</tt> ends with <tt><i>weakly-equality-comparable-with</i></tt> 
-and instantiates <tt>operator==</tt>, which in turn rechecks <tt>sentinel_for</tt> and 
-instantiates the same <tt>operator==</tt>, making the circle closed.
+That is, <code>sentinel_for</code> ends with <code><i>weakly-equality-comparable-with</i></code> 
+and instantiates <code>operator==</code>, which in turn rechecks <code>sentinel_for</code> and 
+instantiates the same <code>operator==</code>, making the circle closed.
 <p/>
-The proposed resolution is to change <tt>operator==</tt> to be a member function so that 
-<tt>S</tt> is no longer accidentally instantiated as <tt>basic_const_iterator</tt>. 
-The same goes for <tt>basic_const_iterator::operator-</tt>.
+The proposed resolution is to change <code>operator==</code> to be a member function so that 
+<code>S</code> is no longer accidentally instantiated as <code>basic_const_iterator</code>. 
+The same goes for <code>basic_const_iterator::operator-</code>.
 </p>
 
 <p><i>[2022-09-23; Reflector poll]</i></p>
@@ -96,7 +113,7 @@ Set priority to 1 after reflector poll.
 </p>
 <p>
 "Although I am not a big fan of member ==,  the proposed solution seems to be simple."
-"prefer if we would keep <tt>operator==</tt> as non-member for consistency."
+"prefer if we would keep <code>operator==</code> as non-member for consistency."
 </p>
 
 <strong>Previous resolution from Hewill [SUPERSEDED]:</strong>
@@ -107,7 +124,7 @@ This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 
 <ol>
 
-<li><p>Modify 25.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.iterator">[const.iterators.iterator]</a>, class template <tt>basic_const_iterator</tt> synopsis, as indicated:</p>
+<li><p>Modify 24.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.iterator">[const.iterators.iterator]</a>, class template <code>basic_const_iterator</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -136,7 +153,7 @@ namespace std {
 </blockquote>
 </li>
 
-<li><p>Modify 25.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.ops">[const.iterators.ops]</a> as indicated:</p>
+<li><p>Modify 24.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.ops">[const.iterators.ops]</a> as indicated:</p>
 
 <blockquote>
 <p>
@@ -148,7 +165,7 @@ namespace std {
 </pre>
 <blockquote>
 <p>
--16- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> == s;</tt>.
+-16- <i>Effects</i>: Equivalent to: <code>return <del>x.</del><i>current_</i> == s;</code>.
 </p>
 </blockquote>
 [&hellip;]
@@ -158,7 +175,7 @@ namespace std {
 </pre>
 <blockquote>
 <p>
--24- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> - y;</tt>.
+-24- <i>Effects</i>: Equivalent to: <code>return <del>x.</del><i>current_</i> - y;</code>.
 </p>
 </blockquote>
 <pre>
@@ -168,7 +185,7 @@ namespace std {
 </pre>
 <blockquote>
 <p>
--25- <i>Effects</i>: Equivalent to: <tt>return x - y.<i>current_</i>;</tt>.
+-25- <i>Effects</i>: Equivalent to: <code>return x - y.<i>current_</i>;</code>.
 </p>
 </blockquote>
 </blockquote>
@@ -182,23 +199,23 @@ namespace std {
 
 <p>
 Initially, LWG requested an investigation of alternative resolutions that would avoid using member functions for the affected operators.
-Later, it was found that in addition to <tt>==</tt>/<tt>-</tt>, all comparison operators (<tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt>, <tt>&lt;=&gt;</tt>) are affected by same problem for the calls
-with <tt>basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;</tt> and <tt>int*</tt> as arguments, i.e. <tt>totally_ordered_with&lt;basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;, int*&gt;</tt>
+Later, it was found that in addition to <code>==</code>/<code>-</code>, all comparison operators (<code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&lt;=&gt;</code>) are affected by same problem for the calls
+with <code>basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;</code> and <code>int*</code> as arguments, i.e. <code>totally_ordered_with&lt;basic_const_iterator&lt;basic_const_iterator&lt;int*&gt;&gt;, int*&gt;</code>
 causes infinite recursion in constraint checking.
 </p>
 
 <p>
-The new resolution, change all of the friends overloads for operators <tt>==</tt>, <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt>, <tt>&lt;=&gt;</tt> and <tt>-</tt> that accept <tt>basic_const_iterator</tt> as lhs, to <tt>const</tt> member functions.
-This change is applied to homogeneous <tt>(basic_const_iterator, basic_const_iterator)</tt> for consistency.
-For the overload of <tt>&lt;</tt>, <tt>&gt;</tt>, <tt>&lt;=</tt>, <tt>&gt;=</tt> and <tt>-</tt> that accepts <tt>(I, basic_const_iterator)</tt> we declared them as friends and consistently constrain them with <tt><i>not-const-iterator</i></tt>.
-Finally, its put (now member) <tt>operator<tt>&lt;=&gt;</tt>(I)</tt> in the block with other heterogeneous overloads in the synopsis.	
+The new resolution, change all of the friends overloads for operators <code>==</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&lt;=&gt;</code> and <code>-</code> that accept <code>basic_const_iterator</code> as lhs, to <code>const</code> member functions.
+This change is applied to homogeneous <code>(basic_const_iterator, basic_const_iterator)</code> for consistency.
+For the overload of <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code> and <code>-</code> that accepts <code>(I, basic_const_iterator)</code> we declared them as friends and consistently constrain them with <code><i>not-const-iterator</i></code>.
+Finally, its put (now member) <code>operator<code>&lt;=&gt;</code>(I)</code> in the block with other heterogeneous overloads in the synopsis.	
 </p>
 
 <p>
 The use of member functions addresses issues, because:
 <ul>	
-<li>it disallows conversion to <tt>basic_const_iterator</tt> in the left-hand side of op, i.e. eliminates issues for <tt>(sized_)sentinel_for&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</tt> and <tt>totally_ordered&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</tt></li>
-<li>member functions (in contrast to friends) are not found by ADL, so we do not get multiple candidates for <tt>basic_const_iterator&lt;basic_const_iterator&lt;S&gt;&gt;</tt>, so we address recursion for nested iterators</li>
+<li>it disallows conversion to <code>basic_const_iterator</code> in the left-hand side of op, i.e. eliminates issues for <code>(sized_)sentinel_for&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</code> and <code>totally_ordered&lt;basic_const_iterator&lt;int*&gt;, int*&gt;</code></li>
+<li>member functions (in contrast to friends) are not found by ADL, so we do not get multiple candidates for <code>basic_const_iterator&lt;basic_const_iterator&lt;S&gt;&gt;</code>, so we address recursion for nested iterators</li>
 </ul>
 </p>
 
@@ -215,7 +232,7 @@ This wording is relative to <a href="https://wg21.link/N4917">N4917</a>.
 
 <ol>
 
-<li><p>Modify 25.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.iterator">[const.iterators.iterator]</a>, class template <tt>basic_const_iterator</tt> synopsis, as indicated:</p>
+<li><p>Modify 24.5.3.3 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.iterator">[const.iterators.iterator]</a>, class template <code>basic_const_iterator</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -290,7 +307,7 @@ namespace std {
 </blockquote>
 </li>
 
-<li><p>Modify 25.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.ops">[const.iterators.ops]</a> as indicated:</p>
+<li><p>Modify 24.5.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.iterators.ops">[const.iterators.ops]</a> as indicated:</p>
 
 <blockquote>
 <p>
@@ -302,7 +319,7 @@ template&lt;sentinel_for&lt;Iterator&gt; S&gt;
 </pre>
 <blockquote>
 <p>
--16- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> == s;</tt>
+-16- <i>Effects</i>: Equivalent to: <code>return <del>x.</del><i>current_</i> == s;</code>
 </p>
 </blockquote>
 <pre>
@@ -322,7 +339,7 @@ template&lt;sentinel_for&lt;Iterator&gt; S&gt;
 -17- Let <i>op</i> be the operator.
 </p>
 <p>
--18- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> <i>op</i> y.<i>current_</i>;</tt>
+-18- <i>Effects</i>: Equivalent to: <code>return <del>x.</del><i>current_</i> <i>op</i> y.<i>current_</i>;</code>
 </p>
 </blockquote>
 <pre>
@@ -345,10 +362,10 @@ template&lt;<i>different-from</i>&lt;basic_const_iterator&gt; I&gt;
 </pre>
 <blockquote>
 <p>
--19- Let <tt><i>op</i></tt> be the operator.
+-19- Let <code><i>op</i></code> be the operator.
 </p>
 <p>
--20- <i><del>Returns</del><ins>Effects</ins></i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> <i>op</i> y;</tt>
+-20- <i><del>Returns</del><ins>Effects</ins></i>: Equivalent to: <code>return <del>x.</del><i>current_</i> <i>op</i> y;</code>
 </p>
 </blockquote>
 
@@ -359,7 +376,7 @@ template&lt;sized_sentinel_for&lt;Iterator&gt; S&gt;
 </pre>
 <blockquote>
 <p>
--24- <i>Effects</i>: Equivalent to: <tt>return <del>x.</del><i>current_</i> - y;</tt>
+-24- <i>Effects</i>: Equivalent to: <code>return <del>x.</del><i>current_</i> - y;</code>
 </p>
 </blockquote>
 <pre>
@@ -369,7 +386,7 @@ template&lt;<ins><i>not-a-const-iterator</i></ins><del>sized_sentinel_for&lt;Ite
 </pre>
 <blockquote>
 <p>
--25- <i>Effects</i>: Equivalent to: <tt>return x - y.<i>current_</i>;</tt>
+-25- <i>Effects</i>: Equivalent to: <code>return x - y.<i>current_</i>;</code>
 </p>
 </blockquote>
 </blockquote>

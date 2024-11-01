@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4070: Transcoding by std::formatter&lt;std::filesystem::path&gt;</title>
+<meta property="og:title" content="Issue 4070: Transcoding by std::formatter&lt;std::filesystem::path&gt;">
+<meta property="og:description" content="C++ library issue. Status: SG16">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4070.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4070"><a href="lwg-active.html#4070">4070</a>. Transcoding by <code>std::formatter&lt;std::filesystem::path&gt;</code></h3>
+<p><b>Section:</b> 31.12.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.fmtr.funcs">[fs.path.fmtr.funcs]</a> <b>Status:</b> <a href="lwg-active.html#SG16">SG16</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-04-19 <b>Last modified:</b> 2024-05-08</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#SG16">SG16</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+31.12.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.fmtr.funcs">[fs.path.fmtr.funcs]</a> says:
+
+<blockquote>
+If <code class='backtick'>charT</code> is <code class='backtick'>char</code>, <code class='backtick'>path::value_type</code> is <code class='backtick'>wchar_t</code>,
+and the literal encoding is UTF-8, then the escaped path is
+transcoded from the native encoding for wide character strings to UTF-8
+with maximal subparts of ill-formed subsequences substituted with
+<span style="font-variant:small-caps">u+fffd</span>
+replacement character per the Unicode Standard [...].
+Otherwise, transcoding is implementation-defined.
+</blockquote>
+</p>
+
+<p>
+This seems to mean that the Unicode substitutions are only done
+for an escaped path, i.e. when the <code class='backtick'>?</code> option is used. Otherwise, the form
+of transcoding is completely implementation-defined.
+However, this makes no sense.
+An escaped string will have no ill-formed subsequences, because they will
+already have been replaced as per 28.5.6.5 <a href="https://timsong-cpp.github.io/cppwp/format.string.escaped">[format.string.escaped]</a>:
+<blockquote>
+Otherwise (<em>X</em> is a sequence of ill-formed code units),
+each code unit <em>U</em> is appended to <em>E</em> in order as
+the sequence <code>\x{<em>hex-digit-sequence</em>}</code>,
+where <code><em>hex-digit-sequence</em></code> is the shortest hexadecimal
+representation of <em>U</em> using lower-case hexadecimal digits.
+</blockquote>
+</p>
+<p>
+So only unescaped strings can have ill-formed sequences by the time
+we do transcoding to <code class='backtick'>char</code>, but whether or not any
+<span style="font-variant:small-caps">u+fffd</span> substitution
+occurs is just implementation-defined.
+</p>
+
+<p>
+I believe we want to specify the substitutions are done when transcoding
+an <em>unescaped</em> path (and it doesn't matter whether we specify it
+for escaped paths, because it's a no-op if escaping happens first,
+as is apparently intended).
+</p>
+
+<p>
+It does matter whether we escape first or perform substitutions first.
+If we escape first then every code unit in an ill-formed sequence is
+individually escaped as <code class='backtick'>\x{hex-digit-sequence}</code>.
+So an ill-formed sequence of two <code class='backtick'>wchar_t</code> values will be escaped as
+two <code class='backtick'>\x{...}</code> strings, which are then transcoded to UTF-8.
+If we transcode (with substitutions first) then the entire
+ill-formed sequence is replaced with a single replacement character,
+which will then be escaped as <code class='backtick'>\x{fffd}</code>.
+SG16 should be asked to confirm that escaping first is intended,
+so that an escaped string shows the original invalid code units.
+For a non-escaped string, we want the ill-formed sequence to be
+formatted as &#xfffd;, which the proposed resolution tries to ensure.
+</p>
+
+
+<p><i>[2024-05-08; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+
+<p id="res-4070"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4981">N4981</a>.
+</p>
+<ol>
+<li><p>Modify 31.12.6.9.2 <a href="https://timsong-cpp.github.io/cppwp/fs.path.fmtr.funcs">[fs.path.fmtr.funcs]</a> as indicated:</p>
+
+<blockquote>
+<pre><code>
+template&lt;class FormatContext&gt;
+  typename FormatContext::iterator
+    format(const filesystem::path&amp; p, FormatContext&amp; ctx) const;
+</code></pre>
+<blockquote>-5-
+<em>Effects</em>:
+Let <code class='backtick'>s</code> be <code>p.generic_string&lt;filesystem::path::value_type&gt;()</code>
+if the <code class='backtick'>g</code> option is used, otherwise <code class='backtick'>p.native()</code>.
+Writes <code class='backtick'>s</code> into <code class='backtick'>ctx.out()</code>, adjusted according to the path-format-spec.
+If <code class='backtick'>charT</code> is <code class='backtick'>char</code>, <code class='backtick'>path::value_type</code> is <code class='backtick'>wchar_t</code>,
+and the literal encoding is UTF-8, then the
+<del>escaped path</del>
+<ins>(possibly escaped) string</ins>
+is transcoded from the native encoding for wide character strings to UTF-8
+with maximal subparts of ill-formed subsequences substituted with
+<span style="font-variant:small-caps">u+fffd</span> replacement character per
+the Unicode Standard, Chapter 3.9 <span style="font-variant:small-caps">u+fffd</span>
+Substitution in Conversion.
+If <code class='backtick'>charT</code> and <code class='backtick'>path::value_type</code> are the same then no transcoding is performed.
+Otherwise, transcoding is implementation-defined.
+</blockquote>
+</blockquote>
+</li>
+<li>
+Modify the entry in the index of implementation-defined behavior as indicated:
+<blockquote>
+transcoding of a formatted <code class='backtick'>path</code> when <code class='backtick'>charT</code> and <code class='backtick'>path::value_type</code> differ
+<ins>and not converting from <code class='backtick'>wchar_t</code> to UTF-8</ins>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

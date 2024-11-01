@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4102: string_view(Iter, Iter) constructor breaks existing code</title>
+<meta property="og:title" content="Issue 4102: string_view(Iter, Iter) constructor breaks existing code">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4102.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4102"><a href="lwg-active.html#4102">4102</a>. <code class='backtick'>string_view(Iter, Iter)</code> constructor breaks existing code</h3>
+<p><b>Section:</b> 27.3.3.2 <a href="https://timsong-cpp.github.io/cppwp/string.view.cons">[string.view.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Derek Zhang <b>Opened:</b> 2024-05-14 <b>Last modified:</b> 2024-08-02</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#string.view.cons">issues</a> in [string.view.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+As a result of the new constructor added by <a href="https://wg21.link/P1391">P1391</a>,
+this stopped working in C++20: 
+</p>
+<pre><code>
+void fun(string_view);
+void fun(vector&lt;string_view&gt;);
+fun({"a", "b"});
+</code></pre>
+<p>
+Previously the first <code class='backtick'>fun</code> wasn't viable, so it constructed a
+<code>vector&lt;string_view&gt;</code>
+of two elements using its initializer-list constructor
+and then called the second <code class='backtick'>fun</code>.
+Now <code class='backtick'>{"a", "b"}</code> could also be a call to the new <code class='backtick'>string_view(Iter, Iter)</code>,
+so it's ambiguous and fails to compile.
+</p>
+<p>
+The following case is arguably worse as it doesn't become ill-formed in C++20,
+it still compiles but now has undefined behaviour:
+</p>
+<pre><code>
+fun({{"a", "b"}});
+</code></pre>
+<p>
+Previously the first <code class='backtick'>fun</code> wasn't viable, so this constructed a
+<code>vector&lt;string_view&gt;</code> of two elements
+(via somewhat bizarre syntax, but using the same initializer-list constructor
+as above).
+Now it constructs a <code class='backtick'>vector</code> from an <code class='backtick'>initializer_list</code> with <em>one</em>
+element, where that element is constructed from the two <code class='backtick'>const char*</code>
+using <code class='backtick'>string_view(Iter, Iter)</code>.
+But those two pointers are unrelated and do not form a valid range,
+so this violates the constructor's precondition and has undefined behaviour.
+If you're lucky it crashes at runtime when trying to reach <code class='backtick'>"b"</code> from <code class='backtick'>"a"</code>,
+but it could also form a <code class='backtick'>string_view</code> that reads arbitrary secrets from the
+memory between the two pointers.
+</p>
+<p><i>[Jonathan comments]</i></p>
+
+<p>
+At the very least, we should have an Annex C entry documenting the change.
+Making the new <code class='backtick'>string_view(Iter, Iter)</code> constructor <code class='backtick'>explicit</code> would prevent
+the runtime behaviour change for the second example,
+but GCC thinks the first example would still be ambiguous
+(it seems to depend on how list-initialization handles explicit constructors,
+which has implementation divergence).
+</p>
+<p>
+Maybe we should have a deleted constructor matching string literals:
+<pre><code>
+template&lt;size_t N1, size_t N2&gt;
+basic_string_view(const charT(&amp;)[N1], const charT(&amp;)[N2]) = delete;
+</code></pre>
+Or to handle both <code class='backtick'>const char[N]</code> and <code class='backtick'>char[N]</code>:
+<pre><code>
+template&lt;class A1, class A2&gt;
+requires (rank_v&lt;A1&gt; == 1) &amp;&amp; (rank_v&lt;A2&gt; == 1)
+basic_string_view(A1&amp;, A2&amp;) = delete;
+</code></pre>
+Both options would prevent this currently valid (but weird) code:
+<pre><code>
+const char arr[] = "str";
+std::string_view s(arr, arr); // s.size() == 0 and s.data() == arr
+</code></pre>
+That seems acceptable, because <code class='backtick'>std::string_view s(arr, 0)</code>
+is simpler and clearer anyway.
+</p>
+
+<p><i>[2024-08-02; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+"The constructor should be made <code class='backtick'>explicit</code> as part of any resolution for this."
+</p>
+
+
+
+<p id="res-4102"><b>Proposed resolution:</b></p>
+<p>
+</p>
+
+
+
+
+
+</body>
+</html>

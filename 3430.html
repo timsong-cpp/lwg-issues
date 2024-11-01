@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3430: std::fstream &amp; co. should be constructible from string_view</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3430: std::fstream &amp; co. should be constructible from string_view">
+<meta property="og:description" content="C++ library issue. Status: C++23">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3430.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,9 +61,9 @@
 </head>
 <body>
 <hr>
-<h3><a name="3430" href="lwg-defects.html#3430">3430.</a> <tt>std::fstream</tt> &amp; co. should be constructible from <tt>string_view</tt></h3>
+<h3 id="3430"><a href="lwg-defects.html#3430">3430</a>. <code>std::fstream</code> &amp; co. should be constructible from <code>string_view</code></h3>
 <p><b>Section:</b> 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> <b>Status:</b> <a href="lwg-active.html#C++23">C++23</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2023-11-22 15:47:43 UTC</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2020-04-15 <b>Last modified:</b> 2023-11-22</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++23">C++23</a> status.</p>
@@ -61,13 +78,13 @@ basic_fstream(const string&amp;, openmode);
 basic_fstream(const filesystem::path&amp;, openmode);
 </pre></blockquote>
 <p>
-I think the omission of a <tt>string_view</tt> overload was intentional, because the underlying OS call 
-(such as <tt>fopen</tt>) needs a NTBS. We wanted the allocation required to turn a <tt>string_view</tt> 
-into an NTBS to be explicitly requested by the user. But then we added the <tt>path</tt> overload, 
-which is callable with a <tt>string_view</tt>. Converting to a <tt>path</tt> is more expensive than 
-converting to <tt>std::string</tt>, because a path has to <em>at least</em> construct a <tt>basic_string</tt>, 
+I think the omission of a <code>string_view</code> overload was intentional, because the underlying OS call 
+(such as <code>fopen</code>) needs a NTBS. We wanted the allocation required to turn a <code>string_view</code> 
+into an NTBS to be explicitly requested by the user. But then we added the <code>path</code> overload, 
+which is callable with a <code>string_view</code>. Converting to a <code>path</code> is more expensive than 
+converting to <code>std::string</code>, because a path has to <em>at least</em> construct a <code>basic_string</code>, 
 and potentially also does an encoding conversion, parses the path, and potentially allocates a sequence 
-of <tt>path</tt> objects for the path components.
+of <code>path</code> objects for the path components.
 <p/>
 This means the simpler, more obvious code is slower and uses more memory:
 </p>
@@ -77,20 +94,21 @@ fstream f1(sv); // bad
 fstream f2(string(sv)); // good
 </pre></blockquote>
 <p>
-We should just allow passing a <tt>string_view</tt> directly, since it already compiles but 
+We should just allow passing a <code>string_view</code> directly, since it already compiles but 
 doesn't do what anybody expects or wants.
 <p/>
-Even with a <tt>string_view</tt> overload, passing types like <tt>const char16_t*</tt> or <tt>u32string_view</tt> 
-will still implicitly convert to <tt>filesystem::path</tt>, but that seems reasonable. In those cases the 
-encoding conversion is necessary. For Windows we support construction from <tt>const wchar_t*</tt> but not 
-from <tt>wstring</tt> or <tt>wstring_view</tt>, which means those types will convert to <tt>filesystem::path</tt>. 
-That seems suboptimal, so we might also want to add <tt>wstring</tt> and <tt>wstring_view</tt> overloads for 
+Even with a <code>string_view</code> overload, passing types like <code>const char16_t*</code> or <code>u32string_view</code> 
+will still implicitly convert to <code>filesystem::path</code>, but that seems reasonable. In those cases the 
+encoding conversion is necessary. For Windows we support construction from <code>const wchar_t*</code> but not 
+from <code>wstring</code> or <code>wstring_view</code>, which means those types will convert to <code>filesystem::path</code>. 
+That seems suboptimal, so we might also want to add <code>wstring</code> and <code>wstring_view</code> overloads for 
 "wide systems only", as per 31.10.1 <a href="https://timsong-cpp.github.io/cppwp/fstream.syn">[fstream.syn]</a> p3.
 <p/>
 Daniel:
 <p/>
-LWG <a href="2883">2883</a> has a more general view on that but does not consider potential cost differences 
-in the presence of <tt>path</tt> overloads (Which didn't exist at this point yet).
+LWG <a href="2883" title="The standard library should provide string_view parameters instead or in addition for functions 
+      defined with char const * or string const &amp; as parameter types. (Status: LEWG)">2883</a> has a more general view on that but does not consider potential cost differences 
+in the presence of <code>path</code> overloads (Which didn't exist at this point yet).
 </p>
 
 <p><i>[2020-05-09; Reflector prioritization]</i></p>
@@ -103,28 +121,28 @@ Set priority to 3 after reflector discussions.
 
 <p>
 An alternative fix would be to retain the original design and not allow
-construction from a <tt>string_view</tt>. The <tt>path</tt> parameters
+construction from a <code>string_view</code>. The <code>path</code> parameters
 could be changed to template parameters which are constrained to be exactly
-<tt>path</tt>, and not things like <tt>string_view</tt> which can convert
-to <tt>path</tt>.
+<code>path</code>, and not things like <code>string_view</code> which can convert
+to <code>path</code>.
 </p>
 
 <p><i>[2020-08-21; Issue processing telecon: send to LEWG]</i></p>
 
 <p>
-Just adding support for <tt>string_view</tt> doesn't prevent expensive
-conversions from other types that convert to <tt>path</tt>.
-Preference for avoiding all expensive implicit conversions to <tt>path</tt>,
+Just adding support for <code>string_view</code> doesn't prevent expensive
+conversions from other types that convert to <code>path</code>.
+Preference for avoiding all expensive implicit conversions to <code>path</code>,
 maybe via abbreviated function templates:
 <pre>
 basic_fstream(same_as&lt;filesystem::path&gt; auto const&amp;, openmode);
 </pre>
 </p>
 <p>
-It's possible <tt>path_view</tt> will provide a better option at some point.
+It's possible <code>path_view</code> will provide a better option at some point.
 </p>
 <p>
-It was noted that <a href="2676">2676</a> did intentionally allow conversions
+It was noted that <a href="2676" title="Provide filesystem::path overloads for File-based streams (Status: C++17)">2676</a> did intentionally allow conversions
 from "strings of character types <code>wchar_t</code>, <code>char16_t</code>,
 and <code>char32_t</code>". Those conversions don't need to be implicit
 for that to be supported.
@@ -139,18 +157,18 @@ the LEWG provided following guidance on the issue:
 <blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
 <p>
 We took one poll (exact wording in the notes) to constrain the constructor which takes 
-<tt>filesystem::path</tt> to only take <tt>filesystem::path</tt> and not things convertible to it, 
+<code>filesystem::path</code> to only take <code>filesystem::path</code> and not things convertible to it, 
 but only 9 out of 26 people present actually voted. Our interpretation: LWG should go ahead with 
 making this change. There is still plenty of time for someone who hasn't yet commented on this to 
 bring it up even if it is in a tentatively ready state. It would be nice to see a paper to address 
 the problem of the templated path constructor, but no one has yet volunteered to do so. 
-Note: the issue description is now a misnomer, as adding a <tt>string_view</tt> constructor 
+Note: the issue description is now a misnomer, as adding a <code>string_view</code> constructor 
 is no longer being considered at this time.
 </p>
 </blockquote>
 <p>
-The proposed P/R  follows original LWG proposal and makes the <tt>path</tt> constructor of the 
-<tt>basic_*fstreams</tt> "<tt>explicit</tt>". To adhere to current policy, we refrain from use of 
+The proposed P/R  follows original LWG proposal and makes the <code>path</code> constructor of the 
+<code>basic_*fstreams</code> "<code>explicit</code>". To adhere to current policy, we refrain from use of 
 requires clauses and abbreviated function syntax, and introduce a <i>Constraints</i> element.
 </p>
 
@@ -170,7 +188,7 @@ This wording is relative to <a href="https://wg21.link/n4861">N4861</a>.
 </p>
 
 <ol>
-<li><p>Modify 31.10.4 <a href="https://timsong-cpp.github.io/cppwp/ifstream">[ifstream]</a>, class template <tt>basic_ifstream</tt> synopsis, as indicated:</p>
+<li><p>Modify 31.10.4 <a href="https://timsong-cpp.github.io/cppwp/ifstream">[ifstream]</a>, class template <code>basic_ifstream</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -194,7 +212,7 @@ explicit basic_ifstream(const string&amp; s,
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_ifstream(s.c_str(), mode)</tt>.</ins>
+<ins>-?- <i>Effects:</i> Equivalent to: <code>basic_ifstream(s.c_str(), mode)</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -204,15 +222,15 @@ explicit basic_ifstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<ins>-?- <i>Constraints:</i> <code>is_same_v&lt;T, filesystem::path&gt;</code> is <code>true</code>.</ins>
 <p/>
--3- <i>Effects:</i> Equivalent to: <tt>basic_ifstream(s.c_str(), mode)</tt>.
+-3- <i>Effects:</i> Equivalent to: <code>basic_ifstream(s.c_str(), mode)</code>.
 </p>
 </blockquote>
 </blockquote>
 </li>
 
-<li><p>Modify 31.10.5 <a href="https://timsong-cpp.github.io/cppwp/ofstream">[ofstream]</a>, class template <tt>basic_ofstream</tt> synopsis, as indicated:</p>
+<li><p>Modify 31.10.5 <a href="https://timsong-cpp.github.io/cppwp/ofstream">[ofstream]</a>, class template <code>basic_ofstream</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -236,7 +254,7 @@ explicit basic_ofstream(const string&amp; s,
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_ofstream(s.c_str(), mode)</tt>.</ins>
+<ins>-?- <i>Effects:</i> Equivalent to: <code>basic_ofstream(s.c_str(), mode)</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -246,15 +264,15 @@ explicit basic_ofstream(const <del>filesystem::path</del><ins>T</ins>&amp; s,
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<ins>-?- <i>Constraints:</i> <code>is_same_v&lt;T, filesystem::path&gt;</code> is <code>true</code>.</ins>
 <p/>
--3- <i>Effects:</i> Equivalent to: <tt>basic_ofstream(s.c_str(), mode)</tt>.
+-3- <i>Effects:</i> Equivalent to: <code>basic_ofstream(s.c_str(), mode)</code>.
 </p>
 </blockquote>
 </blockquote>
 </li>
 
-<li><p>Modify 31.10.6 <a href="https://timsong-cpp.github.io/cppwp/fstream">[fstream]</a>, class template <tt>basic_fstream</tt> synopsis, as indicated:</p>
+<li><p>Modify 31.10.6 <a href="https://timsong-cpp.github.io/cppwp/fstream">[fstream]</a>, class template <code>basic_fstream</code> synopsis, as indicated:</p>
 
 <blockquote>
 <pre>
@@ -281,7 +299,7 @@ explicit basic_fstream(
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Effects:</i> Equivalent to: <tt>basic_fstream(s.c_str(), mode)</tt>.</ins>
+<ins>-?- <i>Effects:</i> Equivalent to: <code>basic_fstream(s.c_str(), mode)</code>.</ins>
 </p>
 </blockquote>
 <pre>
@@ -292,9 +310,9 @@ explicit basic_fstream(
 </pre>
 <blockquote>
 <p>
-<ins>-?- <i>Constraints:</i> <tt>is_same_v&lt;T, filesystem::path&gt;</tt> is <tt>true</tt>.</ins>
+<ins>-?- <i>Constraints:</i> <code>is_same_v&lt;T, filesystem::path&gt;</code> is <code>true</code>.</ins>
 <p/>
--3- <i>Effects:</i> Equivalent to: <tt>basic_fstream(s.c_str(), mode)</tt>.
+-3- <i>Effects:</i> Equivalent to: <code>basic_fstream(s.c_str(), mode)</code>.
 </p>
 </blockquote>
 </blockquote>

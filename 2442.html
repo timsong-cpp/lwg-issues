@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 2442: call_once() shouldn't DECAY_COPY()</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 2442: call_once() shouldn't DECAY_COPY()">
+<meta property="og:description" content="C++ library issue. Status: C++17">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/2442.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,39 +61,39 @@
 </head>
 <body>
 <hr>
-<h3><a name="2442" href="lwg-defects.html#2442">2442.</a> <tt>call_once()</tt> shouldn't <tt>DECAY_COPY()</tt></h3>
-<p><b>Section:</b> 33.6.7.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
- <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2014-10-01 <b>Last modified:</b> 2017-07-30 20:15:43 UTC</p>
+<h3 id="2442"><a href="lwg-defects.html#2442">2442</a>. <code>call_once()</code> shouldn't <code>DECAY_COPY()</code></h3>
+<p><b>Section:</b> 32.6.7.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> <b>Status:</b> <a href="lwg-active.html#C++17">C++17</a>
+ <b>Submitter:</b> Stephan T. Lavavej <b>Opened:</b> 2014-10-01 <b>Last modified:</b> 2017-07-30</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#thread.once.callonce">issues</a> in [thread.once.callonce].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++17">C++17</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-When LWG <a href="891">891</a> overhauled <tt>call_once()</tt>'s specification, it used <tt>decay_copy()</tt>, following 
-LWG <a href="929">929</a>'s overhaul of <tt>thread</tt>'s constructor.
+When LWG <a href="891" title="std::thread, std::call_once issue (Status: C++11)">891</a> overhauled <code>call_once()</code>'s specification, it used <code>decay_copy()</code>, following 
+LWG <a href="929" title="Thread constructor (Status: C++11)">929</a>'s overhaul of <code>thread</code>'s constructor.
 <p/>
-In <tt>thread</tt>'s constructor, this is necessary and critically important. 33.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a>/5 
-"The new thread of execution executes <tt><i>INVOKE</i>(<i>DECAY_COPY</i>(std::forward&lt;F&gt;(f)), 
-<i>DECAY_COPY</i>(std::forward&lt;Args&gt;(args))...)</tt> 
-with the calls to <tt><i>DECAY_COPY</i></tt> being evaluated in the constructing thread." requires the parent thread 
+In <code>thread</code>'s constructor, this is necessary and critically important. 32.4.3.3 <a href="https://timsong-cpp.github.io/cppwp/thread.thread.constr">[thread.thread.constr]</a>/5 
+"The new thread of execution executes <code><i>INVOKE</i>(<i>DECAY_COPY</i>(std::forward&lt;F&gt;(f)), 
+<i>DECAY_COPY</i>(std::forward&lt;Args&gt;(args))...)</code> 
+with the calls to <code><i>DECAY_COPY</i></code> being evaluated in the constructing thread." requires the parent thread 
 to copy arguments for the child thread to access.
 <p/>
-In <tt>call_once()</tt>, this is unnecessary and harmful. It's unnecessary because <tt>call_once()</tt> doesn't transfer 
+In <code>call_once()</code>, this is unnecessary and harmful. It's unnecessary because <code>call_once()</code> doesn't transfer 
 arguments between threads. It's harmful because:
 </p>
 <ul>
-<li><p><tt>decay_copy()</tt> returns a prvalue. Given <tt>meow(int&amp;)</tt>, <tt>meow(i)</tt> can be called directly, 
-but <tt>call_once(flag, meow, i)</tt> won't compile.</p></li>
-<li><p><tt>decay_copy()</tt> moves from modifiable rvalues. Given <tt>purr(const unique_ptr&lt;int&gt;&amp;)</tt>, 
-<tt>purr(move(up))</tt> won't modify <tt>up</tt>. (This is observable, because moved-from <tt>unique_ptr</tt>s are 
-guaranteed empty.) However, <tt>call_once(flag, purr, move(up))</tt> will leave <tt>up</tt> empty after the first active 
-execution. Observe the behavioral difference &mdash; if <tt>purr()</tt> is directly called like this repeatedly until it 
-doesn't throw an exception, each call will observe <tt>up</tt> unchanged. With <tt>call_once()</tt>, the second active 
-execution will observe <tt>up</tt> to be empty.</p></li>
+<li><p><code>decay_copy()</code> returns a prvalue. Given <code>meow(int&amp;)</code>, <code>meow(i)</code> can be called directly, 
+but <code>call_once(flag, meow, i)</code> won't compile.</p></li>
+<li><p><code>decay_copy()</code> moves from modifiable rvalues. Given <code>purr(const unique_ptr&lt;int&gt;&amp;)</code>, 
+<code>purr(move(up))</code> won't modify <code>up</code>. (This is observable, because moved-from <code>unique_ptr</code>s are 
+guaranteed empty.) However, <code>call_once(flag, purr, move(up))</code> will leave <code>up</code> empty after the first active 
+execution. Observe the behavioral difference &mdash; if <code>purr()</code> is directly called like this repeatedly until it 
+doesn't throw an exception, each call will observe <code>up</code> unchanged. With <code>call_once()</code>, the second active 
+execution will observe <code>up</code> to be empty.</p></li>
 </ul>
 <p>
-<tt>call_once()</tt> should use perfect forwarding without <tt>decay_copy()</tt>, in order to avoid interfering with the call like this.
+<code>call_once()</code> should use perfect forwarding without <code>decay_copy()</code>, in order to avoid interfering with the call like this.
 </p>
 
 <p><i>[2015-02 Cologne]</i></p>
@@ -125,7 +142,7 @@ This wording is relative to N3936.
 </p>
 
 <ol>
-<li><p>Change 33.6.7.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> p1+p2 as depicted:</p>
+<li><p>Change 32.6.7.2 <a href="https://timsong-cpp.github.io/cppwp/thread.once.callonce">[thread.once.callonce]</a> p1+p2 as depicted:</p>
 
 <blockquote>
 <pre>
@@ -134,14 +151,14 @@ template&lt;class Callable, class ...Args&gt;
 </pre>
 <blockquote>
 <p>
--1- <i>Requires</i>: <del><tt>Callable</tt> and each <tt>Ti</tt> in <tt>Args</tt> shall satisfy the <tt>MoveConstructible</tt> 
-requirements.</del> <tt><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
-<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</tt>
+-1- <i>Requires</i>: <del><code>Callable</code> and each <code>Ti</code> in <code>Args</code> shall satisfy the <code>MoveConstructible</code> 
+requirements.</del> <code><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
+<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</code>
 (20.9.2) shall be a valid expression.
 <p/>
 -2- <i>Effects</i>; [&hellip;] An active execution shall call 
-<tt><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
-<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</tt>. [&hellip;]
+<code><i>INVOKE</i>(<del><i>DECAY_COPY</i>(</del>std::forward&lt;Callable&gt;(func)<del>)</del>, 
+<del><i>DECAY_COPY</i>(</del>std::forward&lt;Args&gt;(args)<del>)</del>...)</code>. [&hellip;]
 </p>
 </blockquote>
 </blockquote>

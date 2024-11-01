@@ -1,12 +1,19 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-    "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Issue 3013: (recursive_)directory_iterator construction and traversal should not be noexcept</title>
-<style type="text/css">
+<meta property="og:title" content="Issue 3013: (recursive_)directory_iterator construction and traversal should not be noexcept">
+<meta property="og:description" content="C++ library issue. Status: C++20">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3013.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
   p {text-align:justify}
   li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
   blockquote.note
   {
     background-color:#E0E0E0;
@@ -17,7 +24,17 @@
   }
   ins {background-color:#A0FFA0}
   del {background-color:#FFA0A0}
-  table {border-collapse: collapse;}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
   @media (prefers-color-scheme: dark) {
      html {
         color: #ddd;
@@ -44,32 +61,32 @@
 </head>
 <body>
 <hr>
-<h3><a name="3013" href="lwg-defects.html#3013">3013.</a> <tt>(recursive_)directory_iterator</tt> construction and traversal should not be <tt>noexcept</tt></h3>
+<h3 id="3013"><a href="lwg-defects.html#3013">3013</a>. <code>(recursive_)directory_iterator</code> construction and traversal should not be <code>noexcept</code></h3>
 <p><b>Section:</b> 31.12.11.2 <a href="https://timsong-cpp.github.io/cppwp/fs.dir.itr.members">[fs.dir.itr.members]</a>, 31.12.12.2 <a href="https://timsong-cpp.github.io/cppwp/fs.rec.dir.itr.members">[fs.rec.dir.itr.members]</a>, 31.12.13.4 <a href="https://timsong-cpp.github.io/cppwp/fs.op.copy">[fs.op.copy]</a>, 31.12.13.20 <a href="https://timsong-cpp.github.io/cppwp/fs.op.is.empty">[fs.op.is.empty]</a> <b>Status:</b> <a href="lwg-active.html#C++20">C++20</a>
- <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-08-23 <b>Last modified:</b> 2023-02-07 02:58:54 UTC</p>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2017-08-23 <b>Last modified:</b> 2023-02-07</p>
 <p><b>Priority: </b>0
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#fs.dir.itr.members">issues</a> in [fs.dir.itr.members].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#C++20">C++20</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
-Constructing a <tt>(recursive_)directory_iterator</tt> from a <tt>path</tt> requires, at a minimum, initializing its 
-underlying <tt>directory_entry</tt> object with the <tt>path</tt> formed from the supplied <tt>path</tt> and the name of the 
+Constructing a <code>(recursive_)directory_iterator</code> from a <code>path</code> requires, at a minimum, initializing its 
+underlying <code>directory_entry</code> object with the <code>path</code> formed from the supplied <code>path</code> and the name of the 
 first entry, which requires a potentially throwing memory allocation; every implementation I've looked at also allocates 
 memory to store additional data as well.
 <p/>
-Similarly, <tt>increment()</tt> needs to update the <tt>path</tt> stored in <tt>directory_entry</tt> object to refer 
+Similarly, <code>increment()</code> needs to update the <code>path</code> stored in <code>directory_entry</code> object to refer 
 to the name of the next entry, which may require a memory allocation. While it might conceivably be possible to 
-postpone the update in this case until the iterator is dereferenced (the dereference operation is not <tt>noexcept</tt> 
+postpone the update in this case until the iterator is dereferenced (the dereference operation is not <code>noexcept</code> 
 due to its narrow contract), it seems highly unlikely that such an implementation is intended (not to mention that it 
 would require additional synchronization as the dereference operations are const).
 <p/>
-This further calls into question whether the <tt>error_code</tt> overloads of <tt>copy</tt> and <tt>is_empty</tt>, 
-whose specification uses <tt>directory_iterator</tt>, should be <tt>noexcept</tt>. There might be a case for keeping 
-the <tt>noexcept</tt> for <tt>is_empty</tt>, although that would require changes in all implementations I checked 
-(libstdc++, libc++, and Boost). <tt>copy</tt> appears to be relentlessly hostile to <tt>noexcept</tt>, since its 
-specification forms a <tt>path</tt> via <tt>operator/</tt> in two places (bullets 4.7.4 and 4.8.2) in addition to the 
-<tt>directory_iterator</tt> usage. The proposed resolution below removes both.
+This further calls into question whether the <code>error_code</code> overloads of <code>copy</code> and <code>is_empty</code>, 
+whose specification uses <code>directory_iterator</code>, should be <code>noexcept</code>. There might be a case for keeping 
+the <code>noexcept</code> for <code>is_empty</code>, although that would require changes in all implementations I checked 
+(libstdc++, libc++, and Boost). <code>copy</code> appears to be relentlessly hostile to <code>noexcept</code>, since its 
+specification forms a <code>path</code> via <code>operator/</code> in two places (bullets 4.7.4 and 4.8.2) in addition to the 
+<code>directory_iterator</code> usage. The proposed resolution below removes both.
 </p>
 
 <p><i>[
@@ -84,7 +101,7 @@ specification forms a <tt>path</tt> via <tt>operator/</tt> in two places (bullet
 <p>This wording is relative to <a href="https://wg21.link/n4700">N4700</a>.</p>
 
 <ol>
-<li><p>Edit  [fs.class.directory_iterator], class <tt>directory_iterator</tt> synopsis, as indicated:</p>
+<li><p>Edit  [fs.class.directory_iterator], class <code>directory_iterator</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 [&hellip;]
@@ -131,7 +148,7 @@ directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
 <p>
 -10- <i>Effects:</i> As specified for the prefix increment operation of Input iterators (24.2.3).
 <p/>
--11- <i>Returns:</i> <tt>*this</tt>.
+-11- <i>Returns:</i> <code>*this</code>.
 <p/>
 -12- <i>Throws:</i> As specified in 31.12.5 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
 </p>
@@ -139,7 +156,7 @@ directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</del>;
 </blockquote>
 </li>
 
-<li><p>Edit 31.12.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a>, class <tt>recursive_directory_iterator</tt> synopsis, as indicated:</p>
+<li><p>Edit 31.12.12 <a href="https://timsong-cpp.github.io/cppwp/fs.class.rec.dir.itr">[fs.class.rec.dir.itr]</a>, class <code>recursive_directory_iterator</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 [&hellip;]
@@ -190,7 +207,7 @@ recursive_directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</d
 <p>
 -23- <i>Effects:</i> As specified for the prefix increment operation of Input iterators (24.2.3), except that: [&hellip;]
 <p/>
--24- <i>Returns:</i> <tt>*this</tt>.
+-24- <i>Returns:</i> <code>*this</code>.
 <p/>
 -25- <i>Throws:</i> As specified 31.12.5 <a href="https://timsong-cpp.github.io/cppwp/fs.err.report">[fs.err.report]</a>.
 </p>
@@ -198,7 +215,7 @@ recursive_directory_iterator&amp; increment(error_code&amp; ec) <del>noexcept</d
 </blockquote>
 </li>
 
-<li><p>Edit 31.12.4 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <tt>&lt;filesystem&gt;</tt> synopsis, as indicated:</p>
+<li><p>Edit 31.12.4 <a href="https://timsong-cpp.github.io/cppwp/fs.filesystem.syn">[fs.filesystem.syn]</a>, header <code>&lt;filesystem&gt;</code> synopsis, as indicated:</p>
 <blockquote>
 <pre>
 namespace std::filesystem {
@@ -230,7 +247,7 @@ void copy(const path&amp; from, const path&amp; to, error_code&amp; ec) <del>noe
 </pre>
 <blockquote>
 <p>
--2- <i>Effects:</i> Equivalent to <tt>copy(from, to, copy_options::none, ec)</tt>.
+-2- <i>Effects:</i> Equivalent to <code>copy(from, to, copy_options::none, ec)</code>.
 </p>
 </blockquote>
 <pre>
