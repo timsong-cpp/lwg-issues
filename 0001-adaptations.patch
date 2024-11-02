@@ -1,0 +1,169 @@
+From b7a36e5eb2546719932c65ff0c0bfd6f5c9932ed Mon Sep 17 00:00:00 2001
+From: timsong-cpp <rs2740@gmail.com>
+Date: Fri, 1 Nov 2024 22:01:44 -0500
+Subject: [PATCH] adaptations
+
+---
+ src/lists.cpp            |  5 ++---
+ src/mailing_info.cpp     |  2 --
+ src/report_generator.cpp | 28 +++++++++++++++-------------
+ src/report_generator.h   |  2 ++
+ src/sections.cpp         |  7 +++++--
+ 5 files changed, 24 insertions(+), 20 deletions(-)
+
+diff --git a/src/lists.cpp b/src/lists.cpp
+index f574668ffa..aceeae794d 100644
+--- a/src/lists.cpp
++++ b/src/lists.cpp
+@@ -423,9 +423,6 @@ void format_issue_as_html(lwg::issue & is,
+                }
+                else {
+                   r = make_html_anchor(*n);
+-                  r += "<sup><a href=\"https://cplusplus.github.io/LWG/issue";
+-                  r += std::to_string(num);
+-                  r += "\" title=\"Latest snapshot\">(i)</a></sup>";
+                }
+ 
+                j -= i - 1;
+@@ -747,6 +744,7 @@ int main(int argc, char* argv[]) {
+       check_is_directory(target_path);
+ 
+       auto metadata = lwg::metadata::read_from_path(path);
++      
+ #if defined (DEBUG_LOGGING)
+       // dump the contents of the section index
+       for (auto const & elem : metadata.section_db ) {
+@@ -780,6 +778,7 @@ int main(int argc, char* argv[]) {
+ 
+ 
+       lwg::report_generator generator{lwg_issues_xml, metadata.section_db};
++      generator.set_timestamp_from_issues(issues);
+ 
+ 
+       // issues must be sorted by number before making the mailing list documents
+diff --git a/src/mailing_info.cpp b/src/mailing_info.cpp
+index 201deed289..9034d55a91 100644
+--- a/src/mailing_info.cpp
++++ b/src/mailing_info.cpp
+@@ -64,8 +64,6 @@ auto lwg::make_html_anchor(lwg::issue const & iss) -> std::string {
+    title = lwg::replace_reserved_char(std::move(title), '"', "&quot;");
+ 
+    std::string result{"<a href=\""};
+-   result += filename_for_status(iss.stat);
+-   result += '#';
+    result += num;
+    result += "\" title=\"";
+    result += title;
+diff --git a/src/report_generator.cpp b/src/report_generator.cpp
+index 018b2b84e5..4ec07c4f26 100644
+--- a/src/report_generator.cpp
++++ b/src/report_generator.cpp
+@@ -45,7 +45,7 @@ auto utc_timestamp() -> std::tm const & {
+ }
+ 
+ // global data - would like to do something about that.
+-static std::string const build_timestamp{format_time("Revised %Y-%m-%d at %H:%M:%S UTC\n", utc_timestamp())};
++static std::string build_timestamp;
+ 
+ static std::string const maintainer_email{"lwgchair@gmail.com"};
+ 
+@@ -181,7 +181,7 @@ R"(<!DOCTYPE html>
+       out << R"(
+ <meta property="og:title" content=")" << lwg::replace_reserved_char(title, '"', "&quot;") << R"(">
+ <meta property="og:description" content=")" << lwg::replace_reserved_char(desc, '"', "&quot;") << R"(">
+-<meta property="og:url" content="https://cplusplus.github.io/LWG/)" << url_filename << R"(">
++<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/)" << url_filename << R"(">
+ <meta property="og:type" content="website">
+ <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+ <meta property="og:image:alt" content="C++ logo">)";
+@@ -272,9 +272,7 @@ R"(<table class="issues-index">
+       out << "<tr>\n";
+ 
+       // Number
+-      out << "<td id=\"" << i->num << "\">" << make_html_anchor(*i)
+-          << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << i->num
+-          << "\">(i)</a></sup></td>\n";
++      out << "<td id=\"" << i->num << "\">" << make_html_anchor(*i) << "</td>\n";
+ 
+       // Status
+       const auto status_idattr = spaces_to_underscores(std::string(lwg::remove_qualifier(i->stat)));
+@@ -336,15 +334,9 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map &
+          // When printing for the list, also emit an absolute link to the individual file.
+          // Absolute link so that copying only the big lists elsewhere doesn't result in broken links.
+          if(type == print_issue_type::in_list) {
+-              out << "<h3 id=\"" << iss.num << "\"><a href=\"#" << iss.num << "\">" << iss.num << "</a>";
+-              out << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << iss.num << "\">(i)</a></sup>";
++              out << "<h3 id=\"" << iss.num << "\"><a href=\"" << iss.num << "\">" << iss.num << "</a>";
+          }
+          else {
+-              out << "<p><em>This page is a snapshot from the LWG issues list, see the "
+-                     "<a href=\"lwg-active.html\">Library Active Issues List</a> "
+-                     "for more information and the meaning of "
+-                     "<a href=\"lwg-active.html#" << status_idattr << "\">"
+-                  << iss.stat << "</a> status.</em></p>\n";
+               out << "<h3 id=\"" << iss.num << "\"><a href=\"" << lwg::filename_for_status(iss.stat) << '#' << iss.num << "\">" << iss.num << "</a>";
+          }
+ 
+@@ -622,6 +614,16 @@ out << R"(<h1>C++ Standard Library Issues Resolved Directly In [INSERT CURRENT M
+    print_file_trailer(out);
+ }
+ 
++void report_generator::set_timestamp_from_issues(std::vector<issue> const & issues){
++   auto max_date = std::max_element(issues.begin(), issues.end(),
++                                     [](const issue& a, const issue& b) {
++                                         return a.mod_date < b.mod_date;
++                                     })->mod_date;
++   std::ostringstream oss;
++   oss << "Revised " << max_date.year() << '-' << max_date.month() << '-' << max_date.day() << '\n';
++   build_timestamp = oss.str();
++}
++
+ void report_generator::make_ready(std::vector<issue> const & issues, fs::path const & path) {
+    // publish a document listing all ready issues for a formal vote
+    assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+@@ -895,7 +897,7 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
+ 
+    for(auto & iss : issues){
+       auto num = std::to_string(iss.num);
+-      fs::path filename{path / ("issue" + num + ".html")};
++      fs::path filename{path / (num + ".html")};
+       std::ofstream out{filename};
+       if (!out)
+          throw std::runtime_error{"Failed to open " + filename.string()};
+diff --git a/src/report_generator.h b/src/report_generator.h
+index f0c45465de..8e5eddc7b2 100644
+--- a/src/report_generator.h
++++ b/src/report_generator.h
+@@ -61,6 +61,8 @@ struct report_generator {
+ 
+    void make_individual_issues(std::vector<issue> const & issues, fs::path const & path);
+ 
++   static void set_timestamp_from_issues(std::vector<issue> const & issues);
++
+ private:
+    mailing_info const & lwg_issues_xml;
+    section_map &        section_db;
+diff --git a/src/sections.cpp b/src/sections.cpp
+index 290fa23e00..80c1f3b32a 100644
+--- a/src/sections.cpp
++++ b/src/sections.cpp
+@@ -177,11 +177,14 @@ auto lwg::format_section_tag_as_link(section_map & section_db, section_tag const
+    std::ostringstream o;
+    const auto& num = section_db[tag];
+    o << num << ' ';
+-   if(num.num.empty() || num.num.front() == 99 || !tag.prefix.empty()) {
++   if(num.num.empty() || num.num.front() == 99 || (!tag.prefix.empty() && tag.prefix != "networking.ts")) {
+       o << tag;
+    }
++   else if(tag.prefix == "networking.ts") {
++      o << "<a href=\"https://timsong-cpp.github.io/cppwp/networking-ts/" << tag.name << "\">" << tag << "</a>";
++   }
+    else {
+-      o << "<a href=\"https://wg21.link/" << tag.name << "\">[" << tag.name << "]</a>";
++      o << "<a href=\"https://timsong-cpp.github.io/cppwp/" << tag.name << "\">[" << tag.name << "]</a>";
+    }
+    return o.str();
+ }
+-- 
+2.43.0
+
