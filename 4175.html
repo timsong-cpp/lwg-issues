@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4175: get_env() specified in terms of as_const() but this doesn't work with rvalue senders</title>
+<meta property="og:title" content="Issue 4175: get_env() specified in terms of as_const() but this doesn't work with rvalue senders">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4175.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4175"><a href="lwg-active.html#4175">4175</a>. <code class='backtick'>get_env()</code> specified in terms of <code class='backtick'>as_const()</code> but this doesn't work with rvalue senders</h3>
+<p><b>Section:</b> 33.5.2 <a href="https://timsong-cpp.github.io/cppwp/exec.get.allocator">[exec.get.allocator]</a>, 33.5.3 <a href="https://timsong-cpp.github.io/cppwp/exec.get.stop.token">[exec.get.stop.token]</a>, 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/exec.get.env">[exec.get.env]</a>, 33.5.5 <a href="https://timsong-cpp.github.io/cppwp/exec.get.domain">[exec.get.domain]</a>, 33.5.6 <a href="https://timsong-cpp.github.io/cppwp/exec.get.scheduler">[exec.get.scheduler]</a>, 33.5.7 <a href="https://timsong-cpp.github.io/cppwp/exec.get.delegation.scheduler">[exec.get.delegation.scheduler]</a>, 33.5.8 <a href="https://timsong-cpp.github.io/cppwp/exec.get.fwd.progress">[exec.get.fwd.progress]</a>, 33.5.9 <a href="https://timsong-cpp.github.io/cppwp/exec.get.compl.sched">[exec.get.compl.sched]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Lewis Baker <b>Opened:</b> 2024-11-10 <b>Last modified:</b> 2024-11-24</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current specification of <code class='backtick'>std::execution::get_env()</code> defines <code class='backtick'>get_env(o)</code> as <code class='backtick'>as_const(o).get_env()</code>. 
+However, the <code class='backtick'>as_const()</code> function has a deleted rvalue-taking overload, meaning that you cannot pass temporaries to it.  
+<p/>
+This means that several uses of <code class='backtick'>get_env()</code> which pass expressions which are either potentially rvalues 
+(e.g. in definition of <code class='backtick'>connect(sndr, rcvr)</code> it uses the expression <code class='backtick'>get_env(rcvr)</code>, but <code class='backtick'>rcvr</code> could be, 
+and usually is, a prvalue) or always rvalues (e.g. <code class='backtick'>scheduler</code> concept has the expression 
+<code>get_env(schedule(std::forward&lt;Sch&gt;(sch)))</code>).  
+<p/>
+The intent here was that <code class='backtick'>get_env()</code> is a function that takes as an argument a <code>const T&amp;</code> and thus 
+allows prvalues to bind to it. We basically just want to require that <code class='backtick'>get_env()</code> finds a const-qualified 
+member-function. The use of <code class='backtick'>as_const()</code> does not seem to mirror the semantics of a function with a 
+<code>const T&amp;</code> parameter, so I suggest we change it to something else that expresses the intent.
+</p>
+
+
+<p id="res-4175"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N4993" title=" Working Draft, Programming Languages — C++">N4993</a>.
+</p>
+
+<ol>
+<li><p>Add to the end of 33.1 <a href="https://timsong-cpp.github.io/cppwp/exec.general">[exec.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+<ins>-?- For a subexpression <code class='backtick'>expr</code>, let <code><i>AS-CONST</i>(expr)</code> be expression-equivalent to</ins> 
+</p>
+<blockquote><pre>
+<ins>[](const auto&amp; x) noexcept -&gt; const auto&amp; { return x; }(expr)</ins>
+</pre></blockquote>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.2 <a href="https://timsong-cpp.github.io/cppwp/exec.get.allocator">[exec.get.allocator]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <code class='backtick'>get_allocator</code> asks a queryable object for its associated allocator.
+<p/>
+-2- The name <code class='backtick'>get_allocator</code> denotes a query object. For a subexpression <code class='backtick'>env</code>, <code class='backtick'>get_allocator(env)</code> is
+expression-equivalent to <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(env).query(get_allocator))</code>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.3 <a href="https://timsong-cpp.github.io/cppwp/exec.get.stop.token">[exec.get.stop.token]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_stop_token</code> denotes a query object. For a subexpression <code class='backtick'>env</code>, <code class='backtick'>get_stop_token(env)</code> is
+expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(env).query(get_stop_token))</code> 
+if that expression is well-formed.</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.4 <a href="https://timsong-cpp.github.io/cppwp/exec.get.env">[exec.get.env]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- <code class='backtick'>execution::get_env</code> is a customization point object. For a subexpression <code class='backtick'>o</code>, <code class='backtick'>execution::get_env(o)</code> is
+expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(1.1) &mdash; <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(o).get_env())</code> 
+if that expression is well-formed.</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.5 <a href="https://timsong-cpp.github.io/cppwp/exec.get.domain">[exec.get.domain]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_domain</code> denotes a query object. For a subexpression <code class='backtick'>env</code>, <code class='backtick'>get_domain(env)</code> is expression-equivalent
+to <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(env).query(get_domain))</code>.
+</p>
+
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.6 <a href="https://timsong-cpp.github.io/cppwp/exec.get.scheduler">[exec.get.scheduler]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_scheduler</code> denotes a query object. For a subexpression <code class='backtick'>env</code>, <code class='backtick'>get_scheduler(env)</code> is
+expression-equivalent to <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(env).query(get_scheduler))</code>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.7 <a href="https://timsong-cpp.github.io/cppwp/exec.get.delegation.scheduler">[exec.get.delegation.scheduler]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_delegation_scheduler</code> denotes a query object. For a subexpression <code class='backtick'>env</code>, 
+<code class='backtick'>get_delegation_scheduler(env)</code> is expression-equivalent to 
+<code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(env).query(get_delegation_scheduler))</code>.
+</p>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.8 <a href="https://timsong-cpp.github.io/cppwp/exec.get.fwd.progress">[exec.get.fwd.progress]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_forward_progress_guarantee</code> denotes a query object. For a subexpression <code class='backtick'>sch</code>, let 
+<code class='backtick'>Sch</code> be <code class='backtick'>decltype((sch))</code>. If <code class='backtick'>Sch</code> does not satisfy <code class='backtick'>scheduler</code>, <code class='backtick'>get_forward_progress_guarantee</code> is ill-formed.
+Otherwise, <code class='backtick'>get_forward_progress_guarantee(sch)</code> is expression-equivalent to:
+</p>
+<ol style="list-style-type: none">
+<li><p>(2.1) &mdash; <code><i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(sch).query(get_forward_progress_guarantee))</code> 
+if that expression is well-formed.</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+<li><p>Modify 33.5.9 <a href="https://timsong-cpp.github.io/cppwp/exec.get.compl.sched">[exec.get.compl.sched]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>get_completion_scheduler</code> denotes a query object template. For a subexpression <code class='backtick'>q</code>, the expression
+<code>get_completion_scheduler&lt;<i>completion-tag</i>&gt;(q)</code> is ill-formed if <code><i>completion-tag</i></code> 
+is not one of <code class='backtick'>set_value_t</code>, <code class='backtick'>set_error_t</code>, or <code class='backtick'>set_stopped_t</code>. Otherwise, 
+<code>get_completion_scheduler&lt;<i>completion-tag</i>&gt;(q)</code> is expression-equivalent to
+</p>
+<blockquote><pre>
+<i>MANDATE-NOTHROW</i>(<del>as_const</del><ins><i>AS-CONST</i></ins>(q).query(get_completion_scheduler&lt;<i>completion-tag</i>&gt;))
+</pre></blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

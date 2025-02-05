@@ -63,7 +63,7 @@
 <hr>
 <h3 id="4123"><a href="lwg-active.html#4123">4123</a>. Container effects use "the assignment operator or move assignment operator"</h3>
 <p><b>Section:</b> 23.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a>, 23.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a>, 23.3.14.5 <a href="https://timsong-cpp.github.io/cppwp/inplace.vector.modifiers">[inplace.vector.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-07-25 <b>Last modified:</b> 2024-08-02</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2024-07-25 <b>Last modified:</b> 2024-12-06</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#deque.modifiers">active issues</a> in [deque.modifiers].</p>
@@ -106,11 +106,411 @@ of the special member functions.
 Set priority to 3 after reflector poll. Arthur to draft wording.
 </p>
 
+<p><i>[2024-12-06; LWG telecon]</i></p>
+
+<p>
+23.3.9.4 <a href="https://timsong-cpp.github.io/cppwp/list.modifiers">[list.modifiers]</a> p1 says:
+<blockquote>
+<i>Complexity</i>:
+Insertion of a single element into a list takes constant time and exactly
+one call to a constructor of <code class='backtick'>T</code>.
+Insertion of multiple elements into a list is linear in the number of elements inserted,
+and the number of calls to the copy constructor or move constructor of <code class='backtick'>T</code>
+is exactly equal to the number of elements inserted.
+</blockquote>
+In addition to incorrectly talking about "the copy constructor or move
+constructor", it should not should not talk about any "call to a constructor"
+because scalars do not have constructors at all.
+We should talk about calls to <code class='backtick'>allocator_traits::construct</code> not constructors,
+or objects being constructed.
+</p>
+<p>
+Similarly, p5 says:
+<blockquote>
+<i>Complexity</i>:
+Erasing a single element is a constant time operation with
+a single call to the destructor of <code class='backtick'>T</code>.
+Erasing a range in a list is linear time in the size of the range
+and the number of calls to the destructor of type <code class='backtick'>T</code>
+is exactly equal to the size of the range.
+</blockquote>
+This should talk about calls to <code class='backtick'>allocator_traits::destroy</code>,
+or objects being destroyed.
+</p>
+<p>
+23.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a> is similar.
+Look for similar problems elsewhere.
+</p>
+
+<p><i>[2024-12-06; Jonathan adds wording, incorporating Arthur's wording]</i></p>
+
 
 
 <p id="res-4123"><b>Proposed resolution:</b></p>
 <p>
+This wording is relative to <a href="https://wg21.link/N4993" title=" Working Draft, Programming Languages — C++">N4993</a>.
 </p>
+
+<ol>
+<li>
+<p>Modify 23.3.5.3 <a href="https://timsong-cpp.github.io/cppwp/deque.capacity">[deque.capacity]</a> as indicated:</p>
+<blockquote>
+<pre>void shrink_to_fit();</pre>
+<p>
+-5- <i>Preconditions</i>:
+<code class='backtick'>T</code> is <i>CppMoveInsertable</i> into <code class='backtick'>deque</code>.
+</p>
+<p>
+-6- <i>Effects</i>:
+<code class='backtick'>shrink_to_fit</code> is a non-binding request to reduce memory use
+but does not change the size of the sequence.
+[<i>Note 1</i>:
+The request is non-binding to allow latitude for
+implementation-specific optimizations.
+&mdash; <i>end note</i>]
+If the size is equal to the old capacity, or
+if an exception is thrown other than by the <del>move constructor</del>
+<ins>move-construction of one object</ins>
+of a non-<i>Cpp17CopyInsertable</i> <ins>type</ins> <code class='backtick'>T</code>
+<ins>from another</ins>,
+then there are no effects.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.5.4 <a href="https://timsong-cpp.github.io/cppwp/deque.modifiers">[deque.modifiers]</a> as indicated:</p>
+<blockquote>
+<pre>iterator insert(const_iterator position, const T&amp; x);
+...
+template&lt;<i>container-compatible-range</i>&lt;T&gt; R&gt;
+  void append_range(R&amp;&amp; rg);</pre>
+<p>
+-1- <i>Effects</i>: [...]
+</p>
+<p>
+-2- <i>Complexity</i>:
+The complexity is linear in the number of elements inserted plus
+the lesser of the distances to the beginning and end of the deque.
+Inserting a single element at either the beginning or end of a deque
+always takes constant time and 
+<del>causes a single call to a constructor of T</del>
+<ins>constructs a single object of type <code class='backtick'>T</code></ins>.
+</p>
+<p>
+-3- <i>Remarks</i>:
+If an exception is thrown other than by the
+<del>copy constructor, move constructor,
+assignment operator, or move assignment operator of <code class='backtick'>T</code>
+</del>
+<ins>
+construction or assignment of one object of type <code class='backtick'>T</code> from another
+</ins>,
+there are no effects.
+If an exception is thrown while inserting a single element at either end,
+there are no effects.
+Otherwise, if an exception is thrown by the
+<del>move constructor of a</del>
+<ins>move-construction of one object of</ins>
+non-<i>Cpp17CopyInsertable</i>
+<ins>type</ins>
+<code class='backtick'>T</code> <ins>from another</ins>, the effects are unspecified.
+<p>[...]</p>
+-5- <i>Throws</i>:
+Nothing unless an exception is thrown by
+<del>the assignment operator of <code class='backtick'>T</code></del>
+<ins>
+the assignment of one object of type <code class='backtick'>T</code> from another
+</ins>.
+</p>
+<pre>iterator erase(const_iterator position);
+iterator erase(const_iterator first, const_iterator last);
+void pop_front();
+void pop_back();</pre>
+<p>
+-4- <i>Effects</i>:
+An erase operation that erases the last element of a deque invalidates only
+the past-the-end iterator
+and all iterators and references to the erased elements.
+An erase operation that erases the first element of a deque but not the last
+element invalidates only iterators and references to the erased elements.
+An erase operation that erases neither the first element nor the last element
+of a deque invalidates the past-the-end iterator and all iterators and
+references to all the elements of the deque.
+</p>
+<p>
+[<i>Note 1</i>:
+<code class='backtick'>pop_front</code> and <code class='backtick'>pop_back</code> are erase operations.
+&mdash; <i>end note</i>]
+</p>
+<p>
+-5- <i>Throws</i>:
+Nothing unless an exception is thrown by <del>the</del><ins>an</ins>
+assignment operator of <code class='backtick'>T</code>.
+</p>
+<p>
+-6- <i>Complexity</i>:
+The number of
+<del>calls to the destructor of <code class='backtick'>T</code></del>
+<ins>objects of type <code class='backtick'>T</code> destroyed</ins>
+is the same as the number of
+elements erased, but the number of calls to the assignment operator of <code class='backtick'>T</code>
+is no more than the lesser of the number of elements before the erased
+elements and the number of elements after the erased elements.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.7.5 <a href="https://timsong-cpp.github.io/cppwp/forward.list.modifiers">[forward.list.modifiers]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- [...]
+Inserting <code class='backtick'>n</code> elements into a <code class='backtick'>forward_list</code> is linear in
+<code class='backtick'>n</code>, and the number of <del>calls to the copy or move constructor of</del>
+<ins>objects of type</ins> <code class='backtick'>T</code> <ins>constructed</ins> is
+exactly equal to <code class='backtick'>n</code>. Erasing <code class='backtick'>n</code> elements from a <code class='backtick'>forward_list</code> is
+linear in <code class='backtick'>n</code> and the number of <del>calls to the destructor of</del>
+<ins>objects of</ins> type <code class='backtick'>T</code> <ins>destroyed</ins> is exactly equal to <code class='backtick'>n</code>.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.9.4 <a href="https://timsong-cpp.github.io/cppwp/list.modifiers">[list.modifiers]</a> as indicated:</p>
+<blockquote>
+<p>
+-1- <i>Complexity</i>:
+Insertion of a single element into a list takes constant time and
+<ins>constructs</ins> exactly one
+<del>call to a constructor of <code class='backtick'>T</code></del>
+<ins>object of type <code class='backtick'>T</code></ins>.
+Insertion of multiple elements into a list is linear in the number of
+elements inserted and the number of
+<del>calls to the copy constructor or move constructor of <code class='backtick'>T</code></del>
+<ins>objects of type <code class='backtick'>T</code> constructed</ins>
+is exactly equal to the number of elements inserted.
+</p>
+<p>
+-2- <i>Remarks</i>:
+Does not affect the validity of iterators and references.
+If an exception is thrown, there are no effects.
+</p>
+<pre>iterator erase(const_iterator position);
+iterator erase(const_iterator first, const_iterator last);
+void pop_front();
+void pop_back();
+void clear() noexcept;</pre>
+<p>
+-3- <i>Effects</i>:
+Invalidates only the iterators and references to the erased elements.
+</p>
+<p>
+-4- <i>Throws</i>: Nothing.
+</p>
+<p>
+-5- <i>Complexity</i>:
+Erasing a single element is a constant time operation with a single
+<del>call to the destructor of <code class='backtick'>T</code></del>
+<ins>object of type <code class='backtick'>T</code> destroyed</ins>.
+Erasing a range in a list is linear time in the
+size of the range and the number of
+<del>calls to the destructor of type <code class='backtick'>T</code></del>
+<ins>objects of type <code class='backtick'>T</code> destroyed</ins>
+is exactly equal to the size of the range.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.11.2 <a href="https://timsong-cpp.github.io/cppwp/vector.cons">[vector.cons]</a> as indicated:</p>
+<blockquote>
+<pre>template&lt;class InputIterator&gt;
+  constexpr vector(InputIterator first, InputIterator last,
+                   const Allocator&amp; = Allocator());</pre>
+<p>
+-9- <i>Effects</i>:
+Constructs a <code class='backtick'>vector</code> equal to the range [<code class='backtick'>first</code>, <code class='backtick'>last</code>),
+using the specified allocator.
+</p>
+<p>
+-10- <i>Complexity</i>:
+<del>Makes only <i>N</i> calls to the copy constructor of <code class='backtick'>T</code></del>
+<ins>Initializes exactly <i>N</i> elements</ins>
+
+(where <i>N</i> is the distance between <code class='backtick'>first</code> and <code class='backtick'>last</code>)
+and no reallocations if iterators <code class='backtick'>first</code> and <code class='backtick'>last</code> are of forward,
+bidirectional, or random access categories.
+It <del>makes</del> <ins>initializes</ins> order
+<i>N</i>
+<del>calls to the copy constructor of <code class='backtick'>T</code></del>
+<ins>elements</ins>
+ and <ins>performs</ins>
+order log <i>N</i> reallocations if they are just input iterators.
+</p>
+<pre>template&lt;<i>container-compatible-range</i>&lt;T&gt; R&gt;
+  constexpr vector(from_range_t, R&amp;&amp; rg, const Allocator&amp; = Allocator());</pre>
+<p>
+-11- <i>Effects</i>:
+Constructs a <code class='backtick'>vector</code> object with the elements of the range <code class='backtick'>rg</code>,
+using the specified allocator.
+</p>
+<p>
+-12- <i>Complexity</i>:
+Initializes exactly <i>N</i> elements from the results of dereferencing
+successive iterators of <code class='backtick'>rg</code>, where <i>N</i> is <code class='backtick'>ranges::distance(rg)</code>.
+Performs no reallocations if <code class='backtick'>R</code> models <code class='backtick'>ranges::forward_range</code> or
+<code class='backtick'>ranges::sized_range</code>; otherwise, performs order log <i>N</i> reallocations
+and <ins>initializes</ins> order <i>N</i>
+<del>calls to the copy or move constructor of <code class='backtick'>T</code></del>
+<ins>elements</ins>.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.11.3 <a href="https://timsong-cpp.github.io/cppwp/vector.capacity">[vector.capacity]</a> as indicated:</p>
+<blockquote>
+<pre>constexpr void reserve(size_type n);</pre>
+<p>
+-3- <i>Preconditions</i>:
+<code class='backtick'>T</code> is <i>CppMoveInsertable</i> into <code class='backtick'>vector</code>.
+</p>
+<p>
+-4- <i>Effects</i>:
+A directive that informs a <code class='backtick'>vector</code> of a planned change in size,
+so that it can manage the storage allocation accordingly.
+After <code class='backtick'>reserve&lt;del&gt;()&lt;/del&gt;</code>, <code class='backtick'>capacity()</code> is greater or equal to
+the argument of <code class='backtick'>reserve</code> if reallocation happens;
+and equal to the previous value of <code class='backtick'>capacity()</code> otherwise.
+Reallocation happens at this point if and only if
+the current capacity is less than the argument of <code class='backtick'>reserve&lt;del&gt;()&lt;/del&gt;</code>.
+If an exception is thrown other than by the
+<del>move constructor of a</del>
+<ins>move-construction of one object of</ins>
+non-<i>Cpp17CopyInsertable</i>
+<ins>type</ins> <code class='backtick'>T</code> <ins>from another</ins>, there are no effects.
+</p>
+<p>[...]</p>
+<pre>constexpr shrink_to_fit();</pre>
+<p>
+-8- <i>Preconditions</i>:
+<code class='backtick'>T</code> is <i>CppMoveInsertable</i> into <code class='backtick'>vector</code>.
+</p>
+<p>
+-9- <i>Effects</i>:
+<code class='backtick'>shrink_to_fit</code> is a non-binding request to reduce <code class='backtick'>capacity()</code> to <code class='backtick'>size()</code>.
+[<i>Note 2</i>:
+The request is non-binding to allow latitude for
+implementation-specific optimizations.
+&mdash; <i>end note</i>]
+It does not increase <code class='backtick'>capacity()</code>, but may reduce <code class='backtick'>capacity()</code> by causing
+reallocation.
+If an exception is thrown other than by the <del>move constructor</del>
+<ins>move-construction of one object</ins>
+of a non-<i>Cpp17CopyInsertable</i> <ins>type</ins> <code class='backtick'>T</code>
+<ins>from another</ins>,
+there are no effects.
+</p>
+<p>[...]</p>
+<pre>constexpr void resize(size_type sz);</pre>
+<p>
+-14- <i>Preconditions</i>:
+<code class='backtick'>T</code> is <i>Cpp17MoveInsertable</i> and <i>Cpp17DefaultInsertable</i> into
+<code class='backtick'>vector</code>.
+</p>
+<p>
+-15- <i>Effects</i>: [...]
+</p>
+<p>
+-16- <i>Remarks</i>:
+If an exception is thrown other than by the <del>move constructor</del>
+<ins>move-construction of one object</ins>
+of a non-<i>Cpp17CopyInsertable</i> <ins>type</ins> <code class='backtick'>T</code>
+<ins>from another</ins>,
+there are no effects.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.11.5 <a href="https://timsong-cpp.github.io/cppwp/vector.modifiers">[vector.modifiers]</a> as indicated:</p>
+<blockquote>
+<pre>iterator insert(const_iterator position, const T&amp; x);
+...
+template&lt;<i>container-compatible-range</i>&lt;T&gt; R&gt;
+  void append_range(R&amp;&amp; rg);</pre>
+<p>
+-1- <i>Complexity</i>: [...]
+</p>
+<p>
+-2- <i>Remarks</i>:
+Causes reallocation if the new size is greater than the old capacity.
+Reallocation invalidates all the references, pointers, and iterators
+referring to the elements in the sequence, as well as the past-the-end iterator.
+If no reallocation happens, then
+references, pointers, and iterators
+before the insertion point remain valid
+but those at or after the insertion point,
+including the past-the-end iterator,
+are invalidated.
+If an exception is thrown other than by the
+<del>copy constructor, move constructor,
+assignment operator, or move assignment operator of
+<code class='backtick'>T</code> or by any \tcode{InputIterator} operation</del>
+<ins>the construction or assignment of one object of type <code class='backtick'>T</code> from another,
+or by any <code class='backtick'>InputIterator</code> operation</ins>,
+there are no effects.
+If an exception is thrown while inserting a single element at the end and
+<code class='backtick'>T</code> is <i>Cpp17CopyInsertable</i> or
+<code>is_nothrow_move_constructible_v&lt;T&gt;</code> is <code class='backtick'>true</code>,
+there are no effects.
+Otherwise, if an exception is thrown by the
+<del>move constructor of a</del>
+<ins>move-construction of one object of</ins>
+non-<i>Cpp17CopyInsertable</i>
+<ins>type</ins>
+<code class='backtick'>T</code> <ins>from another</ins>, the effects are unspecified.
+</p>
+<pre>constexpr iterator erase(const_iterator position);
+constexpr iterator erase(const_iterator first, const_iterator last);
+constexpr void pop_back();</pre>
+<p>
+-3- <i>Effects</i>:
+Invalidates iterators and references at or after the point of the erase.
+</p>
+<p>
+-4- <i>Throws</i>:
+Nothing unless an exception is thrown by the
+<del>assignment operator or move assignment operator of <code class='backtick'>T</code></del>
+<ins>construction or assignment of one object of type <code class='backtick'>T</code> from another</ins>.
+</p>
+<p>
+-5- <i>Complexity</i>:
+The
+<del>destructor of <code class='backtick'>T</code> is called the number of times</del>
+<ins>number of objects of type <code class='backtick'>T</code> destroyed is</ins>
+equal to the number of the elements erased,
+but <del>the</del><ins>an</ins>
+assignment operator of <code class='backtick'>T</code> is called the number of times equal to
+the number of elements in the vector after the erased elements.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 23.3.14.5 <a href="https://timsong-cpp.github.io/cppwp/inplace.vector.modifiers">[inplace.vector.modifiers]</a> as indicated:</p>
+<blockquote>
+<pre>constexpr iterator erase(const_iterator position);
+constexpr iterator erase(const_iterator first, const_iterator last);
+constexpr void pop_back();</pre>
+<p>
+-29- <i>Complexity</i>:
+The
+<del>destructor of <code class='backtick'>T</code> is called the number of times</del>
+<ins>number of objects of type <code class='backtick'>T</code> destroyed is</ins>
+equal to the number of the elements erased,
+but <del>the</del><ins>an</ins>
+assignment operator of <code class='backtick'>T</code> is called the number of times equal to
+the number of elements after the erased elements.
+</p>
+</blockquote>
+</li>
+
+</ol>
 
 
 

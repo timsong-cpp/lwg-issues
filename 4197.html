@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4197: Complexity of std::visit with immediate functions</title>
+<meta property="og:title" content="Issue 4197: Complexity of std::visit with immediate functions">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4197.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4197"><a href="lwg-active.html#4197">4197</a>. Complexity of <code class='backtick'>std::visit</code> with immediate functions</h3>
+<p><b>Section:</b> 22.6.7 <a href="https://timsong-cpp.github.io/cppwp/variant.visit">[variant.visit]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2025-01-26 <b>Last modified:</b> 2025-01-30</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#variant.visit">issues</a> in [variant.visit].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code class='backtick'>std::visit</code> generally needs to be implemented with "vtables" that contain function pointers. 
+When <code class='backtick'>std::visit</code> needs to call an immediate function (e.g. when passing a lambda whose 
+<code class='backtick'>operator()</code> is <code class='backtick'>consteval</code>), the vtable will contain a pointer to an immediate-escalated 
+function, which forbids the vtable from being a <code class='backtick'>constexpr</code> variable.
+<p/>
+In order to properly handle immediate functions in <code class='backtick'>std::visit</code>, it seems necessary to form 
+the vtable, or do some non-constant-time lookup each time when calling <code class='backtick'>std::visit</code>. In other words, 
+22.6.7 <a href="https://timsong-cpp.github.io/cppwp/variant.visit">[variant.visit]</a>/8 seems to be unimplementable when an immediate function is involved.
+</p>
+
+<p><i>[2025-01-01; <a href="https://wg21.link/P3603R0">P3603R0</a> addresses this]</i></p>
+
+
+
+<p><i>[2025-01-30; Reflector poll]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+
+<p id="res-4197"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5001" title=" Working Draft, Programming Languages — C++">N5001</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.6.7 <a href="https://timsong-cpp.github.io/cppwp/variant.visit">[variant.visit]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Visitor, class... Variants&gt;
+  constexpr <i>see below</i> visit(Visitor&amp;&amp; vis, Variants&amp;&amp;... vars);
+template&lt;class R, class Visitor, class... Variants&gt;
+  constexpr R visit(Visitor&amp;&amp; vis, Variants&amp;&amp;... vars);
+</pre>
+<blockquote>
+<p>
+-1- [&hellip;] Let <code><i>n</i></code> be <code class='backtick'>sizeof...(Variants)</code>. [&hellip;]
+<p/>
+[&hellip;]
+<p/>
+-8- <i>Complexity</i>: <ins>If <code><i>n</i> &gt; 1</code> or any of the aforementioned <code><i>INVOKE</i></code> 
+operations calls an immediate function, the invocation of the callable object has no complexity requirements. 
+Otherwise</ins><del>For <code><i>n</i> &le; 1</code></del>, the invocation of the callable object is 
+implemented in constant time, i.e., for <code><i>n</i> = 1</code>, it does not depend on the number 
+of alternative types of <code>V<sub>0</sub></code>. <del>For <code><i>n</i> &gt; 1</code>, the invocation of 
+the callable object has no complexity requirements.</del>
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

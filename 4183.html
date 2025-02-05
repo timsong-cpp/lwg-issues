@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4183: subrange should provide data()</title>
+<meta property="og:title" content="Issue 4183: subrange should provide data()">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4183.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4183"><a href="lwg-active.html#4183">4183</a>. <code class='backtick'>subrange</code> should provide <code class='backtick'>data()</code></h3>
+<p><b>Section:</b> 25.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.general">[range.subrange.general]</a>, 25.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.general">[range.subrange.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2024-12-16 <b>Last modified:</b> 2024-12-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, only four view classes in <code>&lt;ranges&gt;</code> explicitly provide <code class='backtick'>data()</code> members.
+</p>
+<p>
+Two of them are <code class='backtick'>empty_view</code> and <code class='backtick'>single_view</code>, because their <code class='backtick'>data()</code> is always valid
+and can be marked <code class='backtick'>noexcept</code>.
+</p>
+<p>
+The remaining two are <code class='backtick'>ref_view</code> and <code class='backtick'>owning_view</code> with constrained <code class='backtick'>data()</code>,
+which is redundant since <code class='backtick'>data()</code> can always obtained from <code class='backtick'>view_interface</code>
+when the underlying range is contiguous. I suspect this is because <code class='backtick'>ranges::data</code> 
+is more efficient.
+</p>
+<p>
+However, <code class='backtick'>subrange</code> does not have a <code class='backtick'>data()</code> member, which seems worth considering 
+because this function can always be <code class='backtick'>noexcept</code> given that <code class='backtick'>to_address</code> is always <code class='backtick'>noexcept</code>.
+</p>
+
+
+<p id="res-4183"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5001" title=" Working Draft, Programming Languages — C++">N5001</a>.
+</p>
+
+<ol>
+<li><p>Modify 25.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.general">[range.subrange.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S = I, subrange_kind K =
+      sized_sentinel_for&lt;S, I&gt; ? subrange_kind::sized : subrange_kind::unsized&gt;
+    requires (K == subrange_kind::sized || !sized_sentinel_for&lt;S, I&gt;)
+  class subrange : public view_interface&lt;subrange&lt;I, S, K&gt;&gt; {
+    [&hellip;]
+    constexpr bool empty() const;
+    constexpr <i>make-unsigned-like-t</i>&lt;iter_difference_t&lt;I&gt;&gt; size() const
+      requires (K == subrange_kind::sized);
+    <ins>constexpr auto data() const noexcept requires contiguous_iterator&lt;I&gt;;</ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+
+<li><p>Modify 25.5.4.3 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.access">[range.subrange.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <i>make-unsigned-like-t</i>&lt;iter_difference_t&lt;I&gt;&gt; size() const
+    requires (K == subrange_kind::sized);
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>:
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+<ins>constexpr auto data() const noexcept requires contiguous_iterator&lt;I&gt;;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>: Equivalent to: <code>to_address(<i>begin_</i>);</code></ins>
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

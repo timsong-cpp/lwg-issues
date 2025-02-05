@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4187: bitset::reference should be const-assignable</title>
+<meta property="og:title" content="Issue 4187: bitset::reference should be const-assignable">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4187.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4187"><a href="lwg-active.html#4187">4187</a>. <code class='backtick'>bitset::reference</code> should be const-assignable</h3>
+<p><b>Section:</b> 22.9.2 <a href="https://timsong-cpp.github.io/cppwp/template.bitset">[template.bitset]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Arthur O'Dwyer <b>Opened:</b> 2024-12-21 <b>Last modified:</b> 2024-12-22</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#template.bitset">active issues</a> in [template.bitset].</p>
+<p><b>View all other</b> <a href="lwg-index.html#template.bitset">issues</a> in [template.bitset].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LWG <a href="3638" title="vector&lt;bool&gt;::swap(reference, reference) is useless (Status: New)">3638</a>, which proposes changes to <code>vector&lt;bool&gt;::reference</code>, is related. 
+Should <code>vector&lt;bool&gt;::reference</code> and <code>bitset&lt;N&gt;::reference</code> behave differently 
+in any respect? I think there's no good reason for them to behave differently, and good technical 
+incentives to permit them to behave the same. We already have implementation divergence: libc++ makes 
+<code class='backtick'>bitset::reference</code> const-assignable, whereas libstdc++ and MS STL do not. This means that libc++'s 
+<code class='backtick'>bitset::reference</code> successfully avoids false positives from Arthur's proposed -Wassign-to-class-rvalue 
+diagnostic, while libstdc++'s does not (See <a href="https://godbolt.org/z/4e96j7rvv">Godbolt</a>).
+<p/>
+The proposed resolution applies <a href="https://wg21.link/P2321#vectorboolreference">P2321</a>'s approach. We 
+can't just insert <code class='backtick'>const</code> into the existing spec, because ABI. But also, since our goal is consistency 
+with the post-P2321 <code>vector&lt;bool&gt;::reference</code>, we should do the same thing here as P2321, not invent anything novel.
+<p/>
+Open questions related to the current P/R:
+</p>
+<ol>
+<li><p>LWG 3638 proposes to add these three <code class='backtick'>swap</code> overloads to <code>vector&lt;bool&gt;::reference</code>. 
+Should we also, consistently, add them to <code class='backtick'>bitset::reference</code>? I think we should.</p>
+<blockquote><pre>
+friend constexpr void swap(reference x, reference y) noexcept;
+friend constexpr void swap(reference x, bool&amp; y) noexcept;
+friend constexpr void swap(bool&amp; x, reference y) noexcept;
+</pre></blockquote>
+</li>
+<li><p>Both <code>vector&lt;bool&gt;::reference</code> and <code class='backtick'>bitset::reference</code> right now are specified with</p>
+<blockquote><pre>
+constexpr reference(const reference&amp;) = default;
+</pre></blockquote>
+<p>which is meaningless because we don't know the data members of <code class='backtick'>reference</code>. So this isn't actually 
+specifying that the constructor is trivial, let alone that it's <code class='backtick'>noexcept</code>. I think we should re-specify 
+both types' copy constructors as simply <code class='backtick'>constexpr</code> and <code class='backtick'>noexcept</code>; and then if we want them to be trivial, 
+we should say so in English prose.</p>
+</li>
+</ol>
+
+
+<p id="res-4187"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5001" title=" Working Draft, Programming Languages — C++">N5001</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.9.2.1 <a href="https://timsong-cpp.github.io/cppwp/template.bitset.general">[template.bitset.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;size_t N&gt; class bitset {
+  public:
+    // <i>bit reference</i>
+    class reference {
+    public:
+      constexpr reference(const reference&amp;) = default;
+      constexpr ~reference();
+      constexpr reference&amp; operator=(bool x) noexcept;           // <i>for b[i] = x;</i>
+      constexpr reference&amp; operator=(const reference&amp;) noexcept; // <i>for b[i] = b[j];</i>
+      <ins>constexpr const reference&amp; operator=(bool x) const noexcept;</ins>
+      constexpr bool operator~() const noexcept;                 // <i>flips the bit</i>
+      constexpr operator bool() const noexcept;                  // <i>for x = b[i];</i>
+      constexpr reference&amp; flip() noexcept;                      // <i>for b[i].flip();</i>
+      <ins>friend constexpr void swap(reference x, reference y) noexcept;
+      friend constexpr void swap(reference x, bool&amp; y) noexcept;
+      friend constexpr void swap(bool&amp; x, reference y) noexcept;</ins>      
+    };
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
