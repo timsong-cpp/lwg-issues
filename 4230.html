@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4230: simd&lt;complex&gt;::real/imag is overconstrained</title>
+<meta property="og:title" content="Issue 4230: simd&lt;complex&gt;::real/imag is overconstrained">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4230.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4230"><a href="lwg-active.html#4230">4230</a>. <code>simd&lt;complex&gt;::real/imag</code> is overconstrained</h3>
+<p><b>Section:</b> 29.10.7.4 <a href="https://timsong-cpp.github.io/cppwp/simd.complex.access">[simd.complex.access]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matthias Kretz <b>Opened:</b> 2025-03-18 <b>Last modified:</b> 2025-03-22</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+29.10.7.4 <a href="https://timsong-cpp.github.io/cppwp/simd.complex.access">[simd.complex.access]</a> overconstrains the arguments to <code class='backtick'>real</code> and <code class='backtick'>imag</code>.
+<code>complex&lt;T&gt;::real/imag</code> allows conversions to <code class='backtick'>T</code> whereas <code>simd&lt;complex&lt;T&gt;&gt;</code>
+requires basically an exact match (<code>same_as&lt;simd&lt;T&gt;&gt;</code> modulo ABI tag differences).
+</p>
+<blockquote><pre>
+complex&lt;double&gt; c = {};
+c.real(1.f); // OK
+
+simd&lt;complex&lt;double&gt;&gt; sc = {};
+sc.real(simd&lt;float&gt;(1.f)); // <span style="color:red;font-weight:bolder">ill-formed, should be allowed</span>
+</pre></blockquote>
+<p>
+The design intent was to match the <code>std::complex&lt;T&gt;</code> interface. In which case
+the current wording doesn't match that intent. <code class='backtick'>complex</code> doesn't say <code>real(same_as&lt;T&gt; auto)</code> 
+but 'real(T)', which allows conversions.
+<p/>
+This issue is also present in the <code class='backtick'>basic_simd(real, imag)</code> constructor. It deduces the type for the 
+real/imag arguments instead of using a dependent type derived from <code class='backtick'>value_type</code> and ABI tag.
+</p>
+<blockquote><pre>
+// OK:
+complex&lt;double&gt; c{1., 1.f};
+
+// <span style="color:red;font-weight:bolder">Ill-formed, should be allowed</span>:
+simd&lt;complex&lt;double&gt;&gt; sc0(1., 1.);
+simd&lt;complex&lt;double&gt;, 4&gt; sc1(simd&lt;double, 4&gt;(1.), simd&lt;float, 4&gt;(1.f));
+</pre></blockquote>
+
+
+<p id="res-4230"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5008" title=" Working Draft, Programming Languages — C++">N5008</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 29.10.6.1 <a href="https://timsong-cpp.github.io/cppwp/simd.overview">[simd.overview]</a>, class template <code class='backtick'>basic_simd</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::datapar {
+  template&lt;class T, class Abi&gt; class basic_simd {
+  public:
+    using value_type = T;
+    using mask_type = basic_simd_mask&lt;sizeof(T), Abi&gt;;
+    using abi_type = Abi;
+    
+    <ins>using <i>real-type</i> = rebind_t&lt;typename T::value_type, basic_simd&gt; <i>// exposition-only</i></ins>
+    
+    <i>// 29.10.6.2 <a href="https://timsong-cpp.github.io/cppwp/simd.ctor">[simd.ctor]</a>, basic_simd constructors</i>   
+    [&hellip;]
+    <del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+      constexpr explicit(<i>see below</i>) basic_simd(const <ins><i>real-type</i></ins><del>V</del>&amp; reals, const <ins><i>real-type</i></ins><del>V</del>&amp; imags = {}) noexcept;
+    [&hellip;]
+    <i>// 29.10.7.4 <a href="https://timsong-cpp.github.io/cppwp/simd.complex.access">[simd.complex.access]</a>, basic_simd complex-value accessors</i>
+    constexpr <ins><i>real-type</i></ins><del>auto</del> real() const noexcept;
+    constexpr <ins><i>real-type</i></ins><del>auto</del> imag() const noexcept;
+    <del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+      constexpr void real(const <ins><i>real-type</i></ins><del>V</del>&amp; v) noexcept;
+    <del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+      constexpr void imag(const <ins><i>real-type</i></ins><del>V</del>&amp; v) noexcept;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 29.10.6.2 <a href="https://timsong-cpp.github.io/cppwp/simd.ctor">[simd.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+<del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+  constexpr explicit(<i>see below</i>) basic_simd(const <ins><i>real-type</i></ins><del>V</del>&amp; reals, const <ins><i>real-type</i></ins><del>V</del>&amp; imags = {}) noexcept;
+</pre>
+<blockquote>
+<p>
+-19- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p><del>(19.1) &mdash;</del> <code><i>simd-complex</i>&lt;basic_simd&gt;</code> is modeled<ins>.</ins><del>, and</del></p></li>
+<li><p><del>(19.2) &mdash; <code class='backtick'>V::size() == size()</code> is <code class='backtick'>true</code>.</del></p></li>
+</ol>
+<p>
+[&hellip;]
+<p/>
+-21- <i>Remarks</i>: The expression inside <code class='backtick'>explicit</code> evaluates to <code class='backtick'>false</code> if and only if the 
+floating-point conversion rank of <code class='backtick'>T::value_type</code> is greater than or equal to the floating-point 
+conversion rank of <code><ins><i>real-type</i></ins><del>V</del>::value_type</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 29.10.7.4 <a href="https://timsong-cpp.github.io/cppwp/simd.complex.access">[simd.complex.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr <ins><i>real-type</i></ins><del>auto</del> real() const noexcept;
+constexpr <ins><i>real-type</i></ins><del>auto</del> imag() const noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: <code><i>simd-complex</i>&lt;basic_simd&gt;</code> is modeled.
+<p/>
+-2- <i>Returns</i>: An object of type <code><ins><i>real-type</i></ins><del>rebind_t&lt;typename T::value_type, basic_simd&gt;</del></code> 
+where the <code><i>i</i></code><sup>th</sup> element is initialized to the result of 
+<code><i>cmplx-func</i>(operator[](<i>i</i>))</code> for all <code><i>i</i></code> in the range 
+<code class='backtick'>[0, size())</code>, where <code><i>cmplx-func</i></code> is the corresponding function from 
+<code>&lt;complex&gt;</code>.
+</p>
+</blockquote>
+<pre>
+<del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+  constexpr void real(const <ins><i>real-type</i></ins><del>V</del>&amp; v) noexcept;
+<del>template&lt;<i>simd-floating-point</i> V&gt;</del>
+  constexpr void imag(const <ins><i>real-type</i></ins><del>V</del>&amp; v) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints</i>:
+</p>
+<ol style="list-style-type: none">
+<li><p><del>(3.1) &mdash;</del> <code><i>simd-complex</i>&lt;basic_simd&gt;</code> is modeled<ins>.</ins><del>,</del></p></li>
+<li><p><del>(3.2) &mdash; <code>same_as&lt;typename V::value_type, typename T::value_type&gt;</code> is modeled, and</del></p></li>
+<li><p><del>(3.3) &mdash; <code class='backtick'>V::size() == size()</code> is <code class='backtick'>true</code>.</del></p></li>
+</ol>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -62,7 +62,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left">Revised 2025-2-11
+<td align="left">Revised 2025-3-22
 </td>
 </tr>
 <tr>
@@ -145,6 +145,191 @@ sets <code class='backtick'>badbit</code> in <code class='backtick'>os.rdstate()
 </li>
 </ol>
 
+
+
+
+
+
+<hr>
+<h3 id="4198"><a href="4198">4198</a>. <code class='backtick'>schedule_from</code> isn't starting the schedule sender if decay-copying results throws</h3>
+<p><b>Section:</b> 33.9.12.5 <a href="https://timsong-cpp.github.io/cppwp/exec.schedule.from">[exec.schedule.from]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-13</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#exec.schedule.from">active issues</a> in [exec.schedule.from].</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.schedule.from">issues</a> in [exec.schedule.from].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Imported from <a href="https://github.com/cplusplus/sender-receiver/issues/304">cplusplus/sender-receiver #304</a>.
+</p>
+<p>
+33.9.12.5 <a href="https://timsong-cpp.github.io/cppwp/exec.schedule.from">[exec.schedule.from]</a>/p11 specifies <code class='backtick'>schedule_from</code>'s completion operation as follows:
+
+<pre><code>
+[]&lt;class Tag, class... Args&gt;(auto, auto&amp; state, auto&amp; rcvr, Tag, Args&amp;&amp;... args) noexcept
+    -> void {
+  using result_t = <i>decayed-tuple</i>&lt;Tag, Args...&gt;;
+  constexpr bool nothrow = is_nothrow_constructible_v&lt;result_t, Tag, Args...&gt;;
+
+  try {
+    state.<i>async-result</i>.template emplace&lt;result_t&gt;(Tag(), std::forward&lt;Args&gt;(args)...);
+  } catch (...) {
+    if constexpr (!nothrow) {
+      set_error(std::move(rcvr), current_exception());
+      return;
+    }
+  }
+  start(state.<i>op-state</i>);
+};
+</code></pre>
+
+so if emplacing the result tuple throws, <code class='backtick'>set_error</code> is immediately called on the downstream receiver. no attempt is made to post the completion to the specified scheduler. this is probably not the right behavior.
+</p>
+<p><b>Suggested resolution</b></p>
+<p>
+The right thing, i think, is to catch the exception, emplace the <code class='backtick'>exception_ptr</code> into the <i><code class='backtick'>async-result</code></i> variant, and then start the schedule operation, as shown below:
+
+<pre><code>
+[]&lt;class Tag, class... Args&gt;(auto, auto&amp; state, auto&amp; rcvr, Tag, Args&amp;&amp;... args) noexcept
+    -> void {
+  using result_t = <i>decayed-tuple</i>&lt;Tag, Args...&gt;;
+  constexpr bool nothrow = is_nothrow_constructible_v&lt;result_t, Tag, Args...&gt;;
+
+  try {
+    state.<i>async-result</i>.template emplace&lt;result_t&gt;(Tag(), std::forward&lt;Args&gt;(args)...);
+  } catch(...) {
+    if constexpr (!nothrow)
+      state.<i>async-result</i>.template emplace&lt;tuple&lt;set_error_t, exception_ptr&gt;&gt;(set_error, current_exception());
+  }
+
+  start(state.<i>op-state</i>);
+}
+</code></pre>
+
+we also need to change how we specify the variant type of
+<code>state.<i>async-result</i></code>:
+
+<blockquote>
+Let <code class='backtick'>Sigs</code> be a pack of the arguments to the <code class='backtick'>completion_signatures</code>
+specialization named by
+<code>completion_signatures_of_t&lt;<i>child-type</i>&lt;Sndr&gt;, env_of_t&lt;Rcvr&gt;&gt;</code>.
+Let <i><code>as-tuple</code></i> be an alias template
+<del>
+that transforms a completion signature <code class='backtick'>Tag(Args...)</code> into
+the tuple specialization <code><i>decayed-tuple</i>&lt;Tag, Args...&gt;</code>.
+</del>
+<ins>
+such that <code><i>as-tuple</i>&lt;Tag(Args...)&gt;</code> denotes
+the tuple specialization <code><i>decayed-tuple</i>&lt;Tag, Args...&gt;</code>,
+and let <code><i>is-nothrow-decay-copy-sig</i></code>
+be a variable template such that
+<code><i>is-nothrow-decay-copy-sig</i>&lt;Tag(Args...)&gt;</code>
+is a core constant expression of type <code class='backtick'>bool const</code> and whose value
+is <code class='backtick'>true</code> if the types <code class='backtick'>Args...</code> are all nothrow decay-copyable, and <code class='backtick'>false</code>
+otherwise.
+Let <i><code>error-completion</code></i> be a pack consisting of the type
+<code class='backtick'>set_error_t(exception_ptr)</code> if
+<code>(<i>is-nothrow-decay-copy-sig</i>&lt;Sigs&gt; &amp;&amp;...)</code>
+is <code class='backtick'>false</code>, and an empty pack otherwise.
+</ins>
+Then <code class='backtick'>variant_t</code> denotes the type
+<code>variant&lt;monostate, <i>as-tuple</i>&lt;Sigs&gt;...<ins>, <i>error-completion</i>...</ins>&gt;</code>,
+except with duplicate types removed.
+</blockquote>
+
+</p>
+
+<p><i>[This touches the same text as LWG <a href="4203" title="Constraints on get-state functions are incorrect (Status: Ready)">4203</a>.]</i></p>
+
+
+<p><i>[2025-02-07; Reflector poll]</i></p>
+
+<p>
+Set priority to 1 after reflector poll.
+</p>
+
+<p><i>[Hagenberg 2025-02-11; LWG]</i></p>
+
+<p>
+Direction seems right. Decay-copyable is not a defined term.
+</p>
+
+<p><i>[2025-02-12 Tim adds PR]</i></p>
+
+<p>This also corrects the issue that <code class='backtick'>nothrow</code> is currently relying
+on the unspecified exception specification of <code class='backtick'>tuple</code>'s constructor.</p>
+
+<p><i>[Hagenberg 2025-02-12; move to Ready]</i></p>
+
+
+
+
+<p id="res-4198"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5001" title=" Working Draft, Programming Languages — C++">N5001</a>.
+</p>
+
+<ol>
+<li>
+Modify 33.9.12.5 <a href="https://timsong-cpp.github.io/cppwp/exec.schedule.from">[exec.schedule.from]</a> p8 as indicated:
+<blockquote>
+<p>
+-8- Let <code class='backtick'>Sigs</code> be a pack of the arguments to the <code class='backtick'>completion_signatures</code>
+specialization named by
+<code>completion_signatures_of_t&lt;<i>child-type</i>&lt;Sndr&gt;, env_of_t&lt;Rcvr&gt;&gt;</code>.
+Let <i><code>as-tuple</code></i> be an alias template
+<del>
+that transforms a completion signature <code class='backtick'>Tag(Args...)</code> into
+the tuple specialization <code><i>decayed-tuple</i>&lt;Tag, Args...&gt;</code>.
+</del>
+<ins>
+such that <code><i>as-tuple</i>&lt;Tag(Args...)&gt;</code> denotes
+the type <code><i>decayed-tuple</i>&lt;Tag, Args...&gt;</code>,
+and let <code><i>is-nothrow-decay-copy-sig</i></code>
+be a variable template such that
+<code>auto(<i>is-nothrow-decay-copy-sig</i>&lt;Tag(Args...)&gt;)</code>
+is a constant expression of type <code class='backtick'>bool</code> and equal to 
+<code>(is_nothrow_constructible_v&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</code>.
+Let <i><code>error-completion</code></i> be a pack consisting of the type
+<code class='backtick'>set_error_t(exception_ptr)</code> if
+<code>(<i>is-nothrow-decay-copy-sig</i>&lt;Sigs&gt; &amp;&amp;...)</code>
+is <code class='backtick'>false</code>, and an empty pack otherwise.
+</ins>
+Then <code class='backtick'>variant_t</code> denotes the type
+<code>variant&lt;monostate, <i>as-tuple</i>&lt;Sigs&gt;...<ins>, <i>error-completion</i>...</ins>&gt;</code>,
+except with duplicate types removed.
+</p>
+</blockquote>
+</li>
+<li>
+<p>Modify 33.9.12.5 <a href="https://timsong-cpp.github.io/cppwp/exec.schedule.from">[exec.schedule.from]</a> p11 as indicated:</p>
+<blockquote><p>
+-11- The member <code><i>impls-for</i>&lt;schedule_from_t&gt;::<i>complete</i></code> 
+is initialized with a callable object equivalent to the following lambda:
+</p>
+<blockquote><pre><code>
+[]&lt;class Tag, class... Args&gt;(auto, auto&amp; state, auto&amp; rcvr, Tag, Args&amp;&amp;... args) noexcept
+    -&gt; void {
+  using result_t = <i>decayed-tuple</i>&lt;Tag, Args...&gt;;
+  constexpr bool nothrow = <del>is_nothrow_constructible_v&lt;result_t, Tag, Args...&gt;</del>
+                           <ins>(is_nothrow_constructible_v&lt;decay_t&lt;Args&gt;, Args&gt; &amp;&amp; ...)</ins>;
+
+  try {
+    state.<i>async-result</i>.template emplace&lt;result_t&gt;(Tag(), std::forward&lt;Args&gt;(args)...);
+  } catch (...) {
+    if constexpr (!nothrow) <del>{</del>
+      <ins>state.<i>async-result</i>.template emplace&lt;tuple&lt;set_error_t, exception_ptr&gt;&gt;(set_error, current_exception());</ins>
+      <del>set_error(std::move(rcvr), current_exception());</del>
+      <del>return;</del>
+    <del>}</del>
+  }
+  start(state.<i>op-state</i>);
+};
+</code></pre></blockquote>
+</blockquote>
+</li>
+</ol>
 
 
 
@@ -293,7 +478,7 @@ namespace std::execution {
 <hr>
 <h3 id="4202"><a href="4202">4202</a>. <i><code>enable-sender</code></i> should be a variable template</h3>
 <p><b>Section:</b> 33.9.3 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.concepts">[exec.snd.concepts]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
@@ -323,7 +508,7 @@ We should roll back that change.
 Set priority to 1 after reflector poll.
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 
 
@@ -386,7 +571,7 @@ Such specializations shall be usable in constant expressions
 <hr>
 <h3 id="4203"><a href="4203">4203</a>. Constraints on <i><code class='backtick'>get-state</code></i> functions are incorrect</h3>
 <p><b>Section:</b> 33.9.12.5 <a href="https://timsong-cpp.github.io/cppwp/exec.schedule.from">[exec.schedule.from]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#exec.schedule.from">active issues</a> in [exec.schedule.from].</p>
@@ -415,7 +600,7 @@ be connected with <code><i>FWD-ENV</i>(get_env(rcvr))</code>.
 </p>
 
 <p><i>[
-The resolution touches some of the same text as LWG <a href="4198" title="schedule_from isn't starting the schedule sender if decay-copying results throws (Status: New)">4198</a>,
+The resolution touches some of the same text as LWG <a href="4198" title="schedule_from isn't starting the schedule sender if decay-copying results throws (Status: Ready)">4198</a>,
 but without conflicting.
 ]</i></p>
 
@@ -491,7 +676,7 @@ so that only forwarding queries are forwarded.
 Set priority to 1 after reflector poll.
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 
 
@@ -710,7 +895,7 @@ is ill-formed; otherwise, it is equivalent to:
 <hr>
 <h3 id="4204"><a href="4204">4204</a>. specification of <code><i>as-sndr2</i>(Sig)</code> in [exec.let] is incomplete</h3>
 <p><b>Section:</b> 33.9.12.8 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-03 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#exec.let">active issues</a> in [exec.let].</p>
@@ -745,7 +930,7 @@ I suggest making paragraphs 8, 9, and 10 sub-bullets of paragraph 7.
 Set priority to 1 after reflector poll.
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 <p>Dropped the suggestion to nest p8-10 under p7.</p>
 
@@ -826,7 +1011,7 @@ if and only if the types <code class='backtick'>args_variant_t</code> and <code 
 <hr>
 <h3 id="4205"><a href="4205">4205</a>. <code class='backtick'>let_[*].transform_env</code> is specified in terms of the <code class='backtick'>let_*</code> sender itself instead of its child</h3>
 <p><b>Section:</b> 33.9.12.8 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-04 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-04 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#exec.let">active issues</a> in [exec.let].</p>
@@ -866,7 +1051,7 @@ We guarantee that it can be used in a structured binding, but not that it
 must work with a size of three."
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 
 
@@ -906,7 +1091,7 @@ Otherwise, it is equal to
 <hr>
 <h3 id="4208"><a href="4208">4208</a>. Wording needs to ensure that in <code class='backtick'>connect(sndr, rcvr)</code> that <code class='backtick'>rcvr</code> expression is only evaluated once</h3>
 <p><b>Section:</b> 33.9.10 <a href="https://timsong-cpp.github.io/cppwp/exec.connect">[exec.connect]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-07 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-07 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
@@ -927,7 +1112,7 @@ I think we need to add an extra sentence at the end of this section saying "Wher
 <code class='backtick'>rcvr</code> is only evaluated once." or similar.
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 
 
@@ -971,7 +1156,7 @@ This wording is relative to <a href="https://wg21.link/N5001" title=" Working Dr
 <hr>
 <h3 id="4209"><a href="4209">4209</a>. <code>default_domain::transform_env</code> should be returning <code><i>FWD-ENV</i>(env)</code></h3>
 <p><b>Section:</b> 33.9.5 <a href="https://timsong-cpp.github.io/cppwp/exec.domain.default">[exec.domain.default]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-07 <b>Last modified:</b> 2025-02-11</p>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2025-02-07 <b>Last modified:</b> 2025-02-12</p>
 <p><b>Priority: </b>Not Prioritized
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
@@ -1009,7 +1194,7 @@ to connect a child sender has an associated environment equal to <code><i>FWD-EN
 So the correct thing for <code class='backtick'>default_domain::transform_env</code> to do is to return <code><i>FWD-ENV</i>(get_env(rcvr))</code>.
 </p>
 
-<p><i>[Hagenberg 2025-02-10; move to Ready]</i></p>
+<p><i>[Hagenberg 2025-02-11; move to Ready]</i></p>
 
 
 
