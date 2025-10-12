@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4313: Uses-allocator construction of pair in tuple's allocator_arg_t constructors</title>
+<meta property="og:title" content="Issue 4313: Uses-allocator construction of pair in tuple's allocator_arg_t constructors">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4313.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4313"><a href="lwg-active.html#4313">4313</a>. Uses-allocator construction of <code class='backtick'>pair</code> in <code class='backtick'>tuple</code>'s <code class='backtick'>allocator_arg_t</code> constructors</h3>
+<p><b>Section:</b> 22.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2025-08-07 <b>Last modified:</b> 2025-08-17</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#tuple.cnstr">active issues</a> in [tuple.cnstr].</p>
+<p><b>View all other</b> <a href="lwg-index.html#tuple.cnstr">issues</a> in [tuple.cnstr].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Before <a href="https://wg21.link/P0591R4" title=" Utility functions to implement uses-allocator construction">P0591R4</a>, only <code class='backtick'>scoped_allocator_adaptor::construct</code> and 
+<code class='backtick'>polymorphic_allocator::construct</code> specially handled <code class='backtick'>pair</code> for the purpose of uses-allocator 
+construction. The primary definition of uses-allocator construction (in e.g., 
+<a href="https://wg21.link/N4659" title=" Working Draft, Standard for Programming Language C++ Note:">N4659</a> [allocator.uses.construction]) did not specially handle <code class='backtick'>pair</code>. 
+The <code class='backtick'>allocator_arg_t</code> constructors of <code class='backtick'>tuple</code>, which were specified to construct <code class='backtick'>tuple</code> 
+elements with uses-allocator constructor (per e.g., <a href="https://wg21.link/N4659" title=" Working Draft, Standard for Programming Language C++ Note:">N4659</a> [tuple.cnstr] p26), 
+did not specially handle <code class='backtick'>pair</code> either.
+<p/>
+<a href="https://wg21.link/P0591R4" title=" Utility functions to implement uses-allocator construction">P0591R4</a> redefined uses-allocator construction in terms of <code class='backtick'>make_obj_using_allocator</code> 
+in [allocator.uses.construction] p1 as:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+When applied to the construction of an object of type <code class='backtick'>T</code>, it is equivalent to initializing it 
+with the value of the expression <code>make_obj_using_allocator&lt;T&gt;(alloc, args...)</code>, described below.
+</p>
+</blockquote>
+<p>
+And the new definition does handle <code class='backtick'>pair</code>. As the specification of <code class='backtick'>allocator_arg_t</code> constructors of 
+<code class='backtick'>tuple</code> (now in 22.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> p33) still refer to uses-allocator construction as-is, 
+these constructors should construct a <code class='backtick'>pair</code> element in a way equivalent to <code class='backtick'>make_obj_using_allocator</code> now.
+<p/>
+The following example shows the behavioral difference.
+</p>
+<blockquote><pre>
+#include &lt;cstddef&gt;
+#include &lt;utility&gt;
+#include &lt;tuple&gt;
+#include &lt;memory&gt;
+#include &lt;vector&gt;
+#include &lt;cassert&gt;
+
+template&lt;class T&gt;
+class payload_ator {
+  int payload{};
+   
+public:
+  using value_type = T;
+
+  payload_ator() = default;
+
+  constexpr explicit payload_ator(int n) noexcept : payload{n} {}
+
+  template&lt;class U&gt;
+  constexpr explicit payload_ator(payload_ator&lt;U&gt; a) noexcept : payload{a.payload} {}  
+
+  friend bool operator==(payload_ator, payload_ator) = default;
+
+  template&lt;class U&gt;
+  friend constexpr bool operator==(payload_ator x, payload_ator&lt;U&gt; y) noexcept {
+    return x.payload == y.payload;
+  }  
+
+  constexpr T* allocate(std::size_t n) { return std::allocator&lt;T&gt;{}.allocate(n); }
+
+  constexpr void deallocate(T* p, std::size_t n) { return std::allocator&lt;T&gt;{}.deallocate(p, n); }  
+
+  constexpr int get_payload() const noexcept { return payload; }
+};
+
+bool test() {
+  constexpr int in_v = 42;
+  using my_pair_t = std::pair&lt;int, std::vector&lt;int, payload_ator&lt;int&gt;&gt;&gt;;
+  std::tuple&lt;my_pair_t&gt; t(std::allocator_arg, payload_ator&lt;int&gt;{in_v});
+  auto out_v = std::get&lt;0&gt;(t).second.get_allocator().get_payload();
+  return in_v == out_v;
+}
+
+int main() {
+  assert(test()); // <span style="color:#C80000;font-weight:bold">passes only if allocator_arg_t constructors of tuple specially handle pair</span>
+}
+</pre></blockquote>
+<p>
+However, the behavioral changes of these constructors were not discussed in <a href="https://wg21.link/P0591R4" title=" Utility functions to implement uses-allocator construction">P0591R4</a>, 
+and existing implementations that claim full implementation of <a href="https://wg21.link/P0591R4" title=" Utility functions to implement uses-allocator construction">P0591R4</a> (MSVC STL and libstdc++) 
+did not change these constructors (<a href="https://godbolt.org/z/6vnP78nqW">demo</a>).
+<p/>
+Given that implementations did not recognize changes of <code class='backtick'>allocator_arg_t</code> constructors as part of the paper, 
+and special handling of <code class='backtick'>pair</code> would significantly complicate these constructors, perhaps we should 
+explicitly specify that these constructors behave as if special handling for <code class='backtick'>pair</code> were missing.
+</p>
+
+<p><i>[2025-08-17; Pablo comments]</i></p>
+
+<p>
+I don't agree with it or the PR. It seems like the implementations are simply lagging behind. 
+Since <code class='backtick'>make_obj_using_allocator</code> is in the standard, <code class='backtick'>tuple</code> is easy enough to implement simply 
+by delegating to that function. I regard the failure to handle <code class='backtick'>pair</code> in a general way to be a 
+defect in the C++11 specification and that handling it correctly, though technically a change 
+of behavior, is more likely to fix bugs than to create them. It is exactly this scattershot 
+restatement of uses-allocator construction for <code class='backtick'>pair</code> that I hoped to fix with P0591, even 
+though I missed <code class='backtick'>tuple</code> in my exposition.
+</p>
+
+
+<p id="res-4313"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5014" title=" Working Draft, Standard for Programming Language C++">N5014</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/tuple.cnstr">[tuple.cnstr]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class Alloc&gt;
+  constexpr explicit(see below )
+    tuple(allocator_arg_t, const Alloc&amp; a);
+[&hellip;]
+template&lt;class Alloc, class U1, class U2&gt;
+  constexpr explicit(<i>see below</i>)
+    tuple(allocator_arg_t, const Alloc&amp; a, pair&lt;U1, U2&gt;&amp;);
+template&lt;class Alloc, class U1, class U2&gt;
+  constexpr explicit(<i>see below</i>)
+    tuple(allocator_arg_t, const Alloc&amp; a, const pair&lt;U1, U2&gt;&amp;);
+template&lt;class Alloc, class U1, class U2&gt;
+  constexpr explicit(<i>see below</i>)
+    tuple(allocator_arg_t, const Alloc&amp; a, pair&lt;U1, U2&gt;&amp;&amp;);
+template&lt;class Alloc, class U1, class U2&gt;
+  constexpr explicit(<i>see below</i>)
+    tuple(allocator_arg_t, const Alloc&amp; a, const pair&lt;U1, U2&gt;&amp;&amp;);
+template&lt;class Alloc, tuple-like UTuple&gt;
+  constexpr explicit(<i>see below</i>)
+  tuple(allocator_arg_t, const Alloc&amp; a, UTuple&amp;&amp;);
+</pre>
+<blockquote>
+<p>
+-32- <i>Preconditions</i>: <code class='backtick'>Alloc</code> meets the <i>Cpp17Allocator</i> requirements 
+(16.4.4.6.1 <a href="https://timsong-cpp.github.io/cppwp/allocator.requirements.general">[allocator.requirements.general]</a>).
+<p/>
+-33- <i>Effects</i>: Equivalent to the preceding constructors except that each element is constructed 
+with uses-allocator construction (20.2.8.2 <a href="https://timsong-cpp.github.io/cppwp/allocator.uses.construction">[allocator.uses.construction]</a>)<ins>, except that the 
+construction behaves as if there were only one <code class='backtick'>uses_allocator_construction_args</code> overload and the 
+overload behaved the same as the first actual overload without <i>Constraints</i></ins>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

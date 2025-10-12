@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4361: awaitable-receiver::set_value should use Mandates instead of constraints</title>
+<meta property="og:title" content="Issue 4361: awaitable-receiver::set_value should use Mandates instead of constraints">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4361.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4361"><a href="lwg-active.html#4361">4361</a>. <code><i>awaitable-receiver</i>::set_value</code> should use <i>Mandates</i> instead of constraints</h3>
+<p><b>Section:</b> 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Lewis Baker <b>Opened:</b> 2025-08-28 <b>Last modified:</b> 2025-09-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#exec.as.awaitable">active issues</a> in [exec.as.awaitable].</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.as.awaitable">issues</a> in [exec.as.awaitable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> bullet 4.1 the <code><i>awaitable-receiver</i>::set_value</code> member function 
+is defined as having a constraint that the <code><i>result-type</i></code> is constructible from the values.
+</p>
+<blockquote>
+<p>
+If <code>constructible_from&lt;<i>result-type</i>, decltype((vs))...&gt;</code> is satisfied, the expression 
+<code class='backtick'>set_value(rcvr, vs...)</code> is equivalent to:
+</p>
+<blockquote><pre>
+try {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;1&gt;(vs...);
+} catch(...) {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;2&gt;(current_exception());
+}
+rcvr.<i>continuation</i>.resume();
+</pre></blockquote>
+<p>
+Otherwise, <code class='backtick'>set_value(rcvr, vs...)</code> is ill-formed.
+</p>
+</blockquote>
+<p>
+Should we be using mandates here instead of constraints (or alternatively just drop the constraint altogether)?
+There shouldn't be any need to change behaviour based on whether or not the receiver's completion methods 
+are well-formed or not.
+<p/>
+It is worth noting that there is inconsistent use of constraints on <code class='backtick'>set_value</code> methods in other receiver 
+implementations throughout 33 <a href="https://timsong-cpp.github.io/cppwp/exec">[exec]</a>.
+<p/>
+For example:  The following <code class='backtick'>set_value</code> member function applies constraints:
+</p>
+<ul>
+<li><p>In 33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a> <code><i>basic-receiver</i>::set_value</code> constrains that check that it can accept those specific value arguments</p></li>
+</ul>
+<p>
+While the following <code class='backtick'>set_value</code> member functions do not apply constraints:
+</p>
+<ul>
+<li><p>In 33.9.12.10 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a> <code><i>receiver2</i>::set_value</code></p></li>
+<li><p>In 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> <code><i>spawn-future-receiver</i>::set_value</code></p></li>
+<li><p>in 33.9.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.sync.wait">[exec.sync.wait]</a> <code><i>sync-wait-receiver</i>::set_value</code></p></li>
+</ul>
+<p>
+We should probably try to be consistent on whether or not <code class='backtick'>set_value</code> implementations 
+should use constraints or mandates. Given that it is not allowed to form calls to the 
+receiver unless that overload is present in the <code class='backtick'>completion_signatures</code>, it may be worth 
+just making them all mandates. This would tend to make uses of the <code class='backtick'>receiver_of</code> concept 
+less useful as satisfying <code>receiver_of&lt;R, Sig&gt;</code> would not necessarily 
+guarantee that actually trying to call each of <code class='backtick'>R</code>'s corresponding completion functions 
+will result in a well-formed program. It is arguable that this is already the status-quo, however.
+</p>
+
+
+<p id="res-4361"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5014" title=" Working Draft, Standard for Programming Language C++">N5014</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-4- Let <code class='backtick'>rcvr</code> be an rvalue expression of type <code><i>awaitable-receiver</i></code>, let 
+<code class='backtick'>crcvr</code> be a const lvalue that refers to <code class='backtick'>rcvr</code>, let <code class='backtick'>vs</code> be a pack of subexpressions, 
+and let <code class='backtick'>err</code> be an expression of type <code class='backtick'>Err</code>. Then:
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; <del>If <code>constructible_from&lt;<i>result-type</i>, decltype((vs))...&gt;</code> is satisfied, 
+t</del><ins>T</ins>he expression <code class='backtick'>set_value(rcvr, vs...)</code> is equivalent to:
+</p>
+<blockquote><pre>
+try {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;1&gt;(vs...);
+} catch(...) {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;2&gt;(current_exception());
+}
+rcvr.<i>continuation</i>.resume();
+</pre></blockquote>
+<p>
+<del>Otherwise, <code class='backtick'>set_value(rcvr, vs...)</code> is ill-formed</del><ins><i>Mandates:</i> 
+<code>constructible_from&lt;<i>result-type</i>, decltype((vs))...&gt;</code> is satisfied</ins>.</p></li>
+<li><p>(4.2) &mdash; [&hellip;]</p></li>
+<li><p>(4.3) &mdash; [&hellip;]</p></li>
+<li><p>(4.4) &mdash; [&hellip;]</p></li>
+</ol>
+</blockquote>
+
+</li>
+
+
+<li><p>Modify 33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a> after p25 as indicated:</p>
+
+<blockquote><pre>
+[&hellip;]
+template&lt;class Sndr, class Rcvr, class Index&gt;
+  requires <i>valid-specialization</i>&lt;<i>env-type</i>, Index, Sndr, Rcvr&gt;
+struct <i>basic-receiver</i> { // <i>exposition only</i>
+  using receiver_concept = receiver_t;
+  
+  using <i>tag-t</i> = tag_of_t&lt;Sndr&gt;; // <i>exposition only</i>
+  using <i>state-t</i> = <i>state-type</i>&lt;Sndr, Rcvr&gt;; // <i>exposition only</i>
+  static constexpr const auto&amp; <i>complete</i> = <i>impls-for</i>&lt;<i>tag-t</i>&gt;::<i>complete</i>; // exposition only
+  
+  template&lt;class... Args&gt;
+    <del>requires <i>callable</i>&lt;decltype(<i>complete</i>), Index, <i>state-t</i>&amp;, Rcvr&amp;, set_value_t, Args...&gt;</del>
+  void set_value(Args&amp;&amp;... args) &amp;&amp; noexcept {
+    <i>complete</i>(Index(), op-&gt;<i>state</i>, op-&gt;<i>rcvr</i>, set_value_t(), std::forward&lt;Args&gt;(args)...);
+  }
+  
+  template&lt;class Error&gt;
+    <del>requires <i>callable</i>&lt;decltype(<i>complete</i>), Index, <i>state-t</i>&amp;, Rcvr&amp;, set_error_t, Error&gt;</del>
+  void set_error(Error&amp;&amp; err) &amp;&amp; noexcept {
+    <i>complete</i>(Index(), op-&gt;<i>state</i>, op-&gt;<i>rcvr</i>, set_error_t(), std::forward&lt;Error&gt;(err));
+  }
+  
+  void set_stopped() &amp;&amp; noexcept
+    <del>requires <i>callable</i>&lt;decltype(<i>complete</i>), Index, <i>state-t</i>&amp;, Rcvr&amp;, set_stopped_t&gt;</del> {
+    <i>complete</i>(Index(), op-&gt;<i>state</i>, op-&gt;<i>rcvr</i>, set_stopped_t());
+  }
+  
+  auto get_env() const noexcept -&gt; <i>env-type</i>&lt;Index, Sndr, Rcvr&gt; {
+    return <i>impls-for</i>&lt;tag-t&gt;::<i>get-env</i>(Index(), op-&gt;<i>state</i>, op-&gt;<i>rcvr</i>);
+  }
+  
+  <i>basic-state</i>&lt;Sndr, Rcvr&gt;* <i>op</i>; // <i>exposition only</i>
+};
+[&hellip;]
+</pre></blockquote>
+
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>
