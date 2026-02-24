@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4490: Allow calling std::ranges::size in ranges algorithms</title>
+<meta property="og:title" content="Issue 4490: Allow calling std::ranges::size in ranges algorithms">
+<meta property="og:description" content="C++ library issue. Status: Open">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4490.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4490"><a href="lwg-active.html#4490">4490</a>. Allow calling <code class='backtick'>std::ranges::size</code> in ranges algorithms</h3>
+<p><b>Section:</b> 26.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Ruslan Arutyunyan <b>Opened:</b> 2025-12-12 <b>Last modified:</b> 2026-02-02</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#algorithms.requirements">active issues</a> in [algorithms.requirements].</p>
+<p><b>View all other</b> <a href="lwg-index.html#algorithms.requirements">issues</a> in [algorithms.requirements].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+26.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> paragraph 14 says that the algorithms in <code class='backtick'>ranges</code> namespace are implemented 
+as if they are dispatched to the corresponding overload with iterator and sentinel. However, there are two problems 
+with the current wording:
+</p>
+<ol>
+<li><p>
+We only allow to call either <code class='backtick'>std::ranges::end(r)</code> or <code class='backtick'>std::ranges::next(std::ranges::begin(r)</code>, <code class='backtick'>std::ranges::end())</code> 
+to calculate a corresponding sentinel. However, this is a pessimization for some ranges because we can have sized 
+ranges without sized_sentinel_for. Consider the following example:</p>
+<blockquote><pre>
+const char str[] = "something";
+ranges::subrange&lt;const char*,
+                null_sentinel_t,
+                subrange_kind::sized> sr(ranges::begin(str),
+                                          null_sentinel,
+                                          ranges::size(str) - 1);
+my::ranges::next(sr.begin(), sr.end()); // <span style="color:green;font-weight:bolder">this line serially calculates iterator that is equal to sr.end()</span>
+</pre></blockquote>
+<p>
+Despite the fact that we know the size of the range and that the range is the random access one, 
+<code class='backtick'>std::ranges::next</code> calculates the iterator serially, because it only has constant time complexity 
+optimization for <code class='backtick'>sized_sentinel_for</code>. We could clearly achieve better complexity with a different 
+API or with the different overload of the same API.
+</p></li>
+<li><p>
+It is unclear when an algorithm calls <code class='backtick'>std::ranges::end(r)</code> and when it calls 
+<code class='backtick'>std::ranges::next(std::ranges::begin(r), std::ranges::end())</code> to calculate the 
+corresponding sentinel because there is no established priority between them. 
+Maybe, it's smaller problem but still it's worth clarifying in my opinion.
+</p></li>
+</ol>
+
+<p><i>[2026-01-16; Reflector poll.]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+"Should be 'the type of <code class='backtick'>r</code> models <code class='backtick'>sized_range</code>"
+</p>
+<p>
+"It's a lot of words, could be shorter. Would prefer not to establish priority, but let implementation decide if/when to use <code class='backtick'>ranges::next</code>."
+</p>
+<p>
+"Would <code class='backtick'>counted_iterator(ranges::begin(r), ranges::distance(r))</code> and <code class='backtick'>default_sentinel</code> be better?"
+</p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-14- Overloads of algorithms that take <code class='backtick'>range</code> arguments (25.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a>) behave as if 
+they are implemented by dispatching to the overload in namespace <code class='backtick'>ranges</code> that takes separate iterator 
+and sentinel arguments, where for each range argument <code class='backtick'>r</code>
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(14.1) &mdash; a corresponding iterator argument is initialized with <code class='backtick'>ranges::begin(r)</code> and
+</p></li>
+<li><p>
+(14.2) &mdash; a corresponding sentinel argument is initialized with <del><code class='backtick'>ranges::end(r)</code>, or 
+<code class='backtick'>ranges::next(ranges::begin(r), ranges::end(r))</code> if the type of <code class='backtick'>r</code> models <code class='backtick'>forward_range</code> 
+and computing <code class='backtick'>ranges::next</code> meets the specified complexity requirements.</del><ins>one of the following:</ins>
+</p>
+<ul style="list-style-type: none">
+<li><p>
+<ins>(14.2.1) &mdash; if the type of <code class='backtick'>r</code> models <code class='backtick'>forward_range</code> and computing <code class='backtick'>ranges::next</code> 
+meets the specified complexity requirements then</ins> 
+</p>
+<ul style="list-style-type: none">
+<li><p>
+<ins>(14.2.1.1) &mdash; <code class='backtick'>ranges::next(ranges::begin(r), ranges::size(r))</code> if <code class='backtick'>r</code> models <code class='backtick'>sized_range</code>, otherwise</ins> 
+</p></li>
+<li><p>
+<ins>(14.2.1.2) &mdash; <code class='backtick'>ranges::next(ranges::begin(r), ranges::end(r))</code>.</ins>
+</p></li>
+</ul></li>
+<li><p>
+<ins>(14.2.2) &mdash; Otherwise, <code class='backtick'>std::ranges::end(s)</code>.</ins>
+</p></li>
+</ul>
+</li>
+</ul>
+</blockquote>
+</li>
+</ol>
+
+</blockquote>
+
+<p><i>[2026-01-30; Jonathan provides new wording]</i></p>
+
+<p>
+We can just say that the value is either the end iterator, or begin+N,
+without saying when or how the implementation obtains begin+N.
+It might use <code class='backtick'>ranges::next(ranges::begin(r), std::ranges::end(r))</code> or
+<code class='backtick'>ranges::next(ranges::begin(r), ranges::distance(r))</code> or something else,
+only the value matters not how it's obtained.
+Paragraph 11 in the same subclause defines what begin+N means if the
+iterator is not a random access iterator.
+</p>
+
+<p><i>[2026-01-30; LWG telecon. Status &rarr; Open.]</i></p>
+
+
+
+
+<p id="res-4490"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.2 <a href="https://timsong-cpp.github.io/cppwp/algorithms.requirements">[algorithms.requirements]</a> as indicated:</p>
+
+<blockquote>
+<p>
+[&hellip;]
+<p/>
+-14- Overloads of algorithms that take <code class='backtick'>range</code> arguments (25.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.range">[range.range]</a>) behave as if 
+they are implemented by dispatching to the overload in namespace <code class='backtick'>ranges</code> that takes separate iterator 
+and sentinel arguments, where for each range argument <code class='backtick'>r</code>
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(14.1) &mdash; a corresponding iterator argument is initialized with <code class='backtick'>ranges::begin(r)</code> and
+</p></li>
+<li><p>
+(14.2) &mdash; a corresponding sentinel argument is initialized with
+<code class='backtick'>ranges::end(r)</code>, or
+<del>
+<code class='backtick'>ranges::next(ranges::begin(r), ranges::end(r))</code>
+if the type of <code class='backtick'>r</code> models <code class='backtick'>forward_range</code> and computing <code class='backtick'>ranges::next</code> meets
+the specified complexity requirements.
+</del>
+<ins>
+<code class='backtick'>ranges::begin(r) + N</code> where <code class='backtick'>N</code> is equal to <code class='backtick'>ranges::distance(r)</code>.
+</ins>
+</p>
+</li>
+</ul>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4502: std::execution::when_all Is Never Nothrow Connectable</title>
+<meta property="og:title" content="Issue 4502: std::execution::when_all Is Never Nothrow Connectable">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4502.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4502"><a href="lwg-active.html#4502">4502</a>. <code>std::execution::when_all</code> Is Never Nothrow Connectable</h3>
+<p><b>Section:</b> 33.9.12.12 <a href="https://timsong-cpp.github.io/cppwp/exec.when.all">[exec.when.all]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Robert Leahy <b>Opened:</b> 2026-01-11 <b>Last modified:</b> 2026-02-18</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.when.all">issues</a> in [exec.when.all].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The behavior of algorithms in the standard is described in terms of exposition-only machinery
+33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>.
+Particularly the behavior of
+<code>std::execution::connect</code>
+33.9.10 <a href="https://timsong-cpp.github.io/cppwp/exec.connect">[exec.connect]</a>
+for such algorithms is described in terms of
+<code><i>basic-sender</i>::connect</code>
+which is conditionally
+<code>noexcept</code>:
+</p>
+
+<blockquote>
+<p>
+The expression in the
+<code>noexcept</code>
+clause of the
+<code>connect</code> member function of
+<code><i>basic-sender</i></code>
+is:
+</p>
+<pre>
+is_nothrow_constructible_v&lt;<i>basic-operation</i>&lt;Self, Rcvr&gt;, Self, Rcvr&gt;
+</pre>
+</blockquote>
+
+<p>
+The constructor of
+<code><i>basic-operation</i></code>
+is also conditionally
+<code>noexcept</code>:
+</p>
+
+<blockquote>
+<p>
+The expression in the
+<code>noexcept</code>
+clause of the constructor of
+<code><i>basic-operation</i></code>
+is:
+</p>
+<pre>
+is_nothrow_constructible_v&lt;<i>basic-state</i>&lt;Self, Rcvr&gt;, Self, Rcvr> &amp;&amp;
+noexcept(<i>connect-all</i>(this, std::forward&lt;Sndr&gt;(sndr), <i>indices-for</i>&lt;Sndr&gt;()))
+</pre>
+</blockquote>
+
+<p>
+This cascade of chasing conditional
+<code>noexcept</code>
+doesn't end there, instead moving to
+<code><i>basic-state</i></code>:
+</p>
+
+<blockquote>
+<p>
+The expression in the
+<code>noexcept</code> clause of the constructor of
+<code><i>basic-state</i></code>
+is
+</p>
+<pre>
+is_nothrow_move_constructible_v&lt;Rcvr&gt; &amp;&amp;
+nothrow-callable&gt;decltype(<i>impls-for</i>&lt;tag_of_t&lt;Sndr&gt;&gt;::<i>get-state</i>), Sndr, Rcvr&amp;> &amp;&amp;
+(same_as&lt;<i>state-type</i>&lt;Sndr, Rcvr&gt;, <i>get-state-result</i>&gt; ||
+ is_nothrow_constructible_v&lt;<i>state-type</i>&lt;Sndr, Rcvr&gt;, <i>get-state-result</i>&gt;)
+</pre>
+<p>
+where
+<code><i>get-state-result</i></code> is
+</p>
+<p>
+<code><i>call-result-t</i>&lt;decltype(<i>impls-for</i>&lt;tag_of_t&lt;Sndr&gt;&gt;::<i>get-state</i>), Sndr, Rcvr&amp;&gt;</code>.
+</p>
+</blockquote>
+
+<p>
+This finally implicates something in
+33.9.12.12 <a href="https://timsong-cpp.github.io/cppwp/exec.when.all">[exec.when.all]</a>
+as we must now look to the
+<code>noexcept</code>
+clause of its
+<code><i>get-state</i></code> implementation:
+</p>
+
+<blockquote>
+<p>
+The member
+<code><i>impls-for</i>&lt;when_all_t&gt;::<i>get-state</i></code>
+is initialized with a callable object equivalent to the following lambda expression:
+</p>
+<pre>
+[]&lt;class Sndr, class Rcvr&gt;(Sndr&amp;&amp; sndr, Rcvr&amp; rcvr) noexcept(noexcept(<i>e</i>)) -> decltype(<i>e</i>) {
+  return <i>e</i>;
+}
+</pre>
+<p>
+where
+<code><i>e</i></code>
+is the expression
+</p>
+<pre>
+std::forward&lt;Sndr&gt;(sndr).apply(<i>make-state</i>&lt;Rcvr&gt;())
+</pre>
+<p>
+and where
+<code><i>make-state</i></code>
+is the following exposition-only class template:
+</p>
+<pre>
+enum class <i>disposition</i> { <i>started</i>, <i>error</i>, <i>stopped</i> };             <i>// exposition only</i>
+
+template&lt;class Rcvr&gt;
+struct <i>make-state</i> {
+  template&lt;class... Sndrs&gt;
+  auto operator()(auto, auto, Sndrs&amp;&amp;... sndrs) const {
+    using values_tuple = <i>see below</i>;
+    using errors_variant = <i>see below</i>;
+    using stop_callback = stop_callback_for_t&lt;stop_token_of_t&lt;env_of_t&lt;Rcvr&gt;&gt;, <i>on-stop-request</i>&gt;;
+
+    struct <i>state-type</i> {
+      void <i>arrive</i>(Rcvr&amp; rcvr) noexcept {                        <i>// exposition only</i>
+        if (0 == --count) {
+          <i>complete</i>(rcvr);
+        }
+      }
+
+      void <i>complete</i>(Rcvr&amp; rcvr) noexcept;                       <i>// exposition only</i>
+
+      atomic&lt;size_t&gt; <i>count</i>{sizeof...(sndrs)};                   <i>// exposition only</i>
+      inplace_stop_source <i>stop_src</i>{};                           <i>// exposition only</i>
+      atomic&lt;disposition&gt; <i>disp</i>{<i>disposition</i>::<i>started</i>};           <i>// exposition only</i>
+      errors_variant <i>errors</i>{};                                  <i>// exposition only</i>
+      values_tuple <i>values</i>{};                                    <i>// exposition only</i>
+      optional&lt;stop_callback&gt; <i>on_stop</i>{nullopt};                 <i>// exposition only</i>
+    };
+
+    return <i>state-type</i>{};
+  }
+};
+</pre>
+</blockquote>
+
+<p>
+Notice that the overloaded function call operator does not have a
+<code>noexcept</code>
+clause meaning connecting a
+<code>std::execution::when_all</code>
+sender is never
+<code>noexcept</code>.
+</p>
+
+<p>
+This is a library wording issue because if the design intent was for the above-described operation to be unconditionally
+<code>noexcept(false)</code>
+there would be no reason for
+<code><i>get-state</i></code>
+to feature
+<code>noexcept(noexcept(e))</code>
+(since that expression would've been intended to be a contradiction).
+</p>
+
+<p>
+Moreover in returning a default-initialized
+<code><i>state-type</i></code>
+the above-discussed function call operator performs the following operations:
+</p>
+<ul>
+<li>
+Initializes an
+<code>atomic&lt;size_t&gt;</code>
+with an initial value, which does not throw,
+</li>
+<li>
+Default-constructs an
+<code>inplace_stop_source</code>,
+which is
+<code>noexcept(true)</code>
+per
+32.3.9.3 <a href="https://timsong-cpp.github.io/cppwp/stopsource.inplace.mem">[stopsource.inplace.mem]</a>,
+</li>
+<li>
+Initializes an
+<code>atomic&lt;<i>disposition</i>&gt;</code>
+with an initial value, which does not throw,
+</li>
+<li>
+Initializes two variants by default constructing a
+<code>monostate</code>
+alternative, which does not throw, and
+</li>
+<li>
+Initializes a disengaged optioanal, which does not throw
+</li>
+</ul>
+<p>
+Since none of these throw the overloaded function call operator can be made
+<code>noexcept(true)</code>.
+</p>
+
+
+<p><i>[2026-02-18; Reflector poll.]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+<p>
+Wording needs additional tightening because <code class='backtick'>value_type</code> isn't a variant
+and <code class='backtick'>errors_variant</code> does not use <code class='backtick'>monostate</code>.
+</p>
+
+
+<p id="res-4502"><b>Proposed resolution:</b></p>
+
+<p>
+Update
+33.9.12.12 <a href="https://timsong-cpp.github.io/cppwp/exec.when.all">[exec.when.all]</a>
+as follows:
+</p>
+
+<blockquote>
+
+<p>[...]</p>
+
+<p>
+and where
+<code><i>make-state</i></code>
+is the following exposition-only class template:
+</p>
+<pre>
+enum class <i>disposition</i> { <i>started</i>, <i>error</i>, <i>stopped</i> };             <i>// exposition only</i>
+
+template&lt;class Rcvr&gt;
+struct <i>make-state</i> {
+  template&lt;class... Sndrs&gt;
+  auto operator()(auto, auto, Sndrs&amp;&amp;... sndrs) const<ins> noexcept</ins> {
+    using values_tuple = <i>see below</i>;
+    using errors_variant = <i>see below</i>;
+    using stop_callback = stop_callback_for_t&lt;stop_token_of_t&lt;env_of_t&lt;Rcvr&gt;&gt;, <i>on-stop-request</i>&gt;;
+
+    struct <i>state-type</i> {
+      void <i>arrive</i>(Rcvr&amp; rcvr) noexcept {                        <i>// exposition only</i>
+        if (0 == --count) {
+          <i>complete</i>(rcvr);
+        }
+      }
+
+      void <i>complete</i>(Rcvr&amp; rcvr) noexcept;                       <i>// exposition only</i>
+
+      atomic&lt;size_t&gt; <i>count</i>{sizeof...(sndrs)};                   <i>// exposition only</i>
+      inplace_stop_source <i>stop_src</i>{};                           <i>// exposition only</i>
+      atomic&lt;disposition&gt; <i>disp</i>{<i>disposition</i>::<i>started</i>};           <i>// exposition only</i>
+      errors_variant <i>errors</i>{};                                  <i>// exposition only</i>
+      values_tuple <i>values</i>{};                                    <i>// exposition only</i>
+      optional&lt;stop_callback&gt; <i>on_stop</i>{nullopt};                 <i>// exposition only</i>
+    };
+
+    return <i>state-type</i>{};
+  }
+};
+</pre>
+
+<p>[...]</p>
+
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

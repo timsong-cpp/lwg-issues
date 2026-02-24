@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4472: std::atomic_ref&lt;const T&gt; can be constructed from temporaries</title>
+<meta property="og:title" content="Issue 4472: std::atomic_ref&lt;const T&gt; can be constructed from temporaries">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4472.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4472"><a href="lwg-active.html#4472">4472</a>. <code>std::atomic_ref&lt;const T&gt;</code> can be constructed from temporaries</h3>
+<p><b>Section:</b> 32.5.7 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic">[atomics.ref.generic]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2025-11-11 <b>Last modified:</b> 2025-12-05</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.ref.generic">issues</a> in [atomics.ref.generic].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>std::atomic_ref&lt;T&gt;</code> has a constructor taking <code>T&amp;</code>, so when <code class='backtick'>T</code> is a <code class='backtick'>const</code> 
+but not <code class='backtick'>volatile</code> object type, the constructor parameter can be bound to a temporary expression, 
+which doesn't seem to make sense. Even after <a href="https://wg21.link/P3860R1" title=" Proposed Resolution for NB Comment GB13-309 atomic_ref is not convertible to atomic_ref">P3860R1</a>, explicitly constructing 
+<code>std::atomic_ref&lt;const T&gt;</code> from <code>std::atomic_ref&lt;volatile T&gt;</code> can be 
+well-formed with the undesired semantics when it is well-formed to instantiate 
+<code>std::atomic_ref&lt;volatile T&gt;</code> and its operator <code class='backtick'>T</code> conversion function, because the 
+construction calls the conversion function and creates a temporary object. Probably it's better 
+to disallow such reference binding.
+</p>
+
+<p><i>[2025-12-05; LWG telecon. Moved to Ready]</i></p>
+
+
+
+
+<p id="res-4472"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5014" title=" Working Draft, Standard for Programming Language C++">N5014</a> after application of <a href="https://wg21.link/P3860R1" title=" Proposed Resolution for NB Comment GB13-309 atomic_ref is not convertible to atomic_ref">P3860R1</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The deleted overloads were mirrored from the design of <code class='backtick'>reference_wrapper</code> before 
+LWG <a href="2993" title="reference_wrapper&lt;T&gt; conversion from T&amp;&amp; (Status: C++20)">2993</a>. As these overloads don't participate in implicit conversion, I don't think there 
+will be any similar issue introduced.]
+</p>
+</blockquote>
+
+<ol>
+<li><p>Modify 32.5.7.1 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.generic.general">[atomics.ref.generic.general]</a>, primary class template <code class='backtick'>atomic_ref</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;class T&gt; struct atomic_ref {
+  private:
+    T* ptr;               <i>// exposition only</i>
+  public:
+    [&hellip;]
+    constexpr explicit atomic_ref(T&amp;);
+    <ins>explicit atomic_ref(T&amp;&amp;) = delete;</ins>
+    constexpr atomic_ref(const atomic_ref&amp;) noexcept;
+    template&lt;class U&gt;
+      constexpr atomic_ref(const atomic_ref&lt;U&gt;&amp;) noexcept;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 32.5.7.3 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.int">[atomics.ref.int]</a>, class template <code class='backtick'>atomic_ref</code> <code><i>integral-type</i></code> 
+specialization synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;&gt; struct atomic_ref&lt;<i>integral-type</i>&gt; {
+  private:
+    <i>integral-type</i>* ptr;               <i>// exposition only</i>
+  public:
+    [&hellip;]
+    constexpr explicit atomic_ref(<i>integral-type</i>&amp;);
+    <ins>explicit atomic_ref(<i>integral-type</i>&amp;&amp;) = delete;</ins>
+    constexpr atomic_ref(const atomic_ref&amp;) noexcept;
+    template&lt;class U&gt;
+      constexpr atomic_ref(const atomic_ref&lt;U&gt;&amp;) noexcept;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 32.5.7.4 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.float">[atomics.ref.float]</a>, class template <code class='backtick'>atomic_ref</code> <code><i>floating-point-type</i></code> 
+specialization synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;&gt; struct atomic_ref&lt;<i>floating-point-type</i>&gt; {
+  private:
+    <i>floating-point-type</i>* ptr;               <i>// exposition only</i>
+  public:
+    [&hellip;]
+    constexpr explicit atomic_ref(<i>floating-point-type</i>&amp;);
+    <ins>explicit atomic_ref(<i>floating-point-type</i>&amp;&amp;) = delete;</ins>
+    constexpr atomic_ref(const atomic_ref&amp;) noexcept;
+    template&lt;class U&gt;
+      constexpr atomic_ref(const atomic_ref&lt;U&gt;&amp;) noexcept;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 32.5.7.5 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.pointer">[atomics.ref.pointer]</a>, class template <code class='backtick'>atomic_ref</code> <code><i>pointer-type</i></code> 
+specialization synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std {
+  template&lt;&gt; struct atomic_ref&lt;<i>pointer-type</i>&gt; {
+  private:
+    <i>pointer-type</i>* ptr;               <i>// exposition only</i>
+  public:
+    [&hellip;]
+    constexpr explicit atomic_ref(<i>pointer-type</i>&amp;);
+    <ins>explicit atomic_ref(<i>pointer-type</i>&amp;&amp;) = delete;</ins>
+    constexpr atomic_ref(const atomic_ref&amp;) noexcept;
+    template&lt;class U&gt;
+      constexpr atomic_ref(const atomic_ref&lt;U&gt;&amp;) noexcept;
+    [&hellip;]
+  };
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4492: std::generate and std::ranges::generate wording is unclear for parallel algorithms</title>
+<meta property="og:title" content="Issue 4492: std::generate and std::ranges::generate wording is unclear for parallel algorithms">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4492.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4492"><a href="lwg-active.html#4492">4492</a>. <code class='backtick'>std::generate</code> and <code class='backtick'>std::ranges::generate</code> wording is unclear for parallel algorithms</h3>
+<p><b>Section:</b> 26.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.generate">[alg.generate]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Ruslan Arutyunyan <b>Opened:</b> 2025-12-12 <b>Last modified:</b> 2026-01-30</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code class='backtick'>std::generate</code> and <code class='backtick'>std::ranges::generate</code> are confusing for parallel algorithms. For both of those 
+<i>Effects</i> says "Assigns the result of successive evaluations of <code class='backtick'>gen()</code> through each iterator 
+in the range <code class='backtick'>[first, first + N)</code>." The word "successive" is confusing when we talk about parallelism. 
+This wording was the preexisting one; <a href="https://wg21.link/P3179" title=" C++ parallel range algorithms">P3179</a> "Parallel Range Algorithms" didn't modify 
+that, so the problem existed even before.
+<p/>
+Another problem is that there is nothing about what is allowed to do with the <code class='backtick'>Generator</code> template 
+parameter type for C++17 parallel <code class='backtick'>generate</code>. Intel, NVIDIA, and GNU libstdc++ implementations do 
+multiple copies of <code class='backtick'>Generator</code> object to maximize parallelism, while it's not technically allowed if 
+I am reading the standard correctly. But without <code class='backtick'>Generator</code> being copyable we have point of contention 
+and extra synchronization (or we put synchronization part as users' responsibility, which is also not 
+obvious).
+<p/>
+There is no clear solution right away. We could try to fix the wording for both ranges and C++17 parallel 
+generate but it seems like it requires extra effort because we need to at least verify the new behavior 
+with LLVM libc++ implementation if we want to make <code class='backtick'>Generator</code> copyable; libc++ currently does not 
+create per-thread copy of <code class='backtick'>gen</code> object. Perhaps, the best strategy for now is to remove 
+<code class='backtick'>ranges::generate</code> and <code class='backtick'>ranges::generate_n</code> and return them back in C++29 time frame when we figure 
+out the proper fix.
+</p>
+
+<p><i>[2026-01-16; Reflector poll.]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+<p><i>[2026-01-30; LWG telecon. Status &rarr; Ready.]</i></p>
+
+
+
+<p id="res-4492"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <code>&lt;algorithm&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+<i>// 26.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.generate">[alg.generate]</a>, generate</i>
+template&lt;class ForwardIterator, class Generator&gt;
+  constexpr void generate(ForwardIterator first, ForwardIterator last,
+                          Generator gen);
+template&lt;class ExecutionPolicy, class ForwardIterator, class Generator&gt;
+  void generate(ExecutionPolicy&amp;&amp; exec,   <i>// freestanding-deleted, see 26.3.5 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.overloads">[algorithms.parallel.overloads]</a></i>
+                ForwardIterator first, ForwardIterator last,
+                Generator gen);
+template&lt;class OutputIterator, class Size, class Generator&gt;
+  constexpr OutputIterator generate_n(OutputIterator first, Size n, Generator gen);
+template&lt;class ExecutionPolicy, class ForwardIterator, class Size, class Generator&gt;
+  ForwardIterator generate_n(ExecutionPolicy&amp;&amp; exec,   <i>// freestanding-deleted, see 26.3.5 <a href="https://timsong-cpp.github.io/cppwp/algorithms.parallel.overloads">[algorithms.parallel.overloads]</a></i>
+                             ForwardIterator first, Size n, Generator gen);
+                             
+namespace ranges {
+  template&lt;input_or_output_iterator O, sentinel_for&lt;O&gt; S, copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+    constexpr O generate(O first, S last, F gen);
+  template&lt;class R, copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; output_range&lt;R, invoke_result_t&lt;F&amp;&gt;&gt;
+    constexpr borrowed_iterator_t&lt;R&gt; generate(R&amp;&amp; r, F gen);
+  template&lt;input_or_output_iterator O, copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+    constexpr O generate_n(O first, iter_difference_t&lt;O&gt; n, F gen);
+  <del>template&lt;<i>execution-policy</i> Ep, random_access_iterator O, sized_sentinel_for&lt;O&gt; S,
+           copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+    O generate(Ep&amp;&amp; exec, O first, S last, F gen); <i>// freestanding-deleted</i>
+  template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R, copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;iterator_t&lt;R&gt;, invoke_result_t&lt;F&amp;&gt;&gt;
+    borrowed_iterator_t&lt;R&gt; generate(Ep&amp;&amp; exec, R&amp;&amp; r, F gen); <i>// freestanding-deleted</i>
+  template&lt;<i>execution-policy</i> Ep, random_access_iterator O, copy_constructible F&gt;
+    requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+    O generate_n(Ep&amp;&amp; exec, O first, iter_difference_t&lt;O&gt; n, F gen); <i>// freestanding-deleted</i></del>
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.7.7 <a href="https://timsong-cpp.github.io/cppwp/alg.generate">[alg.generate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class ForwardIterator, class Generator&gt;
+  constexpr void generate(ForwardIterator first, ForwardIterator last,
+                          Generator gen);
+template&lt;class ExecutionPolicy, class ForwardIterator, class Generator&gt;
+  void generate(ExecutionPolicy&amp;&amp; exec,
+                ForwardIterator first, ForwardIterator last,
+                Generator gen);
+
+template&lt;class OutputIterator, class Size, class Generator&gt;
+  constexpr OutputIterator generate_n(OutputIterator first, Size n, Generator gen);
+template&lt;class ExecutionPolicy, class ForwardIterator, class Size, class Generator&gt;
+  ForwardIterator generate_n(ExecutionPolicy&amp;&amp; exec,
+                             ForwardIterator first, Size n, Generator gen);
+                             
+template&lt;input_or_output_iterator O, sentinel_for&lt;O&gt; S, copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+  constexpr O ranges::generate(O first, S last, F gen);
+template&lt;class R, copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; output_range&lt;R, invoke_result_t&lt;F&amp;&gt;&gt;
+  constexpr borrowed_iterator_t&lt;R&gt; ranges::generate(R&amp;&amp; r, F gen);
+template&lt;input_or_output_iterator O, copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+  constexpr O ranges::generate_n(O first, iter_difference_t&lt;O&gt; n, F gen);
+<del>template&lt;<i>execution-policy</i> Ep, random_access_iterator O, sized_sentinel_for&lt;O&gt; S,
+         copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+  O ranges::generate(Ep&amp;&amp; exec, O first, S last, F gen);
+template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R, copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;iterator_t&lt;R&gt;, invoke_result_t&lt;F&amp;&gt;&gt;
+  borrowed_iterator_t&lt;R&gt; ranges::generate(Ep&amp;&amp; exec, R&amp;&amp; r, F gen);
+template&lt;<i>execution-policy</i> Ep, random_access_iterator O, copy_constructible F&gt;
+  requires invocable&lt;F&amp;&gt; &amp; indirectly_writable&lt;O, invoke_result_t&lt;F&amp;&gt;&gt;
+  O ranges::generate_n(Ep&amp;&amp; exec, O first, iter_difference_t&lt;O&gt; n, F gen);</del>
+</pre>
+<blockquote>
+<p>
+-1- Let <code><i>N</i></code> be <code class='backtick'>max(0, n)</code> for the <code class='backtick'>generate_n</code> algorithms, and <code class='backtick'>last - first</code> for the <code class='backtick'>generate</code> algorithms.
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

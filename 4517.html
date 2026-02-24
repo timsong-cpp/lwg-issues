@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4517: data_member_spec should throw for cv-qualified unnamed bit-fields</title>
+<meta property="og:title" content="Issue 4517: data_member_spec should throw for cv-qualified unnamed bit-fields">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4517.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4517"><a href="lwg-active.html#4517">4517</a>. <code class='backtick'>data_member_spec</code> should throw for <i>cv</i>-qualified unnamed bit-fields</h3>
+<p><b>Section:</b> 21.4.16 <a href="https://timsong-cpp.github.io/cppwp/meta.reflection.define.aggregate">[meta.reflection.define.aggregate]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Marek Polacek <b>Opened:</b> 2026-02-05 <b>Last modified:</b> 2026-02-09</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.reflection.define.aggregate">issues</a> in [meta.reflection.define.aggregate].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://cplusplus.github.io/CWG/issues/cwg_defects.html#2229">DR 2229</a> 
+changed 11.4.10 <a href="https://timsong-cpp.github.io/cppwp/class.bit">[class.bit]</a> p2 to say: 
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+An unnamed bit-field shall not be declared with a <i>cv</i>-qualified type.
+</p>
+</blockquote>
+<p>
+It follows that <code class='backtick'>define_aggregate</code> should have the same limitation, and thus in:
+</p>
+<blockquote><pre>
+#include &lt;meta&gt;
+
+constexpr auto d1 = std::meta::data_member_spec(^^const int, { .bit_width = 1 });
+constexpr auto d2 = std::meta::data_member_spec(^^volatile int, { .bit_width = 1 });
+constexpr auto d3 = std::meta::data_member_spec(^^const volatile int, { .bit_width = 1 });
+</pre></blockquote>
+<p>
+all three <code class='backtick'>data_member_spec</code> should throw.
+</p>
+
+
+<p id="res-4517"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.4.16 <a href="https://timsong-cpp.github.io/cppwp/meta.reflection.define.aggregate">[meta.reflection.define.aggregate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+consteval info data_member_spec(info type, data_member_options options);
+</pre>
+<blockquote>
+<p>
+-4- <i>Returns</i>: [&hellip;]
+<p/>
+-5- <i>Throws</i>: <code class='backtick'>meta::exception</code> unless the following conditions are met:
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(5.1) &mdash; <code class='backtick'>dealias(type)</code> represents either an object type or a reference type;
+</p></li>
+<li><p>
+(5.2) &mdash; if <code class='backtick'>options.name</code> contains a value, then: [&hellip;]
+</p></li>
+<li><p>
+(5.3) &mdash; if <code class='backtick'>options.name</code> does not contain a value, then <code class='backtick'>options.bit_width</code> contains a value;
+</p></li>
+<li><p>
+(5.4) &mdash; if <code class='backtick'>options.bit_width</code> contains a value <code><i>V</i></code>, then
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(5.4.1) &mdash; <code class='backtick'>is_integral_type(type) || is_enum_type(type)</code> is <code class='backtick'>true</code>,
+</p></li>
+<li><p>
+(5.4.2) &mdash; <code class='backtick'>options.alignment</code> does not contain a value,
+</p></li>
+<li><p>
+(5.4.3) &mdash; <code class='backtick'>options.no_unique_address</code> is <code class='backtick'>false</code>,
+</p></li>
+<li><p>
+(5.4.4) &mdash; <code><i>V</i></code> is not negative, and
+</p></li>
+<li><p>
+(5.4.5) &mdash; if <code><i>V</i></code> equals <code class='backtick'>0</code>, then <code class='backtick'>options.name</code> does not contain a value; and
+</p></li>
+<li><p>
+<ins>(5.4.?) &mdash; if <code class='backtick'>options.name</code> does not contain a value, then 
+<code class='backtick'>is_const(type) || is_volatile(type)</code> is <code class='backtick'>false</code>; and</ins>
+</p></li>
+</ul>
+</li>
+<li><p>
+(5.5) &mdash; if <code class='backtick'>options.alignment</code> contains a value, it is an alignment value (6.8.3 <a href="https://timsong-cpp.github.io/cppwp/basic.align">[basic.align]</a>) 
+not less than <code class='backtick'>alignment_of(type)</code>.
+</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

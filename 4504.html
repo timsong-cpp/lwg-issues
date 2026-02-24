@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4504: Wording problem in {simple_}counting_scope</title>
+<meta property="og:title" content="Issue 4504: Wording problem in {simple_}counting_scope">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4504.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4504"><a href="lwg-active.html#4504">4504</a>. Wording problem in <code class='backtick'>{simple_}counting_scope</code></h3>
+<p><b>Section:</b> 33.14.2.2.3 <a href="https://timsong-cpp.github.io/cppwp/exec.simple.counting.mem">[exec.simple.counting.mem]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Ian Petersen <b>Opened:</b> 2025-12-24 <b>Last modified:</b> 2026-02-18</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+I discovered while implementing 
+<a href="https://github.com/NVIDIA/stdexec/pull/1713">P3149 + P3815 in NVIDIA's stdexec</a> 
+that there's a bug in 33.14.2.2.3 <a href="https://timsong-cpp.github.io/cppwp/exec.simple.counting.mem">[exec.simple.counting.mem]</a>, paragraph 9. The status quo says:
+</p>
+<blockquote>
+<pre>
+template&lt;class State&gt;
+  bool <i>start-join-sender</i>(State&amp; st) noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>: If <code><i>state</i></code> is
+</p>
+<ul style="list-style-type: none">
+<li><p>(9.1) &mdash; <code><i>unused</i></code>, <code><i>unused-and-closed</i></code>, or <code><i>joined</i></code>, 
+then changes <code><i>state</i></code> to <code><i>joined</i></code> and returns <code class='backtick'>true</code>;</p></li>
+<li><p>(9.2) &mdash; <code><i>open</i></code> or <code><i>open-and-joining</i></code>, then changes 
+<code><i>state</i></code> to <code><i>open-and-joining</i></code>, registers <code class='backtick'>st</code> with <code class='backtick'>*this</code> and returns <code class='backtick'>false</code>;</p></li>
+<li><p>(9.3) &mdash; <code><i>closed</i></code> or <code><i>closed-and-joining</i></code>, then changes 
+<code><i>state</i></code> to <code><i>closed-and-joining</i></code>, registers <code class='backtick'>st</code> with <code class='backtick'>*this</code> and returns <code class='backtick'>false</code>.</p></li>
+</ul>
+</blockquote>
+</blockquote>
+<p>
+The problem is that if either bullet 9.2 or 9.3 applies when <code><i>count</i></code> happens to be zero 
+then there's nothing to guarantee that <code class='backtick'>st.complete()</code> is ever invoked, leading to deadlock unless 
+another sender is associated and disassociated with the scope (because the subsequent disassociation 
+will trigger the join-sender's completion).
+<p/>
+One fix is to change bullet 9.1 of the <i>Effects</i> element such that <code><i>start-join-sender</i></code> 
+changes <code><i>state</i></code> to <code><i>joined</i></code> and returns <code class='backtick'>true</code> if <code><i>count</i></code> is zero, 
+regardless of the value of <code><i>state</i></code>; bullets 9.2 and 9.3 can be left alone. I might add a note 
+that points out that, when <code><i>state</i></code> is <code><i>unused</i></code>, <code><i>unused-and-closed</i></code>, 
+or <code><i>joined</i></code>, <code><i>count</i></code> must be zero.
+<p/>
+Another fix would be to delete bullet 9.1, to modify bullets 9.2 and 9.3 by adding 
+"and <code><i>count</i></code> is greater than zero", 
+and to add a trailing bullet that says 
+"otherwise, changes <code><i>state</i></code> to <code><i>joined</i></code> and returns <code class='backtick'>true</code>."
+</p>
+
+<p><i>[2026-02-18; Reflector poll.]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+<p id="res-4504"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

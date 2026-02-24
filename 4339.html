@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Issue 4339: task's coroutine frame may be released late</title>
 <meta property="og:title" content="Issue 4339: task's coroutine frame may be released late">
-<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:description" content="C++ library issue. Status: Open">
 <meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4339.html">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
@@ -62,12 +62,13 @@
 <body>
 <hr>
 <h3 id="4339"><a href="lwg-active.html#4339">4339</a>. <code>task</code>'s coroutine frame may be released late</h3>
-<p><b>Section:</b> 33.13.6 <a href="https://timsong-cpp.github.io/cppwp/exec.task">[exec.task]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2025-08-31 <b>Last modified:</b> 2025-09-02</p>
-<p><b>Priority: </b>Not Prioritized
+<p><b>Section:</b> 33.13.6 <a href="https://timsong-cpp.github.io/cppwp/exec.task">[exec.task]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2025-08-31 <b>Last modified:</b> 2026-01-23</p>
+<p><b>Priority: </b>2
 </p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
 <p><b>Discussion:</b></p>
+<b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/947">US 242-372</a></b>
 <p>
 The specification of <code>task</code> doesn't spell out when the
 coroutine frame is destroyed (i.e., when <code>handle.destroy()</code>
@@ -100,8 +101,29 @@ Thus, the <code>variant</code> can be replaced with an
 <code>exception_ptr</code>.
 </p>
 
+<p><i>[2025-10-17; Reflector poll.]</i></p>
 
-<p id="res-4339"><b>Proposed resolution:</b></p>
+<p>
+Set priority to 2 after reflector poll.
+</p>
+<p>
+"P/R is incomplete - also needs to update at least <code class='backtick'>promise_type::uncaught_exception()</code>."
+</p>
+
+<p><i>[Kona 2025-11-06]</i></p>
+
+<p>
+SG1 think resolution looks good, but noted pre-existing issue that 7.3 doesn't
+use <code class='backtick'>std::move</code> on <code class='backtick'>*st.result</code>.
+(Would need to be <code class='backtick'>*std::move(st.result)</code> to handle <code>optional&lt;T&amp;&gt;</code> correctly.)
+</p>
+<p>
+LWG <a href="4415" title="task::promise_type::uncaught_exception seems to be misnamed (Status: WP)">4415</a> renames <code class='backtick'>uncaught_exception</code> to <code class='backtick'>unhandled_exception</code>.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
 <p>
 In 33.13.6.4 <a href="https://timsong-cpp.github.io/cppwp/task.state">[task.state]</a>, add
 exposition-only data members <code><i>result</i></code> and
@@ -176,6 +198,246 @@ Change the specification of <code>unhandled_stopped</code> to destroy the corout
 <p>-13- <i>Effects</i>: Completes the asynchronous operation associated with <code><i>STATE</i>(*this)</code><del> by</del><ins>. Let <code>st</code> be a reference to <code><i>STATE</i>(*this)</code>. The asynchronous operation is completed by first destroying the coroutine frame using <code>st.<i>handle</i>.destroy()</code> and then</ins> invoking <code>set_stopped(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>))</code>.</p>
 </blockquote>
 </p>
+</blockquote>
+
+<p><i>[2025-11-07; Jonathan provides improved wording]</i></p>
+
+<p>
+Incorporate change from LWG <a href="4466" title="task should move its result (Status: New)">4466</a> and add <code class='backtick'>_v</code> to <code class='backtick'>is_void</code>.
+</p>
+<p>
+LWG moved this to Ready but then reopened it because it still needs
+an update w.r.t <code class='backtick'>unhandled_exception</code>.
+</p>
+
+<p><i>[2026-01-16; LWG telecon. Dietmar will add a paragraph changing how <code class='backtick'>unhandled_exception</code> reports errors.]</i></p>
+
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+In 33.13.6.4 <a href="https://timsong-cpp.github.io/cppwp/task.state">[task.state]</a>, add
+exposition-only data members <code><i>result</i></code> and
+<code><i>error</i></code> to the exposition-only  class
+<code><i>state</i></code>:
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  template&lt;receiver Rcvr&gt;
+  class task&lt;T, Environment&gt;::<i>state</i> {           // <i>exposition only</i>
+  ...
+  Environment               <i>environment</i>;   // <i>exposition only</i>
+  <ins>optional&lt;T&gt;               <i>result</i>;        // <i>exposition only; present only if</i> is_void_v&lt;T&gt; <i>is</i> false</ins>
+  <ins>exception_ptr             <i>error</i>;         // <i>exposition-only</i></ins>
+};
+}
+</pre>
+</blockquote>
+</p>
+<p>
+Remove the exposition-only data members
+<code><i>result</i></code> and <code><i>errors</i></code> from
+the class <code>promise_type</code> in
+33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a>:
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  class task&lt;T, Environment&gt;::promise_type {
+  ...
+  stop_token_type   <i>token</i>;  // <i>exposition only</i>
+  <del>optional&lt;T&gt;       <i>result</i>; // <i>exposition only; present only if</i> is_void_v&lt;T&gt; <i>is</i> false</del>
+  <del><i>error-variant</i>     <i>errors</i>; // <i>exposition only</i></del>
+};
+}
+</pre>
+</blockquote>
+</p>
+<p>
+The definition of <code><i>error-variant</i></code> isn't needed, i.e., remove 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 2:
+<blockquote>
+<p><del>
+-2- <code><i>error-variant</i></code> is a <code>variant&lt;monostate, remove_cvref_t&lt;E&gt;...&gt;</code>, with duplicate types removed, where <code>E...</code> are template arguments of the specialization of <code>execution::completion_signatures</code> denoted by <code>error_types</code>.
+</del></p>
+</blockquote>
+</p>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> change paragraph 7 to use the members added to <code><i>state</i></code>:
+<blockquote>
+<pre>auto final_suspend() noexcept</pre>
+<p>-7- <i>Returns</i>: An awaitable object of unspecified type (7.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/expr.await">[expr.await]</a>) whose member functions arrange for the completion of the asynchronous operation associated with <code><i>STATE</i>(*this)</code><del> by invoking</del><ins>. Let <code>st</code> be a reference to <code><i>STATE</i>(*this)</code>. The asynchronous completion first destroys the coroutine frame using <code>st.<i>handle</i>.destroy()</code> and then invokes</ins>:</p>
+
+<ul>
+<li>-7.1- <code>set_error(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>), std::move(<del>e</del><ins>st.<i>error</i></ins>))</code> if <del><code><i>errors</i>.index()</code> is greater than zero and <code>e</code> is the value held by <code><i>errors</i></code></del><ins><code>bool(st.<i>error</i>)</code> is <code>true</code></ins>, otherwise</li>
+<li>-7.2- <code>set_value(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>))</code> if <code>is_void<ins>_v</ins>&lt;T&gt;</code> is <code>true</code>, and otherwise</li>
+<li>-7.3- <code>set_value(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>), *<ins>std::move(st.</ins><i>result</i><ins>)</ins>)</code>.</li>
+</ul>
+</blockquote>
+</p>
+<p>
+Change the specification of <code>yield_value</code> to destroy the coroutine frame before invoking the <code>set_error</code> completion, i.e., change 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 9:
+<blockquote>
+<p>-9- <i>Returns</i>: An awaitable object of unspecified type ([expr.await]) whose member functions arrange for the calling coroutine to be suspended and then completes the asynchronous operation associated with <code><i>STATE</i>(*this)</code><del> by</del><ins>. Let <code>st</code> be a reference to <code><i>STATE</i>(*this)</code>. Then the asynchronous operation completes by first destroying the coroutine frame using <code>st.<i>handle</i>.destroy()</code> and then</ins> invoking <code>set_error(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>), Cerr(std::move(err.error)))</code>.
+</p>
+</blockquote>
+</p>
+<p>
+Change the specification of <code>unhandled_stopped</code> to destroy the coroutine frame before invoking the <code>set_stopped</code> completion, i.e., change 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 13:
+<blockquote>
+<pre>coroutine_handle&lt;&gt; unhandled_stopped();</pre>
+<p>-13- <i>Effects</i>: Completes the asynchronous operation associated with <code><i>STATE</i>(*this)</code><del> by</del><ins>. Let <code>st</code> be a reference to <code><i>STATE</i>(*this)</code>. The asynchronous operation is completed by first destroying the coroutine frame using <code>st.<i>handle</i>.destroy()</code> and then</ins> invoking <code>set_stopped(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>))</code>.</p>
+</blockquote>
+</p>
+</blockquote>
+
+<p><i>[2026-01-22; Dietmar Kühl provides improved wording]</i></p>
+
+
+
+<p id="res-4339"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>
+In 33.13.6.4 <a href="https://timsong-cpp.github.io/cppwp/task.state">[task.state]</a>, add
+exposition-only data members <code><i>result</i></code> and
+<code><i>error</i></code> to the exposition-only  class
+<code><i>state</i></code>:
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  template&lt;receiver Rcvr&gt;
+  class task&lt;T, Environment&gt;::<i>state</i> {           // <i>exposition only</i>
+  ...
+  Environment               <i>environment</i>;   // <i>exposition only</i>
+  <ins>optional&lt;T&gt;               <i>result</i>;        // <i>exposition only; present only if</i> is_void_v&lt;T&gt; <i>is</i> false</ins>
+  <ins>exception_ptr             <i>error</i>;         // <i>exposition-only</i></ins>
+};
+}
+</pre>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+Remove the exposition-only data members
+<code><i>result</i></code> and <code><i>errors</i></code> from
+the class <code>promise_type</code> in
+33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a>:
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  class task&lt;T, Environment&gt;::promise_type {
+  ...
+  stop_token_type   <i>token</i>;  // <i>exposition only</i>
+  <del>optional&lt;T&gt;       <i>result</i>; // <i>exposition only; present only if</i> is_void_v&lt;T&gt; <i>is</i> false</del>
+  <del><i>error-variant</i>     <i>errors</i>; // <i>exposition only</i></del>
+};
+}
+</pre>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+The definition of <code><i>error-variant</i></code> isn't needed, i.e., remove 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 2:
+<blockquote>
+<p><del>
+-2- <code><i>error-variant</i></code> is a <code>variant&lt;monostate, remove_cvref_t&lt;E&gt;...&gt;</code>, 
+with duplicate types removed, where <code>E...</code> are template arguments of the specialization of 
+<code>execution::completion_signatures</code> denoted by <code>error_types</code>.
+</del></p>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> change paragraph 6 to use the members added to <code><i>state</i></code>:
+<blockquote>
+<pre>auto final_suspend() noexcept</pre>
+<blockquote>
+<p>-6- <i>Returns</i>: An awaitable object of unspecified type (7.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/expr.await">[expr.await]</a>) 
+whose member functions arrange for the completion of the asynchronous operation associated with 
+<code><i>STATE</i>(*this)</code><del> by invoking</del><ins>. Let <code>st</code> be a reference 
+to <code><i>STATE</i>(*this)</code>. The asynchronous completion first destroys the coroutine frame 
+using <code>st.<i>handle</i>.destroy()</code> and then invokes</ins>:</p>
+
+<ul style="list-style-type: none">
+<li>(6.1) &mdash; <code>set_error(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>),
+ std::move(<del>e</del><ins>st.<i>error</i></ins>))</code> if <del><code><i>errors</i>.index()</code> 
+ is greater than zero and <code>e</code> is the value held by 
+ <code><i>errors</i></code></del><ins><code>bool(st.<i>error</i>)</code> 
+ is <code>true</code></ins>, otherwise</li>
+<li>(6.2) &mdash; <code>set_value(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>))</code> 
+if <code>is_void<ins>_v</ins>&lt;T&gt;</code> is <code>true</code>, and otherwise</li>
+<li>(6.3) &mdash; <code>set_value(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>), 
+*<ins>std::move(st.</ins><i>result</i><ins>)</ins>)</code>.</li>
+</ul>
+</blockquote>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> change the specification of <code>yield_value</code> to destroy the coroutine 
+frame before invoking the <code>set_error</code> completion:
+
+<blockquote>
+<p>-8- <i>Returns</i>: An awaitable object of unspecified type (7.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/expr.await">[expr.await]</a>) whose member functions 
+arrange for the calling coroutine to be suspended and then completes the asynchronous operation associated 
+with <code><i>STATE</i>(*this)</code><del> by</del><ins>. Let <code>st</code> be a reference to 
+<code><i>STATE</i>(*this)</code>. Then the asynchronous operation completes by first destroying the coroutine 
+frame using <code>st.<i>handle</i>.destroy()</code> and then</ins> invoking 
+<code>set_error(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>), <i>Cerr</i>(std::move(err.error)))</code>.
+</p>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> change the specification of <code>unhandled_exception</code> to use the errors member 
+of <code><i>STATE</i>(*this)</code>:
+
+<blockquote>
+<pre>void unhandled_exception();</pre>
+<blockquote>
+<p>-11- <i>Effects</i>: If the signature <code class='backtick'>set_error_t(exception_ptr)</code> is not an element of <code class='backtick'>error_types</code>, calls
+<code class='backtick'>terminate()</code> (14.6.2 <a href="https://timsong-cpp.github.io/cppwp/except.terminate">[except.terminate]</a>). Otherwise, stores <code class='backtick'>current_exception()</code> into 
+<code><ins><i>STATE</i>(*this).</ins><i>errors</i></code>.
+</p>
+</blockquote>
+</blockquote>
+</p>
+</li>
+
+<li>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> change the specification of <code>unhandled_stopped</code> to destroy the coroutine 
+frame before invoking the <code>set_stopped</code> completion:
+<blockquote>
+<pre>coroutine_handle&lt;&gt; unhandled_stopped();</pre>
+<blockquote>
+<p>-12- <i>Effects</i>: Completes the asynchronous operation associated with <code><i>STATE</i>(*this)</code><del> 
+by</del><ins>. Let <code>st</code> be a reference to <code><i>STATE</i>(*this)</code>. The asynchronous operation 
+is completed by first destroying the coroutine frame using <code>st.<i>handle</i>.destroy()</code> and then</ins> 
+invoking <code>set_stopped(std::move(<del><i>RCVR</i>(*this)</del><ins>st.<i>rcvr</i></ins>))</code>.</p>
+</blockquote>
+</blockquote>
+</p>
+</li>
+</ol>
 
 
 

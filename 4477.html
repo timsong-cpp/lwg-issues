@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4477: Placement operator delete should be constexpr</title>
+<meta property="og:title" content="Issue 4477: Placement operator delete should be constexpr">
+<meta property="og:description" content="C++ library issue. Status: Tentatively Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4477.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4477"><a href="lwg-active.html#4477">4477</a>. Placement <code class='backtick'>operator delete</code> should be constexpr</h3>
+<p><b>Section:</b> 17.6.3.4 <a href="https://timsong-cpp.github.io/cppwp/new.delete.placement">[new.delete.placement]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jakub Jelinek <b>Opened:</b> 2025-11-18 <b>Last modified:</b> 2025-11-26</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#new.delete.placement">active issues</a> in [new.delete.placement].</p>
+<p><b>View all other</b> <a href="lwg-index.html#new.delete.placement">issues</a> in [new.delete.placement].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The <a href="https://wg21.link/P2747R2" title=" constexpr placement new">P2747R2</a> paper made placement operator new constexpr.
+At that time constexpr exceptions weren't in C++26,
+so that was all that was needed.
+But later on when <a href="https://wg21.link/P3068R5" title=" Allowing exception throwing in constant-evaluation">P3068R5</a> was voted in,
+the P2747R2 changes look insufficient.
+The problem is that when you throw from a constructor during operator new,
+it invokes placement operator delete.  And P2747R2 didn't touch that.
+</p>
+<p>
+This makes it impossible to handle an exception thrown by a placement
+new-expression during constant evaluation.
+</p>
+
+<p><i>[2025-11-26; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4477"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5014" title=" Working Draft, Standard for Programming Language C++">N5014</a>.
+</p>
+
+<ol>
+<li><p>Modify 17.6.2 <a href="https://timsong-cpp.github.io/cppwp/new.syn">[new.syn]</a> as indicated:</p>
+
+<pre>
+constexpr void* operator new  (std::size_t size, void* ptr) noexcept;
+constexpr void* operator new[](std::size_t size, void* ptr) noexcept;
+<ins>constexpr</ins> void operator delete  (void* ptr, void*) noexcept;
+<ins>constexpr</ins> void operator delete[](void* ptr, void*) noexcept;
+</pre>
+</li>
+
+<li><p>Modify 17.6.3.4 <a href="https://timsong-cpp.github.io/cppwp/new.delete.placement">[new.delete.placement]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr void* operator new(std::size_t size, void* ptr) noexcept;
+</pre>
+<blockquote>
+<p>[&hellip;]</p>
+</blockquote>
+<pre>
+constexpr void* operator new[](std::size_t size, void* ptr) noexcept;
+</pre>
+<blockquote>
+<p>[&hellip;]</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> void operator delete(void* ptr, void*) noexcept;
+</pre>
+<blockquote>
+<p>-7- <i>Effects</i>: Intentionally performs no action. </p>
+<p>-8- <i>Remarks</i>:
+Default function called when any part of the initialization in a
+placement <i>new-expression</i> that invokes the library's non-array
+placement operator new terminates by throwing an exception
+(7.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/expr.new">[expr.new]</a>).
+</p>
+</blockquote>
+<pre>
+<ins>constexpr</ins> void operator delete[](void* ptr, void*) noexcept;
+</pre>
+<blockquote>
+<p>-9- <i>Effects</i>: Intentionally performs no action. </p>
+<p>-10- <i>Remarks</i>:
+Default function called when any part of the initialization in a
+placement <i>new-expression</i> that invokes the library's array
+placement operator new terminates by throwing an exception
+(7.6.2.8 <a href="https://timsong-cpp.github.io/cppwp/expr.new">[expr.new]</a>).
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

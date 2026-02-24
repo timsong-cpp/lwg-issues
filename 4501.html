@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4501: std::execution::let_* Unconditionally Potentially Evaluates std::execution::set_error</title>
+<meta property="og:title" content="Issue 4501: std::execution::let_* Unconditionally Potentially Evaluates std::execution::set_error">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4501.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4501"><a href="lwg-active.html#4501">4501</a>. <code>std::execution::let_</code>* Unconditionally Potentially Evaluates <code>std::execution::set_error</code></h3>
+<p><b>Section:</b> 33.9.12.10 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Robert Leahy <b>Opened:</b> 2026-01-11 <b>Last modified:</b> 2026-02-18</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#exec.let">active issues</a> in [exec.let].</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.let">issues</a> in [exec.let].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The adoption of
+<a href="https://wg21.link/P3388" title=" When Do You Know connect Doesn't Throw?">P3388</a>
+as a resolution to
+<a href="https://github.com/cplusplus/nbballot/issues/909">CA-334</a>
+allowed asynchronous operations to determine, without a concrete receiver, whether connecting some sub-operation thereof can throw an exception.
+</p>
+
+<p>
+The above-described capability is critical when an asynchronous operation connects another asynchronous operation as part of its asynchronous execution,
+which is exactly what
+<code>std::execution::set_value</code>,
+<code>::set_error</code>, and
+<code>::set_stopped</code> do.
+Enabling the aforementioned algorithms to correctly advertise a
+<code>std::execution::set_error_t(std::exception_ptr)</code>
+completion signature was the concrete motivation for
+<a href="https://wg21.link/P3388" title=" When Do You Know connect Doesn't Throw?">P3388</a>
+</p>
+
+<p>
+Unfortunately the current library wording for the above-enumerated algorithms prohibits them from taking advantage of
+<a href="https://wg21.link/P3388" title=" When Do You Know connect Doesn't Throw?">P3388</a>.
+</p>
+
+<p>
+33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a> paragraph 43.1 describes the process by which the completion signatures of an algorithm are determined:</p>
+
+<blockquote>
+<p>
+[...]
+<code>CS</code>
+is the specialization of
+<code>completion_signatures</code>
+the set of whose template arguments correspond to the set of completion operations that are potentially evaluated as a result of evaluating
+<code>op.start()</code>.
+</p>
+</blockquote>
+
+<p>
+With this in mind we look to the specification of
+<code>std::execution::let_value</code>
+et al. in
+33.9.12.10 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a>.
+Connection of the sub-operation is performed via
+<code><i>let-bind</i></code>
+whose signature is (paragraph 5):
+</p>
+
+<blockquote>
+<pre>
+template&lt;class State, class Rcvr, class... Args&gt;
+void <i>let-bind</i>(State&amp; state, Rcvr&amp; rcvr, Args&amp;&amp; args);
+</pre>
+</blockquote>
+
+<p>
+Note there is no
+<code>noexcept</code>,
+conditionally or otherwise.
+</p>
+
+<p>
+The effects of
+<code><i>let-bind</i></code>
+are equivalent to (paragraph 12):
+</p>
+
+<blockquote>
+<pre>
+using args_t = <i>decayed-tuple</i>&lt;Args...&gt;;
+auto mkop2 = [&amp;] {
+  return connect(
+    apply(std::move(state.fn),
+          state.args.template emplace&lt;args_t&gt;(std::forward&lt;Args&gt;(args)...)),
+    <i>receiver2</i>{rcvr, std::move(state.env)});
+};
+start(state.ops2.template emplace&lt;decltype(mkop2())&gt;(<i>emplace-from</i>{mkop2}));
+</pre>
+</blockquote>
+
+<p>
+Note that
+<code>mkop2</code>
+is not
+<code>noexcept</code>,
+conditionally or otherwise.
+</p>
+
+<p>
+The point of use of
+<code><i>let-bind</i></code>
+is (paragraph 13):
+</p>
+
+<blockquote>
+<pre>
+<i>TRY-EVAL</i>(rcvr, <i>let-bind</i>(state, rcvr, std::forward&lt;Args&gt;(args)...));
+</pre>
+</blockquote>
+
+<p>
+Where
+<code><i>TRY-EVAL</i></code>
+is described in
+33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>
+paragraph 7:
+</p>
+
+<blockquote>
+<p>
+<code><i>TRY-EVAL</i>(rcvr, expr)</code>
+is equivalent to:
+</p>
+<pre>
+try {
+  expr;
+} catch(...) {
+  set_error(std::move(rcvr), current_exception());
+}
+</pre>
+<p>
+if
+<code>expr</code> is potentially-throwing; otherwise,
+<code>expr</code>.
+</p>
+</blockquote>
+
+<p>
+The meaning of &quot;potentially-throwing&quot; is drawn from
+14.5 <a href="https://timsong-cpp.github.io/cppwp/except.spec">[except.spec]</a>
+paragraph 5:
+</p>
+
+<blockquote>
+<p>
+An expression <i>E</i> is <i>potentially-throwing</i> if
+</p>
+<ul>
+<li>
+<i>E</i>
+is a function call whose
+<i>postfix-expression</i>
+has a function type, or a pointer-to-function type, with a potentially-throwing exception specification, or
+</li>
+<li>[...]</li>
+</ul>
+</blockquote>
+
+<p>
+As such even if connecting the sub-operation cannot throw
+<code>std::execution::let_value</code>
+et al. all potentially evaluate a potentially throwing expression and therefore must advertise
+<code>std::execution::set_error_t(std::exception_ptr)</code>
+as a possible completion signature.
+</p>
+
+<p>
+Note that the wording proposed by
+<a href="https://wg21.link/P3373" title=" Of Operation States and Their Lifetimes">P3373</a>
+obsoletes this issue.
+</p>
+
+
+<p><i>[2026-02-18; Reflector poll.]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+<p>
+The wording needs to account for <code class='backtick'>emplace</code> not having a <code class='backtick'>noexcept</code> specification.
+</p>
+
+
+<p id="res-4501"><b>Proposed resolution:</b></p>
+
+<p>
+Update
+33.9.12.10 <a href="https://timsong-cpp.github.io/cppwp/exec.let">[exec.let]</a>
+as follows:
+</p>
+
+<blockquote>
+<p>[...]</p>
+
+<pre>
+namespace std::execution {
+  template&lt;class State, class Rcvr, class... Args&gt;
+  void <i>let-bind</i>(State&amp; state, Rcvr&amp; rcvr, Args&amp;&amp;... args)<ins> noexcept(<i>see below</i>)</ins>; <i>// exposition only</i>
+
+  template&lt;&gt;
+  struct <i>impls-for</i>&lt;<i>decayed-typeof</i>&lt;<i>let-cpo</i>&gt;&gt; : <i>default-impls</i> {
+    static constexpr auto <i>get-state</i> = <i>see below</i>;
+    static constexpr auto <i>complete</i> = <i>see below</i>;
+
+    template&lt;class Sndr, class... Env&gt;
+      static consteval void <i>check-types</i>();
+  };
+}
+</pre>
+
+<p>[...]</p>
+
+<p>The exposition-only function template <code><i>let-bind</i></code> has effects equivalent to:</p>
+
+<pre>
+using args_t = <i>decayed-tuple</i>&lt;Args...&gt;;
+auto mkop2 = [&amp;]<ins> noexcept(<i>see below</i>)</ins> {
+  return connect(
+    apply(std::move(state.fn),
+          state.args.template emplace&lt;args_t&gt;(std::forward&lt;Args&gt;(args)...)),
+    <i>receiver2</i>{rcvr, std::move(state.env)});
+};
+start(state.ops2.template emplace&lt;decltype(mkop2())&gt;(<i>emplace-from</i>{mkop2}));
+</pre>
+
+<p>
+<ins>
+Where the
+<i>exception specification</i> of
+<code>mkop2</code>
+and
+<code><i>let-bind</i></code>
+evaluates to
+<code>true</code>
+if each expression contained thereby is not
+<i>potentially-throwing</i>,
+<code>false</code>
+otherwise.
+</ins>
+</p>
+
+<p>[...]</p>
+
+</blockquote>
+
+
+
+
+
+
+</body>
+</html>

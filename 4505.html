@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4505: The std::make_optional overload taking std::initializer_list should not accept a reference type as its template argument</title>
+<meta property="og:title" content="Issue 4505: The std::make_optional overload taking std::initializer_list should not accept a reference type as its template argument">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4505.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4505"><a href="lwg-active.html#4505">4505</a>. The <code class='backtick'>std::make_optional</code> overload taking <code class='backtick'>std::initializer_list</code> should not accept a reference type as its template argument</h3>
+<p><b>Section:</b> 22.5.10 <a href="https://timsong-cpp.github.io/cppwp/optional.specalg">[optional.specalg]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2025-12-25 <b>Last modified:</b> 2026-02-18</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#optional.specalg">issues</a> in [optional.specalg].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code>std::make_optional&lt;std::initializer_list&lt;int&gt;&amp;&gt;({1, 2})</code> is currently valid, 
+but the returned <code class='backtick'>optional</code> object contains a dangling reference, because the stored reference used to 
+refer to the <code>initializer_list&lt;int&gt;</code> parameter object of that <code class='backtick'>make_optional</code> overload.
+<p/>
+Moreover, when there's already an <code>initializer_list&lt;T&gt;</code> variable <code class='backtick'>il</code>, 
+<code>std::make_optional&lt;std::initializer_list&lt;T&gt;&amp;>(il)</code> also returns an <code class='backtick'>optional</code> 
+containing a dangling reference, because the third <code class='backtick'>make_optional</code> overload in 
+22.5.10 <a href="https://timsong-cpp.github.io/cppwp/optional.specalg">[optional.specalg]</a> is more specialized than the second and thus gets selected.
+<p/>
+Given <code>optional&lt;T&amp;&gt;</code> has no specific initializer-list constructor, perhaps we should 
+make the <code class='backtick'>make_optional</code> overload taking <code class='backtick'>initializer_list</code> not accept <code>T&amp;</code> as its first template 
+argument.
+</p>
+
+<p><i>[2026-02-18; Reflector poll.]</i></p>
+
+<p>
+Set priority to 4 after reflector poll.
+</p>
+<p>
+This only affects edge cases like
+<code>make_optional&lt;initializer_list&lt;int&gt;&amp;&gt;({....})</code>.
+The <code>is_constructible_v</code> constraint seems unmotivated by the issue.
+</p>
+
+
+<p id="res-4505"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 22.5.10 <a href="https://timsong-cpp.github.io/cppwp/optional.specalg">[optional.specalg]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: This also make the implicit SFINAE constraints introduced by 
+16.3.2.4 <a href="https://timsong-cpp.github.io/cppwp/structure.specifications">[structure.specifications]</a> p4 explicit.]
+</p>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class T, class U, class... Args&gt;
+  constexpr optional&lt;T&gt; make_optional(initializer_list&lt;U&gt; il, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Constraints</i>: <code>is_lvalue_reference_v&lt;T&gt;</code> is <code class='backtick'>false</code> and 
+<code>is_constructible_v&lt;T, initializer_list&lt;U&gt;&amp;, Args...&gt;</code> is <code class='backtick'>true</code>.</ins>
+<p/>
+-6- <i>Effects</i>: Equivalent to: <code>return optional&lt;T&gt;(in_place, il, std::forward&lt;Args&gt;(args)...);</code>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

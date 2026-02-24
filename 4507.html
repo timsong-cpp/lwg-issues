@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4507: The order of side effects initiated by I/O functions is not described by happen-before</title>
+<meta property="og:title" content="Issue 4507: The order of side effects initiated by I/O functions is not described by happen-before">
+<meta property="og:description" content="C++ library issue. Status: Core">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4507.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<h3 id="4507"><a href="lwg-active.html#4507">4507</a>. The order of side effects initiated by I/O functions is not described by happen-before</h3>
+<p><b>Section:</b> 31 <a href="https://timsong-cpp.github.io/cppwp/input.output">[input.output]</a> <b>Status:</b> <a href="lwg-active.html#Core">Core</a>
+ <b>Submitter:</b> jim x <b>Opened:</b> 2025-12-29 <b>Last modified:</b> 2026-02-18</p>
+<p><b>Priority: </b>4
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#input.output">active issues</a> in [input.output].</p>
+<p><b>View all other</b> <a href="lwg-index.html#input.output">issues</a> in [input.output].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Core">Core</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+6.10.1 <a href="https://timsong-cpp.github.io/cppwp/intro.execution">[intro.execution]</a> p7 says (emphasis mine)
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Reading an object designated by a <code class='backtick'>volatile</code> glvalue (7.2.1 <a href="https://timsong-cpp.github.io/cppwp/basic.lval">[basic.lval]</a>), modifying an object, 
+producing an injected declaration (7.7 <a href="https://timsong-cpp.github.io/cppwp/expr.const">[expr.const]</a>), <b>calling a library I/O function</b>, 
+or calling a function that does any of those operations are all <i>side effects</i>, 
+which are changes in the state of the execution or translation environment. 
+<i>Evaluation</i> of an expression (or a subexpression) in general includes both value computations 
+(including determining the identity of an object for glvalue evaluation and 
+fetching a value previously assigned to an object for prvalue evaluation) and 
+initiation of side effects. When a call to a library I/O function returns or an access 
+through a <code class='backtick'>volatile</code> glvalue is evaluated, the side effect is considered complete, 
+even though some external actions implied by the call (such as the I/O itself) or 
+by the <code class='backtick'>volatile</code> access may not have completed yet.
+</p>
+</blockquote>
+<p>
+Consider this example:
+</p>
+<blockquote><pre>
+#include &lt;thread&gt;
+#include &lt;atomic&gt;
+#include &lt;stream&gt;
+
+int main(){
+  std::ofstream outFile("example.txt", std::ios::out | std::ios::trunc);
+  std::atomic&lt;bool&gt; flag = false;
+  auto t1 = std::thread([&amp;](){
+    outFile &lt;&lt; "ab"; // #1
+    flag.store(true, std::memory_order::release); // #2
+  });
+  auto t2 = std::thread([&amp;](){
+    while (!flag.load(std::memory_order::acquire)); // #3
+    outFile &lt;&lt; "cd"; // #4
+  });
+  t1.join();
+  t2.join();
+}
+</pre></blockquote>
+<p>
+Because <code class='backtick'>#2</code> synchronizes with <code class='backtick'>#3</code>, then <code class='backtick'>#1</code> happens before <code class='backtick'>#4</code>. 
+According to 4.1.2 <a href="https://timsong-cpp.github.io/cppwp/intro.abstract">[intro.abstract]</a> p8
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+The following specify the observable behavior of the program:
+</p>
+<ul style="list-style-type: none">
+<li><p>(8.1) &mdash; [&hellip;]</p></li>
+<li><p>(8.2) &mdash; Data is delivered to the host environment to be written into files (See also: ISO/IEC 9899:2024, 7.23.3).</p></li>
+<li><p>(8.3) &mdash; [&hellip;]</p></li>
+</ul>
+</blockquote>
+<p>
+So, writing data to files is observable behavior. Are data guaranteed to be delivered to the file <code class='backtick'>example.txt</code> 
+in the order "abcd"? I don't find a relevant rule in both subclauses 6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a> and 
+31 <a href="https://timsong-cpp.github.io/cppwp/input.output">[input.output]</a> that specifies the order of delivery of data to files depends on the happen-before 
+relationship.
+<p/>
+6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a> only states how <b>memory visibility</b> is defined according to happen-before. 
+Both reading an object designated by a <code class='backtick'>volatile</code> glvalue and modifying an object can be categories 
+to <b>side effects on memory locations</b>, 6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a> does define that. However, the side 
+effects produced by the call to a library I/O function might not be about memory visibility. 
+31 <a href="https://timsong-cpp.github.io/cppwp/input.output">[input.output]</a> only mentions when a data race happens. 
+6.10.1 <a href="https://timsong-cpp.github.io/cppwp/intro.execution">[intro.execution]</a> p7 only says that when the calling of a function at <code class='backtick'>#1</code> returns, 
+the side effect is considered complete. However, it lacks how the completion is related to the expression 
+that is sequenced after it, let alone how the completion is ordered relative to <code class='backtick'>#3</code> that 
+inter-threaded happens after it.
+<p/>
+In the whole standard, there is only one informal note specifying this at the end of 6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a> p8:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+[<i>Note 8</i>: Informally, if <i>A</i> strongly happens before <i>B</i>, then <i>A</i> 
+appears to be evaluated before <i>B</i> in all contexts. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+<p>
+However, this is an informal note, and I didn't find a formal rule corresponding to this note.
+<p/>
+<b>Suggested Resolution:</b>
+<p/>
+The English meaning of happen before means one thing has done before the other. However, 
+<i>happen-before</i> as the term of the C++ standard, we didn't give it that meaning. 
+IIUC, the intended meaning should be that: if <i>A</i> happens before <i>B</i>, then <i>A</i> 
+will finish before <i>B</i> starts. This meaning is not embodied in the formal rules. 
+We only describe memory visibility in terms of <i>happen-before</i>, but don't for 
+other kinds of side effects or observable behaviors.
+<p/>
+We should define how the order of side effects produced by I/O functions is defined by <i>happen-before</i>.
+</p>
+
+<p><i>[2026-02-18; Reflector poll.]</i></p>
+
+<p>
+Set status to Core and priority to 4 after reflector poll.
+</p>
+<p>
+Low participation.
+</p>
+
+
+<p id="res-4507"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

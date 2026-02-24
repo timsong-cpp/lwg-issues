@@ -63,8 +63,8 @@
 <hr>
 <h3 id="4378"><a href="lwg-active.html#4378">4378</a>. Inconsistency between <code class='backtick'>std::basic_string</code>'s <code class='backtick'>data()</code> and <code class='backtick'>operator[]</code> specification</h3>
 <p><b>Section:</b> 27.4.3.6 <a href="https://timsong-cpp.github.io/cppwp/string.access">[string.access]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Peter Bindels <b>Opened:</b> 2025-09-16 <b>Last modified:</b> 2025-09-21</p>
-<p><b>Priority: </b>Not Prioritized
+ <b>Submitter:</b> Peter Bindels <b>Opened:</b> 2025-09-16 <b>Last modified:</b> 2025-11-12</p>
+<p><b>Priority: </b>4
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#string.access">issues</a> in [string.access].</p>
 <p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
@@ -107,8 +107,32 @@ not define what the feature does when called with broken preconditions. I have b
 the latter but that will be an EWG paper instead.
 </p>
 
+<p><i>[2025-10-21; Reflector poll.]</i></p>
 
-<p id="res-4378"><b>Proposed resolution:</b></p>
+<p>
+Set priority to 4 after reflector poll.
+</p>
+<p>
+"NAD. <code class='backtick'>begin() + size()</code> is not dereferenceable and should remain that way."
+</p>
+<p>
+"Saying "if <code>pos &lt;= size()</code> is redundant given the precondition above."
+</p>
+<p>
+"The resolution removes any guarantee that the value at <code class='backtick'>str[str.size()]</code>
+is <code class='backtick'>charT()</code>. Furthermore, the premise of the issue is incorrect,
+returning the address of a different null terminator not belonging to the
+string would make traversing it with other string operations UB, so it
+has to return a reference to a terminator that's within the same array."
+</p>
+<p>
+"<code class='backtick'>*(begin() = size())</code> is UB, but could use <code class='backtick'>*(data() + size())</code> instead.
+Personally I'd like <code class='backtick'>*end()</code> to be valid, but that's certainly LEWG business
+requiring a paper."
+</p>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
 <p>
 This wording is relative to <a href="https://wg21.link/N5014" title=" Working Draft, Standard for Programming Language C++">N5014</a>.
 </p>
@@ -144,6 +168,120 @@ otherwise, the behavior is undefined</ins>
 </li>
 
 </ol>
+</blockquote>
+
+<p><i>[2025-11-11; Jonathan provides new wording]</i></p>
+
+<p>
+We say that <code class='backtick'>basic_string</code> is a contiguous container, which makes the
+<code class='backtick'>addressof</code> wording in <code class='backtick'>c_str()</code> and <code class='backtick'>data()</code> redundant.
+The front matter says that there's a null terminator present,
+so we can move the rule about not modifying the terminator there
+instead of repeating it in <code class='backtick'>operator[]</code> and <code class='backtick'>c_str()</code>.
+</p>
+<p>
+We can also permit modifying the string contents through
+<code>const_cast&lt;char*&gt;(str.c_str())[0]</code>.
+There's no reason for that to be undefined when
+<code>const_cast&lt;string&amp;&gt;(str)[0]</code> and
+<code>const_cast&lt;string&amp;&gt;(str).data()[0]</code>
+are both allowed.
+The only restriction should be on changing the null terminator.
+Changing any other characters through <code class='backtick'>c_str() const</code> or <code class='backtick'>data() const</code>
+is no different to changing them through the non-const <code class='backtick'>data()</code>,
+and does not need to cause undefined behaviour.
+</p>
+
+
+
+<p id="res-4378"><b>Proposed resolution:</b></p>
+
+<ol>
+
+<li><p>Modify 27.4.3.1 <a href="https://timsong-cpp.github.io/cppwp/basic.string.general">[basic.string.general]</a> as indicated:</p>
+
+<blockquote>
+<p>-3-
+In all cases, [<code class='backtick'>data()</code>, <code class='backtick'>data() + size()</code>] is a valid range,
+<code class='backtick'>data() + size()</code> points at an object with value <code class='backtick'>charT()</code>
+(a "null terminator"), and <code>size() &lt;= capacity()</code> is <code class='backtick'>true</code>.
+<ins>
+Non-const access to the null terminator is possible,
+e.g. using <code class='backtick'>*(data()+size())</code>, but the program has undefined behavior
+if the null terminator is modified to any value other than <code class='backtick'>charT()</code>.
+</ins>
+</p>
+</blockquote>
+</li>
+
+<li><p>Modify 27.4.3.6 <a href="https://timsong-cpp.github.io/cppwp/string.access">[string.access]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr const_reference operator[](size_type pos) const;
+constexpr reference       operator[](size_type pos);
+</pre>
+<blockquote>
+<p>-1- <i>Hardened Preconditions</i>: <code>pos &lt;= size()</code> is <code class='backtick'>true</code>.</p>
+<p>-2- <i>Returns</i>:
+<ins><code class='backtick'>*(data() + pos)</code>.</ins>
+<del>
+<code class='backtick'>*(begin() + pos)</code> if <code>pos &lt; size()</code>.
+Otherwise, returns a reference to an object of type <code class='backtick'>charT</code>
+with value <code class='backtick'>charT()</code>,
+where modifying the object to any value other than <code class='backtick'>charT()</code>
+leads to undefined behavior.
+</del>
+</p>
+<p>-3- <i>Throws</i>: Nothing.</p>
+<p>-4- <i>Complexity</i>: Constant time.</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 27.4.3.8.1 <a href="https://timsong-cpp.github.io/cppwp/string.accessors">[string.accessors]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr const charT* c_str() const noexcept;
+constexpr const charT* data() const noexcept;
+<ins>constexpr charT* data() noexcept;</ins>
+</pre>
+<blockquote>
+<p>-1- <i>Returns</i>:
+<ins><code class='backtick'>to_address(begin())</code>.</ins>
+<del>
+A pointer <code class='backtick'>p</code> such that <code class='backtick'>p + i == addressof(operator[](i))</code>
+for each <code class='backtick'>i</code> in [<code class='backtick'>0</code>, <code class='backtick'>size()</code>].
+</del>
+</p>
+<p>-2- <i>Complexity</i>: Constant time.</p>
+<p><del>-3- <i>Remarks</i>:
+The program shall not modify any of the values stored in the character array;
+otherwise, the behavior is undefined.</del>
+</p>
+</blockquote>
+
+<pre>
+<del>constexpr charT* data() noexcept;</del>
+</pre>
+<blockquote>
+<p><del>-4- <i>Returns</i>:
+A pointer <code class='backtick'>p</code> such that <code class='backtick'>p + i == addressof(operator[](i))</code>
+for each <code class='backtick'>i</code> in [<code class='backtick'>0</code>, <code class='backtick'>size()</code>].
+</del>
+</p>
+<p><del>-5- <i>Complexity</i>: Constant time.</del></p>
+<p><del>-6- <i>Remarks</i>:
+The program shall not modify the value stored at <code class='backtick'>p + size()</code> to any
+value other than <code class='backtick'>charT()</code>; otherwise, the behavior is undefined.</del>
+</p>
+</blockquote>
+
+</blockquote>
+</li>
+</ol>
+
 
 
 
