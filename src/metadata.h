@@ -14,7 +14,7 @@ struct metadata {
     std::map<int, std::time_t> git_commit_times;
     std::unordered_map<std::string, std::string> paper_titles;
 
-    static metadata read_from_path(std::filesystem::path const& path);
+    static metadata read_from_path(std::filesystem::path const& path, bool verbose = true);
 };
 
 }

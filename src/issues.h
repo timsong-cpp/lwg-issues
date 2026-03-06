@@ -2,18 +2,19 @@
 #define INCLUDE_LWG_ISSUES_H
 
 // standard headers
+#include <chrono>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 // solution specific headers
-#include "date.h"
 #include "metadata.h"
 #include "status.h"
 
 namespace lwg
 {
+namespace chrono = std::chrono;
 
 struct issue {
    int                        num;            // ID - issue number
@@ -22,20 +23,14 @@ struct issue {
    std::string                doc_prefix;     // extracted from title; e.g. filesys.ts
    std::vector<section_tag>   tags;           // section(s) of the standard affected by the issue
    std::string                submitter;      // original submitter of the issue
-   gregorian::date            date;           // date the issue was filed
-   gregorian::date            mod_date;       // date the issue was last changed
+   chrono::year_month_day     date;           // date the issue was filed
+   chrono::year_month_day     mod_date;       // date the issue was last changed
    std::set<std::string>      duplicates;     // sorted list of duplicate issues, stored as html anchor references.
    std::string                text;           // text representing the issue
    int                        priority = 99;  // severity, 1 = critical, 4 = minor concern, 0 = trivial to resolve, 99 = not yet prioritised
    std::string                owner;          // person identified as taking ownership of drafting/progressing the issue
    std::string                resolution;     // extracted resolution text (if any), also present in 'text'
    bool                       has_resolution; // 'true' if 'text' contains a proposed resolution
-};
-
-struct order_by_issue_number {
-    bool operator()(issue const & x, issue const & y) const noexcept   {  return x.num < y.num;   }
-    bool operator()(issue const & x, int y)           const noexcept   {  return x.num < y;       }
-    bool operator()(int x,           issue const & y) const noexcept   {  return x     < y.num;   }
 };
 
 auto parse_issue_from_file(std::string file_contents, std::string const & filename, lwg::metadata & meta) -> issue;
@@ -46,6 +41,24 @@ auto parse_issue_from_file(std::string file_contents, std::string const & filena
   // since been removed, replaced or merged.
   //
   // The filename is passed only to improve diagnostics.
+
+
+inline int stoi(const std::string& s)
+{
+    std::size_t idx = 0;
+    try
+    {
+        return std::stoi(s, &idx);
+    }
+    catch (const std::out_of_range&)
+    {
+        throw std::out_of_range("std::stoi: out of range: \"" + s + '"');
+    }
+    catch (const std::invalid_argument&)
+    {
+        throw std::invalid_argument("std::stoi: invalid argument: \"" + s + '"');
+    }
+}
 
 } // close namespace lwg
 

@@ -5,6 +5,7 @@
 #include "issues.h"
 #include "metadata.h"
 #include "status.h"
+#include "html_utils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -16,6 +17,7 @@
 #include <iterator>
 #include <fstream>
 #include <sstream>
+#include <format>
 
 #include <iostream>  // eases debugging
 
@@ -25,58 +27,63 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
+using std::size_t;
+
 namespace {
-// date utilites may factor out again
-auto parse_month(std::string const & m) -> gregorian::month {
-   // This could be turned into an efficient map lookup with a suitable indexed container
-   return (m == "Jan") ? gregorian::jan
-        : (m == "Feb") ? gregorian::feb
-        : (m == "Mar") ? gregorian::mar
-        : (m == "Apr") ? gregorian::apr
-        : (m == "May") ? gregorian::may
-        : (m == "Jun") ? gregorian::jun
-        : (m == "Jul") ? gregorian::jul
-        : (m == "Aug") ? gregorian::aug
-        : (m == "Sep") ? gregorian::sep
-        : (m == "Oct") ? gregorian::oct
-        : (m == "Nov") ? gregorian::nov
-        : (m == "Dec") ? gregorian::dec
-        : throw std::runtime_error{"unknown month abbreviation " + m};
-}
+auto parse_date(std::istream & temp) -> std::chrono::year_month_day {
+#if __cpp_lib_chrono >= 201803L
+   std::chrono::year_month_day date{};
+   if (temp >> std::chrono::parse(" %d %b %Y", date))
+      return date;
+   throw std::runtime_error{"date format error"};
+#else
+   using month_idx = std::pair<std::string_view,int>;
+   constexpr month_idx months[] = {
+      {"Apr", 4},{"Aug", 8},{"Dec",12},{"Feb", 2},{"Jan", 1},{"Jul", 7},
+      {"Jun", 6},{"Mar", 3},{"May", 5},{"Nov",11},{"Oct",10},{"Sep", 9}
+   };
 
-auto parse_date(std::istream & temp) -> gregorian::date {
    int d;
-   temp >> d;
-   if (temp.fail()) {
-      throw std::runtime_error{"date format error"};
-   }
-
    std::string month;
-   temp >> month;
-
-   auto m = parse_month(month);
-   int y{ 0 };
-   temp >> y;
-   return m/gregorian::day{d}/y;
-}
-
-auto make_date(std::tm const & mod) -> gregorian::date {
-   return gregorian::year((unsigned short)(mod.tm_year+1900)) / (mod.tm_mon+1) / mod.tm_mday;
-}
-
-auto report_date_file_last_modified(std::filesystem::path const & filename, lwg::metadata const& meta) -> gregorian::date {
-   std::time_t mtime;
-   int id = std::stoi(filename.filename().stem().native().substr(5));
-   if (auto it = meta.git_commit_times.find(id); it !=  meta.git_commit_times.end())
-      mtime = it->second;
-   else
+   int y;
+   if (temp >> d >> month >> y)
    {
-      auto file_mtime = fs::last_write_time(filename);
-      auto sys_mtime = std::chrono::system_clock::now() - (fs::file_time_type::clock::now() - file_mtime);
-      mtime = std::chrono::duration_cast<std::chrono::seconds>(sys_mtime.time_since_epoch()).count();
+      auto it = std::ranges::lower_bound(months, month, {}, &month_idx::first);
+
+      if (it != std::end(months) and it->first == month)
+      {
+         int m = it->second;
+         if (auto ymd = std::chrono::year{y}/m/d; ymd.ok())
+            return ymd;
+      }
+   }
+   throw std::runtime_error{"date format error"};
+#endif
+}
+
+auto report_date_file_last_modified(std::filesystem::path const & filename, lwg::metadata const& meta) -> std::chrono::year_month_day {
+   using namespace std::chrono;
+   system_clock::time_point t;
+   // NB: Cannot use `native()` instead of `string()`, because on Windows that
+   // would result in std::wstring:
+   int id = lwg::stoi(filename.filename().stem().string().substr(5));
+   // Use the Git commit date of the file if available.
+   if (auto it = meta.git_commit_times.find(id); it !=  meta.git_commit_times.end())
+      t = system_clock::from_time_t(it->second);
+   else {
+     // Otherwise use the modification time of the file.
+      auto mtime = fs::last_write_time(filename);
+#if __cpp_lib_chrono >= 201803L
+      t = clock_cast<system_clock>(mtime);
+#else
+      // clock_cast isn't supported, so convert to sys_time manually.
+      static const auto snow = system_clock::now();
+      static const auto fnow = fs::file_time_type::clock::now();
+      t = snow - round<seconds>(fnow - mtime);
+#endif
    }
 
-   return make_date(*std::gmtime(&mtime));
+   return year_month_day(floor<days>(t));
 }
 
 // Replace '<' and '>' and '&' with HTML character references.
@@ -152,32 +159,30 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
 
    issue is;
 
+   auto get_or_throw = [&filename](const auto& opt, std::string_view what) {
+      return opt ? *opt : throw bad_issue_file(filename, "Unable to find issue " + std::string(what));
+   };
+
+   // Get value from "<issue attr='value'>"
+   auto get_attr = [&](std::string_view attr) {
+      return get_or_throw(lwg::get_attribute_of(attr, "issue", tx), attr);
+   };
+   // Get content from "<elem>content</elem>"
+   auto get_elem_content = [&](std::string_view elem) {
+      return get_or_throw(lwg::get_element_content(elem, tx), elem);
+   };
+
    // Get issue number
-   auto k = tx.find("<issue num=\"");
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue number"};
-   }
-   k += sizeof("<issue num=\"") - 1;
-   auto l = tx.find('\"', k);
-   is.num = std::stoi(tx.substr(k, l-k));
+   std::string_view num = get_attr("num");
+   if (!filename.ends_with(std::format("issue{:0>4}.xml", num)))
+     std::cerr << "warning: issue number " << num << " in " << filename << " does not match issue number\n";
+   is.num = lwg::stoi(std::string(num));
 
    // Get issue status
-   k = tx.find("status=\"", l);
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue status"};
-   }
-   k += sizeof("status=\"") - 1;
-   l = tx.find('\"', k);
-   is.stat = tx.substr(k, l-k);
+   is.stat = get_attr("status");
 
    // Get issue title
-   k = tx.find("<title>", l);
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue title"};
-   }
-   k +=  sizeof("<title>") - 1;
-   l = tx.find("</title>", k);
-   is.title = tx.substr(k, l-k);
+   is.title = get_elem_content("title");
 
    // Extract doc_prefix from title
    if (is.title[0] == '['
@@ -190,36 +195,33 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    }
 
    // Get issue sections
-   k = tx.find("<section>", l);
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue section"};
-   }
-   k += sizeof("<section>") - 1;
-   l = tx.find("</section>", k);
-   while (k < l) {
-      k = tx.find('\"', k);
-      if (k >= l) {
-          break;
+   std::string_view sections = get_elem_content("section");
+   while (auto sref = lwg::get_element("sref", sections))
+   {
+      if (auto attr = lwg::get_attribute("ref", sref->outer))
+      {
+         if (attr->starts_with('[') and attr->ends_with(']'))
+         {
+            attr->remove_prefix(1);
+            attr->remove_suffix(1);
+         }
+         else
+            throw bad_issue_file{filename, "Invalid section name in <sref>"};
+
+         section_tag tag;
+         tag.prefix = is.doc_prefix;
+         tag.name = *attr;
+         is.tags.emplace_back(tag);
+         if (section_db.find(is.tags.back()) == section_db.end()) {
+             section_num num{};
+             num.prefix = tag.prefix;
+             num.num.push_back(99);
+             section_db[is.tags.back()] = num;
+         }
       }
-      auto k2 = tx.find('\"', k+1);
-      if (k2 >= l) {
-         throw bad_issue_file{filename, "Unable to find issue section"};
-      }
-      ++k;
-      section_tag tag;
-      tag.prefix = is.doc_prefix;
-      tag.name = tx.substr(k+1, k2 - k - 2);
-//std::cout << "lookup tag=\"" << tag.prefix << "\", \"" << tag.name << "\"\n";
-      is.tags.emplace_back(tag);
-      if (section_db.find(is.tags.back()) == section_db.end()) {
-          section_num num{};
- //         num.num.push_back(100 + 'X' - 'A');
-          num.prefix = tag.prefix;
-          num.num.push_back(99);
-          section_db[is.tags.back()] = num;
-      }
-      k = k2;
-      ++k;
+      else
+         throw bad_issue_file{filename, "Missing ref attribute in <sref>"};
+      sections.remove_prefix(sref->outer.data() - sections.data() + sref->outer.size());
    }
 
    if (is.tags.empty()) {
@@ -227,68 +229,48 @@ auto lwg::parse_issue_from_file(std::string tx, std::string const & filename,
    }
 
    // Get submitter
-   k = tx.find("<submitter>", l);
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue submitter"};
-   }
-   k += sizeof("<submitter>") - 1;
-   l = tx.find("</submitter>", k);
-   is.submitter = tx.substr(k, l-k);
+   is.submitter = get_elem_content("submitter");
 
    // Get date
-   k = tx.find("<date>", l);
-   if (k == std::string::npos) {
-      throw bad_issue_file{filename, "Unable to find issue date"};
-   }
-   k += sizeof("<date>") - 1;
-   l = tx.find("</date>", k);
+   auto datestr = get_elem_content("date");
 
    try {
-      std::istringstream temp{tx.substr(k, l-k)};
+#ifdef __cpp_lib_sstream_from_string_view
+      std::istringstream temp{datestr};
+#else
+      std::istringstream temp{std::string{datestr}};
+#endif
       is.date = parse_date(temp);
-
-      // Get modification date
-      is.mod_date = report_date_file_last_modified(filename, meta);
    }
    catch(std::exception const & ex) {
-      throw bad_issue_file{filename, ex.what()};
+      throw bad_issue_file{filename, "date format error"};
    }
+
+   // Get modification date
+   is.mod_date = report_date_file_last_modified(filename, meta);
 
    // Get priority - this element is optional
-   k = tx.find("<priority>", l);
-   if (k != std::string::npos) {
-      k += sizeof("<priority>") - 1;
-      l = tx.find("</priority>", k);
-      if (l == std::string::npos) {
-         throw bad_issue_file{filename, "Corrupt 'priority' element: no closing tag"};
-      }
-      is.priority = std::stoi(tx.substr(k, l-k));
-   }
+   if (auto o = lwg::get_element_content("priority", tx))
+      is.priority = lwg::stoi(std::string(*o));
 
    // Trim text to <discussion>
-   k = tx.find("<discussion>", l);
-   if (k == std::string::npos) {
+   if (auto k = tx.find("<discussion>"); k != tx.npos)
+      tx.replace(0, k, "<issue>");
+   else
       throw bad_issue_file{filename, "Unable to find issue discussion"};
-   }
-   tx.erase(0, k);
 
    // Find out if issue has a proposed resolution
    if (is_active(is.stat)  or  "Pending WP" == is.stat) {
-      auto k2 = tx.find("<resolution>", 0);
-      if (k2 == std::string::npos) {
-         is.has_resolution = false;
-      }
-      else {
-         k2 += sizeof("<resolution>") - 1;
-         auto l2 = tx.find("</resolution>", k2);
-         is.resolution = tx.substr(k2, l2 - k2);
-         if (is.resolution.length() < 15) {
-            // Filter small amounts of whitespace between tags, with no actual resolution
-            is.resolution.clear();
-         }
-//         is.has_resolution = l2 - k2 > 15;
-         is.has_resolution = !is.resolution.empty();
-      }
+      auto resolution = lwg::get_element_content("resolution", tx);
+      // Ignore small amounts of whitespace between tags, with no actual resolution
+      is.has_resolution = resolution.has_value() && resolution->length() >= 15;
+
+      // The is.text string already contains the <resolution> element,
+      // but is.resolution stores another copy of it.
+      // That was used to prepare a new report for the editor containing
+      // only the issues approved at a meeting.
+      // We don't currently do this.
+      // is.resolution = *resolution;
    }
    else {
       is.has_resolution = true;

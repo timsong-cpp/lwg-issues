@@ -28,16 +28,17 @@ namespace {
         titles[paper_number] = title;
         return titles;
     }
-      
+
 }
 
-auto lwg::metadata::read_from_path(std::filesystem::path const& path) -> metadata {
+auto lwg::metadata::read_from_path(std::filesystem::path const& path, bool verbose) -> metadata {
     auto filename = path / "meta-data" / "section.data";
     std::ifstream infile{filename};
     if (!infile.is_open()) {
         throw std::runtime_error{"Can't open section.data at " + path.string() + "meta-data"};
     }
-    std::cout << "Reading section-tag index from: " << filename << std::endl;
+    if (verbose)
+      std::cout << "Reading section-tag index from: " << filename << std::endl;
     return {
         read_section_db(infile),
         read_git_commit_times(path / "meta-data" / "dates"),

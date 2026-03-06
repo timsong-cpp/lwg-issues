@@ -10,6 +10,8 @@ struct section_num
 {
     std::string prefix;
     std::vector<int> num;
+
+    auto operator<=>(const section_num&) const = default;
 };
 
 std::istream&
@@ -82,30 +84,6 @@ operator << (std::ostream& os, const section_num& sn)
     return os;
 }
 
-bool
-operator<(const section_num& x, const section_num& y)
-{
-    if (x.prefix < y.prefix)
-        return true;
-    else if (y.prefix < x.prefix)
-        return false;
-    return x.num < y.num;
-}
-
-bool
-operator==(const section_num& x, const section_num& y)
-{
-    if (x.prefix != y.prefix)
-        return false;
-    return x.num == y.num;
-}
-
-bool
-operator!=(const section_num& x, const section_num& y)
-{
-    return !(x == y);
-}
-
 typedef std::string section_tag;
 
 std::string
@@ -129,10 +107,10 @@ replace_all(std::string s, const std::string& old, const std::string& nw)
 int main (int argc, char** argv)
 {
     std::string prefix;
-    if(argc > 1)
+    if (argc > 1)
         prefix = std::string(argv[1]);
 
-    std::vector<std::pair<section_num, section_tag> > v;
+    std::vector<std::pair<section_num, section_tag>> v;
     while (std::cin)
     {
         section_tag t;
@@ -143,21 +121,22 @@ int main (int argc, char** argv)
         std::cin >> n;
         if (std::cin.fail())
             throw std::runtime_error("incomplete tag / num pair");
-        if(!prefix.empty())
+        if (!prefix.empty())
             n.prefix = prefix;
 
         t = replace_all(t, "&", "&amp;");
         t = replace_all(t, "<", "&lt;");
         t = replace_all(t, ">", "&gt;");
         t = '[' + t + ']';
-        v.push_back(std::make_pair(n, t));
+        v.push_back({n, t});
     }
     std::sort(v.begin(), v.end());
-    for (std::vector<std::pair<section_num, section_tag> >::const_iterator i = v.begin(), e = v.end(); i != e; ++i)
+    const std::string_view indent = "    ";
+    for (auto& e : v)
     {
-        const int indent = 4*(i->first.num.size()-1);
-        for (int k = 0; k < indent; ++k)
-            std::cout << ' ';
-        std::cout << i->first << ' ' << i->second << '\n';
+        const int depth = e.first.num.size() - 1;
+        for (int k=0; k < depth; ++k)
+            std::cout << indent;
+        std::cout << e.first << ' ' << e.second << '\n';
     }
 }

@@ -5,19 +5,20 @@
 #include "status.h"
 
 #include <string>
+#include <string_view>
 #include <stdexcept>
 #include <iostream>  // eases debugging
 #include <algorithm>
 
 namespace {
-static constexpr char const * LWG_ACTIVE {"lwg-active.html" };
-static constexpr char const * LWG_CLOSED {"lwg-closed.html" };
-static constexpr char const * LWG_DEFECTS{"lwg-defects.html"};
+constexpr std::string_view LWG_ACTIVE {"lwg-active.html" };
+constexpr std::string_view LWG_CLOSED {"lwg-closed.html" };
+constexpr std::string_view LWG_DEFECTS{"lwg-defects.html"};
 }
 
 auto lwg::filename_for_status(std::string_view stat) -> std::string_view {
    // Tentative issues are always active
-   if(is_tentative(stat)) {
+   if (is_tentative(stat)) {
       return LWG_ACTIVE;
    }
 
@@ -61,7 +62,7 @@ auto lwg::is_active(std::string_view stat) -> bool {
 }
 
 auto lwg::is_active_not_ready(std::string_view stat) -> bool {
-   return is_active(stat)  and  stat != "Ready";
+   return stat != "Ready" and is_active(stat);
 }
 
 auto lwg::is_defect(std::string_view stat) -> bool {
@@ -73,27 +74,25 @@ auto lwg::is_closed(std::string_view stat) -> bool {
 }
 
 auto lwg::is_tentative(std::string_view stat) -> bool {
-   // a more efficient implementation will use some variation of strcmp
-   std::string_view tent{"Tentatively"};
-   return 0 == stat.compare(0, tent.size(), tent);
+   return stat.starts_with("Tentatively");
 }
 
 auto lwg::is_assigned_to_another_group(std::string_view stat) -> bool {
-   for( auto s : {"Core", "EWG", "LEWG", "SG1", "SG9", "SG16" }) {
-     if(s == stat) return true;
+   for (auto s : {"Core", "EWG", "LEWG", "SG1", "SG9", "SG16" }) {
+     if (s == stat) return true;
    }
    return false;
 }
 
 auto lwg::is_not_resolved(std::string_view stat) -> bool {
    if (is_assigned_to_another_group(stat)) return true;
-   for( auto s : {"Deferred", "New", "Open", "Review"}) { if(s == stat) return true; }
+   for (auto s : {"Deferred", "New", "Open", "Review"}) { if (s == stat) return true; }
    return false;
 }
 
 auto lwg::is_votable(std::string_view stat) -> bool {
    stat = remove_tentatively(stat);
-   for( auto s : {"Immediate", "Voting"}) { if(s == stat) return true; }
+   for (auto s : {"Immediate", "Voting"}) { if (s == stat) return true; }
    return false;
 }
 
@@ -104,7 +103,7 @@ auto lwg::is_ready(std::string_view stat) -> bool {
 // Functions to "normalize" a status string
 namespace {
 auto remove_prefix(std::string_view str, std::string_view prefix) -> std::string_view {
-   if (0 == str.compare(0, prefix.size(), prefix)) {
+   if (str.starts_with(prefix)) {
       str.remove_prefix(prefix.size() + 1);
    }
    return str;
@@ -171,18 +170,12 @@ auto lwg::get_status_priority(std::string_view stat) noexcept -> std::ptrdiff_t 
    };
 
 
+   auto const i = std::ranges::find(status_priority, stat);
 #if !defined(DEBUG_SUPPORT)
-   static auto const first = std::begin(status_priority);
-   static auto const last  = std::end(status_priority);
-   return std::find_if( first, last, [&](std::string_view str){ return str == stat; } ) - first;
-#else
    // Diagnose when unknown status strings are passed
-   static auto const first = std::begin(status_priority);
-   static auto const last  = std::end(status_priority);
-   auto const i = std::find_if( first, last, [&](std::string_view str){ return str == stat; } );
-   if(last == i) {
+   if (std::end(status_priority) == i) {
       std::cout << "Unknown status: " << stat << std::endl;
    }
-   return i - first;
 #endif
+   return i - std::begin(status_priority);
 }

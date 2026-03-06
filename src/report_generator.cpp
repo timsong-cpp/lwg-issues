@@ -10,13 +10,16 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <cstdlib>
+#include <format>
 #include <fstream>
-#include <functional>  // reference_wrapper
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
-#include <regex>
+#include <ranges>
+#include <functional>
 
 namespace
 {
@@ -24,34 +27,25 @@ namespace
 // Generic utilities that are useful and do not rely on context or types from our domain (issue-list processing)
 // =============================================================================================================
 
-auto format_time(std::string const & format, std::tm const & t) -> std::string {
-   std::string s;
-   std::size_t maxsize{format.size() + 256};
-  //for (std::size_t maxsize = format.size() + 64; s.size() == 0 ; maxsize += 64)
-  //{
-      std::unique_ptr<char[]> buf{new char[maxsize]};
-      std::size_t size{std::strftime( buf.get(), maxsize, format.c_str(), &t ) };
-      if(size > 0) {
-         s += buf.get();
-      }
- // }
-   return s;
-}
-
-auto utc_timestamp() -> std::tm const & {
-   static std::time_t t{ std::time(nullptr) };
-   static std::tm utc = *std::gmtime(&t);
-   return utc;
-}
+auto const timestamp = [] {
+  // Allow the timestamp to be set from a unix timestamp in the environment,
+  // to support reproducible HTML output. For example:
+  // LWG_REVISION_TIME=$(date +%s -d "2025-10-07 09:38:29 UTC") make lists
+  if (const char* revtime = std::getenv("LWG_REVISION_TIME"))
+    return std::chrono::sys_seconds(std::chrono::seconds(std::stol(revtime)));
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::floor<std::chrono::seconds>(now);
+}();
 
 // global data - would like to do something about that.
-static std::string build_timestamp;
+std::string const build_date{std::format("{:%F}", timestamp)};
+std::string const build_timestamp{std::format("Revised {} at {:%T} UTC\n", build_date, timestamp)};
 
-static std::string const maintainer_email{"lwgchair@gmail.com"};
+std::string const maintainer_email{"lwgchair@gmail.com"};
 
-static std::string const maintainer_name{"Jonathan Wakely"};
+std::string const maintainer_name{"Jonathan Wakely"};
 
-static std::string const is14882_docno{"ISO/IEC IS 14882:2020(E)"};
+std::string const is14882_docno{"ISO/IEC IS 14882:2024(E)"};
 
 struct order_by_first_tag {
    bool operator()(lwg::issue const & x, lwg::issue const & y) const noexcept {
@@ -61,6 +55,16 @@ struct order_by_first_tag {
    }
 };
 
+// Similar to lwg::section_num but only looks at the first num in e.g. 17.5.2
+using major_section_key = std::pair<std::string_view, int>;
+
+// Find key for major section (i.e. Clause number, within a given IS or TS)
+auto lookup_major_section(lwg::section_map& db, const lwg::issue& i) -> major_section_key {
+   assert(!i.tags.empty());
+   const lwg::section_num& sect = db[i.tags[0]];
+   return { sect.prefix, sect.num[0] };
+}
+
 struct order_by_major_section {
    explicit order_by_major_section(lwg::section_map & sections)
       : section_db(sections)
@@ -68,16 +72,29 @@ struct order_by_major_section {
       }
 
    auto operator()(lwg::issue const & x, lwg::issue const & y) const -> bool {
-      assert(!x.tags.empty());
-      assert(!y.tags.empty());
-      lwg::section_num const & xn = section_db.get()[x.tags[0]];
-      lwg::section_num const & yn = section_db.get()[y.tags[0]];
-      return std::tie(xn.prefix, xn.num[0]) < std::tie(yn.prefix, yn.num[0]);
+      return lookup_major_section(section_db, x) < lookup_major_section(section_db, y);
    }
 
 private:
-   std::reference_wrapper<lwg::section_map> section_db;
+   lwg::section_map& section_db;
 };
+
+// Create a LessThanComparable object that defines an ordering based on date,
+// with newer dates first.
+auto ordered_date(lwg::issue const & issue) {
+   std::chrono::sys_days date(issue.mod_date);
+   return -date.time_since_epoch().count();
+}
+
+// Create a LessThanComparable object that defines an ordering that depends on
+// the section number (e.g. 23.5.1) first and then on the section stable tag.
+// Using both is not redundant, because we use section 99 for all sections of some TS's.
+// Including the tag in the order gives a total order for sections in those TS's,
+// e.g., {99,[arrays.ts::dynarray]} < {99,[arrays.ts::dynarraconstructible_from.cons]}.
+auto ordered_section(lwg::section_map & section_db, lwg::issue const & issue) {
+   assert(!issue.tags.empty());
+   return std::tie(section_db[issue.tags.front()], issue.tags.front());
+}
 
 struct order_by_section {
    explicit order_by_section(lwg::section_map &sections)
@@ -86,13 +103,11 @@ struct order_by_section {
       }
 
    auto operator()(lwg::issue const & x, lwg::issue const & y) const -> bool {
-      assert(!x.tags.empty());
-      assert(!y.tags.empty());
-      return std::tie(section_db.get()[x.tags.front()], x.tags.front()) < std::tie(section_db.get()[y.tags.front()], y.tags.front());
+      return ordered_section(section_db, x) < ordered_section(section_db, y);
    }
 
 private:
-   std::reference_wrapper<lwg::section_map> section_db;
+   lwg::section_map& section_db;
 };
 
 struct order_by_status {
@@ -108,24 +123,6 @@ struct order_by_status {
 };
 
 
-struct order_by_priority {
-   explicit order_by_priority(lwg::section_map &sections)
-      : section_db(sections)
-      {
-      }
-
-   auto operator()(lwg::issue const & x, lwg::issue const & y) const -> bool {
-      assert(!x.tags.empty());
-      assert(!y.tags.empty());
-      return x.priority == y.priority
-           ? section_db.get()[x.tags.front()] < section_db.get()[y.tags.front()]
-           : x.priority < y.priority;
-   }
-
-private:
-   std::reference_wrapper<lwg::section_map> section_db;
-};
-
 // Replace spaces to make a string usable as an 'id' attribute,
 // or as an URL fragment (#foo) that links to an 'id' attribute.
 inline std::string spaces_to_underscores(std::string s) {
@@ -134,33 +131,25 @@ inline std::string spaces_to_underscores(std::string s) {
 }
 
 
-auto major_section(lwg::section_num const & sn) -> std::string {
-   std::string const prefix{sn.prefix};
+auto to_string(major_section_key sn) -> std::string {
+   auto [prefix, num] = sn;
    std::ostringstream out;
    if (!prefix.empty()) {
       out << prefix << " ";
    }
-   if (sn.num[0] < 100) {
-      out << sn.num[0];
+   if (num < 100) {
+      out << num;
    }
    else {
-      out << char(sn.num[0] - 100 + 'A');
+      out << char(num - 100 + 'A');
    }
    return out.str();
 }
 
-void print_date(std::ostream & out, gregorian::date const & mod_date ) {
-   out << mod_date.year() << '-';
-   if (mod_date.month() < 10) { out << '0'; }
-   out << mod_date.month() << '-';
-   if (mod_date.day() < 10) { out << '0'; }
-   out << mod_date.day();
-}
-
 template<typename Container>
-void print_list(std::ostream & out, Container const & source, char const * separator ) {
+void print_list(std::ostream & out, Container const & source, char const * separator) {
    char const * sep{""};
-   for( auto const & x : source ) {
+   for (auto const & x : source) {
       out << sep << x;
       sep = separator;
    }
@@ -181,7 +170,7 @@ R"(<!DOCTYPE html>
       out << R"(
 <meta property="og:title" content=")" << lwg::replace_reserved_char(title, '"', "&quot;") << R"(">
 <meta property="og:description" content=")" << lwg::replace_reserved_char(desc, '"', "&quot;") << R"(">
-<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/)" << url_filename << R"(">
+<meta property="og:url" content="https://cplusplus.github.io/LWG/)" << url_filename << R"(">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
 <meta property="og:image:alt" content="C++ logo">)";
@@ -249,9 +238,9 @@ void print_file_trailer(std::ostream& out) {
 }
 
 
-void print_table(std::ostream& out, std::vector<lwg::issue>::const_iterator i, std::vector<lwg::issue>::const_iterator e, lwg::section_map& section_db, bool link_stable_names = false) {
+void print_table(std::ostream& out, std::span<const lwg::issue> issues, lwg::section_map& section_db, bool link_stable_names = false) {
 #if defined (DEBUG_LOGGING)
-   std::cout << "\t" << std::distance(i,e) << " items to add to table" << std::endl;
+   std::cout << "\t" << issues.size() << " items to add to table" << std::endl;
 #endif
 
    out <<
@@ -268,32 +257,34 @@ R"(<table class="issues-index">
 )";
 
    lwg::section_tag prev_tag;
-   for (; i != e; ++i) {
+   for (auto& i : issues) {
       out << "<tr>\n";
 
       // Number
-      out << "<td id=\"" << i->num << "\">" << make_html_anchor(*i) << "</td>\n";
+      out << "<td id=\"" << i.num << "\">" << make_html_anchor(i)
+          << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << i.num
+          << "\">(i)</a></sup></td>\n";
 
       // Status
-      const auto status_idattr = spaces_to_underscores(std::string(lwg::remove_qualifier(i->stat)));
-      out << "<td><a href=\"lwg-active.html#" << status_idattr << "\">" << i->stat << "</a></td>\n";
+      const auto status_idattr = spaces_to_underscores(std::string(lwg::remove_qualifier(i.stat)));
+      out << "<td><a href=\"lwg-active.html#" << status_idattr << "\">" << i.stat << "</a></td>\n";
 
       // Section
       out << "<td>";
-      assert(!i->tags.empty());
-      out << section_db[i->tags[0]] << " " << i->tags[0];
-      if (link_stable_names && i->tags[0] != prev_tag) {
-         prev_tag = i->tags[0];
+      assert(!i.tags.empty());
+      out << section_db[i.tags[0]] << " " << i.tags[0];
+      if (link_stable_names && i.tags[0] != prev_tag) {
+         prev_tag = i.tags[0];
          out << "<a id=\"" << as_string(prev_tag) << "\"></a>";
       }
       out << "</td>\n";
 
       // Title
-      out << "<td>" << i->title << "</td>\n";
+      out << "<td>" << i.title << "</td>\n";
 
       // Has Proposed Resolution
       out << "<td>";
-      if (i->has_resolution) {
+      if (i.has_resolution) {
          out << "Yes";
       }
       else {
@@ -303,14 +294,14 @@ R"(<table class="issues-index">
 
       // Priority
       out << "<td>";
-      if (i->priority != 99) {
-         out << i->priority;
+      if (i.priority != 99) {
+         out << i.priority;
       }
       out << "</td>\n";
 
       // Duplicates
       out << "<td>";
-      print_list(out, i->duplicates, ", ");
+      print_list(out, i.duplicates, ", ");
       out << "</td>\n"
           << "</tr>\n";
    }
@@ -333,10 +324,16 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 
          // When printing for the list, also emit an absolute link to the individual file.
          // Absolute link so that copying only the big lists elsewhere doesn't result in broken links.
-         if(type == print_issue_type::in_list) {
-              out << "<h3 id=\"" << iss.num << "\"><a href=\"" << iss.num << "\">" << iss.num << "</a>";
+         if (type == print_issue_type::in_list) {
+              out << "<h3 id=\"" << iss.num << "\"><a href=\"#" << iss.num << "\">" << iss.num << "</a>";
+              out << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << iss.num << "\">(i)</a></sup>";
          }
          else {
+              out << "<p><em>This page is a snapshot from the LWG issues list, see the "
+                     "<a href=\"lwg-active.html\">Library Active Issues List</a> "
+                     "for more information and the meaning of "
+                     "<a href=\"lwg-active.html#" << status_idattr << "\">"
+                  << iss.stat << "</a> status.</em></p>\n";
               out << "<h3 id=\"" << iss.num << "\"><a href=\"" << lwg::filename_for_status(iss.stat) << '#' << iss.num << "\">" << iss.num << "</a>";
          }
 
@@ -352,11 +349,9 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 
          out << " <b>Status:</b> <a href=\"lwg-active.html#" << status_idattr << "\">" << iss.stat << "</a>\n";
          out << " <b>Submitter:</b> " << iss.submitter
-             << " <b>Opened:</b> ";
-         print_date(out, iss.date);
-         out << " <b>Last modified:</b> ";
-         print_date(out, iss.mod_date);
-         out << "</p>\n";
+             << " <b>Opened:</b> " << iss.date
+             << " <b>Last modified:</b> " << iss.mod_date
+             << "</p>\n";
 
          // priority
          out << "<p><b>Priority: </b>";
@@ -395,12 +390,12 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
 }
 
 template <typename Pred>
-void print_issues(std::ostream & out, std::vector<lwg::issue> const & issues, lwg::section_map & section_db, Pred pred) {
+void print_issues(std::ostream & out, std::span<const lwg::issue> issues, lwg::section_map & section_db, Pred pred) {
    issue_set_by_first_tag const  all_issues{ issues.begin(), issues.end()} ;
    issue_set_by_status    const  issues_by_status{ issues.begin(), issues.end() };
 
    issue_set_by_first_tag active_issues;
-   for (auto const & elem : issues ) {
+   for (auto const & elem : issues) {
       if (lwg::is_active(elem.stat)) {
          active_issues.insert(elem);
       }
@@ -414,11 +409,11 @@ void print_issues(std::ostream & out, std::vector<lwg::issue> const & issues, lw
 }
 
 template <typename Pred>
-void print_resolutions(std::ostream & out, std::vector<lwg::issue> const & issues, lwg::section_map & section_db, Pred predicate) {
+void print_resolutions(std::ostream & out, std::span<const lwg::issue> issues, lwg::section_map & section_db, Pred predicate) {
    // This construction calls out for filter-iterators
 //   std::multiset<lwg::issue, order_by_first_tag> pending_issues;
    std::vector<lwg::issue> pending_issues;
-   for (auto const & elem : issues ) {
+   for (auto const & elem : issues) {
       if (predicate(elem)) {
          pending_issues.emplace_back(elem);
       }
@@ -448,7 +443,7 @@ R"(<table>
 </tr>
 <tr>
   <td align="left">Date:</td>
-  <td align="left">)" << format_time("%Y-%m-%d", utc_timestamp()) << R"(</td>
+  <td align="left">)" << build_date << R"(</td>
 </tr>
 <tr>
   <td align="left">Project:</td>
@@ -482,10 +477,10 @@ namespace lwg
 
 // Functions to make the 3 standard published issues list documents
 // A precondition for calling any of these functions is that the list of issues is sorted in numerical order, by issue number.
-// While nothing disasterous will happen if this precondition is violated, the published issues list will list items
+// While nothing disastrous will happen if this precondition is violated, the published issues list will list items
 // in the wrong order.
-void report_generator::make_active(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report) {
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+void report_generator::make_active(std::span<const issue> issues, fs::path const & path, std::string const & diff_report) {
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-active.html"};
    std::ofstream out{filename};
@@ -503,8 +498,8 @@ void report_generator::make_active(std::vector<issue> const & issues, fs::path c
 }
 
 
-void report_generator::make_defect(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report) {
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+void report_generator::make_defect(std::span<const issue> issues, fs::path const & path, std::string const & diff_report) {
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-defects.html"};
    std::ofstream out(filename);
@@ -521,8 +516,8 @@ void report_generator::make_defect(std::vector<issue> const & issues, fs::path c
 }
 
 
-void report_generator::make_closed(std::vector<issue> const & issues, fs::path const & path, std::string const & diff_report) {
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+void report_generator::make_closed(std::span<const issue> issues, fs::path const & path, std::string const & diff_report) {
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-closed.html"};
    std::ofstream out{filename};
@@ -540,9 +535,9 @@ void report_generator::make_closed(std::vector<issue> const & issues, fs::path c
 
 
 // Additional non-standard documents, useful for running LWG meetings
-void report_generator::make_tentative(std::vector<issue> const & issues, fs::path const & path) {
+void report_generator::make_tentative(std::span<const issue> issues, fs::path const & path) {
    // publish a document listing all tentative issues that may be acted on during a meeting.
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-tentative.html"};
    std::ofstream out{filename};
@@ -560,9 +555,9 @@ void report_generator::make_tentative(std::vector<issue> const & issues, fs::pat
 }
 
 
-void report_generator::make_unresolved(std::vector<issue> const & issues, fs::path const & path) {
+void report_generator::make_unresolved(std::span<const issue> issues, fs::path const & path) {
    // publish a document listing all non-tentative, non-ready issues that must be reviewed during a meeting.
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-unresolved.html"};
    std::ofstream out{filename};
@@ -579,9 +574,9 @@ void report_generator::make_unresolved(std::vector<issue> const & issues, fs::pa
    print_file_trailer(out);
 }
 
-void report_generator::make_immediate(std::vector<issue> const & issues, fs::path const & path) {
+void report_generator::make_immediate(std::span<const issue> issues, fs::path const & path) {
    // publish a document listing all non-tentative, non-ready issues that must be reviewed during a meeting.
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-immediate.html"};
    std::ofstream out{filename};
@@ -614,19 +609,9 @@ out << R"(<h1>C++ Standard Library Issues Resolved Directly In [INSERT CURRENT M
    print_file_trailer(out);
 }
 
-void report_generator::set_timestamp_from_issues(std::vector<issue> const & issues){
-   auto max_date = std::max_element(issues.begin(), issues.end(),
-                                     [](const issue& a, const issue& b) {
-                                         return a.mod_date < b.mod_date;
-                                     })->mod_date;
-   std::ostringstream oss;
-   oss << "Revised " << max_date.year() << '-' << max_date.month() << '-' << max_date.day() << '\n';
-   build_timestamp = oss.str();
-}
-
-void report_generator::make_ready(std::vector<issue> const & issues, fs::path const & path) {
+void report_generator::make_ready(std::span<const issue> issues, fs::path const & path) {
    // publish a document listing all ready issues for a formal vote
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-ready.html"};
    std::ofstream out{filename};
@@ -659,9 +644,9 @@ out << R"(<h1>C++ Standard Library Issues to be moved in [INSERT CURRENT MEETING
    print_file_trailer(out);
 }
 
-void report_generator::make_editors_issues(std::vector<issue> const & issues, fs::path const & path) {
+void report_generator::make_editors_issues(std::span<const issue> issues, fs::path const & path) {
    // publish a single document listing all 'Voting' and 'Immediate' resolutions (only).
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
 
    fs::path filename{path / "lwg-issues-for-editor.html"};
    std::ofstream out{filename};
@@ -674,8 +659,8 @@ void report_generator::make_editors_issues(std::vector<issue> const & issues, fs
    print_file_trailer(out);
 }
 
-void report_generator::make_sort_by_num(std::vector<issue>& issues, fs::path const & filename) {
-   sort(issues.begin(), issues.end(), order_by_issue_number{});
+void report_generator::make_sort_by_num(std::span<issue> issues, fs::path const & filename) {
+   std::ranges::sort(issues, {}, &issue::num);
 
    std::ofstream out{filename};
    if (!out)
@@ -691,13 +676,36 @@ R"(<h1>C++ Standard Library Issues List (Revision )" << lwg_issues_xml.get_revis
 )";
    out << "<p>" << build_timestamp << "</p>";
 
-   print_table(out, issues.begin(), issues.end(), section_db);
+   print_table(out, issues, section_db);
    print_file_trailer(out);
 }
 
+#ifndef __cpp_lib_ranges_chunk_by
+template<typename T>
+auto chop(std::span<T>& s, std::size_t n)
+{
+   auto first = s.first(n);
+   s = s.subspan(n);
+   return first;
+}
 
-void report_generator::make_sort_by_priority(std::vector<issue>& issues, fs::path const & filename) {
-   sort(issues.begin(), issues.end(), order_by_priority{section_db});
+// Chop off and return  a subspan from the front of `issues`,
+// consisting of all values that are equivalent under `pred`.
+auto chunk_by(std::span<issue>& issues, auto pred) -> std::span<const issue> {
+   std::size_t n = 0;
+   if (!issues.empty()) {
+      auto end = std::ranges::find_if_not(issues, std::bind_front(pred, std::ref(issues.front())));
+      n = end - issues.begin();
+   }
+   return chop(issues, n);
+}
+#endif
+
+void report_generator::make_sort_by_priority(std::span<issue> issues, fs::path const & filename) {
+   auto proj = [this](const auto& i) {
+      return std::tie(i.priority, section_db[i.tags.front()], i.num);
+   };
+   std::ranges::sort(issues, {}, proj);
 
    std::ofstream out{filename};
    if (!out)
@@ -714,11 +722,19 @@ sorted by priority.</p>
 )";
    out << "<p>" << build_timestamp << "</p>";
 
-//   print_table(out, issues.begin(), issues.end(), section_db);
+//   print_table(out, issues, section_db);
 
-   for (auto i = issues.cbegin(), e = issues.cend(); i != e;) {
-      int px = i->priority;
-      auto j = std::find_if(i, e, [&](issue const & iss){ return iss.priority != px; } );
+   auto same_prio = [](const issue& lhs, const issue& rhs) {
+     return lhs.priority == rhs.priority;
+   };
+#ifdef __cpp_lib_ranges_chunk_by
+   for (auto chunk : issues | std::views::chunk_by(same_prio))
+#else
+   for (auto chunk = chunk_by(issues, same_prio); !chunk.empty();
+       chunk = chunk_by(issues, same_prio))
+#endif
+   {
+      const int px = chunk.front().priority;
       out << "<h2 id=\"Priority_" << px << "\">";
       if (px == 99) {
          out << "Not Prioritized";
@@ -726,103 +742,93 @@ sorted by priority.</p>
       else {
          out << "Priority " << px;
       }
-      out << " (" << (j-i) << " issues)</h2>\n";
-      print_table(out, i, j, section_db);
-      i = j;
+      out << " (" << chunk.size() << " issues)</h2>\n";
+      print_table(out, chunk, section_db);
    }
 
    print_file_trailer(out);
 }
 
-
-void report_generator::make_sort_by_status(std::vector<issue>& issues, fs::path const & filename) {
-   sort(issues.begin(), issues.end(), order_by_issue_number{});
-   stable_sort(issues.begin(), issues.end(), [](issue const & x, issue const & y) { return x.mod_date > y.mod_date; } );
-   stable_sort(issues.begin(), issues.end(), order_by_section{section_db});
-   stable_sort(issues.begin(), issues.end(), order_by_status{});
-
+void report_generator::make_sort_by_status_impl(std::span<issue> issues, fs::path const & filename, std::string title) {
    std::ofstream out{filename};
    if (!out)
      throw std::runtime_error{"Failed to open " + filename.string()};
-   print_file_header(out, "LWG Index by Status and Section");
-
-   out <<
-R"(<h1>C++ Standard Library Issues List (Revision )" << lwg_issues_xml.get_revision() << R"()</h1>
-<h1>Index by Status and Section</h1>
-<p>Reference )" << is14882_docno << R"(</p>
-<p>
-This document is the Index by Status and Section for the <a href="lwg-active.html">Library Active Issues List</a>,
-<a href="lwg-defects.html">Library Defect Reports and Accepted Issues</a>, and <a href="lwg-closed.html">Library Closed Issues List</a>.
-</p>
-
-)";
-   out << "<p>" << build_timestamp << "</p>";
-
-   for (auto i = issues.cbegin(), e = issues.cend(); i != e;) {
-      auto const & current_status = i->stat;
-      auto idattr = current_status;
-      std::replace(idattr.begin(), idattr.end(), ' ', '_');
-      auto j = std::find_if(i, e, [&](issue const & iss){ return iss.stat != current_status; } );
-      out << "<h2 id=\"" << idattr << "\">" << current_status << " (" << (j-i) << " issues)</h2>\n";
-      print_table(out, i, j, section_db);
-      i = j;
-   }
-
-   print_file_trailer(out);
-}
-
-
-void report_generator::make_sort_by_status_mod_date(std::vector<issue> & issues, fs::path const & filename) {
-   sort(issues.begin(), issues.end(), order_by_issue_number{});
-   stable_sort(issues.begin(), issues.end(), order_by_section{section_db});
-   stable_sort(issues.begin(), issues.end(), [](issue const & x, issue const & y) { return x.mod_date > y.mod_date; } );
-   stable_sort(issues.begin(), issues.end(), order_by_status{});
-
-   std::ofstream out{filename};
-   if (!out)
-     throw std::runtime_error{"Failed to open " + filename.string()};
-   print_file_header(out, "LWG Index by Status and Date", filename.filename().string(),
+   print_file_header(out, "LWG Index by " + title, filename.filename().string(),
          "C++ standard library issues list");
 
    out <<
 R"(<h1>C++ Standard Library Issues List (Revision )" << lwg_issues_xml.get_revision() << R"()</h1>
-<h1>Index by Status and Date</h1>
+<h1>Index by )" << title << R"(</h1>
 <p>Reference )" << is14882_docno << R"(</p>
 <p>
-This document is the Index by Status and Date for the <a href="lwg-active.html">Library Active Issues List</a>,
+This document is the Index by )" << title << R"( for the <a href="lwg-active.html">Library Active Issues List</a>,
 <a href="lwg-defects.html">Library Defect Reports and Accepted Issues</a>, and <a href="lwg-closed.html">Library Closed Issues List</a>.
 </p>
+
 )";
    out << "<p>" << build_timestamp << "</p>";
 
-   for (auto i = issues.cbegin(), e = issues.cend(); i != e;) {
-      std::string const & current_status = i->stat;
-      auto const idattr = spaces_to_underscores(current_status);
-      auto j = find_if(i, e, [&](issue const & iss){ return iss.stat != current_status; } );
-      out << "<h2 id=\"" << idattr << "\">" << current_status << " (" << (j-i) << " issues)</h2>\n";
-      print_table(out, i, j, section_db);
-      i = j;
+   auto same_status = [](const issue& lhs, const issue& rhs) {
+     return lhs.stat == rhs.stat;
+   };
+#ifdef __cpp_lib_ranges_chunk_by
+   for (auto chunk : issues | std::views::chunk_by(same_status))
+#else
+   for (auto chunk = chunk_by(issues, same_status); !chunk.empty();
+       chunk = chunk_by(issues, same_status))
+#endif
+   {
+      std::string current_status = chunk.front().stat;
+      auto idattr = spaces_to_underscores(current_status);
+      out << "<h2 id=\"" << idattr << "\">" << current_status
+        << " (" << chunk.size() << " issues)</h2>\n";
+      print_table(out, chunk, section_db);
    }
 
    print_file_trailer(out);
 }
 
 
-void report_generator::make_sort_by_section(std::vector<issue>& issues, fs::path const & filename, bool active_only) {
-   sort(issues.begin(), issues.end(), order_by_issue_number{});
-   stable_sort(issues.begin(), issues.end(), [](issue const & x, issue const & y) { return x.mod_date > y.mod_date; } );
-   stable_sort(issues.begin(), issues.end(), order_by_status{});
-   auto b = issues.begin();
-   auto e = issues.end();
-   if(active_only) {
-      b = std::upper_bound(b, e, "Ready", order_by_status{});
-      e = find_if(b, e, [](issue const & iss){ return !is_active(iss.stat); });
+void report_generator::make_sort_by_status(std::span<issue> issues, fs::path const & filename) {
+   auto proj = [this](const auto& i) {
+      return std::make_tuple(lwg::get_status_priority(i.stat), ordered_section(section_db, i), ordered_date(i), i.num);
+   };
+   std::ranges::sort(issues, {}, proj);
+   make_sort_by_status_impl(issues, filename, "Status and Section");
+}
+
+
+void report_generator::make_sort_by_status_mod_date(std::span<issue> issues, fs::path const & filename) {
+   auto proj = [this](const auto& i) {
+      return std::make_tuple(lwg::get_status_priority(i.stat), ordered_date(i), ordered_section(section_db, i), i.num);
+   };
+   std::ranges::sort(issues, {}, proj);
+   make_sort_by_status_impl(issues, filename, "Status and Date");
+}
+
+
+void report_generator::make_sort_by_section(std::span<issue> issues, fs::path const & filename, bool active_only) {
+   auto proj = [](const auto& i) {
+      return std::make_tuple(lwg::get_status_priority(i.stat), ordered_date(i), i.num);
+   };
+   std::ranges::sort(issues, {}, proj);
+
+   if (active_only) {
+      auto status_priority = [](const issue& i) { return lwg::get_status_priority(i.stat); };
+      // Find the first issue not in Voting, Immediate, or Ready status:
+      auto first = std::ranges::upper_bound(issues, lwg::get_status_priority("Ready"), {}, status_priority);
+      // Find the end of the active issues:
+      auto last = std::ranges::find_if_not(first, issues.end(), is_active, &issue::stat);
+      // Trim the span to only those active issues:
+      issues = std::span<issue>(first, last);
    }
-   stable_sort(b, e, order_by_section{section_db});
+   std::ranges::stable_sort(issues, order_by_section{section_db});
    std::set<issue, order_by_major_section> mjr_section_open{order_by_major_section{section_db}};
-   for (auto const & elem : issues ) {
-      if (is_active_not_ready(elem.stat)) {
-         mjr_section_open.insert(elem);
+   if (!active_only) {
+      for (auto const & elem : issues) {
+         if (is_active_not_ready(elem.stat)) {
+            mjr_section_open.insert(elem);
+         }
       }
    }
 
@@ -836,7 +842,7 @@ void report_generator::make_sort_by_section(std::vector<issue>& issues, fs::path
    out << "<h1>Index by Section</h1>\n";
    out << "<p>Reference " << is14882_docno << "</p>\n";
    out << "<p>This document is the Index by Section for the <a href=\"lwg-active.html\">Library Active Issues List</a>";
-   if(!active_only) {
+   if (!active_only) {
       out << ", <a href=\"lwg-defects.html\">Library Defect Reports and Accepted Issues</a>, and <a href=\"lwg-closed.html\">Library Closed Issues List</a>";
    }
    out << ".</p>\n";
@@ -853,43 +859,46 @@ void report_generator::make_sort_by_section(std::vector<issue>& issues, fs::path
    }
    out << "<p>" << build_timestamp << "</p>";
 
-   // Would prefer to use const_iterators from here, but oh well....
-   for (auto i = b; i != e;) {
-      assert(!i->tags.empty());
-      std::string current_prefix = section_db[i->tags[0]].prefix;
-      int current_num = section_db[i->tags[0]].num[0];
-      auto j = i;
-      for (; j != e; ++j) {
-        if (section_db[j->tags[0]].prefix != current_prefix
-           || section_db[j->tags[0]].num[0] != current_num) {
-             break;
-         }
-      }
-      std::string const msn{major_section(section_db[i->tags[0]])};
+   auto lookup_section = [this](const issue& i) {
+      return lookup_major_section(section_db, i);
+   };
+
+   auto same_section = [&](const issue& lhs, const issue& rhs) {
+     return lookup_section(lhs) == lookup_section(rhs);
+   };
+#ifdef __cpp_lib_ranges_chunk_by
+   for (auto chunk : issues | std::views::chunk_by(same_section))
+#else
+   for (auto chunk = chunk_by(issues, same_section); !chunk.empty();
+       chunk = chunk_by(issues, same_section))
+#endif
+   {
+      const issue& i = chunk.front();
+      major_section_key current = lookup_section(i);
+      std::string const msn = to_string(current);
       auto idattr = spaces_to_underscores(msn);
-      out << "<h2 id=\"Section_" << idattr << "\">Section " << msn << " (" << (j-i) << " issues)</h2>\n";
+      out << "<h2 id=\"Section_" << idattr << "\">Section " << msn
+         << " (" << chunk.size() << " issues)</h2>\n";
       if (active_only) {
          out << "<p><a href=\"lwg-index.html#Section_" << idattr << "\">(view all issues)</a></p>\n";
       }
-      else if (mjr_section_open.count(*i) > 0) {
+      else if (mjr_section_open.count(i) > 0) {
          out << "<p><a href=\"lwg-index-open.html#Section_" << idattr << "\">(view only non-Ready open issues)</a></p>\n";
       }
-
-      print_table(out, i, j, section_db, true);
-      i = j;
+      print_table(out, chunk, section_db, true);
    }
 
    print_file_trailer(out);
 }
 
-// Create individual HTML files for each issue, to make linking easier
-void report_generator::make_individual_issues(std::vector<issue> const & issues, fs::path const & path) {
-   assert(std::is_sorted(issues.begin(), issues.end(), order_by_issue_number{}));
+// Create individual HTML files for each issue, to make linking to a single issue easier.
+void report_generator::make_individual_issues(std::span<const issue> issues, fs::path const & path) {
+   assert(std::ranges::is_sorted(issues, {}, &issue::num));
    issue_set_by_first_tag const  all_issues{ issues.begin(), issues.end()} ;
    issue_set_by_status    const  issues_by_status{ issues.begin(), issues.end() };
 
    issue_set_by_first_tag active_issues;
-   for (auto const & elem : issues ) {
+   for (auto const & elem : issues) {
       if (lwg::is_active(elem.stat)) {
          active_issues.insert(elem);
       }
@@ -897,11 +906,11 @@ void report_generator::make_individual_issues(std::vector<issue> const & issues,
 
    for(auto & iss : issues){
       auto num = std::to_string(iss.num);
-      fs::path filename{path / (num + ".html")};
+      fs::path filename{path / ("issue" + num + ".html")};
       std::ofstream out{filename};
       if (!out)
          throw std::runtime_error{"Failed to open " + filename.string()};
-      print_file_header(out, std::string("Issue ") + num + ": " + lwg::strip_xml_elements(iss.title),
+      print_file_header(out, "Issue " + num + ": " + lwg::strip_xml_elements(iss.title),
             // XXX should we use e.g. lwg-active.html#num as the canonical URL for the issue?
             filename.filename().string(),
             "C++ library issue. Status: " + iss.stat);

@@ -13,7 +13,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <ctime>
+#include <chrono>
+#include <format>
+#include <cstring>
 
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -57,7 +59,7 @@ int main(int argc, char const * argv[]) {
 //       bool trace_on{false};  // Will pick this up from the command line later
 
       if (argc != 3 && argc != 4) {
-         std::cerr << "Must specify exactly one issue, followed by its new status, followed by an optional comment.\n";
+         std::cerr << "Must specify exactly one issue, followed by its new status, followed by an optional description.\n";
 //         for (auto arg : argv) {
          for (int i{0}; argc != i;  ++i) {
             char const * arg = argv[i];
@@ -71,7 +73,7 @@ int main(int argc, char const * argv[]) {
       std::string new_status{argv[2]};
       std::replace(new_status.begin(), new_status.end(), '_', ' ');  // simplifies unix shell scripting
 
-      std::string const comment = argc == 4 ? argv[3] : std::string{};
+      std::string const descr = argc == 4 ? argv[3] : std::string{};
 
       fs::path path = fs::current_path();
 
@@ -106,24 +108,48 @@ int main(int argc, char const * argv[]) {
          throw bad_issue_file{filename, "Corrupt status attribute"};
       }
       auto old_status = issue_data.substr(k, l-k);
+
+      // Do not allow an IS status for TS issues, and vice versa.
+      if (new_status.starts_with("C++") or new_status == "TS")
+      {
+         auto t1 = issue_data.find("<title>", l);
+         auto t2 = issue_data.find("</title>", l);
+         if (t1 == std::string::npos or t2 == std::string::npos or t2 < t1)
+            throw bad_issue_file{filename, "Cannot find <title> element"};
+         t1 += std::strlen("<title>");
+         std::string_view title(issue_data);
+         title = title.substr(t1, t2 - t1);
+         bool is_ts_issue = false;
+         if (title.starts_with('['))
+         {
+            auto end = title.find(']');
+            if (end != title.npos)
+            {
+               auto tag = title.substr(0, end);
+#ifdef __cpp_lib_string_contains
+               is_ts_issue = tag.contains(".ts");
+#else
+               is_ts_issue = tag.find(".ts") != tag.npos;
+#endif
+            }
+         }
+         if (is_ts_issue != (new_status == "TS"))
+            throw std::runtime_error{std::format("Refusing to set status \"{}\" for issue in {}:\n\t{}: {}", new_status, is_ts_issue ? "a TS" : "the IS", issue_number, title)};
+      }
+
       issue_data.replace(k, l-k, new_status);
 
-      if(lwg::filename_for_status(new_status) != lwg::filename_for_status(old_status)) {
+      if (lwg::filename_for_status(new_status) != lwg::filename_for_status(old_status)) {
          // when performing a major status change, record the date and change as a note
          auto eod = issue_data.find("</discussion>");
-         if(eod == std::string::npos) {
+         if (eod == std::string::npos) {
              throw bad_issue_file{filename, "Unable to find end of discussion"};
          }
-         std::time_t t{ std::time(nullptr) };
-         std::tm utc = *std::gmtime(&t);
-         char date[11]; // YYYY-mm-dd + null
-         if(std::strftime(&date[0], sizeof date, "%Y-%m-%d", &utc) != (sizeof date - 1))
-            throw std::logic_error("Datestamp size is borked");
          std::ostringstream note;
-         note << "<note>" << date;
-         if (comment.size()) {
-            note << ' ' << comment;
-            if (comment.back() != '.')
+         note << "<note>" << std::format("{:%Y-%m-%d}", std::chrono::system_clock::now());
+         if (descr.size()) {
+            note << ' ' << descr;
+            if (descr.back() != '.')
                note << '.';
          }
          note << " Status changed: " + old_status + " &rarr; " + new_status + ".</note>\n";

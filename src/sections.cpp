@@ -6,20 +6,6 @@
 #include <cctype>
 #include <utility>
 
-auto lwg::operator<(section_tag const & x, section_tag const & y) noexcept -> bool {
-   return (x.prefix < y.prefix) ?  true
-        : (y.prefix < x.prefix) ? false
-        : x.name < y.name;
-}
-
-auto lwg::operator==(section_tag const & x, section_tag const & y) noexcept -> bool {
-   return x.prefix == y.prefix && x.name == y.name;
-}
-
-auto lwg::operator!=(section_tag const & x, section_tag const & y) noexcept -> bool {
-   return !(x == y);
-}
-
 auto lwg::operator << (std::ostream& os, section_tag const & tag) -> std::ostream & {
   os << '[';
    if (!tag.prefix.empty()) { os << tag.prefix << "::"; }
@@ -32,23 +18,6 @@ std::string lwg::as_string(section_tag const & x)
   return x.prefix.empty()
     ? x.name
     : x.prefix + "::" + x.name;
-}
-
-auto lwg::operator < (section_num const & x, section_num const & y) noexcept -> bool {
-   // prefixes are unique, so there should be no need for a tiebreak.
-   return (x.prefix < y.prefix) ?  true
-        : (y.prefix < x.prefix) ? false
-        : x.num < y.num;
-}
-
-auto lwg::operator == (section_num const & x, section_num const & y) noexcept -> bool {
-   return (x.prefix != y.prefix)
-        ? false
-        : x.num == y.num;
-}
-
-auto lwg::operator != (section_num const & x, section_num const & y) noexcept -> bool {
-   return !(x == y);
 }
 
 auto lwg::operator >> (std::istream& is, section_num& sn) -> std::istream & {
@@ -97,7 +66,7 @@ auto lwg::operator << (std::ostream& os, section_num const & sn) -> std::ostream
 //   if (!sn.prefix.empty()) { os << sn.prefix << " "; }
 
    bool use_period{false};
-   for (auto sub : sn.num ) {
+   for (auto sub : sn.num) {
       if (std::exchange(use_period, true)) {
          os << '.';
       }
@@ -177,15 +146,31 @@ auto lwg::format_section_tag_as_link(section_map & section_db, section_tag const
    std::ostringstream o;
    const auto& num = section_db[tag];
    o << num << ' ';
-   if(num.num.empty() || num.num.front() == 99 || (!tag.prefix.empty() && tag.prefix != "networking.ts")) {
+   std::string url;
+   if  (!tag.prefix.empty()) {
+      std::string_view fund_ts = "fund.ts";
+      if (tag.prefix.starts_with(fund_ts)) {
+         std::string_view version = tag.prefix;
+         version.remove_prefix(fund_ts.size());
+         if (version.empty())
+            version = "v1";
+         else // Should be in the form "fund.ts.v2"
+            version.remove_prefix(1);
+         assert(version.size() == 2 && version[0] == 'v');
+         url = "https://cplusplus.github.io/fundamentals-ts/";
+         url += version;
+         url += ".html#";
+         url += tag.name;
+      }
+   }
+   else if (!num.num.empty() && num.num.front() != 99) {
+      url = "https://wg21.link/" + tag.name;
+   }
+
+   if (url.empty())
       o << tag;
-   }
-   else if(tag.prefix == "networking.ts") {
-      o << "<a href=\"https://timsong-cpp.github.io/cppwp/networking-ts/" << tag.name << "\">" << tag << "</a>";
-   }
-   else {
-      o << "<a href=\"https://timsong-cpp.github.io/cppwp/" << tag.name << "\">[" << tag.name << "]</a>";
-   }
+   else
+      o << "<a href=\"" << url << "\">" << tag << "</a>";
    return o.str();
 }
 
