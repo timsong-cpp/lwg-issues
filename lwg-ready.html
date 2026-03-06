@@ -62,7 +62,7 @@
 </tr>
 <tr>
 <td align="left">Date:</td>
-<td align="left">Revised 2026-2-22
+<td align="left">Revised 2026-Mar-06
 </td>
 </tr>
 <tr>
@@ -3827,6 +3827,206 @@ struct constant_wrapper : <i>cw-operators</i> {
 
 
 <hr>
+<h3 id="4510"><a href="4510">4510</a>. Ambiguity of <code class='backtick'>std::ranges::advance</code> and <code class='backtick'>std::ranges::next</code> when the difference type is also a sentinel type</h3>
+<p><b>Section:</b> 24.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>, 24.4.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.next">[range.iter.op.next]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2026-01-09 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.iter.op.advance">issues</a> in [range.iter.op.advance].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <code class='backtick'>ranges::advance</code> and <code class='backtick'>ranges::next</code> have <code class='backtick'>operator()</code> overloads that accept 
+<code class='backtick'>(iterator, sentinel)</code> and <code class='backtick'>(iterator, difference)</code>. However, when the difference type 
+of the iterator is also a sentinel type, there may be ambiguity in both overloads.
+<p/>
+E.g. the following example is rejected when compiling with libc++ or libstdc++ 
+(<a href="https://godbolt.org/z/z3rPEhjjs">demo</a>):
+</p>
+<blockquote><pre>
+#include &lt;cstddef&gt;
+#include &lt;iterator&gt;
+#include &lt;type_traits&gt;
+
+template&lt;class T&gt;
+struct FwdIter { // triggers ADL for T
+  FwdIter();
+
+  using value_type      = std::remove_cv_t&lt;T&gt;;
+  using difference_type = int;
+
+  T&amp; operator*() const;
+
+  FwdIter&amp; operator++();
+  FwdIter operator++(int);
+
+  friend bool operator==(const FwdIter&amp;, const FwdIter&amp;);
+};
+
+static_assert(std::forward_iterator&lt;FwdIter&lt;int&gt;&gt;);
+
+struct OmniConv {
+  OmniConv(const auto&amp;);
+  friend bool operator==(OmniConv, OmniConv); // found by ADL via things related to OmniConv
+};
+
+int main() {
+  FwdIter&lt;OmniConv&gt; it{};
+  std::ranges::advance(it, 0); // ambiguous
+  std::ranges::next(it, 0); // ambiguous
+}
+</pre></blockquote>
+<p>
+Perhaps it would be better to ensure that calling <code class='backtick'>ranges::advance</code> or <code class='backtick'>ranges::next</code> 
+with an iterator value and a value of the difference type is unambiguous. Note that 
+wrapping iterators that trigger ADL for the value type like the <code class='backtick'>FwdIter</code> in this example 
+are common in standard library implementations, so ambiguity can be easily raised from 
+containers with such <code class='backtick'>OmniConv</code> being their element type.
+</p>
+
+<p><i>[2026-02-20; Reflector poll.]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+The type in the example is basically a <code class='backtick'>std::any</code> that additionally type-erases
+equality. That causes a problem for templated iterators that have their
+value type's namespace as an associated namespace for ADL.
+</p>
+<p>
+Instead of allowing integers to be sentinels in general but just restricting
+them from being used with these overloads, we could just change the concept
+so that integers do not model <code class='backtick'>sentinel_for</code>.
+That's similar to what we did for <code class='backtick'>span</code>'s constructor which has a similar
+problem (though that one's more aggressive due to compatibility constraints).
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.2 <a href="https://timsong-cpp.github.io/cppwp/iterator.synopsis">[iterator.synopsis]</a>, header <code>&lt;iterator&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace std {
+  template&lt;class T&gt; using <i>with-reference</i> = T&amp;; <i>// exposition only</i>
+  template&lt;class T&gt; concept <i>can-reference</i>      <i>// exposition only</i>
+    = requires { typename <i>with-reference</i>&lt;T&gt;; };
+  template&lt;class T&gt; concept <i>dereferenceable</i>    <i>// exposition only</i>
+    = requires(T&amp; t) {
+      { *t } -&gt; <i>can-reference</i>; <i>// not required to be equality-preserving</i>
+    };
+  
+  <ins>template&lt;class T&gt;
+    constexpr bool <i>is-integer-like</i> = <i>see below</i>;           <i>// exposition only</i></ins>
+
+  [&hellip;]
+  <i>// 24.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.iter.ops">[range.iter.ops]</a>, range iterator operations</i>
+  namespace ranges {
+    <i>// 24.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a>,</i> ranges::advance
+    template&lt;input_or_output_iterator I&gt;
+      constexpr void advance(I&amp; i, iter_difference_t&lt;I&gt; n);                <i>// freestanding</i>
+    template&lt;input_or_output_iterator I, <del>sentinel_for&lt;I&gt;</del><ins>class</ins> S&gt;
+      <ins>requires (!<i>is-integer-like</i>&lt;S&gt;) &amp;&amp; sentinel_for&lt;S, I&gt;</ins>
+      constexpr void advance(I&amp; i, S bound);                               <i>// freestanding</i>
+    template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+      constexpr iter_difference_t&lt;I&gt; advance(I&amp; i, iter_difference_t&lt;I&gt; n, <i>// freestanding</i>
+                                             S bound);    
+   [&hellip;]
+    <i>// 24.4.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.next">[range.iter.op.next]</a>,</i> ranges::next
+    template&lt;input_or_output_iterator I&gt;
+      constexpr I next(I x);                                  <i>// freestanding</i>
+    template&lt;input_or_output_iterator I&gt;
+      constexpr I next(I x, iter_difference_t&lt;I&gt; n);          <i>// freestanding</i>
+    template&lt;input_or_output_iterator I, <del>sentinel_for&lt;I&gt;</del><ins>class</ins> S&gt;
+      <ins>requires (!<i>is-integer-like</i>&lt;S&gt;) &amp;&amp; sentinel_for&lt;S, I&gt;</ins>
+      constexpr I next(I x, S bound);                         <i>// freestanding</i>
+    template&lt;input_or_output_iterator I, sentinel_for&lt;I&gt; S&gt;
+      constexpr I next(I x, iter_difference_t&lt;I&gt; n, S bound); <i>// freestanding</i>    
+  }
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 24.4.4.2 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.advance">[range.iter.op.advance]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, <del>sentinel_for&lt;I&gt;</del><ins>class</ins> S&gt;
+  <ins>requires (!<i>is-integer-like</i>&lt;S&gt;) &amp;&amp; sentinel_for&lt;S, I&gt;</ins>
+  constexpr void advance(I&amp; i, S bound);
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 24.4.4.4 <a href="https://timsong-cpp.github.io/cppwp/range.iter.op.next">[range.iter.op.next]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;input_or_output_iterator I, <del>sentinel_for&lt;I&gt;</del><ins>class</ins> S&gt;
+  <ins>requires (!<i>is-integer-like</i>&lt;S&gt;) &amp;&amp; sentinel_for&lt;S, I&gt;</ins>
+  constexpr I next(I x, S bound);
+</pre>
+<blockquote>
+<p>
+-3- <i>Effects</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+</blockquote>
+
+<p><i>[2026-02-20; Jonathan provides new wording]</i></p>
+
+<p><i>[2026-02-27; LWG telecon: move to Ready]</i></p>
+
+
+
+
+<p id="res-4510"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 24.3.4.7 <a href="https://timsong-cpp.github.io/cppwp/iterator.concept.sentinel">[iterator.concept.sentinel]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class S, class I&gt;
+  concept sentinel_for =
+    semiregular&lt;S&gt; &amp;&amp;
+    <ins>!<i>is-integer-like</i>&lt;S&gt; &amp;&amp;</ins>
+    input_or_output_iterator&lt;I&gt; &amp;&amp;
+    weakly-equality-comparable-with&lt;S, I&gt;; <i>// see 18.5.4 <a href="https://timsong-cpp.github.io/cppwp/concept.equalitycomparable">[concept.equalitycomparable]</a></i>
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
 <h3 id="4511"><a href="4511">4511</a>. Inconsistency between the deduction guide of <code class='backtick'>std::mdspan</code> taking <code class='backtick'>(data_handle_type, mapping_type, accessor_type)</code> 
 and the corresponding constructor</h3>
 <p><b>Section:</b> 23.7.3.6.1 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.overview">[mdspan.mdspan.overview]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
@@ -4233,6 +4433,611 @@ sum use <code class='backtick'>Scalar</code>'s precision or greater.
 </blockquote>
 </li>
 
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4517"><a href="4517">4517</a>. <code class='backtick'>data_member_spec</code> should throw for <i>cv</i>-qualified unnamed bit-fields</h3>
+<p><b>Section:</b> 21.4.16 <a href="https://timsong-cpp.github.io/cppwp/meta.reflection.define.aggregate">[meta.reflection.define.aggregate]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Marek Polacek <b>Opened:</b> 2026-02-05 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.reflection.define.aggregate">issues</a> in [meta.reflection.define.aggregate].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://cplusplus.github.io/CWG/issues/cwg_defects.html#2229">DR 2229</a> 
+changed 11.4.10 <a href="https://timsong-cpp.github.io/cppwp/class.bit">[class.bit]</a> p2 to say: 
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+An unnamed bit-field shall not be declared with a <i>cv</i>-qualified type.
+</p>
+</blockquote>
+<p>
+It follows that <code class='backtick'>define_aggregate</code> should have the same limitation, and thus in:
+</p>
+<blockquote><pre>
+#include &lt;meta&gt;
+
+constexpr auto d1 = std::meta::data_member_spec(^^const int, { .bit_width = 1 });
+constexpr auto d2 = std::meta::data_member_spec(^^volatile int, { .bit_width = 1 });
+constexpr auto d3 = std::meta::data_member_spec(^^const volatile int, { .bit_width = 1 });
+</pre></blockquote>
+<p>
+all three <code class='backtick'>data_member_spec</code> should throw.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after 8 votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4517"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Modify 21.4.16 <a href="https://timsong-cpp.github.io/cppwp/meta.reflection.define.aggregate">[meta.reflection.define.aggregate]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+consteval info data_member_spec(info type, data_member_options options);
+</pre>
+<blockquote>
+<p>
+-4- <i>Returns</i>: [&hellip;]
+<p/>
+-5- <i>Throws</i>: <code class='backtick'>meta::exception</code> unless the following conditions are met:
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(5.1) &mdash; <code class='backtick'>dealias(type)</code> represents either an object type or a reference type;
+</p></li>
+<li><p>
+(5.2) &mdash; if <code class='backtick'>options.name</code> contains a value, then: [&hellip;]
+</p></li>
+<li><p>
+(5.3) &mdash; if <code class='backtick'>options.name</code> does not contain a value, then <code class='backtick'>options.bit_width</code> contains a value;
+</p></li>
+<li><p>
+(5.4) &mdash; if <code class='backtick'>options.bit_width</code> contains a value <code><i>V</i></code>, then
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(5.4.1) &mdash; <code class='backtick'>is_integral_type(type) || is_enum_type(type)</code> is <code class='backtick'>true</code>,
+</p></li>
+<li><p>
+(5.4.2) &mdash; <code class='backtick'>options.alignment</code> does not contain a value,
+</p></li>
+<li><p>
+(5.4.3) &mdash; <code class='backtick'>options.no_unique_address</code> is <code class='backtick'>false</code>,
+</p></li>
+<li><p>
+(5.4.4) &mdash; <code><i>V</i></code> is not negative, and
+</p></li>
+<li><p>
+(5.4.5) &mdash; if <code><i>V</i></code> equals <code class='backtick'>0</code>, then <code class='backtick'>options.name</code> does not contain a value; and
+</p></li>
+<li><p>
+<ins>(5.4.?) &mdash; if <code class='backtick'>options.name</code> does not contain a value, then 
+<code class='backtick'>is_const(type) || is_volatile(type)</code> is <code class='backtick'>false</code>; and</ins>
+</p></li>
+</ul>
+</li>
+<li><p>
+(5.5) &mdash; if <code class='backtick'>options.alignment</code> contains a value, it is an alignment value (6.8.3 <a href="https://timsong-cpp.github.io/cppwp/basic.align">[basic.align]</a>) 
+not less than <code class='backtick'>alignment_of(type)</code>.
+</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4522"><a href="4522">4522</a>. Clarify that <code class='backtick'>std::format</code> transcodes for <code class='backtick'>std::wformat_strings</code></h3>
+<p><b>Section:</b> 28.5.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2026-02-12 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#format.string.std">active issues</a> in [format.string.std].</p>
+<p><b>View all other</b> <a href="lwg-index.html#format.string.std">issues</a> in [format.string.std].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The current wording in 28.5.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> paragraph 20 suggests that 
+the expression <code class='backtick'>format(L"{}", 0)</code> could produce a garbage or malformed string:
+</p>
+<blockquote><p>
+[&hellip;] Formatting is done as if by calling <code class='backtick'>to_chars</code> as specified and copying the 
+output through the output iterator of the format context.
+</p></blockquote>
+<p>
+It is not stated that transcoding takes place, so a plausible interpretation is that the output of 
+<code class='backtick'>to_chars</code> is copied to the output iterator directly. If the ordinary literal encoding is, say, 
+EBCDIC and the wide literal encoding is, say, UTF-32, simply converting <code class='backtick'>char</code> to <code class='backtick'>wchar_t</code> is 
+not meaningful.
+<p/>
+During the 2026-02-11 SG16 Telecon, when reviewing <a href="https://wg21.link/P3876R0" title=" Extending <charconv> support to more character types">P3876R0</a>, SG16 examined this issue 
+and concluded that transcoding is intended here, affirmed by the author of <a href="https://wg21.link/P0645R10" title=" Text Formatting">P0645R10</a> 
+Text Formatting. An LWG issue was requested.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after eight votes in favour during reflector poll.
+</p>
+<p>
+<a href="https://wg21.link/P3876" title=" Extending <charconv> support to more character types">P3876</a> would address that, but we need to clarify the wording for existing standards.
+</p>
+
+
+<p id="res-4522"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 28.5.2.2 <a href="https://timsong-cpp.github.io/cppwp/format.string.std">[format.string.std]</a> as indicated:</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: 28.5.6.5 <a href="https://timsong-cpp.github.io/cppwp/format.string.escaped">[format.string.escaped]</a> paragraph 2 similarly references 
+the wide literal encoding (as the associated character encoding for <code class='backtick'>charT = wchar_t</code>. ]
+</p>
+</blockquote>
+
+<blockquote>
+<p>
+-20- The meaning of some non-string presentation types is defined in terms of a call to <code class='backtick'>to_chars</code>. 
+In such cases, let <code class='backtick'>[first, last)</code> be a range large enough to hold the <code class='backtick'>to_chars</code> output and value 
+be the formatting argument value. Formatting is done as if by calling <code class='backtick'>to_chars</code> as specified
+<ins>, transcoding the <code class='backtick'>to_chars</code> output to the wide literal encoding if <code class='backtick'>charT</code> is <code class='backtick'>wchar_t</code>,</ins> 
+and copying the output through the output iterator of the format context.
+<p/>
+[<i>Note 7</i>: Additional padding and adjustments are performed prior to copying the output through 
+the output iterator as specified by the format specifiers. &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4523"><a href="4523">4523</a>. <code class='backtick'>constant_wrapper</code> should assign to <code class='backtick'>value</code></h3>
+<p><b>Section:</b> 21.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.wrap.class">[const.wrap.class]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Tomasz Kamiński <b>Opened:</b> 2026-02-17 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#const.wrap.class">active issues</a> in [const.wrap.class].</p>
+<p><b>View all other</b> <a href="lwg-index.html#const.wrap.class">issues</a> in [const.wrap.class].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+During resolution of LWG <a href="4383" title="constant_wrapper's pseudo-mutators are underconstrained
+ (Status: WP)">4383</a> assignment operator of <code>constant_wrapper</code>,
+was changed to:
+</p>
+<blockquote><pre>
+template&lt;constexpr-param R&gt;
+  constexpr auto operator=(R) const noexcept -&gt; constant_wrapper&lt;X = R::value&gt; { return {}; }
+</pre></blockquote>
+<p>
+This is incorrect (and inconsistent with other operators), as we assign to
+<code class='backtick'>X</code> that is object of specialization of exposition only <code><i>cw-fixed-value</i></code>,
+instead of <code class='backtick'>value</code>.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after 9 votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4523"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a> with changes from <a href="4500" title="constant_wrapper wording problems (Status: Tentatively Ready)">4500</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 21.3.5 <a href="https://timsong-cpp.github.io/cppwp/const.wrap.class">[const.wrap.class]</a>,
+class template <code class='backtick'>constant_wrapper</code> synopsis, as indicated:</p>
+
+<blockquote><pre>
+template&lt;<i>cw-fixed-value</i> X, class&gt;
+struct constant_wrapper : <i>cw-operators</i> {
+  static constexpr const auto &amp; value = X.<i>data</i>;
+  using type = constant_wrapper;
+  using value_type = decltype(X)::<i>type</i>;
+
+  template&lt;<i>constexpr-param</i> R&gt;
+    constexpr auto operator=(R) const noexcept
+  -&gt; constant_wrapper&lt;(<ins>value</ins><del>X</del> = R::value)&gt; { return {}; }
+
+  constexpr operator decltype(auto)() const noexcept { return value; }
+};
+</pre></blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4525"><a href="4525">4525</a>. <code>task</code>'s <code>final_suspend</code> should <code>move</code> the result</h3>
+<p><b>Section:</b> 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2026-02-21 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#task.promise">active issues</a> in [task.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#task.promise">issues</a> in [task.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> p6.3 the <code class='backtick'>*result</code> is passed to
+<code class='backtick'>set_value</code> without <code class='backtick'>std::move</code>ing:
+<code>set_value(std::move(<i>RCVR</i>(*this)), *<i>result</i>)</code>.
+Once <code class='backtick'>set_value</code> is called the operation state object where
+<code><i>result</i></code> is stored just gets destroyed.  The
+second argument to <code class='backtick'>set_value</code> should be
+<code>std::move(*<i>result</i>)</code>.
+
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after 6 votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4525"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li><p>Change 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> p6.3 to <code>std::move</code> the
+<code>*<i>result</i></code>:</p>
+
+<blockquote><pre>
+auto final_suspend() noexcept;
+</pre>
+<p>
+-6- <i>Returns</i>: An awaitable object of unspecified type (7.6.2.4 <a href="https://timsong-cpp.github.io/cppwp/expr.await">[expr.await]</a>) whose member functions arrange for the completion of the asynchronous operation associated with <code><i>STATE</i>(*this)</code> by invoking:
+</p>
+<p>
+-6.1- -- <code>set_error(std::move(<i>RCVR</i>(*this)), std::move(e))</code> if <code><i>errors</i>.index()</code> is greater than zero and <code>e</code> is the value held by <code><i>errors</i></code>, otherwise
+</p>
+<p>
+-6.2- -- <code>set_value(std::move(<i>RCVR</i>(*this)))</code> if <code>is_void&lt;T&gt;</code> is <code>true</code>, and otherwise
+</p>
+<p>
+-6.3- -- <code>set_value(std::move(<i>RCVR</i>(*this)), <ins>std::move(</ins>*<i>result</i><ins>)</ins>)</code>.
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+<hr>
+<h3 id="4527"><a href="4527">4527</a>. <code>await_transform</code> needs to use <code>as_awaitable</code></h3>
+<p><b>Section:</b> 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2026-02-21 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#task.promise">active issues</a> in [task.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#task.promise">issues</a> in [task.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+In the <code>await_transform</code> overload for <code>change_coroutine_scheduler</code> the <code>return</code> statement repeats the function name instead of using <code>as_awaitable</code>. The <code>return</code> statement needs to be fixed. The change may be editorial.
+</p>
+<p>
+Note that <a href="https://wg21.link/P3941" title=" Scheduler Affinity">P3941</a> recommends removing <code>change_coroutine_scheduler</code> and the corresponding overload of <code>await_transform</code> entirely.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after 7 votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4527"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Change 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> p10 to use <code>as_awaitable</code> in the <i>Effects</i> clause:</p>
+<blockquote>
+<pre>
+template&lt;class Sch&gt;
+  auto await_transform(change_coroutine_scheduler&lt;Sch&gt; sch) noexcept;
+</pre>
+<p>-10- <i>Effects</i>: Equivalent to:</p>
+<pre>
+return <del>await_transform</del><ins>as_awaitable</ins>(just(exchange(<i>SCHED</i>(*this), scheduler_type(sch.scheduler))), *this);
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4528"><a href="4528">4528</a>. <code>task</code> needs <code>get_completion_signatures()</code></h3>
+<p><b>Section:</b> 33.13.6.2 <a href="https://timsong-cpp.github.io/cppwp/task.class">[task.class]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2026-02-21 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#task.class">active issues</a> in [task.class].</p>
+<p><b>View all other</b> <a href="lwg-index.html#task.class">issues</a> in [task.class].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The changes made by <a href="https://wg21.link/P3164" title=" Early Diagnostics for Sender Expressions">P3164</a> mean that it isn't sufficient
+to have a <code>completion_signatures</code> type alias in the
+<code>task</code> class. Instead, it needs to have a
+<code>static consteval get_completion_signatures()</code> member
+function that returns the completion signatures. Instead of defining
+a type alias, the function can return the same type.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after 6 votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4528"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Change the <code>task</code> synopsis in 33.13.6.2 <a href="https://timsong-cpp.github.io/cppwp/task.class">[task.class]</a> to not have a <code>completion_signatures</code> type alias, but instead have a  <code>static consteval get_completion_signatures()</code> member function that returns the completion signatures:
+</p>
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T = void, class Environment = env&lt;&gt;&gt;
+  class task {
+    // [task.state]
+    template&lt;receiver Rcvr&gt;
+      class state;                              // <i>exposition only</i>
+
+  public:
+    using sender_concept = sender_t;
+    <del>using completion_signatures = <i>see below</i>;</del>
+    using allocator_type = <i>see below</i>;
+    using scheduler_type = <i>see below</i>;
+    using stop_source_type = <i>see below</i>;
+    using stop_token_type = decltype(declval&lt;stop_source_type&gt;().get_token());
+    using error_types = <i>see below</i>;
+
+    // [task.promise]
+    class promise_type;
+
+    task(task&amp;&amp;) noexcept;
+    ~task();
+
+    <ins>template&lt;class Self, class... Env&gt;
+      static consteval auto get_completion_signatures();</ins>
+
+    template&lt;receiver Rcvr&gt;
+      state&lt;Rcvr&gt; connect(Rcvr&amp;&amp; rcvr) &amp;&amp;;
+
+  private:
+    coroutine_handle&lt;promise_type&gt; handle;      // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>
+Remove 33.13.6.2 <a href="https://timsong-cpp.github.io/cppwp/task.class">[task.class]</a> paragraph 4 (the specification moves to 33.13.6.3 <a href="https://timsong-cpp.github.io/cppwp/task.members">[task.members]</a>):
+</p>
+<blockquote>
+<p>
+<del>
+-4- The type alias <code>completion_signatures</code> is a specialization of <code>execution::completion_signatures</code> with the template arguments (in unspecified order):
+</del>
+</p>
+<p>
+<del>
+-4.1- --
+<code>set_value_t()</code> if <code>T</code> is <code>void</code>, and <code>set_value_t(T)</code> otherwise;
+</del>
+</p>
+<p>
+<del>
+-4.2- --
+template arguments of the specialization of <code>execution::completion_signatures</code> denoted by <code>error_types</code>; and
+</del>
+</p>
+<p>
+<del>
+-4.3- --
+<code>set_stopped_t()</code>.
+</del>
+</p>
+</blockquote>
+</li>
+<li>
+<p>
+Add a new paragraph to 33.13.6.3 <a href="https://timsong-cpp.github.io/cppwp/task.members">[task.members]</a> before the specification of the <code>connect</code> member function, with the specification of the new <code>get_completion_signatures</code> member function:
+</p>
+<blockquote>
+<ins>
+<pre>
+<ins>template&lt;class Self, class... Env&gt;
+  static consteval auto get_completion_signatures();</ins>
+</pre>
+</ins>
+<p>
+<ins>
+-?- Let the type <code>C</code> be a specialization of <code>execution::completion_signatures</code> with the template arguments (in unspecified order):
+</ins>
+</p>
+<p>
+<ins>
+-?.1- --
+<code>set_value_t()</code> if <code>T</code> is <code>void</code>, and <code>set_value_t(T)</code> otherwise;
+</ins>
+</p>
+<p>
+<ins>
+-?.2- --
+template arguments of the specialization of <code>execution::completion_signatures</code> denoted by <code>error_types</code>; and
+</ins>
+</p>
+<p>
+<ins>
+-?.3- --
+<code>set_stopped_t()</code>.
+</ins>
+</p>
+<p>
+<ins>
+-?- <i>Returns</i>: <code>C()</code>.
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+<hr>
+<h3 id="4529"><a href="4529">4529</a>. <code>task::promise_type::await_transform</code> declaration and definition mismatch</h3>
+<p><b>Section:</b> 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Tentatively Ready</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2026-02-21 <b>Last modified:</b> 2026-02-27</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#task.promise">active issues</a> in [task.promise].</p>
+<p><b>View all other</b> <a href="lwg-index.html#task.promise">issues</a> in [task.promise].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively Ready">Tentatively Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The declarations of <code>await_transform</code> mismatch between the 
+synopsis in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> and the definition in
+33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 9:
+</p>
+<pre>
+    template&lt;class A&gt;
+      auto await_transform(A&amp;&amp; a);
+    template&lt;class Sch&gt;
+      auto await_transform(change_coroutine_scheduler&lt;Sch&gt; sch);
+</pre>
+vs.
+<pre>
+    template&lt;sender Sender&gt;
+      auto await_transform(Sender&amp;&amp; sndr) noexcept;
+    template&lt;class Sch&gt;
+      auto await_transform(change_coroutine_scheduler&lt;Sch&gt; sch) noexcept;
+</pre>
+<p>
+The declaration should be fixed to match the definition.
+</p>
+
+<p><i>[2026-02-27; Reflector poll.]</i></p>
+
+<p>
+Set status to Tentatively Ready after six votes in favour during reflector poll.
+</p>
+
+
+<p id="res-4529"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>
+Change the declarations of <code>await_transform</code> in the synopsis of <code>promise_type</code> in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> to match the definition in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> p9 except for omitting the <code>noexcept</code> specifier:
+</p>
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  class task&lt;T, Environment&gt;::promise_type {
+  public:
+    ... 
+    template&lt;class E&gt;
+      unspecified yield_value(with_error&lt;E&gt; error);
+
+    template&lt;<del>class A</del><ins>sender Sender</ins>&gt;
+      auto await_transform(<del>A&amp;&amp; a</del><ins>Sender&amp;&amp; sndr</ins>);
+    template&lt;class Sch&gt;
+      auto await_transform(change_coroutine_scheduler&lt;Sch&gt; sch);
+
+    <i>unspecified</i> get_env() const noexcept;
+    ...
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>
+Remove the <code>noexcept</code> specifier from the declarations of <code>await_transform</code> in the definition of <code>promise_type</code> in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> p9:
+</p>
+<blockquote>
+<pre>
+template&lt;sender Sender&gt;
+  auto await_transform(Sender&amp;&amp; sndr) <del>noexcept</del>;
+</pre>
+<p>
+-9- <i>Returns</i>: If <code>same_as&lt;inline_scheduler, scheduler_type&gt;</code> is <code>true</code> returns <code>as_awaitable(std::forward&lt;Sender&gt;(sndr), *this);</code> otherwise returns <code>as_awaitable(affine_on(std::forward&lt;Sender&gt;(sndr), <i>SCHED</i>(*this)), *this)</code>.
+</p>
+<pre>
+template&lt;class Sch&gt;
+  auto await_transform(change_coroutine_scheduler&lt;Sch&gt; sch) <del>noexcept</del>;
+</pre>
+-10- <i>Effects</i>: Equivalent to:
+<pre>
+     return await_transform(just(exchange(<i>SCHED(*this)</i>, scheduler_type(sch.scheduler))), *this);
+</pre>
+</blockquote>
+</li>
 </ol>
 
 

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4536: Type traits have inconsistent interactions with immediate functions</title>
+<meta property="og:title" content="Issue 4536: Type traits have inconsistent interactions with immediate functions">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4536.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4536"><a href="lwg-active.html#4536">4536</a>. Type traits have inconsistent interactions with immediate functions</h3>
+<p><b>Section:</b> 21.3.6.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a>, 21.3.8 <a href="https://timsong-cpp.github.io/cppwp/meta.rel">[meta.rel]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Tim Song <b>Opened:</b> 2026-03-05 <b>Last modified:</b> 2026-03-06</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#meta.unary.prop">active issues</a> in [meta.unary.prop].</p>
+<p><b>View all other</b> <a href="lwg-index.html#meta.unary.prop">issues</a> in [meta.unary.prop].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Per 7.7 <a href="https://timsong-cpp.github.io/cppwp/expr.const">[expr.const]</a>p23, calls to immediate functions are not immediate invocations,
+and therefore are not required to result in constant expressions, if the call occurs in an unevaluated operand.
+Currently, some type traits (e.g. <code class='backtick'>is_assignable</code>, <code class='backtick'>is_invocable</code>) specify that the construct at issue is treated as an unevaluated operand,
+while others (<code class='backtick'>is_constructible</code>, <code class='backtick'>is_convertible</code>) do not. This seems like a bad state of affairs.
+<p/>
+The wording below makes everything unevaluated (and hence not check for constant-ness) to match the behavior of <code class='backtick'>requires</code> expressions
+(and implementations). This arguably makes the traits less useful in some contexts where false negatives are tolerable
+but false positives are not.
+</p>
+
+
+<p id="res-4536"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify  [tab:meta.unary.prop], Table 54 &mdash; Type property predicates as indicated:</p>
+
+<blockquote>
+<table border="1">
+<thead style="text-align: center">
+<tr><th>Template</th><th>Condition</th><th>Preconditions</th></tr>
+</thead>
+<tbody style="vertical-align: top">
+<tr><td>&hellip;</td><td>&hellip;</td><td>&hellip;</td></tr>
+<tr>
+<td>
+<pre><code>
+template&lt;class T, class U&gt;
+struct reference_constructs_from_temporary;</code></pre>
+</td>
+<td>
+<code class='backtick'>T</code> is a reference type, and the initialization <code>T t(<i>VAL</i>&lt;U&gt;);</code> is well-formed
+and binds <code class='backtick'>t</code> to a temporary object whose lifetime is extended (6.8.7 <a href="https://timsong-cpp.github.io/cppwp/class.temporary">[class.temporary]</a>).
+<ins>The full-expression of the variable initialization is treated as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>).</ins>
+Access checking is performed as if in a context unrelated to <code class='backtick'>T</code> and <code class='backtick'>U</code>. Only the validity of
+the immediate context of the variable initialization is considered.
+[<i>Note 5:</i> &hellip; &mdash; <i>end note</i>]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+<tr>
+<td>
+<pre><code>
+template&lt;class T, class U&gt;
+struct reference_converts_from_temporary;</code></pre>
+</td>
+<td>
+<code class='backtick'>T</code> is a reference type, and the initialization <code>T t = <i>VAL</i>&lt;U&gt;;</code> is well-formed
+and binds <code class='backtick'>t</code> to a temporary object whose lifetime is extended (6.8.7 <a href="https://timsong-cpp.github.io/cppwp/class.temporary">[class.temporary]</a>).
+<ins>The full-expression of the variable initialization is treated as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>).</ins>
+Access checking is performed as if in a context unrelated to <code class='backtick'>T</code> and <code class='backtick'>U</code>. Only the validity of
+the immediate context of the variable initialization is considered.
+[<i>Note 6:</i> &hellip; &mdash; <i>end note</i>]
+</td>
+<td>
+[&hellip;]
+</td>
+</tr>
+<tr><td>&hellip;</td><td>&hellip;</td><td>&hellip;</td></tr>
+</tbody>
+</table>
+</blockquote>
+</li>
+
+<li><p>Modify 21.3.6.4 <a href="https://timsong-cpp.github.io/cppwp/meta.unary.prop">[meta.unary.prop]</a> p9 as indicated:</p>
+<blockquote>
+<p> -9- The predicate condition for a template specialization <code>is_constructible&lt;T, Args...&gt;</code> shall be satisfied
+if and only if the following variable definition would be well-formed for some invented variable <code class='backtick'>t</code>:
+</p>
+<blockquote>
+<pre>
+T t(declval&lt;Args&gt;()...);
+</pre>
+</blockquote>
+<p>
+[<i>Note 7:</i> &hellip; &mdash; <i>end note</i>]
+<p/>
+<ins>The full-expression of the variable initialization is treated as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>).</ins>
+Access checking is performed as if in a context unrelated to <code class='backtick'>T</code> and any of the <code class='backtick'>Args</code>.
+Only the validity of the immediate context of the variable initialization is considered.
+<p/>
+[<i>Note 8:</i> &hellip; &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+
+
+<li><p>Modify 21.3.8 <a href="https://timsong-cpp.github.io/cppwp/meta.rel">[meta.rel]</a> p6 as indicated:</p>
+<blockquote>
+<p>-9- The predicate condition for a template specialization <code>is_convertible&lt;From, To&gt;</code> shall be satisfied
+if and only if the return <del>expression</del><ins>statement (8.8.4 <a href="https://timsong-cpp.github.io/cppwp/stmt.return">[stmt.return]</a>)</ins>
+in the following code would be well-formed,
+including any implicit conversions to the return type of the function:
+</p>
+<blockquote>
+<pre>
+To test() {
+  return declval&lt;From&gt;();
+}
+</pre>
+</blockquote>
+<p>
+[<i>Note 4:</i> &hellip; &mdash; <i>end note</i>]
+<p/>
+Access checking is performed in a context unrelated to <code class='backtick'>To</code> and <code class='backtick'>From</code>.
+<ins>The <i>expression</i> of the <code class='backtick'>return</code> statement
+(including initialization of the returned object or reference, if any)
+is treated as an unevaluated operand (7.2.3 <a href="https://timsong-cpp.github.io/cppwp/expr.context">[expr.context]</a>), and only the validity of its immediate context is considered.</ins>
+<del>Only the validity of the immediate context of the <i>expression</i> of the <code class='backtick'>return</code> statement (8.8.4 <a href="https://timsong-cpp.github.io/cppwp/stmt.return">[stmt.return]</a>)
+(including initialization of the returned object or reference) is considered.</del>
+<p/>
+[<i>Note 5:</i> &hellip; &mdash; <i>end note</i>]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

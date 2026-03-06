@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4532: Imprecise std::polymorphic wording seems to imply slicing</title>
+<meta property="og:title" content="Issue 4532: Imprecise std::polymorphic wording seems to imply slicing">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4532.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4532"><a href="lwg-active.html#4532">4532</a>. Imprecise <code class='backtick'>std::polymorphic</code> wording seems to imply slicing</h3>
+<p><b>Section:</b> 20.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.ctor">[polymorphic.ctor]</a>, 20.4.2.5 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.assign">[polymorphic.assign]</a>, 20.4.2.4 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.dtor">[polymorphic.dtor]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Fraser Gordon <b>Opened:</b> 2026-02-27 <b>Last modified:</b> 2026-03-04</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording for some member functions of <code class='backtick'>std::polymorphic</code> is imprecise, leading to plausible 
+interpretations that undermine the purpose of the type (i.e causing slicing on copy/move).
+<p/>
+The wording on most copy/assign methods includes a clause "of type <code class='backtick'>U</code>, where <code class='backtick'>U</code> is the type of 
+the owned object in <code class='backtick'>other</code>" but the copy/move assignment methods are missing this, which allows 
+a reading where <code>allocator_traits&lt;Allocator&gt;::construct</code> is called to construct 
+an instance of <code class='backtick'>value_type</code> instead of <code class='backtick'>U</code>.
+<p/>
+A similar reading of the destructor effects would cause <code class='backtick'>~value_type()</code> to be used instead of 
+<code class='backtick'>~U()</code>, so that should also be cleaned up.
+<p/>
+Finally, the last sentence of the effects of one of the constructors (20.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.ctor">[polymorphic.ctor]</a> p11) 
+doesn't make sense in context ("constructs an object of type <code class='backtick'>polymorphic</code>, considering the owned object 
+in <code class='backtick'>other</code> as an rvalue"). As written, this is creating a new polymorphic object and doing nothing 
+with it when the intended effect would be to construct a new owned object.
+</p>
+
+
+<p id="res-4532"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 20.4.2.3 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.ctor">[polymorphic.ctor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr polymorphic(allocator_arg_t, const Allocator&amp; a, polymorphic&amp;&amp; other)
+  noexcept(allocator_traits&lt;Allocator&gt;::is_always_equal::value);
+</pre>
+<blockquote>
+<p>
+-11- <i>Effects</i>: <code><i>alloc</i></code> is direct-non-list-initialized with <code class='backtick'>a</code>. 
+If <code class='backtick'>other</code> is valueless, <code class='backtick'>*this is valueless</code>. Otherwise, if <code><i>alloc</i> == other.<i>alloc</i></code> 
+is <code class='backtick'>true</code>, either constructs an object of type <code class='backtick'>polymorphic</code> that owns the
+owned object of <code class='backtick'>other</code>, making <code class='backtick'>other</code> valueless; or, owns an object of the same type constructed
+from the owned object of other considering that owned object as an rvalue. Otherwise, if 
+<code><i>alloc</i> != other.<i>alloc</i></code> is <code class='backtick'>true</code>, constructs an <del>object of type <code class='backtick'>polymorphic</code>, 
+considering</del><ins>owned object of type <code class='backtick'>U</code>, where <code class='backtick'>U</code> is the type of the owned object in 
+<code class='backtick'>other</code>, with</ins> the owned object in <code class='backtick'>other</code> as an rvalue, using the allocator <code><i>alloc</i></code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.4.2.5 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.assign">[polymorphic.assign]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr polymorphic&amp; operator=(const polymorphic&amp; other);
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <code class='backtick'>T</code> is a complete type.
+<p/>
+-2- <i>Effects</i>: If <code class='backtick'>addressof(other) == this</code> is <code class='backtick'>true</code>, there are no effects. Otherwise:
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(2.1) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(2.2) &mdash; If <code class='backtick'>other</code> is not valueless, a new owned object <ins>of type <code class='backtick'>U</code>, where <code class='backtick'>U</code> is the type 
+of the owned object in other,</ins> is constructed in <code class='backtick'>*this</code> using 
+<code>allocator_traits&lt;Allocator&gt;::construct</code> with the owned object from <code class='backtick'>other</code> as the 
+argument, using either the allocator in <code class='backtick'>*this</code> or the allocator in <code class='backtick'>other</code> if the allocator needs 
+updating.
+</p></li>
+<li><p>
+(2.3) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(2.4) &mdash; [&hellip;]
+</p></li>
+</ul>
+</blockquote>
+<pre>
+constexpr polymorphic&amp; operator=(polymorphic&amp;&amp; other)
+  noexcept(allocator_traits&lt;Allocator&gt;::propagate_on_container_move_assignment::value ||
+           allocator_traits&lt;Allocator&gt;::is_always_equal::value);
+</pre>
+<blockquote>
+<p>
+-5- <i>Mandates</i>: If <code>allocator_traits&lt;Allocator&gt;::propagate_on_container_move_assignment::value</code>
+is <code class='backtick'>false</code> and <code>allocator_traits&lt;Allocator&gt;::is_always_equal::value</code> is <code class='backtick'>false</code>, <code class='backtick'>T</code> 
+is a complete type.
+<p/>
+-6- <i>Effects</i>: If <code class='backtick'>addressof(other) == this</code> is <code class='backtick'>true</code>, there are no effects. Otherwise:
+</p>
+<ul style="list-style-type: none">
+<li><p>
+(6.1) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(6.2) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(6.3) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(6.4) &mdash; Otherwise, constructs a new owned object <ins>of type <code class='backtick'>U</code>, where <code class='backtick'>U</code> is the type of the 
+owned object in <code class='backtick'>other</code>,</ins> with the owned object of <code class='backtick'>other</code> as the argument as an rvalue, 
+using the allocator in <code class='backtick'>*this</code>.
+</p></li>
+<li><p>
+(6.5) &mdash; [&hellip;]
+</p></li>
+<li><p>
+(6.6) &mdash; [&hellip;]
+</p></li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 20.4.2.4 <a href="https://timsong-cpp.github.io/cppwp/polymorphic.dtor">[polymorphic.dtor]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr ~polymorphic();
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <code class='backtick'>T</code> is a complete type.
+<p/>
+-2- <i>Effects</i>: If <code class='backtick'>*this</code> is not valueless, <del>destroys the owned object using 
+<code>allocator_traits&lt;Allocator&gt;::destroy and</code></del><ins>calls 
+<code>allocator_traits&lt;Allocator&gt;::destroy(p)</code>, where <code class='backtick'>p</code> is a pointer of type 
+<code class='backtick'>U*</code> to the owned object and <code class='backtick'>U</code> is the type of the owned object;</ins> then the storage 
+is deallocated.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
