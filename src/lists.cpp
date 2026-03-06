@@ -410,9 +410,6 @@ void format_issue_as_html(lwg::issue & is,
                }
                else {
                   r = make_html_anchor(*n);
-                  r += "<sup><a href=\"https://cplusplus.github.io/LWG/issue";
-                  r += std::to_string(num);
-                  r += "\" title=\"Latest snapshot\">(i)</a></sup>";
                }
 
                j -= i - 1;
@@ -760,6 +757,7 @@ int main(int argc, char* argv[]) {
 
 
       lwg::report_generator generator{lwg_issues_xml, metadata.section_db};
+      generator.set_timestamp_from_issues(issues);
 
 
       // issues must be sorted by number before making the mailing list documents

@@ -88,7 +88,7 @@ auto lwg::read_section_db(std::istream & infile) -> section_map {
       std::string line;
       getline(infile, line);
       if (!line.empty()) {
-         // get [x.x....] symbolic tag 
+         // get [x.x....] symbolic tag
          assert(line.back() == ']');
          auto p = line.rfind('[');
          assert(p != std::string::npos);
@@ -162,9 +162,12 @@ auto lwg::format_section_tag_as_link(section_map & section_db, section_tag const
          url += ".html#";
          url += tag.name;
       }
+      else if(tag.prefix == "networking.ts") {
+         url = "https://timsong-cpp.github.io/cppwp/networking-ts/" + tag.name;
+      }
    }
    else if (!num.num.empty() && num.num.front() != 99) {
-      url = "https://wg21.link/" + tag.name;
+      url = "https://timsong-cpp.github.io/cppwp/" + tag.name;
    }
 
    if (url.empty())
@@ -173,4 +176,3 @@ auto lwg::format_section_tag_as_link(section_map & section_db, section_tag const
       o << "<a href=\"" << url << "\">" << tag << "</a>";
    return o.str();
 }
-

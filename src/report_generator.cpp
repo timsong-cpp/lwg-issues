@@ -39,7 +39,7 @@ auto const timestamp = [] {
 
 // global data - would like to do something about that.
 std::string const build_date{std::format("{:%F}", timestamp)};
-std::string const build_timestamp{std::format("Revised {} at {:%T} UTC\n", build_date, timestamp)};
+static std::string build_timestamp;
 
 std::string const maintainer_email{"lwgchair@gmail.com"};
 
@@ -170,7 +170,7 @@ R"(<!DOCTYPE html>
       out << R"(
 <meta property="og:title" content=")" << lwg::replace_reserved_char(title, '"', "&quot;") << R"(">
 <meta property="og:description" content=")" << lwg::replace_reserved_char(desc, '"', "&quot;") << R"(">
-<meta property="og:url" content="https://cplusplus.github.io/LWG/)" << url_filename << R"(">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/)" << url_filename << R"(">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
 <meta property="og:image:alt" content="C++ logo">)";
@@ -261,9 +261,7 @@ R"(<table class="issues-index">
       out << "<tr>\n";
 
       // Number
-      out << "<td id=\"" << i.num << "\">" << make_html_anchor(i)
-          << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << i.num
-          << "\">(i)</a></sup></td>\n";
+      out << "<td id=\"" << i.num << "\">" << make_html_anchor(i) << "</td>\n";
 
       // Status
       const auto status_idattr = spaces_to_underscores(std::string(lwg::remove_qualifier(i.stat)));
@@ -325,8 +323,7 @@ void print_issue(std::ostream & out, lwg::issue const & iss, lwg::section_map & 
          // When printing for the list, also emit an absolute link to the individual file.
          // Absolute link so that copying only the big lists elsewhere doesn't result in broken links.
          if (type == print_issue_type::in_list) {
-              out << "<h3 id=\"" << iss.num << "\"><a href=\"#" << iss.num << "\">" << iss.num << "</a>";
-              out << "<sup><a href=\"https://cplusplus.github.io/LWG/issue" << iss.num << "\">(i)</a></sup>";
+              out << "<h3 id=\"" << iss.num << "\"><a href=\"" << iss.num << "\">" << iss.num << "</a>";
          }
          else {
               out << "<p><em>This page is a snapshot from the LWG issues list, see the "
@@ -906,7 +903,7 @@ void report_generator::make_individual_issues(std::span<const issue> issues, fs:
 
    for(auto & iss : issues){
       auto num = std::to_string(iss.num);
-      fs::path filename{path / ("issue" + num + ".html")};
+      fs::path filename{path / (num + ".html")};
       std::ofstream out{filename};
       if (!out)
          throw std::runtime_error{"Failed to open " + filename.string()};
@@ -918,4 +915,12 @@ void report_generator::make_individual_issues(std::span<const issue> issues, fs:
       print_file_trailer(out);
    }
 }
+
+void report_generator::set_timestamp_from_issues(std::vector<issue> const & issues){
+   auto max_date = std::ranges::max(issues | std::views::transform(&issue::mod_date));
+   std::ostringstream oss;
+   oss << "Revised " << max_date.year() << '-' << max_date.month() << '-' << max_date.day() << '\n';
+   build_timestamp = oss.str();
+}
+
 } // close namespace lwg

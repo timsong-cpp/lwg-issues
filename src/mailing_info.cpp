@@ -64,7 +64,7 @@ auto lwg::make_html_anchor(lwg::issue const & iss) -> std::string {
    // Attribute text is delimited with quotes so replace them with "&quot;".
    title = lwg::replace_reserved_char(std::move(title), '"', "&quot;");
 
-   return std::format("<a href=\"{0}#{1}\" title=\"{2} (Status: {3})\">{1}</a>",
+   return std::format("<a href=\"{1}\" title=\"{2} (Status: {3})\">{1}</a>",
        filename_for_status(iss.stat), num, title, iss.stat);
 }
 

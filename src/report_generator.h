@@ -61,6 +61,8 @@ struct report_generator {
 
    void make_individual_issues(std::span<const issue> issues, fs::path const & path);
 
+   static void set_timestamp_from_issues(std::vector<issue> const & issues);
+
 private:
    void make_sort_by_status_impl(std::span<issue> issues, fs::path const & filename, std::string title);
 
