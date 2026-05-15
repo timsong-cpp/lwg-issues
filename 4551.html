@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4551: Fix the customization domain of the on algorithm</title>
+<meta property="og:title" content="Issue 4551: Fix the customization domain of the on algorithm">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4551.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4551"><a href="lwg-active.html#4551">4551</a>. Fix the customization domain of the <code class='backtick'>on</code> algorithm</h3>
+<p><b>Section:</b> 33.9.12.8 <a href="https://timsong-cpp.github.io/cppwp/exec.on">[exec.on]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2026-03-23 <b>Last modified:</b> 2026-04-14</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+As currently specified, for the expression <code class='backtick'>on(sch, sndr)</code>, the starting domain is the receiver's 
+domain, and the (<code class='backtick'>set_value</code>) completion domain is <code class='backtick'>sndr</code>'s completion domain, given that it starts 
+on <code class='backtick'>sch</code>. Those are the two domains that will be used to find customizations of <code class='backtick'>on</code>, neither 
+of which is the domain of <code class='backtick'>sch</code>.
+<p/>
+Presumably, if a user wants to customize <code class='backtick'>on</code>, they would expect <code class='backtick'>on(sch, sndr)</code> to use the domain 
+of <code class='backtick'>sch</code> to find the customization. So there is a gap between what would be least surprising and 
+what is currently specified.
+<p/>
+In <a href="https://wg21.link/P3826R5" title=" Fix Sender Algorithm Customization">P3826R5</a>, we added a <code>get_completion_domain&lt;T&gt;</code> query where <code class='backtick'>T</code> could 
+be either a completion tag (<code class='backtick'>set_value_t</code>, et. al) or <code class='backtick'>void</code> (and defaults to <code class='backtick'>void</code>), where 
+<code>get_completion_domain&lt;void&gt;</code> defaults to <code>get_completion_domain&lt;set_value_t&gt;</code>.
+<p/>
+<code>get_completion_domain&lt;void&gt;(get_env(sndr), env)</code> is the domain that gets used by 
+<code class='backtick'>transform_sender</code> to find a <code class='backtick'>set_value</code> sender transform. In other words, 
+<code class='backtick'>transform_sender(sndr, env)</code> will, among other things, apply the following transform:
+</p>
+<blockquote><pre>
+auto sndr2 = get_completion_domain&lt;&gt;(get_env(sndr), env)
+                .transform_sender(set_value, forward&lt;Sndr&gt;(sndr), env);
+</pre></blockquote>
+<p>
+We can use this to query to make <code class='backtick'>transform_sender</code> use the domain of <code class='backtick'>sch</code> to find a customization 
+of <code class='backtick'>on(sch, sndr)</code>.
+</p>
+
+
+<p id="res-4551"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 33.9.12.8 <a href="https://timsong-cpp.github.io/cppwp/exec.on">[exec.on]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-9- Let <code class='backtick'>out_sndr</code> be a subexpression denoting a sender returned from <code class='backtick'>on(sch, sndr)</code> or one equal to such, 
+and let <code class='backtick'>OutSndr</code> be the type <code class='backtick'>decltype((out_sndr))</code>. <ins>For a pack of subexpressions <code class='backtick'>env</code>, 
+<code>get_completion_domain&lt;&gt;(get_env(out_sndr), env...)</code> is expression-equivalent to 
+<code>get_completion_domain&lt;set_value_t&gt;(sch, env...)</code>.</ins> Let <code class='backtick'>out_rcvr</code> be a subexpression 
+denoting a receiver that has an environment of type <code class='backtick'>Env</code> such that <code>sender_in&lt;OutSndr, Env&gt;</code> 
+is <code class='backtick'>true</code>. Let <code class='backtick'>op</code> be an lvalue referring to the operation state that results from connecting <code class='backtick'>out_sndr</code> 
+with <code class='backtick'>out_rcvr</code>. Calling <code class='backtick'>start(op)</code> shall [&hellip;]
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+</body>
+</html>

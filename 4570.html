@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4570: COMMON-DOMAIN should test for convertibility to default_domain</title>
+<meta property="og:title" content="Issue 4570: COMMON-DOMAIN should test for convertibility to default_domain">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4570.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4570"><a href="lwg-active.html#4570">4570</a>. <code><i>COMMON-DOMAIN</i></code> should test for convertibility to <code class='backtick'>default_domain</code></h3>
+<p><b>Section:</b> 33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2026-04-13 <b>Last modified:</b> 2026-04-17</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.snd.expos">issues</a> in [exec.snd.expos].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<a href="https://wg21.link/P3826R5" title=" Fix Sender Algorithm Customization">P3826R5</a> accepted at the Croydon meeting adds the following paragraph to 
+33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+For a pack of subexpressions <code class='backtick'>domains</code>, <code><i>COMMON-DOMAIN</i>(domains...)</code> is expression-equivalent 
+to <code>common_type_t&lt;decltype(auto(domains))...&gt;()</code> if that expression is well-formed, and 
+<code>indeterminate_domain&lt;Ds...&gt;()</code> otherwise, where <code class='backtick'>Ds</code> is the pack of types consisting of 
+<code class='backtick'>decltype(auto(domains))...</code> with duplicate types removed.
+</p></blockquote>
+<p>
+My intention with this paragraph was that two domains such as below would have a <code><i>COMMON-DOMAIN</i></code> 
+of <code class='backtick'>default_domain</code>:
+</p>
+<blockquote><pre>
+struct my_thread_pool_domain : std::execution::default_domain
+{};
+
+struct my_parallel_runtime_domain : std::execution::default_domain
+{};
+
+<i>using domain-t</i> = decltype(<i>COMMON-DOMAIN</i>(my_thread_pool_domain{}, my_parallel_runtime_domain{}));
+static_assert(std::same_as&lt;<i>domain-t</i>, default_domain>); // <span style="color:#C80000;font-weight:bold">FAILS</span>
+</pre></blockquote>
+<p>
+But that's not how <code class='backtick'>common_type_t</code> works. Even though both domains derive from <code class='backtick'>default_domain</code>, 
+they do not have a common type as determined by <code class='backtick'>common_type_t</code>.
+<p/>
+We can patch this up easily enough: if <code>common_type_t&lt;Domains...&gt;</code> is ill-formed, 
+we should check if <code>common_type_t&lt;default_domain, Domains...&gt;</code> is well-formed, this 
+will correctly handle the case when all the domains are convertible to <code class='backtick'>default_domain</code>.
+</p>
+
+
+<p id="res-4570"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a> after application of the wording added by <a href="https://wg21.link/P3826R5" title=" Fix Sender Algorithm Customization">P3826R5</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-6- For a pack of subexpressions <code class='backtick'>domains</code>, <code><i>COMMON-DOMAIN</i>(domains...)</code> is expression-equivalent to 
+<code>common_type_t&lt;decltype(auto(domains))...&gt;()</code> if that expression is 
+well-formed<del>,</del><ins>; otherwise, <code>common_type_t&lt;default_domain(), decltype(auto(domains))...&gt;()</code> 
+if that expression is well-formed;</ins> and <code>indeterminate_domain&lt;Ds...&gt;()</code> otherwise, where 
+<code class='backtick'>Ds</code> is the pack of types consisting of <code class='backtick'>decltype(auto(domains))...</code> with duplicate types removed.
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4547: sender-awaitable needs a deduction guide</title>
+<meta property="og:title" content="Issue 4547: sender-awaitable needs a deduction guide">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4547.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4547"><a href="lwg-active.html#4547">4547</a>. <code><i>sender-awaitable</i></code> needs a deduction guide</h3>
+<p><b>Section:</b> 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2026-03-19 <b>Last modified:</b> 2026-03-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#exec.as.awaitable">active issues</a> in [exec.as.awaitable].</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.as.awaitable">issues</a> in [exec.as.awaitable].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> p2 has the following class declaration for the exposition-only 
+<code><i>sender-awaitable</i></code> type:
+</p>
+<blockquote><pre>
+template&lt;class Sndr, class Promise&gt;
+class <i>sender-awaitable</i> {
+  struct <i>unit</i> {};                                             // <i>exposition only</i>
+  using <i>value-type</i> =                                          // <i>exposition only</i>
+    <i>single-sender-value-type</i>&lt;Sndr, env_of_t&lt;Promise&gt;&gt;;
+  using <i>result-type</i> =                                         // <i>exposition only</i>
+    conditional_t&lt;is_void_v&lt;<i>value-type</i>&gt;, <i>unit</i>, <i>value-type</i>&gt;;
+  struct <i>awaitable-receiver</i>;                                  // <i>exposition only</i>
+
+  variant&lt;monostate, <i>result-type</i>, exception_ptr&gt; <i>result</i>{};    // <i>exposition only</i>
+  connect_result_t&lt;Sndr, <i>awaitable-receiver</i>&gt; <i>state</i>;           // <i>exposition only</i>
+
+public:
+  <i>sender-awaitable</i>(Sndr&amp;&amp; sndr, Promise&amp; p);
+  static constexpr bool await_ready() noexcept { return false; }
+  void await_suspend(coroutine_handle&lt;Promise&gt;) noexcept { start(<i>state</i>); }
+  <i>value-type</i> await_resume();
+};
+</pre></blockquote>
+<p>
+In 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> p2, CTAD is used to deduce the template parameters 
+of <code><i>sender-awaitable</i></code> in the expressions <code><i>sender-awaitable</i>{<i>adapted-expr</i>, p}</code> 
+and <code><i>sender-awaitable</i>{expr, p}</code>.
+<p/>
+If <code class='backtick'>decltype(expr)</code> is a type <code>Expr&amp;</code> (i.e., <code class='backtick'>expr</code> is an lvalue subexpression), 
+then CTAD will deduce the type as <code><i>sender-awaitable</i>&lt;Expr, Promise&gt;</code> and the expression 
+<code><i>sender-awaitable</i>{expr, p}</code> will be ill-formed because it is trying to bind an lvalue 
+subexpression to an rvalue reference parameter.
+<p/>
+The intention was that the template parameter <code class='backtick'>Sndr</code> would be deduced preserving the <i>cv</i>- and 
+reference-qualification of the sender subexpression. In order to achieve that, we need to add a deduction 
+guide.
+</p>
+
+
+<p id="res-4547"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The type <code><i>sender-awaitable</i>&lt;Sndr, Promise&gt;</code> is equivalent to:
+</p>
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class Sndr, class Promise&gt;
+  class <i>sender-awaitable</i> {
+    struct <i>unit</i> {};                                             // <i>exposition only</i>
+    using <i>value-type</i> =                                          // <i>exposition only</i>
+      <i>single-sender-value-type</i>&lt;Sndr, env_of_t&lt;Promise&gt;&gt;;
+    using <i>result-type</i> =                                         // <i>exposition only</i>
+      conditional_t&lt;is_void_v&lt;<i>value-type</i>&gt;, <i>unit</i>, <i>value-type</i>&gt;;
+    struct <i>awaitable-receiver</i>;                                  // <i>exposition only</i>
+  
+    variant&lt;monostate, <i>result-type</i>, exception_ptr&gt; <i>result</i>{};    // <i>exposition only</i>
+    connect_result_t&lt;Sndr, <i>awaitable-receiver</i>&gt; <i>state</i>;           // <i>exposition only</i>
+  
+  public:
+    <i>sender-awaitable</i>(Sndr&amp;&amp; sndr, Promise&amp; p);
+    static constexpr bool await_ready() noexcept { return false; }
+    void await_suspend(coroutine_handle&lt;Promise&gt;) noexcept { start(<i>state</i>); }
+    <i>value-type</i> await_resume();
+  };
+  
+  <ins>template&lt;class Sndr, class Promise&gt;
+    <i>sender-awaitable</i>(Sndr&amp;&amp;, Promise&amp;) -&gt; <i>sender-awaitable</i>&lt;Sndr, Promise&gt;;</ins>
+}
+</pre>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

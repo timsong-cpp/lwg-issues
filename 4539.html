@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4539: Undefined behavior in std::bit_cast should be diagnosed during constant evaluation</title>
+<meta property="og:title" content="Issue 4539: Undefined behavior in std::bit_cast should be diagnosed during constant evaluation">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4539.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4539"><a href="lwg-active.html#4539">4539</a>. Undefined behavior in <code class='backtick'>std::bit_cast</code> should be diagnosed during constant evaluation</h3>
+<p><b>Section:</b> 22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2026-03-10 <b>Last modified:</b> 2026-04-13</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following example with undefined behavior, which assumes that <code class='backtick'>sizeof(int)</code> equals <code class='backtick'>4</code>:
+</p>
+<blockquote><pre>
+struct alignas(4) E { };
+constexpr auto x = std::bit_cast&lt;int&gt;(E{});
+</pre></blockquote>
+<p>
+The example compiles with MSVC without any error or warning, where <code class='backtick'>x</code> has the value <code class='backtick'>0</code>, 
+which is valid if the UB is library UB; other compilers reject it.
+<p/>
+22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a> paragraph 4, bullet 2 explicitly states:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Otherwise, if <code><i>b</i></code> is indeterminate, the behavior is undefined.
+</p>
+</blockquote>
+<p>
+The fact that undefined behavior is called out explicitly within library wording suggests that this is 
+"library UB", not "core UB" that would prevent the initializer from being a constant expression because 
+it violates the requirement of 7.7 <a href="https://timsong-cpp.github.io/cppwp/expr.const">[expr.const]</a> paragraph 21 bullet 2.3:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+no constituent value of scalar type is an indeterminate or erroneous value (6.8.5 <a href="https://timsong-cpp.github.io/cppwp/basic.indet">[basic.indet]</a>),
+</p>
+</blockquote>
+<p>
+Similarly, 22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a> paragraph 4 states that forming a value representation that is not 
+valid for the type is undefined, which may also be seen as "library UB".  This can occur in 
+<code>bit_cast&lt;bool&gt;(char{2})</code> if <code class='backtick'>2</code> is not a valid representation of <code class='backtick'>bool</code>.
+<p/>
+During the 2026-03-10 LEWG telecon discussing <a href="https://wg21.link/P3969R0" title=" Fixing std::bit_cast of types with padding bits">P3969R0</a>, LEWG polled whether this UB 
+should be diagnosed.
+</p>
+<blockquote>
+<p>
+POLL: The undefined behavior in <code class='backtick'>bit_cast</code> should be diagnosable during constexpr.<br/>
+Attendance: 19<br/>
+Authors' opinion: N/A<br/>
+Outcome: No objection to unanimous consent.
+</p>
+</blockquote>
+
+<p><i>[2026-04-13; Reflector poll.]</i></p>
+
+<p>
+Set priority to 3 after reflector poll.
+</p>
+<p>
+Concerns about requiring the compiler to understand the semantics of
+program-defined types.
+</p>
+
+
+<p id="res-4539"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 22.11.3 <a href="https://timsong-cpp.github.io/cppwp/bit.cast">[bit.cast]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class To, class From&gt;
+  constexpr To bit_cast(const From&amp; from) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: [&hellip;]
+<p/>
+-2- <i>Mandates</i>: Neither <code class='backtick'>To</code> nor <code class='backtick'>From</code> are consteval-only types (6.9.1 <a href="https://timsong-cpp.github.io/cppwp/basic.types.general">[basic.types.general]</a>).
+<p/>
+-3- <i>Constant When</i>: <code class='backtick'>To</code>, <code class='backtick'>From</code>, and the types of all subobjects of <code class='backtick'>To</code> and <code class='backtick'>From</code> 
+are types <code class='backtick'>T</code> such that: [&hellip;]
+<p/>
+-4- <i>Returns</i>: An object of type <code class='backtick'>To</code>. Implicitly creates objects nested within the result 
+(6.8.2 <a href="https://timsong-cpp.github.io/cppwp/intro.object">[intro.object]</a>). Each bit of the value representation of the result is equal to the 
+corresponding bit in the object representation of from. Padding bits of the result are unspecified. 
+For the result and each object created within it, if there is no value of the object's type corresponding 
+to the value representation produced, the behavior is undefined. If there are multiple such values, which 
+value is produced is unspecified. A bit in the value representation of the result is indeterminate 
+if it does not correspond to a bit in the value representation of from or corresponds to a bit for 
+which the smallest enclosing object is not within its lifetime or has an indeterminate value 
+(6.8.5 <a href="https://timsong-cpp.github.io/cppwp/basic.indet">[basic.indet]</a>). A bit in the value representation of the result is erroneous if it 
+corresponds to a bit for which the smallest enclosing object has an erroneous value. For each bit 
+<code><i>b</i></code> in the value representation of the result that is indeterminate or erroneous, 
+let <code><i>u</i></code> be the smallest object containing that bit enclosing <code><i>b</i></code>:
+<p/>
+[&hellip;]
+<p/>
+The result does not otherwise contain any indeterminate or erroneous values.
+<p/>
+<ins>-?- <i>Remarks</i>: A function call expression that has undefined or erroneous behavior as 
+described above is not a core constant expression.</ins>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

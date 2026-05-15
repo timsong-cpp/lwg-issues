@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4565: subrange should prevent slicing for contiguous iterators</title>
+<meta property="og:title" content="Issue 4565: subrange should prevent slicing for contiguous iterators">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4565.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4565"><a href="lwg-active.html#4565">4565</a>. <code>subrange</code> should prevent slicing for contiguous iterators</h3>
+<p><b>Section:</b> 25.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.general">[range.subrange.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2026-04-03 <b>Last modified:</b> 2026-04-04</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.subrange.general">active issues</a> in [range.subrange.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.subrange.general">issues</a> in [range.subrange.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, the <code>subrange</code> uses the following exposition-only concept:
+</p>
+<blockquote><pre>
+template&lt;class From, class To&gt;
+  concept <i>uses-nonqualification-pointer-conversion</i> =      // <i>exposition only</i>
+    is_pointer_v&lt;From&gt; &amp;&amp; is_pointer_v&lt;To&gt; &amp;&amp;
+    !convertible_to&lt;remove_pointer_t&lt;From&gt;(*)[], remove_pointer_t&lt;To&gt;(*)[]&gt;;
+</pre></blockquote>
+<p>
+to disallow derived to base conversions. However, this only applies to pointers.
+</p>
+<p>
+Given that <code>subrange</code> is intended to universally take any iterator-pair to 
+form a view, we may need to generally prevent this in the case of contiguous iterators 
+(<a href="https://godbolt.org/z/oPvvExxaT">demo</a>):
+</p>
+<blockquote><pre>
+struct Base {};
+struct Derived : Base {};
+ranges::subrange&lt;Derived*&gt; sd;
+ranges::subrange&lt;Base*&gt; sb = sd;                        // error
+ranges::subrange&lt;const Base*&gt; sb = views::as_const(sd); // <span style="color:#C80000;font-weight:bold">ok</span>
+</pre></blockquote>
+
+
+<p id="res-4565"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 25.5.4.1 <a href="https://timsong-cpp.github.io/cppwp/range.subrange.general">[range.subrange.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;class From, class To&gt;
+    concept <i>uses-nonqualification-pointer-conversion</i> =      // <i>exposition only</i>
+      <del>is_pointer_v</del><ins>contiguous_iterator</ins>&lt;From&gt; &amp;&amp; <del>is_pointer_v</del><ins>contiguous_iterator</ins>&lt;To&gt; &amp;&amp;
+      !convertible_to&lt;<del>remove_pointer_t</del><ins>remove_reference_t&lt;iter_reference_t</ins>&lt;From&gt;<ins>&gt;</ins>(*)[], 
+                      <del>remove_pointer_t</del><ins>remove_reference_t&lt;iter_reference_t</ins>&lt;To&gt;<ins>&gt;</ins>(*)[]&gt;;
+   [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

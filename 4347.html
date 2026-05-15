@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Issue 4347: task's stop source is always created</title>
 <meta property="og:title" content="Issue 4347: task's stop source is always created">
-<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:description" content="C++ library issue. Status: WP">
 <meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4347.html">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
@@ -61,15 +61,14 @@
 </head>
 <body>
 <hr>
-<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
-<h3 id="4347"><a href="lwg-active.html#4347">4347</a>. <code>task</code>'s stop source is always created</h3>
-<p><b>Section:</b> 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2025-09-01 <b>Last modified:</b> 2025-10-27</p>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="4347"><a href="lwg-defects.html#4347">4347</a>. <code>task</code>'s stop source is always created</h3>
+<p><b>Section:</b> 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Dietmar Kühl <b>Opened:</b> 2025-09-01 <b>Last modified:</b> 2026-03-31</p>
 <p><b>Priority: </b>2
 </p>
-<p><b>View other</b> <a href="lwg-index-open.html#task.promise">active issues</a> in [task.promise].</p>
 <p><b>View all other</b> <a href="lwg-index.html#task.promise">issues</a> in [task.promise].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
 <p><b>Discussion:</b></p>
 <b>Addresses <a href="https://github.com/cplusplus/nbballot/issues/957">US 257-382</a></b>
 <p>
@@ -100,10 +99,157 @@ it is only created when accessed.
 Set priority to 2 after reflector poll.
 </p>
 
+<p><i>[Croydon 2026-03-27; Status changed: New &rarr; Immediate.]</i></p>
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
+
 
 <p id="res-4347"><b>Proposed resolution:</b></p>
 <p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
 </p>
+
+<ol>
+<li>
+<p>
+Change the synopsis in 33.13.6.4 <a href="https://timsong-cpp.github.io/cppwp/task.state">[task.state]</a> to include an <code>optional&lt;stop_source_type&gt;</code> member
+and an exposition-only function to get a stop token:
+</p>
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  template&lt;receiver Rcvr&gt;
+  class task&lt;T, Environment&gt;::state {           // <i>exposition only</i>
+  public:
+    using operation_state_concept = operation_state_t;
+
+    template&lt;class R&gt;
+      state(coroutine_handle&lt;promise_type&gt; h, R&amp;&amp; rr);
+
+    ~state();
+
+    void start() &amp; noexcept;
+
+    <ins>stop_token_type <i>get-stop-token</i>(); // <i>exposition only</i></ins>
+
+  private:
+    using <i>own-env-t</i> = <i>see below</i>;                // <i>exposition only</i>
+    coroutine_handle&lt;promise_type&gt; <i>handle</i>;      // <i>exposition only</i>
+    remove_cvref_t&lt;Rcvr&gt;           <i>rcvr</i>;        // <i>exposition only</i>
+    <ins>optional&lt;stop_source_type&gt;     <i>source</i>;      // <i>exposition only</i></ins>
+    <i>own-env-t</i>                      <i>own-env</i>;     // <i>exposition only</i>
+    Environment                    <i>environment</i>; // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>
+In 33.13.6.4 <a href="https://timsong-cpp.github.io/cppwp/task.state">[task.state]</a> change paragraph 4 into two paragraphs:
+one for <code class='backtick'>start()</code> and one for <code><i>get-stop-token</i>()</code>
+such that the initialization of <code><i>source</i></code> is in
+the second paragraph:
+</p>
+<blockquote>
+<pre>
+void start() &amp; noexcept;
+</pre>
+<p>
+-4- <i>Effects</i>: Let <code><i>prom</i></code> be the object <code><i>handle</i>.promise()</code>. Associates <code><i>STATE</i>(<i>prom</i>)</code>, <code><i>RCVR</i>(<i>prom</i>)</code>, and <code><i>SCHED</i>(<i>prom</i>)</code> with *this as follows:
+</p>
+<p>
+-4.1- -- <code><i>STATE</i>(<i>prom</i>)</code> is <code>*this</code>.
+</p>
+<p>
+-4.2- -- <code><i>RCVR</i>(<i>prom</i>)</code> is <code><i>rcvr</i></code>.
+</p>
+<p>
+-4.3- -- <code><i>SCHED</i>(<i>prom</i>)</code> is the object initialized with <code>scheduler_type(get_scheduler(get_env(<i>rcvr</i>)))</code> if that expression is valid and <code>scheduler_type()</code> otherwise. If neither of these expressions is valid, the program is ill-formed.
+</p>
+<p>
+<del>Let <code>st</code> be <code>get_stop_token(get_env(<i>rcvr</i>))</code>. Initializes <code><i>prom</i>.<i>token</i></code> and <code><i>prom</i>.<i>source</i></code> such that</del>
+</p>
+<p>
+<del>-4.4- -- <code><i>prom</i>.token.stop_requested()</code> returns <code>st.stop_requested()</code></del>;
+</p>
+<p>
+<del>-4.5- -- <code><i>prom</i>.token.stop_possible()</code> returns <code>st.stop_possible()</code>; and</del>
+</p>
+<p>
+<del>-4.6- -- for types <code>Fn</code> and <code>Init</code> such that both <code>invocable&lt;Fn&gt;</code> and <code>constructible_from&lt;Fn, Init&gt; are modeled, </code>stop_token_type::callback_type&lt;Fn&gt; models <code><i>stoppable-callback-for</i>&lt;Fn, stop_token_type, Init&gt;</code>.</del>
+</p>
+<p>
+<ins>-5-</ins> After that invokes <code><i>handle</i>.resume()</code>.
+</p>
+<pre>
+<ins>stop_token_type <i>get-stop-token</i>();</ins>
+</pre>
+<p>
+<ins>-6- <i>Effects</i>: If <code>same_as&lt;decltype(declval&lt;stop_source_type&gt;().get_token()), decltype(get_stop_token(get_env(<i>rcvr</i>)))&gt;</code> is <code>true</code> returns <code>get_stop_token(get_env(<i>rcvr</i>))</code>.
+Otherwise, if <code><i>source</i>.has_value()</code> is <code>false</code>,
+initializes the contained value of <code><i>source</i></code> such that</ins>
+</p>
+<ul>
+<li><ins> -6.1- -- <code><i>source</i>-&gt;stop_requested()</code> returns <code>get_stop_token(get_env(<i>rcvr</i>))-&gt;stop_requested()</code>; and</ins></li>
+<li><ins> -6.2- -- <code><i>source</i>-&gt;stop_possible()</code> returns <code>get_stop_token(get_env(<i>rcvr</i>))-&gt;stop_possible()</code></ins></li>
+</ul>
+<p><ins> Finally, returns <code><i>source</i>-&gt;get_token()</code>.</ins></p>
+</blockquote>
+</li>
+<li>
+<p>
+Remove <code><i>token</i></code> and <code><i>source</i></code> from the synopsis of <code>promise_type</code> in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a>:
+</p>
+<blockquote>
+<pre>
+namespace std::execution {
+  template&lt;class T, class Environment&gt;
+  class task&lt;T, Environment&gt;::promise_type {
+  public:
+    ...
+
+  private:
+    using <i>error-variant</i> = <i>see below</i>;    // <i>exposition only</i>
+
+    allocator_type    <i>alloc</i>;            // <i>exposition only</i>
+    <del>stop_source_type  <i>source</i>;           // <i>exposition only</i></del>
+    <del>stop_token_type   <i>token</i>;            // <i>exposition only</i></del>
+    optional&lt;T&gt;       <i>result</i>;           // <i>exposition only</i>; present only if is_void_v&lt;T&gt; is false
+    error-variant     <i>errors</i>;           // <i>exposition only</i>
+  };
+}
+</pre>
+</blockquote>
+</li>
+<li>
+<p>
+Change the specification of <code>get_env</code> in 33.13.6.5 <a href="https://timsong-cpp.github.io/cppwp/task.promise">[task.promise]</a> paragraph 16.3 to use <code><i>STATE</i>(*this).get-stop-token()</code>:
+</p>
+<blockquote>
+<pre>
+<i>unspecified</i> get_env() const noexcept;
+</pre>
+<p>
+-16- <i>Returns</i>: An object <code>env</code> such that queries are forwarded as follows:
+</p>
+<p>
+-16.1- -- <code>env.query(get_scheduler)</code> returns <code>scheduler_type(<i>SCHED</i>(*this))</code>.
+</p>
+<p>
+-16.2- -- <code>env.query(get_allocator)</code> returns <code><i>alloc</i></code>.
+</p>
+<p>
+-16.3- -- <code>env.query(get_stop_token)</code> returns <del><code><i>token</i></code></del><ins><code><i>STATE</i>(*this).<i>get-stop-token</i>()</code></ins>.
+</p>
+<p>
+-16.4- -- For any other query <code>q</code> and arguments <code>a...</code> a call to <code>env.query(q, a...)</code> returns <code><i>STATE</i>(*this).<del>environment</del><ins><i>environment</i></ins>.query(q, a...)</code> if this expression is well-formed and <code>forwarding_query(q)</code> is well-formed and is <code>true</code>. Otherwise <code>env.query(q, a...)</code> is ill-formed.
+</p>
+</blockquote>
+</li>
+</ol>
 
 
 

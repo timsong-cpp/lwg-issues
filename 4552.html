@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4552: compare_exchange_weak writes a value on spurious failure, not memory contents</title>
+<meta property="og:title" content="Issue 4552: compare_exchange_weak writes a value on spurious failure, not memory contents">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4552.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="4552"><a href="lwg-defects.html#4552">4552</a>. <code class='backtick'>compare_exchange_weak</code> writes a value on spurious failure, not memory contents</h3>
+<p><b>Section:</b> 32.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a>, 32.5.8.2 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.operations">[atomics.types.operations]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2026-03-24 <b>Last modified:</b> 2026-03-31</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#atomics.ref.ops">issues</a> in [atomics.ref.ops].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+ [atomic.ref.ops] says:
+<blockquote>
+-27- <i>Remarks</i>:
+A weak compare-and-exchange operation may fail spuriously.
+That is, even when the contents of memory referred to by <code class='backtick'>expected</code> and <code class='backtick'>ptr</code>
+are equal, it may return <code class='backtick'>false</code> and store back to <code class='backtick'>expected</code>
+the same memory contents that were originally there.
+</blockquote>
+I think this is missing an update from <a href="https://wg21.link/P0528R3" title=" The Curious Case of Padding Bits, Featuring Atomic Compare-and-Exchange">P0528R3</a> which should
+have changed "the same memory contents" to something like "the same value".
+When the comparison succeeds but the weak CAS fails anyway,
+the bits of <code class='backtick'>exchange</code> are replaced by the bits copied from <code class='backtick'>*ptr</code>.
+Those bits might differ from the original bits of <code class='backtick'>expected</code> in their padding.
+</p>
+
+<p><i>[Croydon 2026-03-24; Set priority to 2 and send to SG1.]</i></p>
+
+
+<p><i>[Croydon 2026-03-27; SG1 approved the change.]</i></p>
+
+
+<p><i>[Croydon 2026-03-27; move to Immediate.]</i></p>
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
+
+
+<p id="res-4552"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 32.5.7.2 <a href="https://timsong-cpp.github.io/cppwp/atomics.ref.ops">[atomics.ref.ops]</a> as indicated:</p>
+<blockquote><pre>
+constexpr bool compare_exchange_weak(value_type&amp; expected, value_type desired,
+                                     memory_order order = memory_order::seq_cst) const noexcept;
+
+constexpr bool compare_exchange_strong(value_type&amp; expected, value_type desired,
+                                       memory_order order = memory_order::seq_cst) const noexcept;
+</pre>
+<blockquote>
+<p>-23- <i>Constraints</i>:
+<code>is_const_v&lt;T&gt;</code> is <code class='backtick'>false</code>.
+</p>
+<p>-24- <i>Preconditions</i>:
+<code class='backtick'>failure</code> is <code class='backtick'>memory_order::relaxed</code>, <code class='backtick'>memory_order::acquire</code>, or
+<code class='backtick'>memory_order::seq_cst</code>.
+</p>
+<p>-25- <i>Effects</i>:
+Retrieves the value in <code class='backtick'>expected</code>.
+It then atomically compares the value representation of the value referenced
+by <code class='backtick'>*ptr</code> for equality with that previously retrieved from <code class='backtick'>expected</code>,
+and if <code class='backtick'>true</code>, replaces the value referenced by <code class='backtick'>*ptr</code> with that in <code class='backtick'>desired</code>.
+If and only if the comparison is <code class='backtick'>true</code>, memory is affected according to the
+value of <code class='backtick'>success</code>, and if the comparison is <code class='backtick'>false</code>,
+memory is affected according to the value of <code class='backtick'>failure</code>.
+When only one <code class='backtick'>memory_order</code> argument is supplied,
+the value of <code class='backtick'>success</code> is <code class='backtick'>order</code>, and the value of <code class='backtick'>failure</code> is <code class='backtick'>order</code>
+except that a value of <code class='backtick'>memory_order::acq_rel</code> shall be replaced by
+the value <code class='backtick'>memory_order::acquire</code> and a value of <code class='backtick'>memory_order::release</code>
+shall be replaced by the value <code class='backtick'>memory_order::relaxed</code>.
+If and only if the comparison is <code class='backtick'>false</code> then, after the atomic operation,
+the value in <code class='backtick'>expected</code> is replaced by the value read from the value
+referenced by <code class='backtick'>*ptr</code> during the atomic comparison.
+If the operation returns <code class='backtick'>true</code>, these operations are atomic read-modify-write
+operations (6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a>) on the value referenced by <code class='backtick'>*ptr</code>.
+Otherwise, these operations are atomic load operations on that memory.
+</p>
+<p>-26- <i>Returns</i>: The result of the comparison.</p>
+<p>-27- <i>Remarks</i>:
+A weak compare-and-exchange operation may fail spuriously.
+That is, even when the <del>contents of memory</del> <ins>value representations</ins>
+referred to by <code class='backtick'>expected</code> and <code class='backtick'>ptr</code>
+<del>are</del> <ins>compare</ins> equal,
+it may return <code class='backtick'>false</code> and store back to <code class='backtick'>expected</code> the same
+<del>memory contents that were</del> <ins>value representation that was</ins>
+originally there.
+</p>
+<p>
+[<i>Note 2</i>:
+This spurious failure enables implementation of compare-and-exchange
+on a broader class of machines, e.g., load-locked store-conditional machines.
+A consequence of spurious failure is that nearly all uses of
+weak compare-and-exchange will be in a loop.
+When a compare-and-exchange is in a loop,
+the weak version will yield better performance on some platforms.
+When a weak compare-and-exchange would require a loop and a strong one would not,
+the strong one is preferable.
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 32.5.8.2 <a href="https://timsong-cpp.github.io/cppwp/atomics.types.operations">[atomics.types.operations]</a> as indicated:</p>
+<blockquote><pre>
+bool compare_exchange_weak(T&amp; expected, T desired,
+                           memory_order success, memory_order failure) volatile noexcept;
+constexpr bool compare_exchange_weak(T&amp; expected, T desired,
+                           memory_order success, memory_order failure) noexcept;
+bool compare_exchange_strong(T&amp; expected, T desired,
+                             memory_order success, memory_order failure) volatile noexcept;
+constexpr bool compare_exchange_strong(T&amp; expected, T desired,
+                             memory_order success, memory_order failure) noexcept;
+bool compare_exchange_weak(T&amp; expected, T desired,
+                           memory_order order = memory_order::seq_cst) volatile noexcept;
+constexpr bool compare_exchange_weak(T&amp; expected, T desired,
+                           memory_order order = memory_order::seq_cst) noexcept;
+bool compare_exchange_strong(T&amp; expected, T desired,
+                             memory_order order = memory_order::seq_cst) volatile noexcept;
+constexpr bool compare_exchange_strong(T&amp; expected, T desired,
+                             memory_order order = memory_order::seq_cst) noexcept;
+</pre>
+<blockquote>
+<p>-21- <i>Constraints</i>:
+For the <code class='backtick'>volatile</code> overload of this function, <code class='backtick'>is_always_lock_free</code> is <code class='backtick'>true</code>. 
+</p>
+<p>-22- <i>Preconditions</i>:
+<code class='backtick'>failure</code> is <code class='backtick'>memory_order::relaxed</code>, <code class='backtick'>memory_order::acquire</code>, or
+<code class='backtick'>memory_order::seq_cst</code>.
+</p>
+<p>-25- <i>Effects</i>:
+Retrieves the value in <code class='backtick'>expected</code>.
+It then atomically compares the value representation of the value pointed to
+by <code class='backtick'>this</code> for equality with that previously retrieved from <code class='backtick'>expected</code>,
+and if <code class='backtick'>true</code>, replaces the value pointed to by <code class='backtick'>this</code> with that in <code class='backtick'>desired</code>.
+If and only if the comparison is <code class='backtick'>true</code>, memory is affected according to the
+value of <code class='backtick'>success</code>, and if the comparison is <code class='backtick'>false</code>,
+memory is affected according to the value of <code class='backtick'>failure</code>.
+When only one <code class='backtick'>memory_order</code> argument is supplied,
+the value of <code class='backtick'>success</code> is <code class='backtick'>order</code>, and the value of <code class='backtick'>failure</code> is <code class='backtick'>order</code>
+except that a value of <code class='backtick'>memory_order::acq_rel</code> shall be replaced by
+the value <code class='backtick'>memory_order::acquire</code> and a value of <code class='backtick'>memory_order::release</code>
+shall be replaced by the value <code class='backtick'>memory_order::relaxed</code>.
+If and only if the comparison is <code class='backtick'>false</code> then, after the atomic operation,
+the value in <code class='backtick'>expected</code> is replaced by the value read from the value
+pointed to by <code class='backtick'>this</code> during the atomic comparison.
+If the operation returns <code class='backtick'>true</code>, these operations are atomic read-modify-write
+operations
+(<del>6.10.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a></del>
+<ins>6.10.2.2 <a href="https://timsong-cpp.github.io/cppwp/intro.races">[intro.races]</a></ins>)
+on the value pointed to by <code class='backtick'>this</code>.
+Otherwise, these operations are atomic load operations on that memory.
+</p>
+<p>-24- <i>Returns</i>: The result of the comparison.</p>
+<p>-25- [<i>Note 4</i>:
+For example, the effect of <code class='backtick'>compare_exchange_strong</code> on objects without
+padding bits (6.9.1 <a href="https://timsong-cpp.github.io/cppwp/basic.types.general">[basic.types.general]</a>) is
+<blockquote><pre>if (memcmp(this, &amp;expected, sizeof(*this)) == 0)
+  memcpy(this, &amp;desired, sizeof(*this));
+else
+  memcpy(&amp;expected, this, sizeof(*this));
+</pre></blockquote>
+&mdash; <i>end note</i>]
+</p>
+<p>[<i>Example 1</i>:
+The expected use of the compare-and-exchange operations is as follows.
+The compare-and-exchange operations will update expected when another iteration of the loop is needed.
+<blockquote><pre>expected = current.load();
+do {
+  desired = function(expected);
+} while (!current.compare_exchange_weak(expected, desired));
+</pre></blockquote>
+&mdash; <i>end example</i>]
+</p>
+<p>[<i>Example 2</i>:
+Because the expected value is updated only on failure,
+code releasing the memory containing the expected value on success will work.
+For example, list head insertion will act atomically
+and would not introduce a data race in the following code:
+<blockquote><pre>do {
+  p->next = head;                                   <i>// make new list node point to the current head</i>
+} while (!head.compare_exchange_weak(p->next, p));  <i>// try to insert</i>
+</pre></blockquote>
+&mdash; <i>end example</i>]
+</p>
+<p>-26- <ins><i>Recommended practice</i>:</ins>
+Implementations should ensure that weak compare-and-exchange operations
+do not consistently return false unless either the atomic object has value
+different from <code class='backtick'>expected</code> or there are concurrent modifications
+to the atomic object.
+</p>
+<p>-27- <i>Remarks</i>:
+A weak compare-and-exchange operation may fail spuriously.
+That is, even when the <del>contents of memory</del> <ins>value representations</ins>
+referred to by <code class='backtick'>expected</code> and <code class='backtick'>this</code>
+<del>are</del> <ins>compare</ins> equal,
+it may return <code class='backtick'>false</code> and store back to <code class='backtick'>expected</code> the same
+<del>memory contents that were</del> <ins>value representation that was</ins>
+originally there.
+</p>
+<p>
+[<i>Note 2</i>:
+This spurious failure enables implementation of compare-and-exchange
+on a broader class of machines, e.g., load-locked store-conditional machines.
+A consequence of spurious failure is that nearly all uses of
+weak compare-and-exchange will be in a loop.
+When a compare-and-exchange is in a loop,
+the weak version will yield better performance on some platforms.
+When a weak compare-and-exchange would require a loop and a strong one would not,
+the strong one is preferable.
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+
+
+</body>
+</html>

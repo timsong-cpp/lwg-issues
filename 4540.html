@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4540: future-senders returned from spawn_future do not forward stop requests to spawned work</title>
+<meta property="og:title" content="Issue 4540: future-senders returned from spawn_future do not forward stop requests to spawned work">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4540.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="4540"><a href="lwg-defects.html#4540">4540</a>. <code><i>future-sender</i></code>s returned from <code class='backtick'>spawn_future</code> do not forward stop requests to spawned work</h3>
+<p><b>Section:</b> 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Ian Petersen <b>Opened:</b> 2026-03-10 <b>Last modified:</b> 2026-03-31</p>
+<p><b>Priority: </b>1
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#exec.spawn.future">issues</a> in [exec.spawn.future].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+The wording that describes <code class='backtick'>spawn_future</code> (specifically 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> paragraph 13 and paragraph 14) 
+does not capture a critical element of the design intent originally expressed in <a href="https://wg21.link/P3149R11" title=" async_scope — Creating scopes for non-sequential concurrency">P3149R11</a>, section 5.5.
+<p/>
+<a href="https://wg21.link/P3149R11" title=" async_scope — Creating scopes for non-sequential concurrency">P3149R11</a>, section 5.5 reads in part,
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+When <code class='backtick'>fsop</code> is started, if <code class='backtick'>fsop</code> receives a stop request from its receiver before the eagerly-started work has 
+completed then an attempt is made to abandon the eagerly-started work. Note that it's possible for the eagerly-started 
+work to complete while <code class='backtick'>fsop</code> is requesting stop; once the stop request has been delivered, either <code class='backtick'>fsop</code> completes with 
+the result of the eagerly-started work if it's ready, or it completes with <code class='backtick'>set_stopped()</code> without waiting for 
+the eagerly-started work to complete.
+</p>
+</blockquote>
+<p>
+In the foregoing, <code class='backtick'>fsop</code> is the name of an operation state constructed by connecting a <code><i>future-sender</i></code> 
+(i.e. a sender returned from <code class='backtick'>spawn_future</code>) to a receiver.
+<p/>
+Paragraphs 13 and 14 of 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> describe the behaviour of the <code><i>future-sender</i></code> 
+returned from <code class='backtick'>spawn_future</code> in terms of the <code><i>basic-sender</i></code> machinery like so:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+-13- The exposition-only class template <code><i>impls-for</i></code> (33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>) is specialized 
+for <code class='backtick'>spawn_future_t</code> as follows:
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;&gt;
+  struct <i>impls-for</i>&lt;spawn_future_t&gt; : <i>default-impls</i> {
+    static constexpr auto <i>start</i> = <i>see below</i>;                    // <i>exposition only</i>
+  };
+}
+</pre></blockquote>
+<p>
+-14- The member <code><i>impls-for</i>&lt;spawn_future_t&gt;::<i>start</i></code> is initialized with a callable object 
+equivalent to the following lambda:
+</p>
+<blockquote><pre>
+[](auto&amp; state, auto&amp; rcvr) noexcept -&gt; void {
+  state-&gt;<i>consume</i>(rcvr);
+}
+</pre></blockquote>
+</blockquote>
+<p>
+Since there's no specification for the behaviour of 
+<code>std::execution::<i>impls-for</i>&lt;spawn_future_t&gt;::<i>get-state</i></code>, the behaviour is the default 
+provided by <code>std::execution::<i>default-impls</i>::<i>get-state</i></code>, which just returns the "data" member 
+of the original result of <code><i>make-sender</i></code>. In this case, that is the object named <code class='backtick'>u</code> 
+defined in 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> bullet 16.2, which is an instance of a specialization of 
+<code class='backtick'>std::unique_ptr</code>. There is therefore no wording to require that a <code><i>future-sender</i></code> that has 
+been connected and started take any action in response to stop requests received through the receiver to 
+which it was connected, contrary to the LEWG-approved design intent.
+<p/>
+An implementation that addresses this issue is included in 
+<a href="https://github.com/NVIDIA/stdexec/pull/1713">stdexec PR 1713</a>, specifically in commit 
+<a href="https://github.com/NVIDIA/stdexec/pull/1713/changes/5209ffdcaf9a3badf0079746b5578c12a1d0da4f">5209ffdcaf9a3badf0079746b5578c12a1d0da4f</a>, 
+which is just the difference between the current wording and the intended design.
+</p>
+
+<p><i>[2026-03-25; Reflector poll.]</i></p>
+
+<p>
+Set priority to 1 after reflector poll.
+</p>
+
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>spawn_future</code> denotes a customization point object. For subexpressions <code class='backtick'>sndr</code>, <code class='backtick'>token</code>, and <code class='backtick'>env</code>,
+<p/>
+[&hellip;]
+<p/>
+If any of <code>sender&lt;Sndr&gt;</code>, <code>scope_token&lt;Token&gt;</code>, or <code><i>queryable</i>&lt;Env&gt;</code> 
+are not satisfied, the expression <code class='backtick'>spawn_future(sndr, token, env)</code> is ill-formed.
+<p/>
+<ins>-?- Let <code><i>try-cancelable</i></code> be the exposition-only class:</ins>
+</p>
+<blockquote><pre>
+<ins>namespace std::execution {
+  struct <i>try-cancelable</i> {                   // <i>exposition only</i>
+    virtual void <i>try-cancel</i>() noexcept = 0; // <i>exposition only</i>
+  };
+}</ins>
+</pre></blockquote>
+<p>
+-3- Let <code><i>spawn-future-state-base</i></code> be the exposition-only class template: [&hellip;]
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;class Completions&gt;
+  struct <i>spawn-future-state-base</i>;           // <i>exposition only</i>
+  
+  template&lt;class... Sigs&gt;
+  struct <i>spawn-future-state-base</i>&lt;completion_signatures&lt;Sigs...&gt;&gt; <del>{</del> // <i>exposition only</i>
+    <ins>: <i>try-cancelable</i> {</ins>
+    using <i>variant-t</i> = <i>see below</i>;            // <i>exposition only</i>
+    <i>variant-t result</i>;                       // <i>exposition only</i>
+    virtual void <i>complete</i>() noexcept = 0;   // <i>exposition only</i>
+  };
+}
+</pre></blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- Let <code><i>spawn-future-state</i></code> be the exposition-only class template:
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;class Alloc, scope_token Token, sender Sender, class Env&gt;
+  struct <i>spawn-future-state</i>                     // <i>exposition only</i>
+    : <i>spawn-future-state-base</i>&lt;completion_signatures_of_t&lt;<i>future-spawned-sender</i>&lt;Sender, Env&gt;&gt;&gt; {
+    [&hellip;]
+    void <i>complete</i>() noexcept override;          // <i>exposition only</i>
+    void <i>consume</i>(receiver auto&amp; rcvr) noexcept; // <i>exposition only</i>
+    void <i>abandon</i>() noexcept;                    // <i>exposition only</i>
+    <ins>void <i>try-cancel</i>() noexcept override {       // <i>exposition only</i></ins>
+      <i>ssource</i>.request_stop();
+      <i>try-set-stopped</i>();
+    }
+    <ins>void <i>try-set-stopped</i>() noexcept; // <i>exposition only</i></ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre></blockquote>
+<p>
+-8- For purposes of determining the existence of a data race, <code><i>complete</i></code>, <code><i>consume</i></code>, 
+<ins><code><i>try-set-stopped</i></code>,</ins> and <code><i>abandon</i></code> behave as atomic operations 
+(6.10.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>). These operations on a single object of a type that is a specialization of
+<code><i>spawn-future-state</i></code> appear to occur in a single total order.
+</p>
+<pre>
+void <i>complete</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(9.1) &mdash; No effects if this invocation of <code><i>complete</i></code> happens before an invocation of 
+<code><i>consume</i></code><ins>, <code><i>try-set-stopped</i></code>,</ins> or <code><i>abandon</i></code> on <code class='backtick'>*this</code>;</p></li>
+<li><p>(9.2) &mdash; otherwise, if an invocation of <code><i>consume</i></code> on <code class='backtick'>*this</code> happens before 
+this invocation of <code><i>complete</i></code> <ins>and no invocation of <code><i>try-set-stopped</i></code> on <code class='backtick'>*this</code> 
+happened before this invocation of <code><i>complete</i></code></ins> then there is a receiver, <code class='backtick'>rcvr</code>, registered 
+and that receiver is <ins>deregistered and</ins> completed as if by <code><i>consume</i>(rcvr)</code>;</p></li>
+<li><p>(9.3) &mdash; otherwise, <code><i>destroy</i></code> is invoked.</p></li>
+</ul>
+</blockquote>
+<pre>
+void <i>consume</i>(receiver auto&amp; rcvr) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(10.1) &mdash; If this invocation of <code><i>consume</i></code> happens before an invocation of 
+<code><i>complete</i></code> on <code class='backtick'>*this</code> <ins>and no invocation of <code><i>try-cancel</i></code> on <code class='backtick'>*this</code> 
+happened before this invocation of <code><i>consume</i></code></ins> then <code class='backtick'>rcvr</code> is registered to be 
+completed when <code><i>complete</i></code> is subsequently invoked on <code class='backtick'>*this</code>;</p></li>
+<li><p><ins>(10.?) &mdash; otherwise, if this invocation of <code><i>consume</i></code> happens after an 
+invocation of <code><i>try-cancel</i></code> on <code class='backtick'>*this</code> and no invocation of <code><i>complete</i></code> on 
+<code class='backtick'>*this</code> happened before this invocation of <code><i>consume</i></code> then <code class='backtick'>rcvr</code> is completed as if by 
+<code class='backtick'>set_stopped(std::move(rcvr))</code>;</ins></p></li>
+<li><p>(10.2) &mdash; otherwise, <code class='backtick'>rcvr</code> is completed as if by: [&hellip;]</p></li>
+</ul>
+</blockquote>
+<pre>
+<ins>void <i>try-cancel()</i> noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>-?- <i>Effects</i>:</ins>
+</p>
+<ul style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; No effects if this invocation of <code><i>try-cancel</i></code> happens after 
+an invocation of <code><i>complete</i></code> on <code class='backtick'>*this</code>;</ins></p></li>
+<li><p><ins>(?.2) &mdash; otherwise, if this invocation of <code><i>try-cancel</i></code> happens before 
+an invocation of <code><i>consume</i></code> on <code class='backtick'>*this</code> then invokes <code><i>ssource</i>.request_stop()</code>;</ins></p></li>
+<li><p><ins>(?.3) &mdash; otherwise,</ins></p>
+<ul style="list-style-type: none">
+<li><p><ins>(?.3.1) &mdash; invokes <code><i>ssource</i>.request_stop()</code>, and</ins></p></li>
+<li><p><ins>(?.3.2) &mdash; if there is a receiver, <code class='backtick'>rcvr</code>, still registered then that receiver is 
+deregistered and completed as if by <code class='backtick'>set_stopped(std::move(rcvr))</code>.</ins></p>
+<p>
+<ins>[<i>Note</i>: an invocation of <code><i>complete</i></code> on <code class='backtick'>*this</code> may have happened after the 
+just-described invocation of <code><i>ssource</i>.request_stop()</code> and happened before the check to see 
+if there is a receiver still registered; if so, it would have deregistered and completed the 
+previously-registered receiver. Only one of <code><i>try-cancel</i></code> or <code><i>complete</i></code> 
+completes the registered receiver and no data races are introduced between the two invocations. &mdash; 
+<i>end note</i>]</ins>
+</p>
+</li>
+</ul>
+</li>
+</ul>
+</blockquote>
+<pre>
+void <i>abandon</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void <i>destroy</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto associated = std::move(this-&gt;<i>associated</i>);
+{
+  using traits = allocator_traits&lt;Alloc&gt;::template rebind_traits&lt;<i>spawn-future-state</i>&gt;;
+  typename traits::allocator_type alloc(std::move(this-&gt;<i>alloc</i>));
+  traits::destroy(alloc, this);
+  traits::deallocate(alloc, this, 1);
+}
+</pre></blockquote>
+<p>
+<ins>-?- Let <code><i>future-operation</i></code> be the exposition-only class template:</ins>
+</p>
+<blockquote><pre><ins>
+namespace std::execution {
+  template&lt;class StatePtr, class Rcvr&gt;
+  struct <i>future-operation</i> {                              // <i>exposition only</i>
+    struct <i>callback</i> {                                    // <i>exposition only</i>
+      <i>try-cancelable</i>* <i>state</i>;                             // <i>exposition only</i>
+      
+      void operator()() noexcept {
+        <i>state</i>-&gt;<i>try-cancel</i>();
+      };
+    };
+
+    using <i>stop-token-t</i> =                                 // <i>exposition only</i>
+      stop_token_of_t&lt;env_of_t&lt;Rcvr&gt;&gt;;
+
+    using <i>stop-callback-t</i> =                              // <i>exposition only</i>
+      stop_callback_for_t&lt;stop-token-t, callback&gt;;
+
+    struct <i>receiver</i> {                                    // <i>exposition only</i>
+      using receiver_concept = receiver_t;
+      <i>future-operation</i>* <i>op</i>;                              // <i>exposition only</i>
+
+      template&lt;class... T&gt;
+      void set_value(T&amp;&amp;... ts) &amp;&amp; noexcept {
+        <i>op</i>-&gt;<i>set-complete</i>&lt;set_value_t&gt;(std::forward&lt;T&gt;(ts)...);
+      }
+
+      template&lt;class E&gt;
+      void set_error(E&amp;&amp; e) &amp;&amp; noexcept {
+        <i>op</i>-&gt;set-complete&lt;set_error_t&gt;(std::forward&lt;E&gt;(e));
+      }
+
+      void set_stopped() &amp;&amp; noexcept {
+        <i>op</i>-&gt;<i>set-complete</i>&lt;set_stopped_t&gt;();
+      }
+
+      env_of_t&lt;Rcvr&gt; get_env() const noexcept {
+        return <i>op</i>-&gt;<i>rcvr</i>.get_env();
+      }
+    };
+
+    Rcvr <i>rcvr</i>;                                           // <i>exposition only</i>
+
+    union {
+      StatePtr <i>state</i>;                                    // <i>exposition only</i>
+      <i>receiver</i> <i>inner</i>;                                    // <i>exposition only</i>
+    };
+
+    union {
+      <i>stop-callback-t stopCallback</i>;                      // <i>exposition only</i>
+    };
+
+    <i>future-operation</i>(StatePtr state, Rcvr rcvr) noexcept // <i>exposition only</i>
+      : <i>rcvr</i>(std::move(rcvr))
+    {
+      construct_at(addressof(<i>state</i>), std::move(state));
+    }
+
+    <i>future-operation</i>(<i>future-operation</i>&amp;&amp;) = delete;
+
+    ~<i>future-operation</i>() {
+      destroy_at(addressof(<i>state</i>));
+    }
+
+    void <i>run</i>() &amp; noexcept {                              // <i>exposition only</i>
+      constexpr bool nothrow =
+          is_nothrow_constructible_v&lt;<i>stop-callback-t</i>, <i>stop-token-t</i>, <i>callback</i>&gt;;
+      try {
+        construct_at(addressof(<i>stopCallback</i>), get_stop_token(<i>rcvr</i>), callback(<i>state</i>.get()));
+      }
+      catch (...) {
+        if constexpr (!nothrow) {
+          set_error(std::move(<i>rcvr</i>), current_exception());
+          return;
+        }
+      }
+
+      auto* state = <i>state</i>.release();
+      destroy_at(addressof(<i>state</i>));
+      construct_at(addressof(<i>inner</i>), this);
+      state-&gt;consume(<i>inner</i>);
+    }
+
+    template&lt;class CPO, class... T&gt;
+    void <i>set-complete</i>(T&amp;&amp;... ts) noexcept {              // <i>exposition only</i>
+      destroy_at(addressof(<i>stopCallback</i>));
+      destroy_at(addressof(<i>inner</i>));
+      construct_at(addressof(<i>state</i>), nullptr);
+      CPO{}(std::move(<i>rcvr</i>), std::forward&lt;T&gt;(ts)...);
+    }
+  };
+}
+</ins></pre></blockquote>
+<p>
+-13- The exposition-only class template <code><i>impls-for</i></code> (33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>) 
+is specialized for <code class='backtick'>spawn_future_t</code> as follows:
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;&gt;
+  struct <i>impls-for</i>&lt;spawn_future_t&gt; : <i>default-impls</i> {
+    static constexpr auto <i>start</i> = <i>see below</i>;       // <i>exposition only</i>
+    <ins>static constexpr auto <i>get-state</i> = <i>see below</i>;   // <i>exposition only</i></ins>
+  };
+}
+</pre></blockquote>
+<p>
+-14- The member <code><i>impls-for</i>&lt;spawn_future_t&gt;::<i>start</i></code> is initialized with 
+a callable object equivalent to the following lambda:
+</p>
+<blockquote><pre>
+[](auto&amp; state, auto&amp; <del>rcvr</del>) noexcept -&gt; void {
+  state<ins>.<i>run</i>()</ins><del>-&gt;<i>consume</i>(rcvr)</del>;
+}
+</pre></blockquote>
+<p>
+<ins>-?- The member <code><i>impls-for</i>&lt;spawn_future_t&gt;::<i>get-state</i></code> is initialized 
+with a callable object equivalent to the following lambda:</ins>
+</p>
+<blockquote><pre>
+<ins>[]&lt;class Sndr, class Rcvr&gt;(Sndr&amp;&amp; sndr, Rcvr&amp; rcvr) noexcept {
+  auto&amp; [_, data] = sndr;
+  using state_ptr = remove_cvref_t&lt;decltype(data)&gt;;
+  return <i>future-operation</i>&lt;state_ptr, Rcvr&gt;(std::move(data), std::move(rcvr));
+}</ins>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[2026-03-25; Tomasz provides updated wording.]</i></p>
+
+<p>
+The updated wording removes the union inside <code><i>future-operation</i></code>.
+</p>
+
+<p><i>[Croydon 2026-03-27; Status changed: New &rarr; Immediate.]</i></p>
+
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
+
+
+<p id="res-4540"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.9.12.18 <a href="https://timsong-cpp.github.io/cppwp/exec.spawn.future">[exec.spawn.future]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- The name <code class='backtick'>spawn_future</code> denotes a customization point object. For subexpressions <code class='backtick'>sndr</code>, <code class='backtick'>token</code>, and <code class='backtick'>env</code>,
+<p/>
+[&hellip;]
+<p/>
+If any of <code>sender&lt;Sndr&gt;</code>, <code>scope_token&lt;Token&gt;</code>, or <code><i>queryable</i>&lt;Env&gt;</code> 
+are not satisfied, the expression <code class='backtick'>spawn_future(sndr, token, env)</code> is ill-formed.
+<p/>
+<ins>-?- Let <code><i>try-cancelable</i></code> be the exposition-only class:</ins>
+</p>
+<blockquote><pre>
+<ins>namespace std::execution {
+  struct <i>try-cancelable</i> {                   // <i>exposition only</i>
+    virtual void <i>try-cancel</i>() noexcept = 0; // <i>exposition only</i>
+  };
+}</ins>
+</pre></blockquote>
+<p>
+-3- Let <code><i>spawn-future-state-base</i></code> be the exposition-only class template: [&hellip;]
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;class Completions&gt;
+  struct <i>spawn-future-state-base</i>;           // <i>exposition only</i>
+  
+  template&lt;class... Sigs&gt;
+  struct <i>spawn-future-state-base</i>&lt;completion_signatures&lt;Sigs...&gt;&gt; <del>{</del> // <i>exposition only</i>
+    <ins>: <i>try-cancelable</i> {</ins>
+    using <i>variant-t</i> = <i>see below</i>;            // <i>exposition only</i>
+    <i>variant-t result</i>;                       // <i>exposition only</i>
+    virtual void <i>complete</i>() noexcept = 0;   // <i>exposition only</i>
+  };
+}
+</pre></blockquote>
+<p>
+[&hellip;]
+<p/>
+-7- Let <code><i>spawn-future-state</i></code> be the exposition-only class template:
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;class Alloc, scope_token Token, sender Sender, class Env&gt;
+  struct <i>spawn-future-state</i>                     // <i>exposition only</i>
+    : <i>spawn-future-state-base</i>&lt;completion_signatures_of_t&lt;<i>future-spawned-sender</i>&lt;Sender, Env&gt;&gt;&gt; {
+    [&hellip;]
+    void <i>complete</i>() noexcept override;          // <i>exposition only</i>
+    void <i>consume</i>(receiver auto&amp; rcvr) noexcept; // <i>exposition only</i>
+    void <i>abandon</i>() noexcept;                    // <i>exposition only</i>
+    <ins>void <i>try-cancel</i>() noexcept override {       // <i>exposition only</i></ins>
+      <ins><i>ssource</i>.request_stop();</ins>
+      <ins><i>try-set-stopped</i>();</ins>
+    }
+    <ins>void <i>try-set-stopped</i>() noexcept; // <i>exposition only</i></ins>
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre></blockquote>
+<p>
+-8- For purposes of determining the existence of a data race, <code><i>complete</i></code>, <code><i>consume</i></code>, 
+<ins><code><i>try-set-stopped</i></code>,</ins> and <code><i>abandon</i></code> behave as atomic operations 
+(6.10.2 <a href="https://timsong-cpp.github.io/cppwp/intro.multithread">[intro.multithread]</a>). These operations on a single object of a type that is a specialization of
+<code><i>spawn-future-state</i></code> appear to occur in a single total order.
+</p>
+<pre>
+void <i>complete</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+-9- <i>Effects</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(9.1) &mdash; No effects if this invocation of <code><i>complete</i></code> happens before an invocation of 
+<code><i>consume</i></code><ins>, <code><i>try-set-stopped</i></code>,</ins> or <code><i>abandon</i></code> on <code class='backtick'>*this</code>;</p></li>
+<li><p>(9.2) &mdash; otherwise, if an invocation of <code><i>consume</i></code> on <code class='backtick'>*this</code> happens before 
+this invocation of <code><i>complete</i></code> <ins>and no invocation of <code><i>try-set-stopped</i></code> on <code class='backtick'>*this</code> 
+happened before this invocation of <code><i>complete</i></code></ins> then there is a receiver, <code class='backtick'>rcvr</code>, registered 
+and that receiver is <ins>deregistered and</ins> completed as if by <code><i>consume</i>(rcvr)</code>;</p></li>
+<li><p>(9.3) &mdash; otherwise, <code><i>destroy</i></code> is invoked.</p></li>
+</ul>
+</blockquote>
+<pre>
+void <i>consume</i>(receiver auto&amp; rcvr) noexcept;
+</pre>
+<blockquote>
+<p>
+-10- <i>Effects</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(10.1) &mdash; If this invocation of <code><i>consume</i></code> happens before an invocation of 
+<code><i>complete</i></code> on <code class='backtick'>*this</code> <ins>and no invocation of <code><i>try-set-stopped</i></code> on <code class='backtick'>*this</code> 
+happened before this invocation of <code><i>consume</i></code></ins> then <code class='backtick'>rcvr</code> is registered to be 
+completed when <code><i>complete</i></code> is subsequently invoked on <code class='backtick'>*this</code>;</p></li>
+<li><p><ins>(10.?) &mdash; otherwise, if this invocation of <code><i>consume</i></code> happens after an 
+invocation of <code><i>try-set-stopped</i></code> on <code class='backtick'>*this</code> and no invocation of <code><i>complete</i></code> on 
+<code class='backtick'>*this</code> happened before this invocation of <code><i>consume</i></code> then <code class='backtick'>rcvr</code> is completed as if by 
+<code class='backtick'>set_stopped(std::move(rcvr))</code>;</ins></p></li>
+<li><p>(10.2) &mdash; otherwise, <code class='backtick'>rcvr</code> is completed as if by: </p>
+<pre>
+std::move(this-&gt;result).visit(
+  [&amp;rcvr](auto&amp;&amp; tuple) noexcept {
+    if constexpr (!same_as&lt;remove_reference_t&lt;decltype(tuple)&gt;, monostate&gt;) {
+      apply([&amp;rcvr](auto cpo, auto&amp;&amp;... vals) {
+        cpo(std::move(rcvr), std::move(vals)...);
+      }, std::move(tuple));
+    }
+  });
+<ins><i>destroy</i>();</ins>
+</pre>
+</li>
+</ul>
+</blockquote>
+<pre>
+<ins>void <i>try-set-stopped()</i> noexcept;</ins>
+</pre>
+<blockquote>
+<p>
+<ins>
+-?- <i>Effects</i>:
+</ins>
+<ul style="list-style-type: none">
+<li><p><ins>(?.1) &mdash; If an invocation of <code><i>consume</i></code> on <code class='backtick'>*this</code> happens before 
+this invocation of <code><i>try-set-stopped</i></code> and no invocation of <code><i>complete</i></code> on <code class='backtick'>*this</code> 
+happened before this invocation of <code><i>try-set-stopped</i></code> then there is a receiver, <code class='backtick'>rcvr</code>, registered 
+and that receiver is deregistered and completed as if by <code>set_stopped(std::move(rcvr)), <i>destroy</i>()</code>;</ins></p></li>
+<li><p><ins>(?.2) &mdash; otherwise, no effects.</ins></p></li>
+
+</ul>
+</p>
+</blockquote>
+<pre>
+void <i>abandon</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+[&hellip;]
+</p>
+</blockquote>
+<pre>
+void <i>destroy</i>() noexcept;
+</pre>
+<blockquote>
+<p>
+-12- <i>Effects</i>: Equivalent to:
+</p>
+<blockquote><pre>
+auto associated = std::move(this-&gt;<i>associated</i>);
+{
+  using traits = allocator_traits&lt;Alloc&gt;::template rebind_traits&lt;<i>spawn-future-state</i>&gt;;
+  typename traits::allocator_type alloc(std::move(this-&gt;<i>alloc</i>));
+  traits::destroy(alloc, this);
+  traits::deallocate(alloc, this, 1);
+}
+</pre></blockquote>
+<p>
+<ins>-?- Let <code><i>future-operation</i></code> be the exposition-only class template:</ins>
+</p>
+<blockquote><pre><ins>
+namespace std::execution {
+  template&lt;class StatePtr, class Rcvr&gt;
+  struct <i>future-operation</i> {                              // <i>exposition only</i>
+    struct <i>callback</i> {                                    // <i>exposition only</i>
+      <i>try-cancelable</i>* <i>state</i>;                             // <i>exposition only</i>
+      
+      void operator()() noexcept {
+        <i>state</i>-&gt;<i>try-cancel</i>();
+      };
+    };
+
+    using <i>stop-token-t</i> =                                 // <i>exposition only</i>
+      stop_token_of_t&lt;env_of_t&lt;Rcvr&gt;&gt;;
+
+    using <i>stop-callback-t</i> =                              // <i>exposition only</i>
+      stop_callback_for_t&lt;<i>stop-token-t</i>, <i>callback</i>&gt;;
+
+    struct <i>receiver</i> {                                    // <i>exposition only</i>
+      using receiver_concept = receiver_t;
+      <i>future-operation</i>* <i>op</i>;                              // <i>exposition only</i>
+
+      template&lt;class... T&gt;
+      void set_value(T&amp;&amp;... ts) &amp;&amp; noexcept {
+        <i>op</i>-&gt;<i>set-complete</i>&lt;set_value_t&gt;(std::forward&lt;T&gt;(ts)...);
+      }
+
+      template&lt;class E&gt;
+      void set_error(E&amp;&amp; e) &amp;&amp; noexcept {
+        <i>op</i>-&gt;<i>set-complete</i>&lt;set_error_t&gt;(std::forward&lt;E&gt;(e));
+      }
+
+      void set_stopped() &amp;&amp; noexcept {
+        <i>op</i>-&gt;<i>set-complete</i>&lt;set_stopped_t&gt;();
+      }
+
+      env_of_t&lt;Rcvr&gt; get_env() const noexcept {
+        return execution::get_env(<i>op</i>-&gt;<i>rcvr</i>);
+      }
+    };
+
+    Rcvr <i>rcvr</i>;                                       // <i>exposition only</i>
+    StatePtr <i>state</i>;                                  // <i>exposition only</i>
+    <i>receiver</i> <i>inner</i>;                                  // <i>exposition only</i>
+    optional&lt;<i>stop-callback-t&gt; stopCallback</i>;          // <i>exposition only</i>
+
+
+    <i>future-operation</i>(StatePtr state, Rcvr rcvr) noexcept // <i>exposition only</i>
+      : <i>rcvr</i>(std::move(rcvr)), <i>state</i>(std::move(state)), <i>inner</i>(this)
+    {}
+
+    <i>future-operation</i>(<i>future-operation</i>&amp;&amp;) = delete;
+
+    void <i>run</i>() &amp; noexcept {                              // <i>exposition only</i>
+      constexpr bool nothrow =
+          is_nothrow_constructible_v&lt;<i>stop-callback-t</i>, <i>stop-token-t</i>, <i>callback</i>&gt;;
+      try {
+	  <i>stopCallback</i>.emplace(get_stop_token(<i>rcvr</i>), <i>callback</i>(<i>state</i>.get()));
+      }
+      catch (...) {
+        if constexpr (!nothrow) {
+          set_error(std::move(<i>rcvr</i>), current_exception());
+          return;
+        }
+      }
+
+      <i>state</i>.release()-&gt;<i>consume</i>(<i>inner</i>);
+    }
+
+    template&lt;class CPO, class... T&gt;
+    void <i>set-complete</i>(T&amp;&amp;... ts) noexcept {              // <i>exposition only</i>
+      <i>stopCallback</i>.reset();
+      CPO{}(std::move(<i>rcvr</i>), std::forward&lt;T&gt;(ts)...);
+    }
+  };
+}
+</ins></pre></blockquote>
+<p>
+-13- The exposition-only class template <code><i>impls-for</i></code> (33.9.2 <a href="https://timsong-cpp.github.io/cppwp/exec.snd.expos">[exec.snd.expos]</a>) 
+is specialized for <code class='backtick'>spawn_future_t</code> as follows:
+</p>
+<blockquote><pre>
+namespace std::execution {
+  template&lt;&gt;
+  struct <i>impls-for</i>&lt;spawn_future_t&gt; : <i>default-impls</i> {
+    static constexpr auto <i>start</i> = <i>see below</i>;       // <i>exposition only</i>
+    <ins>static constexpr auto <i>get-state</i> = <i>see below</i>;   // <i>exposition only</i></ins>
+  };
+}
+</pre></blockquote>
+<p>
+-14- The member <code><i>impls-for</i>&lt;spawn_future_t&gt;::<i>start</i></code> is initialized with 
+a callable object equivalent to the following lambda:
+</p>
+<blockquote><pre>
+[](auto&amp; state, auto&amp; <del>rcvr</del>) noexcept -&gt; void {
+  state<ins>.<i>run</i>()</ins><del>-&gt;<i>consume</i>(rcvr)</del>;
+}
+</pre></blockquote>
+<p>
+<ins>-?- The member <code><i>impls-for</i>&lt;spawn_future_t&gt;::<i>get-state</i></code> is initialized 
+with a callable object equivalent to the following lambda:</ins>
+</p>
+<blockquote><pre>
+<ins>[]&lt;class Sndr, class Rcvr&gt;(Sndr sndr, Rcvr&amp; rcvr) noexcept {
+  auto&amp; [_, data] = sndr;
+  using state_ptr = remove_cvref_t&lt;decltype(data)&gt;;
+  return <i>future-operation</i>&lt;state_ptr, Rcvr&gt;(std::move(data), std::move(rcvr));
+}</ins>
+</pre></blockquote>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

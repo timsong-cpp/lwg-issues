@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4543: Incorrect cast between simd::vec and simd::mask via conversion to and from impl-defined vector types</title>
+<meta property="og:title" content="Issue 4543: Incorrect cast between simd::vec and simd::mask via conversion to and from impl-defined vector types">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4543.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4543"><a href="lwg-active.html#4543">4543</a>. Incorrect cast between <code class='backtick'>simd::vec</code> and <code class='backtick'>simd::mask</code> via conversion to and from impl-defined vector types</h3>
+<p><b>Section:</b> 29.10.7 <a href="https://timsong-cpp.github.io/cppwp/simd.class">[simd.class]</a>, 29.10.9 <a href="https://timsong-cpp.github.io/cppwp/simd.mask.class">[simd.mask.class]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matthias Kretz <b>Opened:</b> 2026-03-16 <b>Last modified:</b> 2026-04-13</p>
+<p><b>Priority: </b>2
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider:
+</p>
+<blockquote><pre>
+simd::vec&lt;int&gt; x = 1;
+simd::vec&lt;short&gt; a = x; // ill-formed &amp; concise error 👍
+auto b = static_cast&lt;simd::vec&lt;short&gt;&gt;(x); // might compile or fail with pages of errors
+
+simd::mask&lt;complex&lt;float&gt;&gt; k = true;
+auto c = static_cast&lt;simd::mask&lt;float&gt;&gt;(k); // might compile or fail with pages of errors
+</pre></blockquote>
+<p>
+Why can <code class='backtick'>b</code> and <code class='backtick'>c</code> sometimes work? It depends on the implementation, whether and
+how it implements the "recommended practice" of implicit conversion to and
+from implementation-defined non-standard vector types.
+<p/>
+E.g. <code>vec&lt;int&gt;</code> could be convertible to <code class='backtick'>__m256i</code> and <code class='backtick'>__m256i</code> is then convertible
+to <code>vec&lt;short&gt;</code>. Likewise, <code>mask&lt;complex&lt;float&gt;&gt;</code> could be implemented 
+as a <code>mask&lt;float&gt;</code> internally, making it convertible to <code class='backtick'>__vector(8) int</code>, the same
+type that <code>mask&lt;float&gt;</code> uses.
+<p/>
+If the implicit conversion constructor is implemented as a constrained
+template, there's no problem. However, a non-template such as e.g.
+</p>
+<blockquote><pre>
+basic_mask(__m256i)
+</pre></blockquote>
+<p>
+enables the conversion sequence from another <code class='backtick'>basic_vec</code> or <code class='backtick'>basic_mask</code>.
+<p/>
+Given an enabled <code class='backtick'>basic_vec</code> specialization <code class='backtick'>V</code> the following must always hold:
+</p>
+<blockquote><pre>
+constructible_from&lt;V, simd::rebind_t&lt;int, V&gt;&gt;
+constructible_from&lt;V, simd::rebind_t&lt;float, V&gt;&gt;
+!constructible_from&lt;V, simd::resize_t&lt;V::size() + 1, V&gt;&gt;
+!constructible_from&lt;V, simd::resize_t&lt;V::size() + 1, typename V::mask_type&gt;&gt;
+!constructible_from&lt;typename V::mask_type, V&gt;
+</pre></blockquote>
+<p>
+Given an enabled <code class='backtick'>basic_mask</code> specialization <code class='backtick'>M</code> the following must always hold:
+</p>
+<blockquote><pre>
+std::constructible_from&lt;M, simd::rebind_t&lt;int, M&gt;&gt;
+std::constructible_from&lt;M, simd::rebind_t&lt;float, M&gt;&gt;
+!std::constructible_from&lt;M, simd::resize_t&lt;M::size() + 1, M&gt;&gt;
+</pre></blockquote>
+<p>
+There are two possible solutions:
+</p>
+<ol>
+<li><p>delete all unwanted conversions explicitly or</p></li>
+<li><p>require the "recommended practice" conversion constructors to use a
+constrained template.</p></li>
+</ol>
+<p>
+I strongly favor the first solution because it not only removes the incorrect
+conversions but also reduces the error message to something understandable,
+additionally allowing a message from the developer via <code class='backtick'>= delete("wrong!")</code>.
+<p/>
+Proposed resolution: Adopt <a href="https://isocpp.org/files/papers/P4042R0.pdf">P4042R0</a>
+</p>
+
+<p><i>[2026-04-13; Reflector poll.]</i></p>
+
+<p>
+Set priority to 2 after reflector poll.
+</p>
+
+
+<p id="res-4543"><b>Proposed resolution:</b></p>
+
+
+
+
+
+</body>
+</html>

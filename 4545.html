@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4545: Some converting constructors of layout_left_padded::mapping and layout_right_padded::mapping are
+missing a representability precondition for the padded stride</title>
+<meta property="og:title" content="Issue 4545: Some converting constructors of layout_left_padded::mapping and layout_right_padded::mapping are
+missing a representability precondition for the padded stride">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4545.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4545"><a href="lwg-active.html#4545">4545</a>. Some converting constructors of <code class='backtick'>layout_left_padded::mapping</code> and <code class='backtick'>layout_right_padded::mapping</code> are
+missing a representability precondition for the padded stride</h3>
+<p><b>Section:</b> 23.7.3.4.8.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.leftpad.cons">[mdspan.layout.leftpad.cons]</a>, 23.7.3.4.9.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.rightpad.cons">[mdspan.layout.rightpad.cons]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Xi Chen <b>Opened:</b> 2026-03-18 <b>Last modified:</b> 2026-03-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+It appears that these constructors are missing a precondition requiring the incoming padded stride to
+be representable as a value of the destination <code class='backtick'>index_type</code>.
+<p/>
+The existing preconditions check that <code class='backtick'>other.required_span_size()</code> is representable as a value of type
+<code class='backtick'>index_type</code>, but that is not sufficient when the source mapping is empty. In that case,
+<code class='backtick'>other.required_span_size()</code> can be <code class='backtick'>0</code> even though the source padded stride is too large for the
+destination <code class='backtick'>index_type</code>. The padded stride is then silently truncated, and that truncation is observable
+through <code class='backtick'>stride()</code>.
+<p/>
+Example:
+</p>
+<blockquote><pre>
+#include &lt;mdspan&gt;
+#include &lt;cstdint&gt;
+#include &lt;cassert&gt;
+
+void test() {
+  using Src = std::layout_left_padded&lt;std::dynamic_extent&gt;::mapping&lt;std::extents&lt;uint32_t, 1, 0&gt;&gt;;
+  using Dst = std::layout_left_padded&lt;std::dynamic_extent&gt;::mapping&lt;std::extents&lt;uint8_t, 1, 0&gt;&gt;;
+
+  // src.stride(1) == 256.
+  Src src(std::extents&lt;uint32_t, 1, 0&gt;(), 256);
+
+  // other.required_span_size() is 0, so the existing preconditions are met.
+  // The stored padded stride is then converted to uint8_t and truncated to 0.
+  Dst dst(src);
+
+  assert(dst.stride(1) == 0);
+}
+</pre></blockquote>
+
+
+<p id="res-4545"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.7.3.4.8.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.leftpad.cons">[mdspan.layout.leftpad.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherExtents&gt;
+  constexpr explicit(<i>see below</i>)
+    mapping(const layout_stride::mapping&lt;OtherExtents&gt;&amp; other);
+</pre>
+<blockquote>
+<p>
+-10- <i>Constraints</i>: [&hellip;]
+<p/>
+-11- <i>Preconditions</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(11.1) &mdash; [&hellip;]</p></li>
+<li><p>(11.2) &mdash; [&hellip;]</p></li>
+<li><p>(11.3) &mdash; [&hellip;]</p></li>
+<li><p>(11.4) &mdash; <code class='backtick'>other.required_span_size()</code> is representable as a value of type <code><i>index_type</i></code>.</p></li>
+<li><p><ins>(11.5) &mdash; If <code><i>rank_</i></code> is greater than <code class='backtick'>1</code> and <code><i>static-padding-stride</i></code> 
+equals <code class='backtick'>dynamic_extent</code>, <code class='backtick'>other.stride(1)</code> is representable as a value of type <code>index_type</code>.</ins></p></li>
+</ul>
+<p>
+-12- <i>Effects</i>: [&hellip;]
+<p/>
+-13- <i>Remarks</i>: [&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class LayoutLeftPaddedMapping&gt;
+  constexpr explicit(<i>see below</i>)
+    mapping(const LayoutLeftPaddedMapping&amp; other);
+</pre>
+<blockquote>
+<p>
+-14- <i>Constraints</i>: [&hellip;]
+<p/>
+-15- <i>Mandates</i>: [&hellip;]
+<p/>
+-16- <i>Preconditions</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(16.1) &mdash; [&hellip;]</p></li>
+<li><p>(16.2) &mdash; <code class='backtick'>other.required_span_size()</code> is representable as a value of type <code>index_type</code>.</p></li>
+<li><p><ins>(16.3) &mdash; If <code><i>rank_</i></code> is greater than <code class='backtick'>1</code> and <code><i>static-padding-stride</i></code> 
+equals <code class='backtick'>dynamic_extent</code>, <code class='backtick'>other.stride(1)</code> is representable as a value of type <code>index_type</code>.</ins></p></li>
+</ul>
+<p>
+-17- <i>Effects</i>: [&hellip;]
+<p/>
+-18- <i>Remarks</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li><p>Modify 23.7.3.4.9.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.rightpad.cons">[mdspan.layout.rightpad.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherExtents&gt;
+  constexpr explicit(<i>see below</i>)
+    mapping(const layout_stride::mapping&lt;OtherExtents&gt;&amp; other);
+</pre>
+<blockquote>
+<p>
+-10- <i>Constraints</i>: [&hellip;]
+<p/>
+-11- <i>Preconditions</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(11.1) &mdash; [&hellip;]</p></li>
+<li><p>(11.2) &mdash; [&hellip;]</p></li>
+<li><p>(11.3) &mdash; [&hellip;]</p></li>
+<li><p>(11.4) &mdash; <code class='backtick'>other.required_span_size()</code> is representable as a value of type <code>index_type</code>.</p></li>
+<li><p><ins>(11.5) &mdash; If <code><i>rank_</i></code> is greater than <code class='backtick'>1</code> and <code><i>static-padding-stride</i></code> 
+equals <code class='backtick'>dynamic_extent</code>, <code>other.stride(<i>rank_</i> - 2)</code> is representable as a value of type <code>index_type</code>.</ins></p></li>
+</ul>
+<p>
+-12- <i>Effects</i>: [&hellip;]
+<p/>
+-13- <i>Remarks</i>: [&hellip;]
+</p>
+</blockquote>
+<pre>
+template&lt;class LayoutRightPaddedMapping&gt;
+  constexpr explicit(<i>see below</i>)
+    mapping(const LayoutRightPaddedMapping&amp; other);
+</pre>
+<blockquote>
+<p>
+-14- <i>Constraints</i>: [&hellip;]
+<p/>
+-15- <i>Mandates</i>: [&hellip;]
+<p/>
+-16- <i>Preconditions</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(16.1) &mdash; [&hellip;]</p></li>
+<li><p>(16.2) &mdash; <code class='backtick'>other.required_span_size()</code> is representable as a value of type <code>index_type</code>.</p></li>
+<li><p><ins>(16.3) &mdash; If <code><i>rank_</i></code> is greater than <code class='backtick'>1</code> and <code><i>static-padding-stride</i></code> 
+equals <code class='backtick'>dynamic_extent</code>, <code>other.stride(<i>rank_</i> - 2)</code> is representable as a value of type <code>index_type</code>.</ins></p></li>
+</ul>
+<p>
+-17- <i>Effects</i>: [&hellip;]
+<p/>
+-18- <i>Remarks</i>: [&hellip;]
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Issue 3891: LWG 3870 breaks std::expected&lt;cv T, E&gt;</title>
 <meta property="og:title" content="Issue 3891: LWG 3870 breaks std::expected&lt;cv T, E&gt;">
-<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:description" content="C++ library issue. Status: WP">
 <meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/3891.html">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
@@ -61,14 +61,14 @@
 </head>
 <body>
 <hr>
-<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
-<h3 id="3891"><a href="lwg-active.html#3891">3891</a>. LWG 3870 breaks <code>std::expected&lt;<i>cv</i> T, E&gt;</code></h3>
-<p><b>Section:</b> 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-02-19 <b>Last modified:</b> 2024-10-02</p>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="3891"><a href="lwg-defects.html#3891">3891</a>. LWG 3870 breaks <code>std::expected&lt;<i>cv</i> T, E&gt;</code></h3>
+<p><b>Section:</b> 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Jiang An <b>Opened:</b> 2023-02-19 <b>Last modified:</b> 2026-03-31</p>
 <p><b>Priority: </b>2
 </p>
 <p><b>View all other</b> <a href="lwg-index.html#expected.object.general">issues</a> in [expected.object.general].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 Currently the <code>value_type</code> of <code>std::expected</code> can be a <i>cv</i>-qualified type, which is  possibly intended.
@@ -262,9 +262,9 @@ Removed the use of <code class='backtick'>value()</code> in the [expected.object
 and added <code class='backtick'>remove_cv_t</code> to the local <code class='backtick'>T</code> in the <code class='backtick'>else</code>-branch.
 </p>
 
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
 
-
-<p id="res-3891"><b>Proposed resolution:</b></p>
 <p>
 This wording is relative to <a href="https://wg21.link/N4988" title=" Working Draft, Programming Languages — C++">N4988</a>.
 </p>
@@ -371,6 +371,109 @@ template&lt;class U = T&gt;
 </td>
 </tr>
 </table>
+</blockquote>
+
+</li>
+
+<li><p>Modify 22.8.6.5 <a href="https://timsong-cpp.github.io/cppwp/expected.object.swap">[expected.object.swap]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+constexpr void swap(expected&amp; rhs) noexcept(<i>see below</i>);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: [&hellip;]
+<p/>
+-2- <i>Effects</i>: See Table 64  [tab:expected.object.swap].
+<p/>
+For the case where <code>rhs.value()</code> is <code>false</code> and <code>this-&gt;has_value()</code> is <code>true</code>, equivalent to:
+</p>
+<blockquote>
+<pre>
+if constexpr (is_nothrow_move_constructible_v&lt;E&gt;) {
+  E tmp(std::move(rhs.<i>unex</i>));
+  destroy_at(addressof(rhs.<i>unex</i>));
+  try {
+    construct_at(addressof(rhs.<i>val</i>), std::move(<i>val</i>));
+    destroy_at(addressof(<i>val</i>));
+    construct_at(addressof(<i>unex</i>), std::move(tmp));
+  } catch(...) {
+    construct_at(addressof(rhs.<i>unex</i>), std::move(tmp));
+    throw;
+  }
+} else {
+  <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins> tmp(std::move(<i>val</i>));
+  destroy_at(addressof(<i>val</i>));
+  try {
+    construct_at(addressof(<i>unex</i>), std::move(rhs.<i>unex</i>));
+    destroy_at(addressof(rhs.<i>unex</i>));
+    construct_at(addressof(rhs.<i>val</i>), std::move(tmp));
+  } catch (...) {
+    construct_at(addressof(<i>val</i>), std::move(tmp));
+    throw;
+  }
+}
+<i>has_val</i> = false;
+rhs.<i>has_val</i> = true;
+</pre>
+</blockquote>
+</blockquote>
+</blockquote>
+
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[Croydon 2026-03-27; Jonathan provides new wording]</i></p>
+
+<p>
+LWG review pointed out that using <code class='backtick'>value()</code> relies on a freestanding-deleted
+function. The equivalent functions in <code class='backtick'>optional</code> just use <code class='backtick'>val = rhs.val</code> and
+we can do the same here. We don't need to disallow assignment to <code class='backtick'>const T</code>
+here in the general case, because the assignments and swaps are already
+constrained to only work if the type is assignable/swappable.
+If your type satisfies both
+<code>assignable_from&lt;const T&amp;, const T&amp;&gt;</code>
+and <code>assignable_from&lt;T&amp;, const T&amp;&gt;</code>
+but with different semantics, this function might have surprising effects.
+That seems fine.
+</p>
+
+
+<p><i>[Croydon 2026-03-27; Status changed: New &rarr; Immediate.]</i></p>
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
+
+
+<p id="res-3891"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: When assignment and <code>swap</code> need to backup the old value by move construction,
+the source should be considered <i>cv</i>-unqualified, as the backup mechanism is only used internally.]
+</p>
+</blockquote>
+
+<ol>
+
+<li><p>Modify 22.8.6.1 <a href="https://timsong-cpp.github.io/cppwp/expected.object.general">[expected.object.general]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+bool <i>has_val</i>;      // <i>exposition only</i>
+union {
+  <ins>remove_cv_t&lt;</ins>T<ins>&gt;</ins> <i>val</i>;       // <i>exposition only</i>
+  E <i>unex</i>;          // <i>exposition only</i>
+};
+[&hellip;]
+</pre>
 </blockquote>
 
 </li>

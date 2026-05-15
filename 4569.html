@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4569: mdspan should Mandates the relationship between element_type and
+      reference</title>
+<meta property="og:title" content="Issue 4569: mdspan should Mandates the relationship between element_type and
+      reference">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4569.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4569"><a href="lwg-active.html#4569">4569</a>. <code>mdspan</code> should <i>Mandates</i> the relationship between <code>element_type</code> and
+      <code>reference</code></h3>
+<p><b>Section:</b> 23.7.3.6.1 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.overview">[mdspan.mdspan.overview]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2026-04-12 <b>Last modified:</b> 2026-04-17</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mdspan.mdspan.overview">active issues</a> in [mdspan.mdspan.overview].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mdspan.mdspan.overview">issues</a> in [mdspan.mdspan.overview].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For <code>mdspan</code>, user-defined accessor <code>A</code> must meet the requirements of
+<a href="https://wg21.link/mdspan.accessor.reqmts">[mdspan.accessor.reqmts]</a>. Particularly, proxy references
+should model <code>common_reference_with&lt;A::reference&amp;&amp;, A::element_type&amp;&gt;</code> to ensure that 
+there is a relationship between these two types rather than arbitrary types.
+<p/>
+Although <code>mspan</code> already requires that the template parameter <code>AccessorPolicy</code> shall 
+meet the accessor policy requirements, compared to various details, such a sensible relationship between 
+<code>element_type</code> and <code>reference</code> should be directly reflected in <code>mdspan</code>'s
+<i>Mandates</i> to prevent users from using <a href="https://godbolt.org/z/8ePTYWxhY">non-compliant</a> 
+accessors:
+</p>
+<blockquote><pre>
+struct BadAccessor {
+  using offset_policy = BadAccessor;
+  using element_type = int;
+  using reference    = <span style="color:#C80000;font-weight:bold">void</span>;
+  using data_handle_type = element_type*;
+  reference access(data_handle_type, size_t) const;
+};
+
+mdspan&lt;int, dims&lt;2&gt;, layout_right, BadAccessor&gt; m;
+m[0, 1]; // <span style="color:#C80000;font-weight:bold">not rejected in libstdc++, libc++ and MSVC-STL</span>
+</pre></blockquote>
+<p>
+It should be emphasized that we provided very similar wording in 25.8.3 <a href="https://timsong-cpp.github.io/cppwp/coro.generator.class">[coro.generator.class]</a> p1.
+</p>
+
+
+<p id="res-4569"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 23.7.3.6.1 <a href="https://timsong-cpp.github.io/cppwp/mdspan.mdspan.overview">[mdspan.mdspan.overview]</a> as indicated:</p>
+
+<blockquote>
+<blockquote><pre>
+namespace std {
+  template&lt;class ElementType, class Extents, class LayoutPolicy = layout_right,
+           class AccessorPolicy = default_accessor&lt;ElementType&gt;&gt;
+  class mdspan {
+  public:
+    using extents_type = Extents;
+    using layout_type = LayoutPolicy;
+    using accessor_type = AccessorPolicy;
+    using mapping_type = layout_type::template mapping&lt;extents_type&gt;;
+    using element_type = ElementType;
+    using value_type = remove_cv_t&lt;element_type&gt;;
+    using index_type = extents_type::index_type;
+    using size_type = extents_type::size_type;
+    using rank_type = extents_type::rank_type;
+    using data_handle_type = accessor_type::data_handle_type;
+    using reference = accessor_type::reference;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre></blockquote>
+<p>
+-2- <i>Mandates</i>:
+</p>
+<ol style="list-style-type: none">
+<li>
+<p>
+(2.1) &mdash; <code>ElementType</code> is a complete object type that is neither an abstract class type 
+nor an array type,
+</p>
+</li>
+<li>
+<p>
+(2.2) &mdash; <code>Extents</code> is a specialization of <code>extents</code>, <del>and</del>
+</p>
+</li>
+<li>
+<p>
+(2.3) &mdash; <code>is_same_v&lt;ElementType, typename AccessorPolicy::element_type&gt;</code> is
+  <code>true</code><ins>, and</ins><del>.</del>
+</p>
+</li>
+<li>
+<p>
+<ins>(2.?) &mdash; <code>common_reference_with&lt;reference&amp;&amp;, element_type&amp;&gt;</code> is
+         modeled.</ins>
+</p>
+</li>
+</ol>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

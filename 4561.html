@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4561: reverse_view does not consider simple-view</title>
+<meta property="og:title" content="Issue 4561: reverse_view does not consider simple-view">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4561.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4561"><a href="lwg-active.html#4561">4561</a>. <code>reverse_view</code> does not consider <code><i>simple-view</i></code></h3>
+<p><b>Section:</b> 25.7.21.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2026-03-27 <b>Last modified:</b> 2026-04-04</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.reverse.view">active issues</a> in [range.reverse.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.reverse.view">issues</a> in [range.reverse.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, non-<code>const</code> <code>begin</code>/<code>end</code> for <code>reverse_view</code> 
+are always provided.
+</p>
+<p>
+However, when the underlying range is <code><i>simple-view</i></code> and <code>common_view</code>, 
+we can just provide const <code>begin</code> to reduce the number of template instantiations.
+</p>
+<p>
+And it is also reasonable to only provide <code>const</code> end in the case of 
+<code><i>simple-view</i></code> for the same reason.
+</p>
+
+
+<p id="res-4561"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 25.7.21.2 <a href="https://timsong-cpp.github.io/cppwp/range.reverse.view">[range.reverse.view]</a> as indicated:</p>
+
+<blockquote>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;view V&gt;
+    requires bidirectional_range&lt;V&gt;
+  class reverse_view : public view_interface&lt;reverse_view&lt;V&gt;&gt; {
+    [&hellip;]
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin()
+      <ins>requires (!(<i>simple-view</i>&lt;V&gt; &amp;&amp; common_range&lt;const V&gt;))</ins>;
+    <del>constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;</del>
+    constexpr auto begin() const requires common_range&lt;const V&gt;;
+
+    constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end() <ins>requires (!<i>simple-view</i>&lt;V&gt;)</ins>;
+    constexpr auto end() const requires <del>common_</del>range&lt;const V&gt;;
+    [&hellip;]
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+[&hellip;]
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin()
+  <ins>requires (!(<i>simple-view</i>&lt;V&gt; &amp;&amp; common_range&lt;const V&gt;))</ins>;
+</pre>
+<blockquote>
+<p>
+-2-<i>Returns</i>:
+</p>
+<blockquote><pre>
+make_reverse_iterator(ranges::next(ranges::begin(<i>base_</i>), ranges::end(<i>base_</i>)))
+</pre></blockquote>
+<p>
+-3- <i>Remarks</i>: In order to provide the amortized constant time complexity required by the
+<code>range</code> concept, this function caches the result within the <code>reverse_view</code> 
+for use on subsequent calls.</p>
+</blockquote>
+<pre>
+<del>constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; begin() requires common_range&lt;V&gt;;</del>
+constexpr auto begin() const requires common_range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-4- <i>Effects</i>: Equivalent to: <code>return make_reverse_iterator(ranges::end(<i>base_</i>));</code>
+</p>
+</blockquote>
+<pre>
+constexpr reverse_iterator&lt;iterator_t&lt;V&gt;&gt; end() <ins>requires (!<i>simple-view</i>&lt;V&gt;)</ins>;
+constexpr auto end() const requires <del>common_</del>range&lt;const V&gt;;
+</pre>
+<blockquote>
+<p>
+-5- <i>Effects</i>: Equivalent to: <code>return make_reverse_iterator(ranges::begin(<i>base_</i>));</code>
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+
+</body>
+</html>

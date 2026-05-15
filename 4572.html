@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4572: Key ordering requirements of associative containers are poorly specified</title>
+<meta property="og:title" content="Issue 4572: Key ordering requirements of associative containers are poorly specified">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4572.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4572"><a href="lwg-active.html#4572">4572</a>. Key ordering requirements of associative containers are poorly specified</h3>
+<p><b>Section:</b> 23.2.7.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a>, 23.4.3.4 <a href="https://timsong-cpp.github.io/cppwp/map.modifiers">[map.modifiers]</a>, 23.4.6.4 <a href="https://timsong-cpp.github.io/cppwp/set.modifiers">[set.modifiers]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Joaquin M López Muñoz <b>Opened:</b> 2026-04-19 <b>Last modified:</b> 2026-04-20</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#associative.reqmts.general">active issues</a> in [associative.reqmts.general].</p>
+<p><b>View all other</b> <a href="lwg-index.html#associative.reqmts.general">issues</a> in [associative.reqmts.general].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+23.2.7.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a> mandates that <code class='backtick'>Compare</code> induce a strict weak 
+ordering (SWO) on elements of <code class='backtick'>Key</code>. A strict reading of this requirement without further 
+qualifications implies, for instance, that using a container such as <code>std::set&lt;double&gt;</code> 
+is UB regardless of what elements go into it (because <code>std::less&lt;double&gt;</code> is
+<em>not</em> a SWO on all values of <code class='backtick'>double</code> due to NaN). Assuming that the intent of the
+standard is to allow for the use of <code>std::set&lt;double&gt;</code> and other containers 
+where <code class='backtick'>Compare</code> does not induce a full SWO on all possible values of <code class='backtick'>Key</code>, there are 
+(at least) two possible relaxations of the original requirement:
+</p>
+<ol>
+<li><p>
+Let <code class='backtick'>K</code> be the set of keys in an associative container <code class='backtick'>a</code> at a given point in time:
+<code class='backtick'>Compare</code> induces a SWO on <code class='backtick'>K</code> and also on {<code class='backtick'>k</code>} ∪ <code class='backtick'>K</code> for any <code class='backtick'>k</code> involved in an attempted
+insertion into <code class='backtick'>a</code> (either successful or not).
+</p></li>
+<li><p>
+<code class='backtick'>Compare</code> induces a SWO on <code class='backtick'>K</code> and also on {<code class='backtick'>k</code>} ∪ <code class='backtick'>K</code> for any <code class='backtick'>k</code> involved in an attempted
+insertion (either successful or not) <em>or</em> a lookup operation.
+</p></li>
+</ol>
+<p>
+Now, consider the following code:
+</p>
+<blockquote><pre>
+// (A)
+std::set&lt;double&gt; s = {0.0, 1.0, 2.0, 3.0};
+auto nan = std::numeric_limits&lt;double&gt;::quiet_NaN();
+return s.upper_bound(nan) == s.end();
+</pre></blockquote>
+<p>
+Under interpretation 1, (A) is correct and returns <code class='backtick'>true</code>, whereas under interpretation 2
+the code is UB because <code>std::less&lt;double&gt;</code> does not induce a SWO on 
+<code class='backtick'>{0.0, 1.0, 2.0, 3.0, NaN}</code>.
+<p/>
+Currently, libstdc++, Microsoft's C++ Standard Library, and libc++ v21 or lower behave as if
+interpretation 1 is in effect. Starting with version 22, libc++
+<a href="https://github.com/llvm/llvm-project/pull/161366">introduces optimizations</a> 
+that implicitly assume interpretation 2, and the code in fact returns <code class='backtick'>false</code>.
+See <a href="https://godbolt.org/z/789qr74es">this godbolt link</a>, where the different 
+behaviors are shown side by side.
+<p/>
+Note, however, that the following pieces of code are <em>not</em> UB:
+</p>
+<blockquote><pre>
+// (B) Global binary search functions
+std::vector&lt;double&gt; v = {0.0, 3.0, 2.0, 1.0};
+std::sort(v.begin(), v.end());
+return std::upper_bound(v.begin(), v.end(), nan) == v.end(); // returns true
+</pre></blockquote>
+<blockquote><pre>
+// (C) Heterogeneous lookup
+std::set&lt;double, std::less&lt;&gt;&gt; s = {0.0, 1.0, 2.0, 3.0};
+return s.upper_bound(std::cref(nan)) == s.end(); // returns true
+</pre></blockquote>
+<p>
+because <code class='backtick'>upper_bound</code> in (B) and (C) only requires that the passed key
+<i>partition</i> the range where lookup happens, and ¬( · &lt; NaN) partitions
+the range <code class='backtick'>R</code> = [0.0, 1.0, 2.0, 3.0] into <code class='backtick'>R</code> and [] 
+(see <a href="https://wg21.link/upper.bound">upper.bound</a> and
+23.2.7.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a>/167.
+The fact that (C) is well defined is an argument against interpretation 2, 
+given that (C) can be seen as a mere syntactic variation of (A).
+<p/>
+The status quo (<code class='backtick'>Compare</code> must induce a full SWO on all possible values of <code class='backtick'>Key</code>)
+is unacceptably strict and hardly the intent of the standard. As reasonable interpretation
+is left open, we're beginning to see observable divergences between C++ standard
+library implementations.
+<p/>
+<b>Arguments in favor of partition-based lookup semantics</b>
+<p/>
+We posit that interpretation 1, supplemented with partition-based requirements for
+non-heterogeneous lookup:
+<p/>
+<i>Let <code class='backtick'>K</code> be the set of keys in an associative container <code class='backtick'>a</code> at a given point in time:
+<code class='backtick'>Compare</code> induces a SWO on <code class='backtick'>K</code> and also on {<code class='backtick'>k</code>} ∪ <code class='backtick'>K</code> for any <code class='backtick'>k</code> involved in an attempted
+insertion into <code class='backtick'>a</code> (either successful or not). Non-heterogeneous lookup for <code class='backtick'>k</code> only requires
+that <code class='backtick'>k</code> partition the range [<code class='backtick'>a.begin()</code>, <code class='backtick'>a.end()</code>).</i>
+<p/>
+is the most useful and reasonable interpretation. Some arguments in favor of this thesis:
+</p>
+<ul>
+<li><p>
+Partition-based lookup semantics is maximally aligned and consistent with current
+requirements for global lookup algorithms and associative container heterogeneous lookup.
+In particular:
+</p>
+<ul>
+<li><p>
+It makes (A) and (C) equivalent, which is a reasonable assumption any
+non-expert user could make.
+</p></li>
+<li><p>
+It makes flat container adaptors truly equivalent to the manually-sorted vectors
+they are meant to replace:
+</p>
+<blockquote><pre>
+// (D)
+std::vector&lt;double&gt; v = {3.0, 1.0, 0.0, 2.0};
+std::sort(v.begin(), v.end());
+auto nan = std::numeric_limits&lt;double&gt;::quiet_NaN();
+return std::upper_bound(v.begin(), v.end(), nan) == v.end();
+</pre></blockquote>
+<blockquote><pre>
+// (E) only well defined and equivalent to (D) if partition-based lookup is adopted
+std::flat_set&lt;double&gt; s = {3.0, 1.0, 0.0, 2.0};
+auto nan = std::numeric_limits&lt;double&gt;::quiet_NaN();
+return s.upper_bound(nan) == s.end();
+</pre></blockquote>
+</li>
+</ul>
+</li>
+<li><p>
+In the <a href="https://wg21.link/N1313" title=" Binary Search with Heterogeneous Comparison">N1313</a> foundational paper where partition-based semantics
+was first introduced, David Abrahams states that <i>"[s]trict weak ordering is 
+a great concept for sorting, but maybe it's not appropriate for searching"</i>.
+<p/>
+N1313 informed the resolution of LWG <a href="270" title="Binary search requirements overly strict (Status: CD1)">270</a> ("Binary search requirements 
+overly strict"), whose rationale states that <i>"[t]he proposed resolution 
+reinterprets binary search. Instead of thinking about searching for a value in 
+a sorted range, we view that as an important special case of a more general
+algorithm: searching for the partition point in a partitioned range"</i>.
+</p></li>
+<li><p>
+In <a href="https://wg21.link/N2882" title=" Adding heterogeneous comparison lookup to associative containers for TR2 (Rev 1)">N2882</a> and <a href="https://wg21.link/N3465" title=" Adding heterogeneous comparison lookup to associative containers for TR2 (Rev 2)">N3465</a>, early versions of the
+paper upon which heterogeneous lookup for associative containers was defined
+(<a href="https://wg21.link/N3657" title=" Adding heterogeneous comparison lookup to associative containers (rev 4)">N3657</a>), the wording for non-heterogeneous lookup was indeed
+partition-based in accordance with Abrahams's conceptual setup (though this 
+exact wording didn't make it into the standard as is, for reasons unknown to 
+the author).
+</p></li>
+<li><p>
+For a unique associative container <code class='backtick'>a</code>, if <code class='backtick'>Compare</code> induces a strict <i>partial</i> order
+on all its possible key values, then partition-based lookup is well defined everywhere.
+Formally, if <code class='backtick'>Compare</code> is a SPO and a set <code class='backtick'>K</code> of keys is totally ordered wrt <code class='backtick'>Compare</code>
+(i.e., <code class='backtick'>K</code> is a <a href="https://en.wikipedia.org/wiki/Total_order#Chains"><i>chain</i></a>, 
+which the range [<code class='backtick'>a.begin()</code>, <code class='backtick'>a.end()</code>) always satisfies), then <code class='backtick'>K</code> is partitioned by any
+arbitrary <code class='backtick'>k</code> (proof trivial).
+</p></li>
+<li><p>
+Beyond admittedly corner cases such as that of NaN, there are partial orders that
+directly benefit from partition-based semantics. For instance, if we have a set <code class='backtick'>s</code>
+of non-overlapping interval objects ordered by their natural
+<a href="https://en.wikipedia.org/wiki/Interval_order"><i>interval order</i></a> (such 
+as supported by <a href="https://www.boost.org/doc/libs/latest/libs/icl/doc/html/index.html">
+Boost.ICL</a>, then <code class='backtick'>s.equal_range(i)</code> simply returns the range of intervals in <code class='backtick'>s</code> 
+that are <i>contained</i> in <code class='backtick'>i</code>. Boost.ICL, in fact, implicitly relies on the interpretation 
+of lookup semantics we're proposing here.
+</p></li>
+</ul>
+<p>
+On a related note, it may be worth mentioning that the standard text has some general formulation
+problems regarding the extent of applicability of semantic requirements (both for C++20
+<code class='backtick'>concept</code>s and pre-C++20 well-defined expression tables, collectively called <i>named requirements</i>).
+16.3.2.3 <a href="https://timsong-cpp.github.io/cppwp/structure.requirements">[structure.requirements]</a>/8 tries to provide some leeway for the specific case 
+of <code class='backtick'>concept</code>s in a manner described by <a href="https://wg21.link/P2027R0" title=" Moved-from objects need not be valid">P2027R0</a>, section "This is a special 
+case of a much bigger problem", as <i>"little more than handwaving"</i>.
+</p>
+
+
+<p id="res-4572"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 23.2.7.1 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.general">[associative.reqmts.general]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-2- Each associative container is parameterized on <code class='backtick'>Key</code> and an ordering relation 
+<code class='backtick'>Compare</code> that induces a strict weak ordering (26.8 <a href="https://timsong-cpp.github.io/cppwp/alg.sorting">[alg.sorting]</a>) on 
+<del>elements of <code class='backtick'>Key</code></del><ins>the values of <code class='backtick'>Key</code> in the container at any point 
+in time</ins>. In addition, <code class='backtick'>map</code> and <code class='backtick'>multimap</code> associate an arbitrary mapped type
+<code class='backtick'>T</code> with the <code class='backtick'>Key</code>. The object of type <code class='backtick'>Compare</code> is called the <i>comparison object</i> 
+of a container.
+<p/>
+[&hellip;]
+<p/>
+-7- In this subclause,
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(7.1) &mdash; <code class='backtick'>X</code> denotes an associative container class,
+</p></li>
+<li><p>
+[&hellip;]
+</p></li>
+<li><p>
+(7.7) &mdash; <code class='backtick'>a_eq</code> denotes a value of type <code class='backtick'>X</code> when <code class='backtick'>X</code> supports equivalent keys,
+</p></li>
+<li><p>
+<del>(7.8) &mdash; <code class='backtick'>a_tran</code> denotes a value of type <code class='backtick'>X</code> or <code class='backtick'>const X</code> when the 
+<i>qualified-id</i> <code class='backtick'>X::key_compare::is_transparent</code> is valid and denotes a type 
+(13.10.3 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>),</del>
+</p></li>
+<li><p>
+(7.9) &mdash; <code class='backtick'>i</code> and <code class='backtick'>j</code> meet the <i>Cpp17InputIterator</i> requirements and refer to 
+elements implicitly convertible to <code class='backtick'>value_type</code>,
+</p></li>
+<li><p>
+[&hellip;]
+</p></li>
+<li><p>
+(7.17) &mdash; <code class='backtick'>t</code> denotes a value of type <code class='backtick'>X::value_type</code>, <ins>and</ins>
+</p></li>
+<li><p>
+<del>(7.18) &mdash; <code class='backtick'>k</code> denotes a value of type <code class='backtick'>X::key_type</code>, and</del>
+</p></li>
+<li><p>
+(7.19) &mdash; <code class='backtick'>c</code> denotes a value of type <code class='backtick'>X::key_compare</code> or <code class='backtick'>const X::key_compare</code>;
+</p></li>
+<li><p>
+[&hellip;]
+</p></li>
+<li><p>
+(7.23) &mdash; <code class='backtick'>kx</code> is a value such that
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(7.23.1) &mdash; <code class='backtick'>a</code> is partitioned with respect to <code class='backtick'>c(x, kx)</code> and <code class='backtick'>!c(kx, x)</code>, with 
+<code class='backtick'>c(x, kx)</code> implying <code class='backtick'>!c(kx, x)</code> and with <code class='backtick'>x</code> the key value of <code class='backtick'>e</code> and <code class='backtick'>e</code> in <code class='backtick'>a</code>, and
+</p></li>
+<li><p>
+(7.23.2) — <code class='backtick'>kx</code> is not convertible to either <code class='backtick'>iterator</code> or <code class='backtick'>const_iterator</code>; <del>and</del>
+</p></li>
+<li><p>
+<ins>(7.23.?) &mdash; if <i>qualified-id</i> <code class='backtick'>X::key_compare::is_transparent</code> is not valid 
+or does not denote a type (13.10.3 <a href="https://timsong-cpp.github.io/cppwp/temp.deduct">[temp.deduct]</a>), then <code class='backtick'>kl</code>, <code class='backtick'>ku</code>, <code class='backtick'>ke</code> and <code class='backtick'>kx</code> 
+are of type <code class='backtick'>X::key_type</code>;</ins>
+</p></li>
+</ol>
+</li>
+<li><p>
+[&hellip;]
+</p></li>
+</ol>
+<p>
+[&hellip;]
+</p>
+[&hellip;]
+<pre>
+a_uniq.emplace(args)
+</pre>
+<blockquote>
+<p>
+-47- <i>Result</i>: <code>pair&lt;iterator, bool&gt;</code>
+<p/>
+-48- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>X</code> from <code class='backtick'>args</code>.
+<ins>If <code class='backtick'>t</code> is a <code class='backtick'>value_type</code> object constructed with <code>std::forward&lt;Args&gt;(args)...</code>,  
+<code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising the key of <code class='backtick'>t</code> and 
+all the keys in <code class='backtick'>a_uniq</code>.</ins>
+<p/>
+-49- <i>Effects</i>: Inserts a <code class='backtick'>value_type</code> object <code class='backtick'>t</code> constructed with 
+<code>std::forward&lt;Args&gt;(args)...</code> if and only if there is no element in the container 
+with key equivalent to the key of <code class='backtick'>t</code>.
+<p/>
+-50- <i>Returns</i>: The <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if and only if the 
+insertion takes place, and the iterator component of the pair points to the element with 
+key equivalent to the key of <code class='backtick'>t</code>.
+<p/>
+-51- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+a_eq.emplace(args)
+</pre>
+<blockquote>
+<p>
+-52- <i>Result</i>: <code>iterator</code>
+<p/>
+-53- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>X</code> from <code class='backtick'>args</code>.
+<ins>If <code class='backtick'>t</code> is a <code class='backtick'>value_type</code> object constructed with <code>std::forward&lt;Args&gt;(args)...</code>,  
+<code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising the key of <code class='backtick'>t</code> and 
+all the keys in <code class='backtick'>a_eq</code>.</ins>
+<p/>
+-54- <i>Effects</i>: Inserts a <code class='backtick'>value_type</code> object <code class='backtick'>t</code> constructed with 
+<code>std::forward&lt;Args&gt;(args)...</code>.If a range containing elements equivalent to <code class='backtick'>t</code> 
+exists in <code class='backtick'>a_eq</code>, <code class='backtick'>t</code> is inserted at the end of that range.
+<p/>
+-55- <i>Returns</i>: An iterator pointing to the newly inserted element.
+<p/>
+-56- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+a_uniq.insert(t)
+</pre>
+<blockquote>
+<p>
+-61- <i>Result</i>: <code>pair&lt;iterator, bool&gt;</code>
+<p/>
+-62- <i>Preconditions</i>: If <code class='backtick'>t</code> is a non-const rvalue, <code class='backtick'>value_type</code> is <i>Cpp17MoveInsertable</i> 
+into <code class='backtick'>X</code>; otherwise, <code class='backtick'>value_type</code> is <i>Cpp17CopyInsertable</i> into <code class='backtick'>X</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising the key of <code class='backtick'>t</code> and all the keys
+in <code class='backtick'>a_uniq</code>.</ins>
+<p/>
+-63- <i>Effects</i>: Inserts <code class='backtick'>t</code> if and only if there is no element in the container with key equivalent to 
+the key of <code class='backtick'>t</code>.
+<p/>
+-64- <i>Returns</i>: The <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if and only if the insertion 
+takes place, and the iterator component of the pair points to the element with key equivalent to the key 
+of <code class='backtick'>t</code>.
+<p/>
+-65- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+a_eq.insert(t)
+</pre>
+<blockquote>
+<p>
+-66- <i>Result</i>: <code>iterator</code>
+<p/>
+-67- <i>Preconditions</i>: If <code class='backtick'>t</code> is a non-const rvalue, <code class='backtick'>value_type</code> is <i>Cpp17MoveInsertable</i> 
+into <code class='backtick'>X</code>; otherwise, <code class='backtick'>value_type</code> is <i>Cpp17CopyInsertable</i> into <code class='backtick'>X</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising the key of <code class='backtick'>t</code> and all the keys
+in <code class='backtick'>a_eq</code>.</ins>
+<p/>
+-68- <i>Effects</i>: Inserts <code class='backtick'>t</code> and returns the iterator pointing to the newly inserted element. 
+If a range containing elements equivalent to <code class='backtick'>t</code> exists in <code class='backtick'>a_eq</code>, <code class='backtick'>t</code> is inserted at the end of that range.
+<p/>
+-69- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+a.insert(p, t)
+</pre>
+<blockquote>
+<p>
+-70- <i>Result</i>: <code>iterator</code>
+<p/>
+-71- <i>Preconditions</i>: If <code class='backtick'>t</code> is a non-const rvalue, <code class='backtick'>value_type</code> is <i>Cpp17MoveInsertable</i> 
+into <code class='backtick'>X</code>; otherwise, <code class='backtick'>value_type</code> is <i>Cpp17CopyInsertable</i> into <code class='backtick'>X</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising the key of <code class='backtick'>t</code> and all the keys
+in <code class='backtick'>a</code>.</ins>
+<p/>
+-72- <i>Effects</i>: Inserts <code class='backtick'>t</code> if and only if there is no element with key equivalent to the key of <code class='backtick'>t</code> 
+in containers with unique keys; always inserts <code class='backtick'>t</code> in containers with equivalent keys. <code class='backtick'>t</code> is inserted 
+as close as possible to the position just prior to <code class='backtick'>p</code>.
+<p/>
+-73- <i>Returns</i>: An iterator pointing to the element with key equivalent to the key of <code class='backtick'>t</code>.
+<p/>
+-74- <i>Complexity</i>: Logarithmic in general, but amortized constant if <code class='backtick'>t</code> is inserted right before <code class='backtick'>p</code>.
+</p>
+</blockquote>
+<pre>
+a.insert(i, j)
+</pre>
+<blockquote>
+<p>
+-75- <i>Result</i>: <code>void</code>
+<p/>
+-76- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>X</code> from 
+<code class='backtick'>*i</code>. Neither <code class='backtick'>i</code> nor <code class='backtick'>j</code> are iterators into <code class='backtick'>a</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising all the keys in <code class='backtick'>[i, j)</code> 
+and all the keys in <code class='backtick'>a</code>.</ins>
+<p/>
+-77- <i>Effects</i>: Inserts each element from the range <code class='backtick'>[i, j)</code> if and only if there is no element 
+with key equivalent to the key of that element in containers with unique keys; always inserts that 
+element in containers with equivalent keys.
+<p/>
+-78- <i>Complexity</i>: <code><i>N</i></code> log(<code>a.size() + <i>N</i></code>), where <code><i>N</i></code> 
+has the value <code class='backtick'>distance(i, j)</code>.
+</p>
+</blockquote>
+<pre>
+a.insert_range(rg)
+</pre>
+<blockquote>
+<p>
+-79- <i>Result</i>: <code>void</code>
+<p/>
+-80- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>X</code> from 
+<code>*ranges::begin(rg)</code>. <code class='backtick'>rg</code> and <code class='backtick'>a</code> do not overlap.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising all the keys in <code class='backtick'>rg</code> 
+and all the keys in <code class='backtick'>a</code>.</ins>
+<p/>
+-81- <i>Effects</i>: Inserts each element from <code class='backtick'>rg</code> if and only if there is no element with 
+key equivalent to the key of that element in containers with unique keys; always inserts that 
+element in containers with equivalent keys.
+<p/>
+-82- <i>Complexity</i>: <code><i>N</i></code> log(<code>a.size() + <i>N</i></code>), where <code><i>N</i></code> 
+has the value <code class='backtick'>ranges::distance(rg)</code>.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+a_uniq.insert(nh)
+</pre>
+<blockquote>
+<p>
+-84- <i>Result</i>: <code>insert_return_type</code>
+<p/>
+-85- <i>Preconditions</i>: <code class='backtick'>nh</code> is empty or <code class='backtick'>a_uniq.get_allocator() == nh.get_allocator()</code> is <code class='backtick'>true</code>.
+<ins>If <code class='backtick'>nh</code> is not empty, <code class='backtick'>Compare</code> induces a strict weak ordering on the set of values
+comprising the key of <code class='backtick'>nh</code> and all the keys in <code class='backtick'>a_uniq</code>.</ins>
+<p/>
+-86- <i>Effects</i>: If <code class='backtick'>nh</code> is empty, has no effect. Otherwise, inserts the element owned by <code class='backtick'>nh</code> 
+if and only if there is no element in the container with a key equivalent to <code class='backtick'>nh.key()</code>.
+<p/>
+-87- <i>Returns</i>: If <code class='backtick'>nh</code> is empty, inserted is <code class='backtick'>false</code>, <code class='backtick'>position</code> is <code class='backtick'>end()</code>, and 
+<code class='backtick'>node</code> is empty. Otherwise if the insertion took place, <code class='backtick'>inserted</code> is <code class='backtick'>true</code>, <code class='backtick'>position</code> 
+points to the inserted element, and <code class='backtick'>node</code> is empty; if the insertion failed, <code class='backtick'>inserted</code> is <code class='backtick'>false</code>, 
+<code class='backtick'>node</code> has the previous value of <code class='backtick'>nh</code>, and <code class='backtick'>position</code> points to an element with a key equivalent to 
+<code class='backtick'>nh.key()</code>.
+<p/>
+-88- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+a_eq.insert(nh)
+</pre>
+<blockquote>
+<p>
+-89- <i>Result</i>: <code>iterator</code>
+<p/>
+-90- <i>Preconditions</i>: <code class='backtick'>nh</code> is empty or <code class='backtick'>a_eq.get_allocator() == nh.get_allocator()</code> is <code class='backtick'>true</code>.
+<ins>If <code class='backtick'>nh</code> is not empty, <code class='backtick'>Compare</code> induces a strict weak ordering on the set of values
+comprising the key of <code class='backtick'>nh</code> and all the keys in <code class='backtick'>a_eq</code>.</ins>
+<p/>
+-91- <i>Effects</i>: If <code class='backtick'>nh</code> is empty, has no effect and returns <code class='backtick'>a_eq.end()</code>. Otherwise, 
+inserts the element owned by <code class='backtick'>nh</code> and returns an iterator pointing to the newly inserted element. 
+If a range containing elements with keys equivalent to <code class='backtick'>nh.key()</code> exists in <code class='backtick'>a_eq</code>, the element 
+is inserted at the end of that range.
+<p/>
+-92- <i>Postconditions</i>: <code class='backtick'>nh</code> is empty.
+<p/>
+-93- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+a.insert(p, nh)
+</pre>
+<blockquote>
+<p>
+-94- <i>Result</i>: <code>iterator</code>
+<p/>
+-95- <i>Preconditions</i>: <code class='backtick'>nh</code> is empty or <code class='backtick'>a.get_allocator() == nh.get_allocator()</code> is <code class='backtick'>true</code>.
+<ins>If <code class='backtick'>nh</code> is not empty, <code class='backtick'>Compare</code> induces a strict weak ordering on the set of values
+comprising the key of <code class='backtick'>nh</code> and all the keys in <code class='backtick'>a</code>.</ins>
+<p/>
+-96- <i>Effects</i>: If <code class='backtick'>nh</code> is empty, has no effect and returns <code class='backtick'>a.end()</code>. Otherwise, 
+inserts the element owned by <code class='backtick'>nh</code> if and only if there is no element with key equivalent to 
+<code class='backtick'>nh.key()</code> in containers with unique keys; always inserts the element owned by <code class='backtick'>nh</code> in containers 
+with equivalent keys. The element is inserted as close as possible to the position just prior to 
+<code class='backtick'>p</code>.
+<p/>
+-97- <i>Postconditions</i>: <code class='backtick'>nh</code> is empty if insertion succeeds, unchanged if insertion fails.
+<p/>
+-98- <i>Returns</i>: An iterator pointing to the element with key equivalent to <code class='backtick'>nh.key()</code>.
+<p/>
+-99- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+<del>a.extract(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-100- <i>Result</i>: <code class='backtick'>node_type</code></del>
+<p/>
+<del>-101- <i>Effects</i>: Removes the first element in the container with key equivalent to <code class='backtick'>k</code>.</del>
+<p/>
+<del>-102- <i>Returns</i>: A <code class='backtick'>node_type</code> owning the element if found, otherwise an empty <code class='backtick'>node_type</code>.</del>
+<p/>
+<del>-103- <i>Complexity</i>: log(<code class='backtick'>a.size()</code>)</del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>a</ins>.extract(kx)
+</pre>
+<blockquote>
+<p>
+-104- <i>Result</i>: <code class='backtick'>node_type</code>
+<p/>
+-105- <i>Effects</i>: Removes the first element in the container with key <code class='backtick'>r</code> such that <code>!c(r, kx) &amp;&amp; !c(kx, r)</code> is
+<code class='backtick'>true</code>.
+<p/>
+-106- <i>Returns</i>: A <code class='backtick'>node_type</code> owning the element if found, otherwise an empty <code class='backtick'>node_type</code>.
+<p/>
+-107- <i>Complexity</i>: log(<code><del>a_tran</del><ins>a</ins>.size()</code>)
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+a.merge(a2)
+</pre>
+<blockquote>
+<p>
+-112- <i>Result</i>: <code class='backtick'>void</code>
+<p/>
+-113- <i>Preconditions</i>: <code class='backtick'>a.get_allocator() == a2.get_allocator()</code> is <code class='backtick'>true</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising all
+the keys in <code class='backtick'>a</code> and all the keys in <code class='backtick'>a2</code>.</ins>
+<p/>
+-114- <i>Effects</i>: Attempts to extract each element in <code class='backtick'>a2</code> and insert it into <code class='backtick'>a</code> 
+using the comparison object of <code class='backtick'>a</code>. In containers with unique keys, if there is an element 
+in a with key equivalent to the key of an element from <code class='backtick'>a2</code>, then that element is 
+not extracted from <code class='backtick'>a2</code>.
+<p/>
+-115- <i>Postconditions</i>: Pointers and references to the transferred elements of <code class='backtick'>a2</code> 
+refer to those same elements but as members of <code class='backtick'>a</code>. If <code class='backtick'>a.begin()</code> and <code class='backtick'>a2.begin()</code> have 
+the same type, iterators referring to the transferred elements will continue to refer to 
+their elements, but they now behave as iterators into <code class='backtick'>a</code>, not into <code class='backtick'>a2</code>.
+<p/>
+-116- <i>Throws</i>: Nothing unless the comparison object throws.
+<p/>
+-117- <i>Complexity</i>: <code><i>N</i></code> log(<code class='backtick'>a.size()</code> + <code><i>N</i></code>), where 
+<code><i>N</i></code> has the value <code class='backtick'>a2.size()</code>.
+</p>
+</blockquote>
+<pre>
+<del>a.erase(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-118- <i>Result</i>: <code class='backtick'>size_type</code></del>
+<p/>
+<del>-119- <i>Effects</i>: Erases all elements in the container with key equivalent to <code class='backtick'>k</code>.</del>
+<p/>
+<del>-120- <i>Returns</i>: The number of erased elements.</del>
+<p/>
+<del>-121- <i>Complexity</i>: log(<code class='backtick'>a.size()</code>) + <code class='backtick'>a.count(k)</code></del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>a</ins>.erase(kx)
+</pre>
+<blockquote>
+<p>
+-122- <i>Result</i>: <code class='backtick'>size_type</code>
+<p/>
+-123- <i>Effects</i>: Erases all elements in the container with key <code class='backtick'>r</code> such that <code>!c(r, kx) &amp;&amp; !c(kx, r)</code> 
+is <code class='backtick'>true</code>.
+<p/>
+-124- <i>Returns</i>: The number of erased elements.
+<p/>
+-125- <i>Complexity</i>: log(<code><del>a_tran</del><ins>a</ins>.size()</code>) + <code><del>a_tran</del><ins>a</ins>.count(kx)</code>
+</p>
+</blockquote>
+[&hellip;]
+<pre>
+<del>b.find(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-141- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code class='backtick'>b</code>.</del>
+<p/>
+<del>-142- <i>Returns</i>: An iterator pointing to an element with the key equivalent to <code class='backtick'>k</code>, or 
+<code class='backtick'>b.end()</code> if such an element is not found.</del>
+<p/>
+<del>-143- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.find(ke)
+</pre>
+<blockquote>
+<p>
+-144- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code><del>a_tran</del><ins>b</ins></code>.
+<p/>
+-145- <i>Returns</i>: An iterator pointing to an element with key <code class='backtick'>r</code> such that <code>!c(r, ke) &amp;&amp; !c(ke, r)</code> 
+is <code class='backtick'>true</code>, or <code><del>a_tran</del><ins>b</ins>.end()</code> if such an element is not found.
+<p/>
+-146- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+<del>b.count(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-147- <i>Result</i>: <code class='backtick'>size_type</code></del>
+<p/>
+<del>-148- <i>Returns</i>: The number of elements with key equivalent to <code class='backtick'>k</code>.</del>
+<p/>
+<del>-149- <i>Complexity</i>: log(<code class='backtick'>b.size()</code>) + <code class='backtick'>b.count(k)</code></del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.count(ke)
+</pre>
+<blockquote>
+<p>
+-150- <i>Result</i>: <code class='backtick'>size_type</code>
+<p/>
+-151- <i>Returns</i>: The number of elements with key <code class='backtick'>r</code> such that <code>!c(r, ke) &amp;&amp; !c(ke, r)</code>.
+<p/>
+-152- <i>Complexity</i>: log(<code><del>a_tran</del><ins>b</ins>.size()</code>) + <code><del>a_tran</del><ins>b</ins>.count(ke)</code>
+</p>
+</blockquote>
+<pre>
+<del>b.contains(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-153- <i>Result</i>: <code class='backtick'>bool</code></del>
+<p/>
+<del>-154- <i>Effects</i>: Equivalent to: <code class='backtick'>return b.find(k) != b.end();</code></del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.contains(ke)
+</pre>
+<blockquote>
+<p>
+-155- <i>Result</i>: <code class='backtick'>bool</code>
+<p/>
+-156- <i>Effects</i>: Equivalent to: <code>return <del>a_tran</del><ins>b</ins>.find(ke) != <del>a_tran</del><ins>b</ins>.end();</code>
+</p>
+</blockquote>
+<pre>
+<del>b.lower_bound(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-157- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code class='backtick'>b</code>.</del>
+<p/>
+<del>-158- <i>Returns</i>: An iterator pointing to the first element with key not less than <code class='backtick'>k</code>, 
+or <code class='backtick'>b.end()</code> if such an element is not found.</del>
+<p/>
+<del>-159- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.lower_bound(kl)
+</pre>
+<blockquote>
+<p>
+-160- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code><del>a_tran</del><ins>b</ins></code>.
+<p/>
+-161- <i>Returns</i>: An iterator pointing to the first element with key <code class='backtick'>r</code> such that !c(r, kl), 
+or <code><del>a_tran</del><ins>b</ins>.end()</code> if such an element is not found.
+<p/>
+-162- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+<del>b.upper_bound(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-163- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code class='backtick'>b</code>.</del>
+<p/>
+<del>-164- <i>Returns</i>: An iterator pointing to the first element with key greater than <code class='backtick'>k</code>, 
+or <code class='backtick'>b.end()</code> if such an element is not found.</del>
+<p/>
+<del>-165- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.upper_bound(ku)
+</pre>
+<blockquote>
+<p>
+-166- <i>Result</i>: <code class='backtick'>iterator</code>; <code class='backtick'>const_iterator</code> for constant <code><del>a_tran</del><ins>b</ins></code>.
+<p/>
+-167- <i>Returns</i>: An iterator pointing to the first element with key <code class='backtick'>r</code> such that <code class='backtick'>c(ku, r)</code>, 
+or <code><del>a_tran</del><ins>b</ins>.end()</code> if such an element is not found.
+<p/>
+-168- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+<pre>
+<del>b.equal_range(k)</del>
+</pre>
+<blockquote>
+<p>
+<del>-169- <i>Result</i>: <code>pair&lt;iterator, iterator&gt;</code>; <code>pair&lt;const_iterator, const_iterator&gt;</code> 
+for constant <code class='backtick'>b</code>.</del>
+<p/>
+<del>-170- <i>Effects</i>: Equivalent to: <code class='backtick'>return make_pair(b.lower_bound(k), b.upper_bound(k));</code></del>
+<p/>
+<del>-171- <i>Complexity</i>: Logarithmic.</del>
+</p>
+</blockquote>
+<pre>
+<del>a_tran</del><ins>b</ins>.equal_range(ke)
+</pre>
+<blockquote>
+<p>
+-172- <i>Result</i>: <code>pair&lt;iterator, iterator&gt;</code>; <code>pair&lt;const_iterator, const_iterator&gt;</code> 
+for constant <code><del>a_tran</del><ins>b</ins></code>.
+<p/>
+-173- <i>Effects</i>: Equivalent to: <code>return make_pair(<del>a_tran</del><ins>b</ins>.lower_bound(ke), <del>a_tran</del><ins>b</ins>.upper_bound(ke));</code>
+<p/>
+-174- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.2.7.2 <a href="https://timsong-cpp.github.io/cppwp/associative.reqmts.except">[associative.reqmts.except]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- For associative containers, no <code class='backtick'>clear()</code> function throws an exception. <code>erase(<del>k</del><ins>kx</ins>)</code> 
+does not throw an exception unless that exception is thrown by the container's <code class='backtick'>Compare</code> object (if any).
+</p>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.4.3.4 <a href="https://timsong-cpp.github.io/cppwp/map.modifiers">[map.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class... Args&gt;
+  constexpr pair&lt;iterator, bool&gt; try_emplace(const key_type&amp; k, Args&amp;&amp;... args);
+template&lt;class... Args&gt;
+  constexpr iterator try_emplace(const_iterator hint, const key_type&amp; k, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-3- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code class='backtick'>piecewise_construct</code>, <code class='backtick'>forward_as_tuple(k)</code>, <code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code> and all the keys 
+in <code class='backtick'>*this</code>.</ins>
+<p/>
+-4- <i>Effects</i>: If the map already contains an element whose key is equivalent to <code class='backtick'>k</code>, 
+there is no effect. Otherwise inserts an object of type <code class='backtick'>value_type</code> constructed with <code class='backtick'>piecewise_construct</code>, 
+<code class='backtick'>forward_as_tuple(k)</code>, <code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+<p/>
+-5- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-6- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+<pre>
+template&lt;class... Args&gt;
+  constexpr pair&lt;iterator, bool&gt; try_emplace(key_type&amp;&amp; k, Args&amp;&amp;... args);
+template&lt;class... Args&gt;
+  constexpr iterator try_emplace(const_iterator hint, key_type&amp;&amp; k, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-7- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code class='backtick'>piecewise_construct</code>, <code class='backtick'>forward_as_tuple(std::move(k))</code>, <code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code> and all the keys 
+in <code class='backtick'>*this</code>.</ins>
+<p/>
+-8- <i>Effects</i>: If the map already contains an element whose key is equivalent to <code class='backtick'>k</code>, 
+there is no effect. Otherwise inserts an object of type <code class='backtick'>value_type</code> constructed with <code class='backtick'>piecewise_construct</code>, 
+<code class='backtick'>forward_as_tuple(std::move(k))</code>, <code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+<p/>
+-9- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-10- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+<pre>
+template&lt;class K, class... Args&gt;
+  constexpr pair&lt;iterator, bool&gt; try_emplace(K&amp;&amp; k, Args&amp;&amp;... args);
+template&lt;class K, class... Args&gt;
+  constexpr iterator try_emplace(const_iterator hint, K&amp;&amp; k, Args&amp;&amp;... args);
+</pre>
+<blockquote>
+<p>
+-11- <i>Constraints</i>: The <i>qualified-id</i> <code class='backtick'>Compare::is_transparent</code> is valid and denotes 
+a type. For the first overload, <code>is_convertible_v&lt;K&amp;&amp;, const_iterator&gt;</code> and 
+<code>is_convertible_v&lt;K&amp;&amp;, iterator&gt;</code> are both <code class='backtick'>false</code>.
+<p/>
+-12- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code class='backtick'>piecewise_construct</code>, <code>forward_as_tuple(std::forward&lt;K&gt;(k))</code>, 
+<code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising 
+<code>key_type(std::forward&lt;K&gt;(k))</code> and all the keys in <code class='backtick'>*this</code>.</ins>
+<p/>
+-13- <i>Effects</i>: If the map already contains an element whose key is equivalent to <code class='backtick'>k</code>, 
+there is no effect. Otherwise, let <code class='backtick'>r</code> be <code class='backtick'>equal_range(k)</code>. Constructs an object <code class='backtick'>u</code> of 
+type <code class='backtick'>value_type</code> with <code class='backtick'>piecewise_construct</code>, <code>forward_as_tuple(std::forward&lt;K&gt;(k))</code>, 
+<code>forward_as_tuple(std::forward&lt;Args&gt;(args)...)</code>.
+If <code class='backtick'>equal_range(u.first) == r</code> is <code class='backtick'>false</code>, the behavior is undefined. Inserts <code class='backtick'>u</code> into <code class='backtick'>*this</code>.
+<p/>
+-14- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-15- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+<pre>
+template&lt;class M&gt;
+  constexpr pair&lt;iterator, bool&gt; insert_or_assign(const key_type&amp; k, M&amp;&amp; obj);
+template&lt;class M&gt;
+  constexpr iterator insert_or_assign(const_iterator hint, const key_type&amp; k, M&amp;&amp; obj);
+</pre>
+<blockquote>
+<p>
+-16- <i>Mandates</i>: <code>is_assignable_v&lt;mapped_type&amp;, M&amp;&amp;&gt;</code> is <code class='backtick'>true</code>.
+<p/>
+-17- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code class='backtick'>k</code>, <code>std::forward&lt;M&gt;(obj)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code>
+and all the keys in <code class='backtick'>*this</code>.</ins>
+<p/>
+-18- <i>Effects</i>: If the map already contains an element <code class='backtick'>e</code> whose key is equivalent to <code class='backtick'>k</code>, 
+assigns <code>std::forward&lt;M&gt;(obj)</code> to <code class='backtick'>e.second</code>. Otherwise inserts an object of type 
+<code class='backtick'>value_type</code> constructed with <code class='backtick'>k</code>, <code>std::forward&lt;M&gt;(obj)</code>.
+<p/>
+-19- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-20- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+<pre>
+template&lt;class M&gt;
+  constexpr pair&lt;iterator, bool&gt; insert_or_assign(key_type&amp;&amp; k, M&amp;&amp; obj);
+template&lt;class M&gt;
+  constexpr iterator insert_or_assign(const_iterator hint, key_type&amp;&amp; k, M&amp;&amp; obj);
+</pre>
+<blockquote>
+<p>
+-21- <i>Mandates</i>: <code>is_assignable_v&lt;mapped_type&amp;, M&amp;&amp;&gt;</code> is <code class='backtick'>true</code>.
+<p/>
+-22- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code class='backtick'>std::move(k)</code>, <code>std::forward&lt;M&gt;(obj)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code>
+and all the keys in <code class='backtick'>*this</code>.</ins>
+<p/>
+-23- <i>Effects</i>: If the map already contains an element <code class='backtick'>e</code> whose key is equivalent to <code class='backtick'>k</code>, 
+assigns <code>std::forward&lt;M&gt;(obj)</code> to <code class='backtick'>e.second</code>. Otherwise inserts an object of type 
+<code class='backtick'>value_type</code> constructed with <code class='backtick'>std::move(k)</code>, <code>std::forward&lt;M&gt;(obj)</code>.
+<p/>
+-24- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-25- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+<pre>
+</pre>
+<blockquote>
+<p>
+-26- <i>Constraints</i>: <code>is_assignable_v&lt;mapped_type&amp;, M&amp;&amp;&gt;</code> is <code class='backtick'>true</code>.
+<p/>
+-27- <i>Mandates</i>: <code>is_assignable_v&lt;mapped_type&amp;, M&amp;&amp;&gt;</code> is <code class='backtick'>true</code>.
+<p/>
+-28- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>map</code> from 
+<code>std::forward&lt;K&gt;(k)</code>, <code>std::forward&lt;M&gt;(obj)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code>
+and all the keys in <code class='backtick'>*this</code>.</ins>
+<p/>
+-29- <i>Effects</i>: If the map already contains an element <code class='backtick'>e</code> whose key is equivalent to <code class='backtick'>k</code>, 
+assigns <code>std::forward&lt;M&gt;(obj)</code> to <code class='backtick'>e.second</code>. Otherwise, let <code class='backtick'>r</code> be <code class='backtick'>equal_range(k)</code>. 
+Constructs an object <code class='backtick'>u</code> of type <code class='backtick'>value_type</code> with <code>std::forward&lt;K&gt;(k)</code>, 
+<code>std::forward&lt;M&gt;(obj)</code>. If <code class='backtick'>equal_range(u.first) == r</code> is <code class='backtick'>false</code>, the
+behavior is undefined. Inserts <code class='backtick'>u</code> into <code class='backtick'>*this</code>.
+<p/>
+-30- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the map element whose key is 
+equivalent to <code class='backtick'>k</code>.
+<p/>
+-31- <i>Complexity</i>: The same as <code class='backtick'>emplace</code> and <code class='backtick'>emplace_hint</code>, respectively.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+<li>
+<p>Modify 23.4.6.4 <a href="https://timsong-cpp.github.io/cppwp/set.modifiers">[set.modifiers]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class K&gt; constexpr pair&lt;iterator, bool&gt; insert(K&amp;&amp; x);
+template&lt;class K&gt; constexpr iterator insert(const_iterator hint, K&amp;&amp; x);
+</pre>
+<blockquote>
+<p>
+-1- <i>Constraints</i>: The <i>qualified-id</i> <code class='backtick'>Compare::is_transparent</code> is valid and denotes 
+a type. For the second overload, <code>is_convertible_v&lt;K&amp;&amp;, const_iterator&gt;</code> and 
+<code>is_convertible_v&lt;K&amp;&amp;, iterator&gt;</code> are both <code class='backtick'>false</code>.
+<p/>
+-2- <i>Preconditions</i>: <code class='backtick'>value_type</code> is <i>Cpp17EmplaceConstructible</i> into <code class='backtick'>set</code> from 
+<code>std::forward&lt;K&gt;(x)</code>.
+<ins><code class='backtick'>Compare</code> induces a strict weak ordering on the set of values comprising <code class='backtick'>k</code>
+and all the keys in <code class='backtick'>*this</code>.</ins>
+<p/>
+-3- <i>Effects</i>: If the set already contains an element that is equivalent to <code class='backtick'>x</code>, 
+there is no effect. Otherwise, let <code class='backtick'>r</code> be <code class='backtick'>equal_range(x)</code>. Constructs an object <code class='backtick'>u</code> of type 
+<code class='backtick'>value_type</code> with <code>std::forward&lt;K&gt;(x)</code>. If <code class='backtick'>equal_range(u) == r</code> is <code class='backtick'>false</code>, 
+the behavior is undefined. Inserts <code class='backtick'>u</code> into <code class='backtick'>*this</code>.
+<p/>
+-4- <i>Returns</i>: In the first overload, the <code class='backtick'>bool</code> component of the returned pair is <code class='backtick'>true</code> if 
+and only if the insertion took place. The returned iterator points to the set element that is 
+equivalent to <code class='backtick'>x</code>.
+<p/>
+-5- <i>Complexity</i>: Logarithmic.
+</p>
+</blockquote>
+</blockquote>
+</li>
+
+ </ol>
+
+
+
+
+
+</body>
+</html>

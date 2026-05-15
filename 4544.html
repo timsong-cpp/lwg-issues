@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4544: Parallel overload of ranges::set_difference should return in_in_out_result</title>
+<meta property="og:title" content="Issue 4544: Parallel overload of ranges::set_difference should return in_in_out_result">
+<meta property="og:description" content="C++ library issue. Status: WP">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4544.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="4544"><a href="lwg-defects.html#4544">4544</a>. Parallel overload of <code class='backtick'>ranges::set_difference</code> should return <code class='backtick'>in_in_out_result</code></h3>
+<p><b>Section:</b> 26.8.7.5 <a href="https://timsong-cpp.github.io/cppwp/set.difference">[set.difference]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Ruslan Arutyunyan <b>Opened:</b> 2026-03-18 <b>Last modified:</b> 2026-03-31</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Serial <code class='backtick'>ranges::set_difference</code> returns <code class='backtick'>in_out_result</code>, even though it takes two input ranges. 
+This is probably fine because it assumes that the output size is always sufficient for the 
+algorithms to write all necessary elements. We only need to go to the end of the first input 
+and we usually do not care where the second input stops even if we did not fully traverse it. 
+However, for parallel range algorithms the output size can be insufficient to have every single 
+element from input that fits. When the output has smaller size than the number of elements it 
+is supposed to take (based on the input), it should be useful for users to understand where 
+stop points are for both first and second inputs. Thus, we need to return <code class='backtick'>in_in_out_result</code>. 
+The algorithm should return the stop point of the first input, which is the first element that 
+has to be written to the output but doesn't fit and it should also return the stop point of the 
+second input, which is the element that was compared with the <code class='backtick'>input1</code> element that does not 
+fit. Otherwise, the algorithm returns an iterator that compares equal with <code class='backtick'>last2</code>, for the 
+second input, meaning that it is already exhausted.
+<p/>
+This design for parallel range <code class='backtick'>set_difference</code> will also be beneficial if and when we are going 
+to add serial range algorithms with the range-as-the-output-design aspect. For the behavior 
+illustration purposes please look at the serial implementation of such algorithm:
+</p>
+<blockquote><pre>
+template &lt;class In1, class In2, class Out&gt;
+using set_difference_truncated_result = std::ranges::in_in_out_result&lt;In1, In2, Out&gt;;
+
+struct set_difference_fn
+{
+    template&lt;std::input_iterator I1, std::sentinel_for&lt;I1&gt; S1,
+             std::input_iterator I2, std::sentinel_for&lt;I2&gt; S2,
+             std::input_iterator O, std::sentinel_for&lt;O&gt; OutS,
+             class Comp = std::ranges::less,
+             class Proj1 = std::identity, class Proj2 = std::identity&gt;
+      requires std::mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+    constexpr set_difference_truncated_result&lt;I1, I2, O&gt;
+    operator()(I1 first1, S1 last1, I2 first2, S2 last2,
+               O result, OutS result_last, Comp comp = {},
+               Proj1 proj1 = {}, Proj2 proj2 = {}) const
+   {
+     while (!(first1 == last1 || first2 == last2))
+     {
+       if (std::invoke(comp, std::invoke(proj1, *first1), std::invoke(proj2, *first2)))
+       {
+         if (result == result_last)
+           break;
+
+         *result = *first1;
+         ++first1;
+         ++result;
+       }
+       else if (std::invoke(comp, std::invoke(proj2, *first2),
+                std::invoke(proj1, *first1)))
+         ++first2;
+       else
+       {
+         ++first1;
+         ++first2;
+       }
+     }
+
+     while (first1 != last1 &amp;&amp; result != result_last)
+     {
+       *result = *first1;
+       ++first1;
+       ++result;
+     }
+
+     return {first1, first2, result};
+   }
+
+   template&lt;std::ranges::input_range R1, std::ranges::input_range R2,
+            std::ranges::input_range OR, class Comp = std::ranges::less,
+            class Proj1 = std::identity, class Proj2 = std::identity&gt;
+       requires std::mergeable&lt;std::ranges::iterator_t&lt;R1&gt;, std::ranges::iterator_t&lt;R2&gt;,
+   std::ranges::iterator_t&lt;OR&gt;, Comp, Proj1, Proj2&gt;
+   constexpr set_difference_truncated_result&lt;std::ranges::borrowed_iterator_t&lt;R1&gt;,
+                                             std::ranges::borrowed_iterator_t&lt;R2&gt;,formatPainter
+                                             std::ranges::borrowed_iterator_t&lt;OR&gt;&gt;
+   operator()(R1&amp;&amp; r1, R2&amp;&amp; r2, OR&amp;&amp; result, Comp comp = {},
+              Proj1 proj1 = {}, Proj2 proj2 = {}) const
+   {
+     return (*this)(std::ranges::begin(r1), std::ranges::end(r1),
+                    std::ranges::begin(r2), std::ranges::end(r2),
+                    std::ranges::begin(result), std::ranges::end(result),
+                    std::move(comp), std::move(proj1), std::move(proj2));
+   }
+};
+
+inline constexpr set_difference_fn set_difference{};
+</pre></blockquote>
+<p>
+For instance, if the first input is <code class='backtick'>std::vector v1{1, 2, 3, 4, 5, 6, 7}</code>, the second input is 
+<code class='backtick'>std::vector v2{3, 4, 7}</code>, and the output is <code>std::vector&lt;int&gt; output(3)</code> then 
+for the call
+</p>
+<blockquote><pre>
+auto [in1, in2, out] = std::ranges::set_difference(v1, v2, output);
+</pre></blockquote>
+<ul>
+<li><p><code class='backtick'>output</code> is <code class='backtick'>{1, 2, 5}</code></p></li>
+<li><p><code class='backtick'>in1</code> points to <code class='backtick'>6</code> in <code class='backtick'>v1</code></p></li>
+<li><p><code class='backtick'>in2</code> points to <code class='backtick'>7</code> in <code class='backtick'>v2</code></p></li>
+<li><p><code class='backtick'>out</code> points to <code class='backtick'>output.end()</code></p></li>
+</ul>
+<p><strong>Previous resolution [SUPERSEDED]:</strong></p>
+<blockquote class="note">
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <code>&lt;algorithm&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  template&lt;class I, class O&gt;
+    using set_difference_result = in_out_result&lt;I, O&gt;;
+  <ins>template&lt;class I1, class, I2, class O&gt;
+    using set_difference_truncated_result = in_in_out_result&lt;I1, I2, O&gt;;</ins>
+  
+  template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+           weakly_incrementable O, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+    constexpr set_difference_result&lt;I1, O&gt;
+      set_difference(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                     Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});                     
+  template&lt;input_range R1, input_range R2, weakly_incrementable O,
+           class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+    constexpr set_difference_result&lt;borrowed_iterator_t&lt;R1&gt;, O&gt;
+      set_difference(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                     Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+                     
+  template&lt;<i>execution-policy</i> Ep, random_access_iterator I1, sized_sentinel_for&lt;I1&gt; S1,
+           random_access_iterator I2, sized_sentinel_for&lt;I2&gt; S2,
+           random_access_iterator O, sized_sentinel_for&lt;O&gt; OutS, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+    set_difference<ins>_truncated</ins>_result&lt;I1<ins>, I2</ins>, O&gt;
+      set_difference(Ep&amp;&amp; exec, I1 first1, S1 last1, I2 first2, S2 last2,
+                     O result, OutS result_last, Comp comp = {}, Proj1 proj1 = {},
+                     Proj2 proj2 = {}); // <i>freestanding-deleted</i>
+  template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R1, <i>sized-random-access-range</i> R2,
+           <i>sized-random-access-range</i> OutR, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, iterator_t&lt;OutR&gt;, Comp, Proj1, Proj2&gt;
+    set_difference<ins>_truncated</ins>_result&lt;borrowed_iterator_t&lt;R1&gt;<ins>, borrowed_iterator_t&lt;R2&gt;</ins>, borrowed_iterator_t&lt;OutR&gt;&gt;
+      set_difference(Ep&amp;&amp; exec, R1&amp;&amp; r1, R2&amp;&amp; r2, OutR&amp;&amp; result_r, Comp comp = {},
+                     Proj1 proj1 = {}, Proj2 proj2 = {}); // <i>freestanding-deleted</i>  
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.8.7.5 <a href="https://timsong-cpp.github.io/cppwp/set.difference">[set.difference]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+         weakly_incrementable O, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;I1, O&gt;
+    ranges::set_difference(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;input_range R1, input_range R2, weakly_incrementable O,
+         class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;borrowed_iterator_t&lt;R1&gt;, O&gt;
+    ranges::set_difference(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;<i>execution-policy</i> Ep, random_access_iterator I1, sized_sentinel_for&lt;I1&gt; S1,
+         random_access_iterator I2, sized_sentinel_for&lt;I2&gt; S2,
+         random_access_iterator O, sized_sentinel_for&lt;O&gt; OutS, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  ranges::set_difference<ins>_truncated</ins>_result&lt;I1<ins>, I2</ins>, O&gt;
+    ranges::set_difference(Ep&amp;&amp; exec, I1 first1, S1 last1,
+                           I2 first2, S2 last2, O result, OutS result_last,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R1, <i>sized-random-access-range</i> R2,
+         <i>sized-random-access-range</i> OutR, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, iterator_t&lt;OutR&gt;, Comp, Proj1, Proj2&gt;
+  ranges::set_difference<ins>_truncated</ins>_result&lt;borrowed_iterator_t&lt;R1&gt;<ins>, borrowed_iterator_t&lt;R2&gt;</ins>, borrowed_iterator_t&lt;OutR&gt;&gt;
+    ranges::set_difference(Ep&amp;&amp; exec, R1&amp;&amp; r1, R2&amp;&amp; r2, OutR&amp;&amp; result_r, Comp comp = {},
+                           Proj1 proj1 = {}, Proj2 proj2 = {});
+</pre>
+<blockquote>
+<p>
+-1- Let: [&hellip;]
+<p/>
+-2- <i>Preconditions</i>: The ranges <code class='backtick'>[first1, last1)</code> and <code class='backtick'>[first2, last2)</code> are sorted with respect to 
+<code class='backtick'>comp</code> and <code class='backtick'>proj1</code> or <code class='backtick'>proj2</code>, respectively. The resulting range does not overlap with either of the 
+original ranges.
+<p/>
+-3- <i>Effects</i>: Constructs a sorted difference between the elements from the two ranges; that is, 
+the set of elements that are present in the range <code class='backtick'>[first1, last1)</code> but not <code class='backtick'>[first2, last2)</code>. 
+If <code class='backtick'>[first1, last1)</code> contains <code><i>m</i></code> elements that are equivalent to each other and 
+<code class='backtick'>[first2, last2)</code> contains <code><i>n</i></code> elements that are equivalent to them, the last 
+max<code>(<i>m</i> − <i>n</i>, 0)</code> elements from <code class='backtick'>[first1, last1)</code> are included in the sorted
+difference, in order. <ins>Of those equivalent elements, the first min<code>(<i>m</i>, <i>n</i>)</code> 
+elements in both ranges are considered <i>skipped</i>. An element from the second range is also 
+considered skipped if it compares less than the min<code>(<i>N</i> + 1, <i>M</i>)</code><sup>th</sup> 
+element of the sorted difference.</ins> Copies the first <code><i>N</i></code> elements of the sorted 
+difference to the range <code>[result, result + <i>N</i>)</code>.
+<p/>
+-4- <i>Returns</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash; <code class='backtick'>result_last</code> for the overloads in namespace <code class='backtick'>std</code>.</p></li>
+<li><p>(4.2) &mdash; <del><code>{last1, result + <i>N</i>}</code> for the overloads in namespace <code class='backtick'>ranges</code>, 
+if <code><i>N</i></code> is equal to <code><i>M</i></code>.</del><ins>For non-parallel algorithm overloads in 
+namespace <code class='backtick'>ranges</code>:</ins></p>
+<ul style="list-style-type: none">
+<li><p><ins>(4.2.1) &mdash; <code>{last1, result + <i>N</i>}</code>, if <code><i>N</i></code> is equal to 
+<code><i>M</i></code>.</ins></p></li>
+<li><p><ins>(4.2.2) &mdash; Otherwise, <code class='backtick'>{j1, result_last}</code>, where the iterator <code class='backtick'>j1</code> points to the 
+position of the element in <code class='backtick'>[first1, last1)</code> corresponding to the <code>(<i>N</i> + 1)</code><sup>th</sup> 
+element of the sorted difference.</ins></p></li>
+</ul>
+</li>
+<li><p>(4.3) &mdash; <del>Otherwise, <code class='backtick'>{j1, result_last}</code> for the overloads in namespace <code class='backtick'>ranges</code>, where 
+the iterator <code class='backtick'>j1</code> points to the position of the element in <code class='backtick'>[first1, last1)</code> corresponding to the 
+<code>(<i>N</i> + 1)</code><sup>th</sup> element of the sorted difference.</del><ins>For parallel algorithm 
+overloads in namespace <code class='backtick'>ranges</code>:</ins></p>
+<ul style="list-style-type: none">
+<li><p><ins>(4.3.1) &mdash; <code>{last1, first2 + <i>B</i>, result + <i>N</i>}</code>, if <code><i>N</i></code> 
+is equal to <code><i>M</i></code>, where <code><i>B</i></code> is  the number of skipped elements in 
+<code class='backtick'>[first2, last2)</code>.</ins></p></li>
+<li><p><ins>(4.3.2) &mdash; Otherwise, <code>{ first1 + <i>A</i>, first2 + <i>B</i>, result_last}</code>, 
+where <code><i>A</i></code> and <code><i>B</i></code> are the numbers of copied or skipped elements in 
+<code class='backtick'>[first1, last1)</code> and <code class='backtick'>[first2, last2)</code>, respectively.</ins></p></li>
+</ul>
+</li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+</blockquote>
+
+<p><i>[Croydon 2026-03-24; update wording after LWG review]</i></p>
+
+<p><i>[Croydon 2026-03-24; move to Immediate]</i></p>
+
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
+
+
+<p id="res-4544"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 26.4 <a href="https://timsong-cpp.github.io/cppwp/algorithm.syn">[algorithm.syn]</a>, header <code>&lt;algorithm&gt;</code> synopsis, as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+namespace ranges {
+  template&lt;class I, class O&gt;
+    using set_difference_result = in_out_result&lt;I, O&gt;;
+  <ins>template&lt;class I1, class, I2, class O&gt;
+    using set_difference_truncated_result = in_in_out_result&lt;I1, I2, O&gt;;</ins>
+
+  template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+           weakly_incrementable O, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+    constexpr set_difference_result&lt;I1, O&gt;
+      set_difference(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                     Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+  template&lt;input_range R1, input_range R2, weakly_incrementable O,
+           class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+    constexpr set_difference_result&lt;borrowed_iterator_t&lt;R1&gt;, O&gt;
+      set_difference(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                     Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+
+  template&lt;<i>execution-policy</i> Ep, random_access_iterator I1, sized_sentinel_for&lt;I1&gt; S1,
+           random_access_iterator I2, sized_sentinel_for&lt;I2&gt; S2,
+           random_access_iterator O, sized_sentinel_for&lt;O&gt; OutS, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+    set_difference<ins>_truncated</ins>_result&lt;I1<ins>, I2</ins>, O&gt;
+      set_difference(Ep&amp;&amp; exec, I1 first1, S1 last1, I2 first2, S2 last2,
+                     O result, OutS result_last, Comp comp = {}, Proj1 proj1 = {},
+                     Proj2 proj2 = {}); // <i>freestanding-deleted</i>
+  template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R1, <i>sized-random-access-range</i> R2,
+           <i>sized-random-access-range</i> OutR, class Comp = ranges::less,
+           class Proj1 = identity, class Proj2 = identity&gt;
+    requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, iterator_t&lt;OutR&gt;, Comp, Proj1, Proj2&gt;
+    set_difference<ins>_truncated</ins>_result&lt;borrowed_iterator_t&lt;R1&gt;<ins>, borrowed_iterator_t&lt;R2&gt;</ins>, borrowed_iterator_t&lt;OutR&gt;&gt;
+      set_difference(Ep&amp;&amp; exec, R1&amp;&amp; r1, R2&amp;&amp; r2, OutR&amp;&amp; result_r, Comp comp = {},
+                     Proj1 proj1 = {}, Proj2 proj2 = {}); // <i>freestanding-deleted</i>
+}
+[&hellip;]
+</pre>
+</blockquote>
+</li>
+
+<li><p>Modify 26.8.7.5 <a href="https://timsong-cpp.github.io/cppwp/set.difference">[set.difference]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+[&hellip;]
+template&lt;input_iterator I1, sentinel_for&lt;I1&gt; S1, input_iterator I2, sentinel_for&lt;I2&gt; S2,
+         weakly_incrementable O, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;I1, O&gt;
+    ranges::set_difference(I1 first1, S1 last1, I2 first2, S2 last2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;input_range R1, input_range R2, weakly_incrementable O,
+         class Comp = ranges::less, class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, O, Comp, Proj1, Proj2&gt;
+  constexpr ranges::set_difference_result&lt;borrowed_iterator_t&lt;R1&gt;, O&gt;
+    ranges::set_difference(R1&amp;&amp; r1, R2&amp;&amp; r2, O result,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;<i>execution-policy</i> Ep, random_access_iterator I1, sized_sentinel_for&lt;I1&gt; S1,
+         random_access_iterator I2, sized_sentinel_for&lt;I2&gt; S2,
+         random_access_iterator O, sized_sentinel_for&lt;O&gt; OutS, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;I1, I2, O, Comp, Proj1, Proj2&gt;
+  ranges::set_difference<ins>_truncated</ins>_result&lt;I1<ins>, I2</ins>, O&gt;
+    ranges::set_difference(Ep&amp;&amp; exec, I1 first1, S1 last1,
+                           I2 first2, S2 last2, O result, OutS result_last,
+                           Comp comp = {}, Proj1 proj1 = {}, Proj2 proj2 = {});
+template&lt;<i>execution-policy</i> Ep, <i>sized-random-access-range</i> R1, <i>sized-random-access-range</i> R2,
+         <i>sized-random-access-range</i> OutR, class Comp = ranges::less,
+         class Proj1 = identity, class Proj2 = identity&gt;
+  requires mergeable&lt;iterator_t&lt;R1&gt;, iterator_t&lt;R2&gt;, iterator_t&lt;OutR&gt;, Comp, Proj1, Proj2&gt;
+  ranges::set_difference<ins>_truncated</ins>_result&lt;borrowed_iterator_t&lt;R1&gt;<ins>, borrowed_iterator_t&lt;R2&gt;</ins>, borrowed_iterator_t&lt;OutR&gt;&gt;
+    ranges::set_difference(Ep&amp;&amp; exec, R1&amp;&amp; r1, R2&amp;&amp; r2, OutR&amp;&amp; result_r, Comp comp = {},
+                           Proj1 proj1 = {}, Proj2 proj2 = {});
+</pre>
+<blockquote>
+<p>
+-1- Let: [&hellip;]
+<p/>
+-2- <i>Preconditions</i>: The ranges <code class='backtick'>[first1, last1)</code> and <code class='backtick'>[first2, last2)</code> are sorted with respect to
+<code class='backtick'>comp</code> and <code class='backtick'>proj1</code> or <code class='backtick'>proj2</code>, respectively. The resulting range does not overlap with either of the
+original ranges.
+<p/>
+-3- <i>Effects</i>: Constructs a sorted difference between the elements from the two ranges; that is,
+the set of elements that are present in the range <code class='backtick'>[first1, last1)</code> but not <code class='backtick'>[first2, last2)</code>.
+If <code class='backtick'>[first1, last1)</code> contains <code><i>m</i></code> elements that are equivalent to each other and
+<code class='backtick'>[first2, last2)</code> contains <code><i>n</i></code> elements that are equivalent to them, the last
+max<code>(<i>m</i> − <i>n</i>, 0)</code> elements from <code class='backtick'>[first1, last1)</code> are included in the sorted
+difference, in order. <ins>Of those equivalent elements, the first min<code>(<i>m</i>, <i>n</i>)</code>
+elements in both ranges are considered <i>skipped</i>. An element from the second range is also
+considered skipped if it compares less than the min<code>(<i>N</i> + 1, <i>M</i>)</code><sup>th</sup>
+element of the sorted difference.</ins> Copies the first <code><i>N</i></code> elements of the sorted
+difference to the range <code>[result, result + <i>N</i>)</code>.
+<p/>
+-4- <i>Returns</i>:
+</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash; <code class='backtick'>result_last</code> for the overloads in namespace <code class='backtick'>std</code>.</p></li>
+<li><p>(4.2) &mdash; <code>{last1, result + <i>N</i>}</code> for the
+<ins>non-parallel</ins> overloads in namespace <code class='backtick'>ranges</code><del>,
+if <code><i>N</i></code> is equal to <code><i>M</i></code>.</del></p>
+</li>
+<li><p>(4.3) &mdash; <del>Otherwise, <code class='backtick'>{j1, result_last}</code> for the overloads in namespace <code class='backtick'>ranges</code>, where
+the iterator <code class='backtick'>j1</code> points to the position of the element in <code class='backtick'>[first1, last1)</code> corresponding to the
+<code>(<i>N</i> + 1)</code><sup>th</sup> element of the sorted difference.</del>
+<ins>For the parallel algorithm overloads in namespace <code class='backtick'>ranges</code>:</ins></p>
+<ul style="list-style-type: none">
+<li><p><ins>(4.3.1) &mdash; <code>{last1, first2 + <i>B</i>, result + <i>N</i>}</code>, if <code><i>N</i></code>
+is equal to <code><i>M</i></code>, where <code><i>B</i></code> is  the number of skipped elements in
+<code class='backtick'>[first2, last2)</code>.</ins></p></li>
+<li><p><ins>(4.3.2) &mdash; Otherwise, <code>{ first1 + <i>A</i>, first2 + <i>B</i>, result_last}</code>,
+where <code><i>A</i></code> and <code><i>B</i></code> are the numbers of copied or skipped elements in
+<code class='backtick'>[first1, last1)</code> and <code class='backtick'>[first2, last2)</code>, respectively.</ins></p></li>
+</ul>
+</li>
+</ul>
+</blockquote>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

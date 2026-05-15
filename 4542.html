@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4542: Resuming a coroutine on a different execution agent that is an instance of a std::thread is underspecified</title>
+<meta property="og:title" content="Issue 4542: Resuming a coroutine on a different execution agent that is an instance of a std::thread is underspecified">
+<meta property="og:description" content="C++ library issue. Status: Tentatively NAD">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4542.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  blockquote.note
+  {
+    background-color:#E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note
+     {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#NAD">Tentatively NAD</a> status.</em></p>
+<h3 id="4542"><a href="lwg-active.html#4542">4542</a>. Resuming a coroutine on a different execution agent that is an instance of a <code class='backtick'>std::thread</code> is underspecified</h3>
+<p><b>Section:</b> 17.13.4.6 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.resumption">[coroutine.handle.resumption]</a> <b>Status:</b> <a href="lwg-active.html#NAD">Tentatively NAD</a>
+ <b>Submitter:</b> jim x <b>Opened:</b> 2026-03-11 <b>Last modified:</b> 2026-04-13</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Tentatively NAD">Tentatively NAD</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following example:
+</p>
+<blockquote><pre>
+#include &lt;atomic&gt;
+#include &lt;cassert&gt;
+#include &lt;coroutine&gt;
+#include &lt;thread&gt;
+
+std::atomic&lt;bool&gt; flag = false;
+int global = 0;
+
+struct Task 
+{
+  struct promise_type 
+  {
+    Task get_return_object() {
+      return {std::coroutine_handle&lt;promise_type&gt;::from_promise(*this)};
+    }
+    std::suspend_never initial_suspend() { return {}; }
+    std::suspend_never final_suspend() noexcept { return {}; }
+    void return_void() {}
+    void unhandled_exception() {}
+  };
+
+  std::coroutine_handle&lt;promise_type&gt; handle;
+
+  Task(std::coroutine_handle&lt;promise_type&gt; h) : handle(h) {}
+  ~Task() {}
+};
+
+struct SuspendOnce 
+{
+  bool suspended = false;
+  bool await_ready() { return suspended; }
+  void await_suspend(std::coroutine_handle&lt;&gt;) { suspended = true; }
+  void await_resume() {}
+};
+
+Task my_coroutine() {
+  co_await SuspendOnce{};
+  flag.store(true, std::memory_order::release); // #2
+}
+
+auto t1 = std::thread([]() {
+  while (!flag.load(std::memory_order::acquire)); //#3
+  assert(global == 1); // #4
+});
+
+int main() {
+  auto task = my_coroutine();
+  auto&amp; h = task.handle;
+  auto t2 = std::thread([&amp;]() {
+    global = 1; // #1
+    h.resume();
+  });
+  t2.join();
+  t1.join();
+}
+</pre></blockquote>
+<p>
+17.13.4.6 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.resumption">[coroutine.handle.resumption]</a> p1 says:
+</p>
+<blockquote style="border-left: 3px solid #ccc;padding-left: 15px;">
+<p>
+Resuming a coroutine via <code class='backtick'>resume</code>, <code class='backtick'>operator()</code>, or <code class='backtick'>destroy</code> on an execution agent other 
+than the one on which it was suspended has implementation-defined behavior unless each 
+execution agent either is an instance of <code class='backtick'>std::thread</code> or <code class='backtick'>std::jthread</code>, or is the 
+thread that executes <code class='backtick'>main</code>.
+</p>
+</blockquote>
+<p>
+The wording doesn't specify the behavior for the latter case. We want <code class='backtick'>#1</code> to be 
+<b>sequenced before</b> <code class='backtick'>#2</code>. 
+<p/>
+The sequenced-before is described in terms of two evaluations that are both executed by 
+a single thread. The coroutine is initially executed in the main thread; however, it's resumed 
+in a different thread. The first paragraph doesn't specify the specific behavior; it only says 
+the behavior is implementation-defined if the different execution agent is not an instance of 
+<code class='backtick'>std::thread</code> or <code class='backtick'>std::jthread</code>, or is the thread that executes <code class='backtick'>main</code>.
+</p>
+
+<p><i>[2026-04-13; Reflector poll. Status &rarr; Tentatively NAD.]</i></p>
+
+<p>
+The point of paragraph 1 is to say when paragraphs 2-5 don't apply
+(e.g. if you suspend on the main thread and resume on a fiber).
+If you don't do anything like that, then paragraphs 2-5 describe the effects.
+</p>
+
+
+<p id="res-4542"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 17.13.4.6 <a href="https://timsong-cpp.github.io/cppwp/coroutine.handle.resumption">[coroutine.handle.resumption]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- Resuming a coroutine via <code class='backtick'>resume</code>, <code class='backtick'>operator()</code>, or <code class='backtick'>destroy</code> on an execution agent other 
+than the one on which it was suspended has implementation-defined behavior unless each 
+execution agent either is an instance of <code class='backtick'>std::thread</code> or <code class='backtick'>std::jthread</code>, or is the 
+thread that executes <code class='backtick'>main</code>. <ins>Otherwise, the execution of the coroutine is resumed, 
+or the coroutine is destroyed, on the execution agent on which the corresponding member 
+function is invoked.</ins>
+<p/>
+[&hellip;]
+</p>
+</blockquote>
+</li>
+
+</ol>
+
+
+
+
+
+</body>
+</html>

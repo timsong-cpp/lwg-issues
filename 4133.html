@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Issue 4133: awaitable-receiver's members are potentially throwing</title>
 <meta property="og:title" content="Issue 4133: awaitable-receiver's members are potentially throwing">
-<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:description" content="C++ library issue. Status: WP">
 <meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4133.html">
 <meta property="og:type" content="website">
 <meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
@@ -61,15 +61,15 @@
 </head>
 <body>
 <hr>
-<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
-<h3 id="4133"><a href="lwg-active.html#4133">4133</a>. <code><i>awaitable-receiver</i></code>'s members are potentially throwing</h3>
-<p><b>Section:</b> 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
- <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2024-07-30 <b>Last modified:</b> 2024-08-21</p>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#WP">WP</a> status.</em></p>
+<h3 id="4133"><a href="lwg-defects.html#4133">4133</a>. <code><i>awaitable-receiver</i></code>'s members are potentially throwing</h3>
+<p><b>Section:</b> 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> <b>Status:</b> <a href="lwg-active.html#WP">WP</a>
+ <b>Submitter:</b> Eric Niebler <b>Opened:</b> 2024-07-30 <b>Last modified:</b> 2026-03-31</p>
 <p><b>Priority: </b>1
 </p>
 <p><b>View other</b> <a href="lwg-index-open.html#exec.as.awaitable">active issues</a> in [exec.as.awaitable].</p>
 <p><b>View all other</b> <a href="lwg-index.html#exec.as.awaitable">issues</a> in [exec.as.awaitable].</p>
-<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#WP">WP</a> status.</p>
 <p><b>Discussion:</b></p>
 <p>
 The specification of <code><i>awaitable-receiver</i></code> in 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a>/p4 
@@ -93,9 +93,76 @@ Also AS-EXCEPT-PTR can throw for the <code class='backtick'>error_code</code> ca
 (that might be worth a separate issue though).
 </p>
 
+<p><i>[2026-03-27; Tim adds wording following LWG discussion]</i></p>
+
+
+
+<p><i>[Croydon 2026-03-27; Status changed: New &rarr; Immediate.]</i></p>
+
+<p><i>[Croydon 2026-03-28; Status changed: Immediate &rarr; WP.]</i></p>
+
 
 
 <p id="res-4133"><b>Proposed resolution:</b></p>
+
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5032" title=" Working Draft, Standard for Programming Language C++">N5032</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 33.13.1 <a href="https://timsong-cpp.github.io/cppwp/exec.as.awaitable">[exec.as.awaitable]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-4- Let <code class='backtick'>rcvr</code> be an rvalue expression of type <code><i>awaitable-receiver</i></code>, let 
+<code class='backtick'>crcvr</code> be a const lvalue that refers to <code class='backtick'>rcvr</code>, let <code class='backtick'>vs</code> be a pack of subexpressions, 
+and let <code class='backtick'>err</code> be an expression of type <code class='backtick'>Err</code>. <ins>Let <code><i>MAKE-NOEXCEPT</i>(expr)</code>
+for some subexpression <code class='backtick'>expr</code> be expression-equivalent to 
+<code>[&amp;] noexcept -&gt; decltype(auto) { return (expr); }()</code>.</ins> Then:
+</p>
+<ol style="list-style-type: none">
+<li><p>(4.1) &mdash; If <code>constructible_from&lt;<i>result-type</i>, decltype((vs))...&gt;</code> is satisfied, 
+the expression <code class='backtick'>set_value(rcvr, vs...)</code> is equivalent to:
+</p>
+<blockquote><pre>
+try {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;1&gt;(vs...);
+} catch(...) {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;2&gt;(current_exception());
+}
+<ins><i>MAKE-NOEXCEPT(</i></ins>rcvr.<i>continuation</i>.resume()<ins>)</ins>;
+</pre></blockquote>
+<p>
+Otherwise, <code class='backtick'>set_value(rcvr, vs...)</code> is ill-formed.</p></li>
+<li><p>(4.2) &mdash; The expression <code class='backtick'>set_error(rcvr, err)</code> is equivalent to:</p>
+
+<blockquote><pre>
+<ins>try {</ins>
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;2&gt;(<i>AS-EXCEPT-PTR</i>(err));
+<ins>} catch(...) {
+  rcvr.<i>result-ptr</i>-&gt;template emplace&lt;2&gt;(current_exception());
+}</ins>
+<ins><i>MAKE-NOEXCEPT(</i></ins>rcvr.<i>continuation</i>.resume()<ins>)</ins>;
+</pre></blockquote>
+</li>
+<li><p>(4.3) &mdash; The expression <code class='backtick'>set_stopped(rcvr)</code> is equivalent to:</p>
+<blockquote><pre>
+<ins><i>MAKE-NOEXCEPT(</i></ins>static_cast&lt;coroutine_handle&lt;&gt;&gt;(rcvr.continuation.promise().unhandled_stopped()).resume()<ins>)</ins>;
+</pre></blockquote>
+</li>
+<li><p>(4.4) &mdash; For any expression <code class='backtick'>tag</code> whose type satisfies <code><i>forwarding-query</i></code>
+and for any pack of subexpressions <code class='backtick'>as</code>, <code class='backtick'>get_env(crcvr).query(tag, as...)</code> is expression-equivalent to:</p>
+<blockquote><pre>
+tag(get_env(as_const(<ins><i>MAKE-NOEXCEPT(</i></ins>crcvr.continuation.promise()<ins>)</ins>)), as...)
+</pre></blockquote>
+</li>
+</ol>
+</blockquote>
+
+</li>
+</ol>
 
 
 
