@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4578: std::start_lifetime(r) should not be able to poke objects outside the current evaluation</title>
+<meta property="og:title" content="Issue 4578: std::start_lifetime(r) should not be able to poke objects outside the current evaluation">
+<meta property="og:description" content="C++ library issue. Status: Core">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4578.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#Core">Core</a> status.</em></p>
+<h3 id="4578"><a href="lwg-active.html#4578">4578</a>. <code class='backtick'>std::start_lifetime(r)</code> should not be able to poke objects outside the current evaluation</h3>
+<p><b>Section:</b> 20.2.6 <a href="https://timsong-cpp.github.io/cppwp/obj.lifetime">[obj.lifetime]</a> <b>Status:</b> <a href="lwg-active.html#Core">Core</a>
+ <b>Submitter:</b> Tomasz Kamiński <b>Opened:</b> 2026-05-15 <b>Last modified:</b> 2026-05-22</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#obj.lifetime">active issues</a> in [obj.lifetime].</p>
+<p><b>View all other</b> <a href="lwg-index.html#obj.lifetime">issues</a> in [obj.lifetime].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Core">Core</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+As currently specified, the following code is well-formed:
+</p>
+<blockquote><pre>
+union U { int x = 10; float f[2]; };
+U u;
+
+consteval {
+  std::start_lifetime(u.f); // changes active member
+};
+
+void foo() {
+  U u;
+  constexpr int x = (std::start_lifetime(u.f), 10);
+}
+</pre></blockquote>
+<p>
+The <code class='backtick'>start_lifetime(r)</code> when evaluated at compile time, should require that <code class='backtick'>r</code> is a subobject 
+of the object created during the enclosing constant evaluation.
+</p>
+
+<details class='superseded'><summary>Previous resolution [SUPERSEDED]</summary>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 20.2.6 <a href="https://timsong-cpp.github.io/cppwp/obj.lifetime">[obj.lifetime]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class T&gt;
+  constexpr void start_lifetime(T&amp; r) noexcept;
+</pre>
+<blockquote>
+<p>
+-1- <i>Mandates</i>: <code class='backtick'>T</code> is a complete type and an implicit-lifetime (6.9 <a href="https://timsong-cpp.github.io/cppwp/basic.types">[basic.types]</a>) 
+aggregate (9.5.2 <a href="https://timsong-cpp.github.io/cppwp/dcl.init.aggr">[dcl.init.aggr]</a>).
+<p/>
+<ins>-?- <i>Constant When</i>: <code class='backtick'>r</code> refers to a non-volatile object whose lifetime began within the 
+evaluation of the core constant expression (7.7.2 <a href="https://timsong-cpp.github.io/cppwp/expr.const.core">[expr.const.core]</a>) which includes the 
+invocation of <code class='backtick'>start_lifetime</code>, or a sub-object of such an object.</ins> 
+<p/>
+-2- <i>Effects</i>: If the object referenced by <code class='backtick'>r</code> is already within its lifetime (6.8.4 <a href="https://timsong-cpp.github.io/cppwp/basic.life">[basic.life]</a>), 
+no effects. Otherwise, begins the lifetime of the object referenced by <code class='backtick'>r</code>.
+</p>
+</blockquote>
+</blockquote>
+
+</li>
+
+ </ol>
+</details>
+
+<p><i>[2026-05-22; LWG telecon. Status &rarr; Core.]</i></p>
+
+
+<p>Corrected example, to make it well-formed.</p>
+
+<p>The recommendation is to include general prohibition in 7.7.2 <a href="https://timsong-cpp.github.io/cppwp/expr.const.core">[expr.const.core]</a>,
+that would prevent us from starting lifetime of object outside current evaluation.</p>
+
+
+
+
+
+</body>
+</html>

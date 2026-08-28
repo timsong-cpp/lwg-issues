@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4601: Unclear error handling for C++ math functions</title>
+<meta property="og:title" content="Issue 4601: Unclear error handling for C++ math functions">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4601.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#Ready">Ready</a> status.</em></p>
+<h3 id="4601"><a href="lwg-active.html#4601">4601</a>. Unclear error handling for C++ math functions</h3>
+<p><b>Section:</b> 29.7.4 <a href="https://timsong-cpp.github.io/cppwp/c.math.lerp">[c.math.lerp]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Jan Schultke <b>Opened:</b> 2026-07-01 <b>Last modified:</b> 2026-07-17</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View all other</b> <a href="lwg-index.html#c.math.lerp">issues</a> in [c.math.lerp].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Consider the following example, which (mathematically) attempts to compute 
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+<mn>&infin;</mn><mo>+</mo><mn>0</mn><mo>(</mo><mn>&infin;</mn><mo>−</mo><mn>&infin;</mn><mo>)</mo>
+</math>.
+</p>
+<blockquote><pre>
+#include &lt;cmath&gt;
+#include &lt;limits&gt;
+
+constexpr float inf = std::numeric_limits&lt;float&gt;::infinity();
+constexpr float x = std::lerp(inf, inf, 0.f);
+</pre></blockquote>
+<p>
+MSVC accepts this, but GCC and Clang reject it due to floating-point arithmetic that produces a NaN, 
+within the implementation of <code class='backtick'>std::lerp</code>.
+<p/>
+16.2 <a href="https://timsong-cpp.github.io/cppwp/library.c">[library.c]</a> states that "call to a C standard library function is a non-constant library call 
+if it raises a floating-point exception other than FE_INEXACT", but this does not apply to <code class='backtick'>std::lerp</code> because 
+it is not a C standard library function. Since this means there exists no specification of when <code class='backtick'>std::lerp</code> 
+raises which floating-point exceptions, all calls to <code class='backtick'>std::lerp</code> are constant expressions (?), which is 
+inconsistent with the other functions in <code>&lt;cmath&gt;</code>.
+<p/>
+Similarly, the three-dimensional hypotenuse function is missing a specification of when any errors would 
+occur, which is addressed only partially by LWG <a href="3172" title="3-arg std::hypot is underspecified compared to the 2-arg overload (Status: Ready)">3172</a> by saying that a "range error may occur" 
+without any specification of when exactly that would happen or when a domain error occurs.
+<p/>
+A possible direction is to ensure that <a href="https://cstd.eisie.net/c23#7.12.1">C23 §7.21.1 Treatment of error conditions</a> 
+applies to three-dimension <code class='backtick'>std::hypot</code> and <code class='backtick'>std::lerp</code> as well, despite those not being C standard library 
+functions.
+</p>
+
+<p><i>[2026-07-10; LWG telecon.]</i></p>
+
+<p>
+Set priority to 3 after LWG telecon.
+LWG would like blanket wording that says that <code class='backtick'>lerp</code> and 3-arg <code class='backtick'>hypot</code>
+(and the extended floating-point type overloads in <code class='backtick'>cmath</code>)
+are also covered by the blanket wording on when C <code class='backtick'>math.h</code> functions
+raise errors and are constant expressions.
+</p>
+
+<p><i>[2026-07-17 LWG telecon; Change status New &rarr; Ready.]</i></p>
+
+
+
+<p id="res-4601"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 29.7.1 <a href="https://timsong-cpp.github.io/cppwp/cmath.syn">[cmath.syn]</a> as indicated:</p>
+
+<blockquote>
+<p>
+-1- The contents and meaning of the header <code>&lt;cmath&gt;</code>
+are a subset of the C standard library header <code>&lt;math.h&gt;</code>
+and only the declarations shown in the synopsis above are present,
+with the addition of a three-dimensional hypotenuse function (29.7.3 <a href="https://timsong-cpp.github.io/cppwp/c.math.hypot3">[c.math.hypot3]</a>),
+a linear interpolation function (29.7.4 <a href="https://timsong-cpp.github.io/cppwp/c.math.lerp">[c.math.lerp]</a>), and
+the mathematical special functions described in 29.7.6 <a href="https://timsong-cpp.github.io/cppwp/sf.cmath">[sf.cmath]</a>.
+[<i>Note 1</i>: Several functions have additional overloads in this document,
+but they have the same behavior as in the C standard library. &mdash; <i>end note</i>]
+</p>
+<p>
+<ins>
+-2- The treatment of error conditions specified in ISO/IEC 9899:2024 7.12.1
+and the effect of those errors on constant expressions specified in
+16.2 <a href="https://timsong-cpp.github.io/cppwp/library.c">[library.c]</a> apply to all functions described in 29.7 <a href="https://timsong-cpp.github.io/cppwp/c.math">[c.math]</a>
+except those in 29.7.6 <a href="https://timsong-cpp.github.io/cppwp/sf.cmath">[sf.cmath]</a>.
+</ins>
+</p>
+<p>
+<ins>
+[<i>Note ?</i>:
+This applies even to functions and overloads not defined in
+the C standard library.
+&mdash; <i>end note</i>]
+</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

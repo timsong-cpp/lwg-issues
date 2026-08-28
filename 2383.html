@@ -14,9 +14,14 @@
   li {text-align:justify}
   pre code.backtick::before { content: "`" }
   pre code.backtick::after { content: "`" }
-  blockquote.note
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
   {
-    background-color:#E0E0E0;
+    background-color: #E0E0E0;
     padding-left: 15px;
     padding-right: 15px;
     padding-top: 1px;
@@ -52,8 +57,7 @@
      a:visited {
         color: #6af
      }
-     blockquote.note
-     {
+     blockquote.note, details.superseded[open]::details-content {
         background-color: rgba(255, 255, 255, .10)
      }
   }
@@ -64,7 +68,7 @@
 <p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#Open">Open</a> status.</em></p>
 <h3 id="2383"><a href="lwg-active.html#2383">2383</a>. Overflow cannot be ill-formed for chrono::duration integer literals</h3>
 <p><b>Section:</b> 30.5.9 <a href="https://timsong-cpp.github.io/cppwp/time.duration.literals">[time.duration.literals]</a> <b>Status:</b> <a href="lwg-active.html#Open">Open</a>
- <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2014-05-16 <b>Last modified:</b> 2014-11-08</p>
+ <b>Submitter:</b> Jonathan Wakely <b>Opened:</b> 2014-05-16 <b>Last modified:</b> 2026-06-16</p>
 <p><b>Priority: </b>3
 </p>
 <p><b>View all issues with</b> <a href="lwg-status.html#Open">Open</a> status.</p>
@@ -90,9 +94,248 @@ or a run-time error, not ill-formed.
 <p><i>[Urbana 2014-11-07: Move to Open]</i></p>
 
 
+<p><i>[2026-06-16; Jonathan adds wording.]</i></p>
+
+<p>
+The library has no way to distinguish the case where a suffix is
+"applied to an integer literal", as opposed to using function call notation
+like <code class='backtick'>operator""s(123)</code>.
+There is never overflow, because converting <code class='backtick'>unsigned long long</code> to a <code class='backtick'>rep</code>
+such as <code class='backtick'>signed long long</code> is always well-formed, just not value-preserving.
+Unless it is used as a constant subexpression, a user-defined-literal such as
+<code class='backtick'>123s</code> is not constant evaluated, so in general checking the value at
+compile-time is unimplementable.
+</p>
+<p>
+If we made these operators <code class='backtick'>consteval</code> then using them as the suffix of a
+<i>user-defined-literal</i> would always be a constant expression.
+It would make it ill-formed to call <code class='backtick'>operator""s(some_variable)</code>
+but I consider that perfectly acceptable. Such uses are absurd,
+and the existing wording is all specified in terms of suffixes anyway,
+not in terms of function calls to those operators.
+<a href="https://wg21.link/P3931R0" title=" consteval all the non-allocating operator&quot;&quot; things">P3931R0</a> proposes making these (and other literal operators)
+consteval, which would resolve this issue by making it implementable.
+</p>
+<p>
+Alternatively, we could permit the integral literal operators to be implemented
+as literal operator templates, i.e. <code>template&lt;char... Digits&gt;</code>,
+as this makes it possible to check for overflow. This is what libstdc++ has
+done since the duration literals were first implemented.
+</p>
+<p>
+Alternatively, we could just remove the rule saying that overflow is detected.
+Neither libc++ nor MSVC implements the overflow check, so if it was a problem
+that affects many users we'd have heard about it.
+</p>
+
 
 
 <p id="res-2383"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<blockquote class="note">
+Three options are presented, choose only one.
+</blockquote>
+
+<strong>Option A</strong>
+<ol>
+<li>
+<p>Modify 30.5.9 <a href="https://timsong-cpp.github.io/cppwp/time.duration.literals">[time.duration.literals]</a> as indicated:</p>
+<blockquote>
+<p>-1-
+This subclause describes literal suffixes for constructing duration literals.
+The suffixes <code class='backtick'>h</code>, <code class='backtick'>min</code>, <code class='backtick'>s</code>, <code class='backtick'>ms</code>, <code class='backtick'>us</code>, <code class='backtick'>ns</code> denote duration values of the
+corresponding types <code class='backtick'>hours</code>, <code class='backtick'>minutes</code>, <code class='backtick'>seconds</code>, <code class='backtick'>milliseconds</code>,
+<code class='backtick'>microseconds</code>, and <code class='backtick'>nanoseconds</code> respectively if they are applied to
+<i>integer-literals</i>.
+</p>
+<p>-2-
+If any of these suffixes <del>are</del> <ins>is</ins> applied to a
+<i>floating-point-literal</i> the result is a <code class='backtick'>chrono::duration</code> literal
+with an unspecified <i>floating-point</i> representation.
+</p>
+<p>-3-
+If any of these suffixes <del>are</del> <ins>is</ins> applied to an
+<i>integer-literal</i> and
+<ins>
+the parameter cannot be represented in the <code class='backtick'>rep</code> type of the return type,
+</ins>
+<del>
+the resulting <code class='backtick'>chrono::duration</code> value cannot be
+represented in the result type because of overflow,
+</del>
+the program is ill-formed.
+</p>
+<p>-4-
+[<i>Example 1</i>: The following code shows some duration literals.
+<blockquote><pre><code>using namespace std::chrono_literals;
+auto constexpr aday=24h;
+auto constexpr lesson=45min;
+auto constexpr halfanhour=0.5h;
+</code></pre></blockquote>
+&mdash; <i>end example</i>]
+</p>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::hours                                 operator""h(unsigned long long hours);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>, ratio&lt;3600, 1&gt;&gt; operator""h(long double hours);
+</pre>
+<blockquote>
+<p>-5- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>hours</code> hours.</p>
+</blockquote>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::minutes                             operator""min(unsigned long long minutes);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>, ratio&lt;60, 1&gt;&gt; operator""min(long double minutes);
+</pre>
+<blockquote>
+<p>-6- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>minutes</code> minutes.</p>
+</blockquote>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::seconds               operator""s(unsigned long long seconds);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>&gt; operator""s(long double seconds);
+</pre>
+<blockquote>
+<p>-7- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>seconds</code> seconds.</p>
+<p>-8-
+[<i>Note 1</i>:
+The same suffix <code class='backtick'>s</code> is used for <code class='backtick'>basic_string</code> but there is no conflict,
+since duration suffixes apply to numbers and string literal suffixes apply
+to character array literals.
+&mdash; <i>end note</i>]
+</p>
+</blockquote>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::milliseconds                operator""ms(unsigned long long msec);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>, milli&gt; operator""ms(long double msec);
+</pre>
+<blockquote>
+<p>-9- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>msec</code> milliseconds.</p>
+</blockquote>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::microseconds                operator""us(unsigned long long usec);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>, micro&gt; operator""us(long double usec);
+</pre>
+<blockquote>
+<p>-10- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>usec</code> microseconds.</p>
+</blockquote>
+
+<pre>
+<del>constexpr</del> <ins>consteval</ins> chrono::nanoseconds                operator""ns(unsigned long long nsec);
+<del>constexpr</del> <ins>consteval</ins> chrono::duration&lt;<i>unspecified</i>, nano&gt; operator""ns(long double nsec);
+</pre>
+<blockquote>
+<p>-11- <i>Returns</i>: A <code class='backtick'>duration</code> <del>literal</del> <ins>value</ins> representing <code class='backtick'>nsec</code> nanoseconds.</p>
+</blockquote>
+
+</blockquote>
+</li>
+
+<li>
+<p>Add  [diff.cpp26.duration] to Annex C:</p>
+<blockquote>
+<p><b>C.1.? Clause 30 <a href="https://timsong-cpp.github.io/cppwp/time">[time]</a>: Time library</b></p>
+<p>
+<ins><b>Affected subclause</b>: 30.5.9 <a href="https://timsong-cpp.github.io/cppwp/time.duration.literals">[time.duration.literals]</a></ins>
+<p/>
+<ins><b>Change</b>: Literal operators for <code class='backtick'>duration</code> literals are immediate
+functions.</ins>
+<p/>
+<ins><b>Rationale</b>: Allow checking for overflow.</ins>
+<p/>
+<ins><b>Effect on original feature</b>: Valid C++ 2026 code that used
+function call syntax and non-constant arguments to create duration literals
+is ill-formed in this document.</ins>
+</p>
+<p><ins>[<i>Example ?</i>:</ins>
+<blockquote><pre><code><ins>int n = 60;
+auto t = std::chrono::literals::operator""s(n); // ill-formed; previously well-formed
+</ins></code></pre></blockquote>
+<ins>&mdash; <i>end example</i>]</ins>
+</p>
+</blockquote>
+</li>
+</ol>
+
+<strong>Option B</strong>
+<ol>
+<li>
+<p>Modify 30.5.9 <a href="https://timsong-cpp.github.io/cppwp/time.duration.literals">[time.duration.literals]</a> as indicated:</p>
+<blockquote>
+<p>-1-
+This subclause describes literal suffixes for constructing duration literals.
+The suffixes <code class='backtick'>h</code>, <code class='backtick'>min</code>, <code class='backtick'>s</code>, <code class='backtick'>ms</code>, <code class='backtick'>us</code>, <code class='backtick'>ns</code> denote duration values of the
+corresponding types <code class='backtick'>hours</code>, <code class='backtick'>minutes</code>, <code class='backtick'>seconds</code>, <code class='backtick'>milliseconds</code>,
+<code class='backtick'>microseconds</code>, and <code class='backtick'>nanoseconds</code> respectively if they are applied to
+<i>integer-literals</i>.
+</p>
+<p>-2-
+If any of these suffixes <del>are</del> <ins>is</ins> applied to a
+<i>floating-point-literal</i> the result is a <code class='backtick'>chrono::duration</code> literal
+with an unspecified <i>floating-point</i> representation.
+</p>
+<p>-3-
+If any of these suffixes <del>are</del> <ins>is</ins> applied to an
+<i>integer-literal</i> and
+<ins>
+the parameter cannot be represented in the <code class='backtick'>rep</code> type of the return type,
+</ins>
+<del>
+the resulting <code class='backtick'>chrono::duration</code> value cannot be
+represented in the result type because of overflow,
+</del>
+the program is ill-formed.
+</p>
+<p><ins>-?-
+It is unspecified whether the literal operators below are usable only as
+the suffix of a <i>user-defined-literal</i> (5.13.9 <a href="https://timsong-cpp.github.io/cppwp/lex.ext">[lex.ext]</a>),
+or whether they can also be called using function call notation.
+If they can be called using function call notation, using <code class='backtick'>unsigned long long</code>
+parameters that cannot be represented in the <code class='backtick'>rep</code> type of the return type
+is ill-formed, no diagnostic required.
+</ins>
+</p>
+</blockquote>
+<blockquote class="note">
+Option B should also do the "<code class='backtick'>duration</code> <del>literal</del> <ins>value</ins>"
+drive-by fix, and probably update Annex C as well.
+</blockquote>
+</li>
+</ol>
+
+<strong>Option C</strong>
+<ol>
+<li>
+<p>Modify 30.5.9 <a href="https://timsong-cpp.github.io/cppwp/time.duration.literals">[time.duration.literals]</a> as indicated:</p>
+<blockquote>
+<p>-1-
+This subclause describes literal suffixes for constructing duration literals.
+The suffixes <code class='backtick'>h</code>, <code class='backtick'>min</code>, <code class='backtick'>s</code>, <code class='backtick'>ms</code>, <code class='backtick'>us</code>, <code class='backtick'>ns</code> denote duration values of the
+corresponding types <code class='backtick'>hours</code>, <code class='backtick'>minutes</code>, <code class='backtick'>seconds</code>, <code class='backtick'>milliseconds</code>,
+<code class='backtick'>microseconds</code>, and <code class='backtick'>nanoseconds</code> respectively if they are applied to
+<i>integer-literals</i>.
+</p>
+<p>-2-
+If any of these suffixes <del>are</del> <ins>is</ins> applied to a
+<i>floating-point-literal</i> the result is a <code class='backtick'>chrono::duration</code> literal
+with an unspecified <i>floating-point</i> representation.
+</p>
+<p><del>-3-
+If any of these suffixes are applied to an
+<i>integer-literal</i> and
+the resulting <code class='backtick'>chrono::duration</code> value cannot be
+represented in the result type because of overflow,
+the program is ill-formed.</del>
+</p>
+</blockquote>
+</li>
+</ol>
+
 
 
 

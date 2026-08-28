@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4606: Bullet (4.3) preconditions are too strict to implement submdspan</title>
+<meta property="og:title" content="Issue 4606: Bullet (4.3) preconditions are too strict to implement submdspan">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4606.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#Ready">Ready</a> status.</em></p>
+<h3 id="4606"><a href="lwg-active.html#4606">4606</a>. Bullet (4.3) preconditions are too strict to implement <code class='backtick'>submdspan</code></h3>
+<p><b>Section:</b> 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Mark Hoemmen <b>Opened:</b> 2026-07-15 <b>Last modified:</b> 2026-08-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mdspan.layout.stride.cons">active issues</a> in [mdspan.layout.stride.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mdspan.layout.stride.cons">issues</a> in [mdspan.layout.stride.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+For <code class='backtick'>layout_stride::mapping</code>'s constructor that takes an extents
+object and an array (or span) of strides, the preconditions on the
+strides are too strict.  This makes it impossible to implement
+<code class='backtick'>submdspan</code>.
+<p/>
+For an example see <a href="https://godbolt.org/z/G5hz8bd3W">here</a>. 
+Let <code class='backtick'>x</code> be an <code class='backtick'>mdspan</code> such that <code class='backtick'>x.mapping()</code> is <code class='backtick'>layout_right::mapping</code> 
+with extents (2, 5).
+</p>
+<blockquote><pre>
+// slice denotes indices {0,2,4} out of original {0,1,2,3,4}.
+std::extent_slice slice{.offset=0, .extent=3, .stride=2};
+auto x_sub = std::submdspan(x, std::full_extent, slice);
+assert(x_sub.extent(0) == 2);
+assert(x_sub.extent(1) == 3);
+assert(x_sub.stride(0) == 5);
+assert(x_sub.stride(1) == 2);
+</pre></blockquote>
+<p>
+x_sub's <code class='backtick'>layout_type</code> is <code class='backtick'>layout_stride</code>. However, the only way to
+construct <code class='backtick'>layout_stride::mapping</code> with these extents and strides
+would be to call the constructor that takes an extents object and an
+array (or span) of strides, and the above extents and strides would
+violate the preconditions.
+</p>
+<blockquote><pre>
+// Extents and strides violate precondition of layout_stride::mapping
+// constructor (23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> 4.3).
+assert(! (x_sub.stride(1) &gt;= x_sub.stride(0) * x_sub.extent(0)));
+assert(! (x_sub.stride(0) &gt;= x_sub.stride(1) * x_sub.extent(1)));
+</pre></blockquote>
+<p>
+The fix is to relax the preconditions so that they test only the
+possibility of overlap.
+</p>
+<blockquote><pre>
+assert(! (x_sub.stride(1) &gt;= 1 + (x_sub.extent(0) - 1) * x_sub.stride(0)));
+assert(   x_sub.stride(0) &gt;= 1 + (x_sub.extent(1) - 1) * x_sub.stride(1));
+</pre></blockquote>
+
+<details class='superseded'><summary>Previous resolution [SUPERSEDED]</summary>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5054" title=" Working Draft, Programming Languages — C++">N5054</a>.
+</p>
+
+<blockquote class="note">
+<p>
+[<i>Drafting note</i>: The proposed wording currently misses to account for extents of zero or 1]
+</p>
+</blockquote>
+
+<ol>
+<li>
+<p>Modify 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, span&lt;OtherIndexType, rank_&gt; s) noexcept;
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, const array&lt;OtherIndexType, rank_&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>
+-3- <i>Constraints</i>: [&hellip;]
+<p/>
+-4- <i>Preconditions</i>: 
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(4.1) &mdash; The result of converting <code>s[<i>i</i>]</code> to <code class='backtick'>index_type</code> is greater than <code class='backtick'>0</code> for 
+all <code><i>i</i></code> in the range <code>[0, <i>rank_</i>)</code>.
+</p></li>
+<li><p>
+(4.2) &mdash; <code><i>REQUIRED-SPAN-SIZE</i>(e, s)</code> is representable as a value of type 
+<code class='backtick'>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>).
+</p></li>
+<li><p>
+(4.3) &mdash; If <code><i>rank_</i></code> is greater than <code class='backtick'>0</code>, then there exists a permutation 
+<code><i>P</i></code> of the integers in the range <code>[0, <i>rank_</i>)</code>, such that 
+<del><code>s[<i>p<sub>i</sub></i>] &gt;= s[<i>p</i><sub><i>i</i>-1</sub>] * e.extent(<i>p</i><sub><i>i</i>-1</sub>)</code></del> 
+<ins><code>s[<i>p<sub>i</sub></i>] &gt;= 1 + (e.extent(<i>p</i><sub><i>i</i>-1</sub>) - 1) * s[<i>p</i><sub><i>i</i>-1</sub>]</code></ins> 
+is <code class='backtick'>true</code> for all <code><i>i</i></code> in the range <code>[1, <i>rank_</i>)</code>, where <code><i>p<sub>i</sub></i></code>
+is the <code><i>i</i></code><sup>th</sup> element of <code><i>P</i></code>.
+<p/>
+[<i>Note 1</i>: For <code class='backtick'>layout_stride</code>, this condition is necessary and sufficient for <code class='backtick'>is_unique()</code> to 
+be <code class='backtick'>true</code>. &mdash; <i>end note</i>]
+</p></li>
+</ol>
+<p>
+-5- <i>Effects</i>: Direct-non-list-initializes <code><i>extents_</i></code> with <code class='backtick'>e</code>, and for all 
+<code><i>d</i></code> in the range <code>[0, <i>rank_</i>)</code>, direct-non-list-initializes
+<code><i>strides_</i>[<i>d</i>]</code> with <code>as_const(s[<i>d</i>])</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+</details>
+
+<p><i>[2026-07-24; Tomasz provides updated wording.]</i></p>
+
+
+<p>Patch implementing the proposed resolution can be found
+<a href="https://gcc.gnu.org/pipermail/libstdc++/2026-July/067334.html">here</a>.</p>
+
+<p>The note is adjusted as below condition is sufficient, but not necessary to guarantee uniqueness,
+consider strides <code>(3, 5)</code> and extents <code>(5, 3)</code>. They do not meet the requirements
+but produce unique mapping:</p>
+<pre>
+    0   1   2   3   4
+----------------------	
+0|  0   3   6   9  12
+1|  5   8  11  14  17
+2| 10  13  16  19  22
+</pre>
+
+<p><i>[2026-07-31 LWG telecon; Status changed: New &rarr; Ready.]</i></p>
+
+<details class='superseded'><summary>Previous resolution [SUPERSEDED]</summary>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5054" title=" Working Draft, Programming Languages — C++">N5054</a> with modifications from LWG <a href="4603" title="layout_stride should accept zero strides for empty extents (Status: Ready)">4603</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, span&lt;OtherIndexType, rank_&gt; s) noexcept;
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, const array&lt;OtherIndexType, rank_&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>-3- <i>Constraints</i>: [&hellip;]</p>
+<p>-4- <i>Preconditions</i>:</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash;
+<code>extents_type::<i>index-cast</i>(s[<i>i</i>])</code> is non-negative and representable as a value of
+type <code>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>) for all <code><i>i</i></code> in the range
+<code>[0, <i>rank_</i>)</code>.</p></li>
+<li><p>(4.2) &mdash; <code><i>REQUIRED-SPAN-SIZE</i>(e, s)</code> is representable as a value of type
+<code>index_type</code>.</p></li>
+<li><p>(4.3) &mdash; If both <code><i>rank_</i></code> and the size of the multidimensional index space
+<code>extents()</code> are greater than <code>0</code>, then there exists a permutation
+<code><i>P</i></code> of the integers in the range <code>[0, <i>rank_</i>)</code> <ins>and value <code><i>m</i></code></ins>,
+such that<ul>
+<li><p><ins>(4.3.1) &mdash; <code>e.extent(i) == 1</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[0, <i>m</i>),</code></ins></p></li>
+<li><p><ins>(4.3.2) &mdash; <code>e.extent(i) > 1</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[<i>m</i>, <i>rank_</i>),</code></ins></p></li>
+<li><p><ins>(4.3.3) &mdash; if <code><i>m</i> &lt; <i>rank_</i></code> is <code>true</code>, then</ins>
+<code>s[<i>p<sub><del>0</del><ins>m</ins></sub></i>] > 0</code> is <code>true</code> and <ins>for all <code><i>i</i></code>
+in the range <code>[<i>m</i>+1, <i>rank_</i>)</code>,</ins> <code>s[<i>p<sub>i</sub></i>] <del>&gt;=</del></code>
+<ins>is greater than sum of </ins> <code>s[<i>p<sub><del>i-1</del><ins>j</ins></sub></i>] *
+<ins>(</ins>e.extent(<i>p<sub><del>i</del><ins>j</ins></sub></i>)<ins>-1)</ins></code> <del>is <code>true</code></del> for all
+<code><i><del>i</del><ins>j</ins></i></code> in the range <code><del>[1, <i>rank_</i>)</del> <ins>[<i>m</i>, <i>i</i></ins>)</code>,</p></li>
+</ul> where <code><i>p<sub>k</sub></i></code> is the <code><i>k</i><sup>th</sup></code> element of <code><i>P</i></code>.</p></li>
+</ul>
+<p>[<i>Note</i>: For <code>layout_stride</code>, this condition is <del>necessary and</del> sufficient for
+<code>is_unique()</code> to be <code>true</code>. — <i>end note</i>]</p>
+<p>-5- <i>Effects</i>: [&hellip;]</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</details>
+
+<p><i>[2026-08-21 Tim finds issue and updates P/R; Status changed: Ready &rarr; Open.]</i></p>
+
+
+<p>
+(4.3.1) and (4.3.2) should say <code>e.extent(<i>p<sub>i</sub></i>)</code> instead of <code>e.extent(i)</code>.
+</p>
+
+<p><i>[2026-08-21 LWG telecon. Status changed: Open &rarr; Ready]</i></p>
+
+
+
+
+<p id="res-4606"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5054" title=" Working Draft, Programming Languages — C++">N5054</a> with modifications from LWG <a href="4603" title="layout_stride should accept zero strides for empty extents (Status: Ready)">4603</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, span&lt;OtherIndexType, rank_&gt; s) noexcept;
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, const array&lt;OtherIndexType, rank_&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>-3- <i>Constraints</i>: [&hellip;]</p>
+<p>-4- <i>Preconditions</i>:</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash;
+<code>extents_type::<i>index-cast</i>(s[<i>i</i>])</code> is non-negative and representable as a value of
+type <code>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>) for all <code><i>i</i></code> in the range
+<code>[0, <i>rank_</i>)</code>.</p></li>
+<li><p>(4.2) &mdash; <code><i>REQUIRED-SPAN-SIZE</i>(e, s)</code> is representable as a value of type
+<code>index_type</code>.</p></li>
+<li><p>(4.3) &mdash; If both <code><i>rank_</i></code> and the size of the multidimensional index space
+<code>extents()</code> are greater than <code>0</code>, then there exists a permutation
+<code><i>P</i></code> of the integers in the range <code>[0, <i>rank_</i>)</code> <ins>and value <code><i>m</i></code></ins>,
+such that<ul>
+<li><p><ins>(4.3.1) &mdash; <code>e.extent(<i>p<sub>i</sub></i>) == 1</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[0, <i>m</i>)</code>,</ins></p></li>
+<li><p><ins>(4.3.2) &mdash; <code>e.extent(<i>p<sub>i</sub></i>) > 1</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[<i>m</i>, <i>rank_</i>)</code>, and</ins></p></li>
+<li><p><ins>(4.3.3) &mdash; if <code><i>m</i> &lt; <i>rank_</i></code> is <code>true</code>, then</ins>
+<code>s[<i>p<sub><del>0</del><ins>m</ins></sub></i>] > 0</code> is <code>true</code> and <ins>for all <code><i>i</i></code>
+in the range <code>[<i>m</i>+1, <i>rank_</i>)</code>,</ins> <code>s[<i>p<sub>i</sub></i>] <del>&gt;=</del></code>
+<ins>is greater than the sum of </ins> <code>s[<i>p<sub><del>i-1</del><ins>j</ins></sub></i>] *
+<ins>(</ins>e.extent(<i>p<sub><del>i</del><ins>j</ins></sub></i>)<ins>-1)</ins></code> <del>is <code>true</code></del> for all
+<code><i><del>i</del><ins>j</ins></i></code> in the range <code><del>[1, <i>rank_</i>)</del> <ins>[<i>m</i>, <i>i</i>)</ins></code>,</p></li>
+</ul> where <code><i>p<sub>k</sub></i></code> is the <code><i>k</i><sup>th</sup></code> element of <code><i>P</i></code>.</p></li>
+</ul>
+<p>[<i>Note</i>: For <code>layout_stride</code>, this condition is <del>necessary and</del> sufficient for
+<code>is_unique()</code> to be <code>true</code>. — <i>end note</i>]</p>
+<p>-5- <i>Effects</i>: [&hellip;]</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

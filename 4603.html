@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4603: layout_stride should accept zero strides for empty extents</title>
+<meta property="og:title" content="Issue 4603: layout_stride should accept zero strides for empty extents">
+<meta property="og:description" content="C++ library issue. Status: Ready">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4603.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#Ready">Ready</a> status.</em></p>
+<h3 id="4603"><a href="lwg-active.html#4603">4603</a>. <code class='backtick'>layout_stride</code> should accept zero strides for empty <code class='backtick'>extents</code></h3>
+<p><b>Section:</b> 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> <b>Status:</b> <a href="lwg-active.html#Ready">Ready</a>
+ <b>Submitter:</b> Tomasz Kamiński <b>Opened:</b> 2026-06-07 <b>Last modified:</b> 2026-07-17</p>
+<p><b>Priority: </b>3
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#mdspan.layout.stride.cons">active issues</a> in [mdspan.layout.stride.cons].</p>
+<p><b>View all other</b> <a href="lwg-index.html#mdspan.layout.stride.cons">issues</a> in [mdspan.layout.stride.cons].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#Ready">Ready</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+<code class='backtick'>layout_stride</code> constructor accepting <code class='backtick'>extents</code> and <code class='backtick'>strides</code> values,
+requires that stride values are always greater than zero, even if the <code class='backtick'>extents</code>
+represents empty multidimensional index space. As for such <code class='backtick'>extents</code> types
+<code class='backtick'>layout_left</code> and <code class='backtick'>layout_right</code> mappings will result in zero strides,
+leads to inconsistencies in behavior:
+</p>
+<pre>
+  std::dextents&lt;size_t, 3&gt; ext{1, 0, 4};
+  std::layout_left ll{ext};
+  std::layout_stride ls{std::layout_left{ext}}; // OK, no precondition on constructor
+
+  std::array&lt;size, 3&gt; strides{ll.stride(0), ll.stride(1), ll.stride(2)};
+  std::layout_stride lse{ext, strides}; // UB, ll.stride(2) is zero
+</pre>
+
+<p>
+As by definition any mapping over empty multidimensional index space
+is unique, we should weaken that precondition and require non-zero
+strides only for non-empty <code class='backtick'>extents</code>.
+</p>
+
+<p>
+Furthermore, the current wording "result of converting <code class='backtick'>s[i]</code> to
+<code class='backtick'>index_type</code> is greater than <code class='backtick'>0</code>", forces implementation to convert
+the inputs to (mostly unsigned) <code class='backtick'>index_type</code> before the check,
+preventing detection of negative values. We should use <code><i>index-cast</i></code>
+instead.
+</p>
+
+
+<p><i>[2026-07-10; LWG telecon.]</i></p>
+
+<p>
+Set priority to 3 after telecon poll.
+Tomasz to revise proposed resolution to incorporate other change from
+<a href="https://wg21.link/P3959R0" title=" Let layout_stride::mapping with zero extent(s) accept zero strides">P3959R0</a>, which deals with this same issue.
+</p>
+
+<details class='superseded'><summary>Previous resolution [SUPERSEDED]</summary>
+
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, span&lt;OtherIndexType, rank_&gt; s) noexcept;
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, const array&lt;OtherIndexType, rank_&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>-3- <i>Constraints</i>: [&hellip;]</p>
+<p>-4- <i>Preconditions</i>:</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash;
+<del>The result of converting <code>s[<i>i</i>]</code> to <code>index_type</code> is greater than <code>0</code></del>
+<ins><code>extents_type::<i>index-cast</i>(s[<i>i</i>])</code> is non-negative and representable as a value of
+type <code>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>)</ins> for all <code><i>i</i></code> in the range
+<code>[0, <i>rank_</i>)</code>.</p></li>
+<li><p>(4.2) &mdash; <code><i>REQUIRED-SPAN-SIZE</i>(e, s)</code> is representable as a value of type
+<code>index_type</code> <del>(6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>)</del>.</p></li>
+<li><p>(4.3) &mdash; If <ins>both</ins> <code><i>rank_</i></code> <ins>and the size of
+the multidimensional index space <code>extents()</code> are</ins><del>is</del> greater than <code>0</code>,
+then there exists a permutation <code><i>P</i></code> of the integers in the range <code>[0, <i>rank_</i>)</code>,
+such that <ins><code>s[<i>p<sub>0</sub></i>] > 0</code> is <code>true</code> and</ins> <code>s[<i>p<sub>i</sub></i>] >=
+s[<i>p<sub>i-1</sub></i>] * e.extent(<i>p<sub>i</sub></i>)</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[1, <i>rank_</i>)</code>, where <code><i>p<sub><del>i</del><ins>k</ins></sub></i></code> is the
+<code><i><del>i</del><ins>k</ins></i><sup>th</sup></code> element of <code><i>P</i></code>.</p></li>
+</ul>
+<p>-5- <i>Effects</i>: [&hellip;]</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+</details>
+
+<p><i>[2026-07-10; Tomasz provides updated wording.]</i></p>
+
+
+<p><i>[2026-07-17 LWG telecon; Change status New &rarr; Ready.]</i></p>
+
+
+
+
+<p id="res-4603"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+
+<li><p>Modify 23.7.3.4.7.3 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.stride.cons">[mdspan.layout.stride.cons]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, span&lt;OtherIndexType, rank_&gt; s) noexcept;
+template&lt;class OtherIndexType&gt;
+  constexpr mapping(const extents_type&amp; e, const array&lt;OtherIndexType, rank_&gt;&amp; s) noexcept;
+</pre>
+<blockquote>
+<p>-3- <i>Constraints</i>: [&hellip;]</p>
+<p>-4- <i>Preconditions</i>:</p>
+<ul style="list-style-type: none">
+<li><p>(4.1) &mdash;
+<del>The result of converting <code>s[<i>i</i>]</code> to <code>index_type</code> is greater than <code>0</code></del>
+<ins><code>extents_type::<i>index-cast</i>(s[<i>i</i>])</code> is non-negative and representable as a value of
+type <code>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>)</ins> for all <code><i>i</i></code> in the range
+<code>[0, <i>rank_</i>)</code>.</p></li>
+<li><p>(4.2) &mdash; <code><i>REQUIRED-SPAN-SIZE</i>(e, s)</code> is representable as a value of type
+<code>index_type</code> <del>(6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>)</del>.</p></li>
+<li><p>(4.3) &mdash; If <ins>both</ins> <code><i>rank_</i></code> <ins>and the size of
+the multidimensional index space <code>extents()</code> are</ins><del>is</del> greater than <code>0</code>,
+then there exists a permutation <code><i>P</i></code> of the integers in the range <code>[0, <i>rank_</i>)</code>,
+such that <ins><code>s[<i>p<sub>0</sub></i>] > 0</code> is <code>true</code> and</ins> <code>s[<i>p<sub>i</sub></i>] >=
+s[<i>p<sub>i-1</sub></i>] * e.extent(<i>p<sub>i</sub></i>)</code> is <code>true</code> for all <code><i>i</i></code>
+in the range <code>[1, <i>rank_</i>)</code>, where <code><i>p<sub><del>i</del><ins>k</ins></sub></i></code> is the
+<code><i><del>i</del><ins>k</ins></i><sup>th</sup></code> element of <code><i>P</i></code>.</p></li>
+</ul>
+<p>-5- <i>Effects</i>: [&hellip;]</p>
+</blockquote>
+</blockquote>
+
+<blockquote>
+<pre>
+template&lt;class StridedLayoutMapping&gt;
+  constexpr explicit(see below)
+    mapping(const StridedLayoutMapping&amp; other) noexcept;
+</pre>
+<blockquote>
+<p>-6- <i>Constraints</i>: [&hellip;]</p>
+<p>-7- <i>Preconditions</i>:</p>
+<ul style="list-style-type: none">
+<li><p>(7.1) &mdash; <code>StridedLayoutMapping</code> meets the layout mapping requirements
+(23.7.3.4.2 <a href="https://timsong-cpp.github.io/cppwp/mdspan.layout.reqmts">[mdspan.layout.reqmts]</a>),</p></li>
+<li><p><del>(7.2) &mdash; <code>other.stride(<i>r</i>) > 0</code> is true for every rank index
+<i>r</i> of <code>extents()</code>,</del></p></li>
+<li><p>(7.3) &mdash; <code>other.required_span_size()</code> is representable as a value of
+type <code>index_type</code> (6.9.3 <a href="https://timsong-cpp.github.io/cppwp/basic.fundamental">[basic.fundamental]</a>), and,</p></li>
+<li><p>(7.4) &mdash; <code><i>OFFSET</i>(other) == 0</code> is <code>true</code>.</p></li>
+</ul>
+<p>-5- <i>Effects</i>: [&hellip;]</p>
+</blockquote>
+</blockquote>
+
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

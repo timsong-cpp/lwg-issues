@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4600: Remove precondition on hive::get_iterator(), introduce Returns value when pointer is not within *this</title>
+<meta property="og:title" content="Issue 4600: Remove precondition on hive::get_iterator(), introduce Returns value when pointer is not within *this">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4600.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4600"><a href="lwg-active.html#4600">4600</a>. Remove precondition on <code class='backtick'>hive::get_iterator()</code>, introduce <i>Returns</i> value when pointer is not within <code class='backtick'>*this</code></h3>
+<p><b>Section:</b> 23.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/hive.operations">[hive.operations]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Matt Bentley <b>Opened:</b> 2026-06-21 <b>Last modified:</b> 2026-06-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#hive.operations">active issues</a> in [hive.operations].</p>
+<p><b>View all other</b> <a href="lwg-index.html#hive.operations">issues</a> in [hive.operations].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+LEWG decided on the precondition for <code class='backtick'>hive::get_iterator</code> ("<code class='backtick'>p</code> points to an element in <code class='backtick'>*this</code>") on the basis that:
+</p>
+<ol style="list-style-type: none">
+<li><p>
+(a) <code class='backtick'>hive</code> may free blocks during erasure, when they become empty of elements, which means accessing pointers to erased 
+elements within that block is UB (see: <a href="https://wg21.link/P1726R5" title=" Pointer lifetime-end zap (informational/historical)">P1726R5</a>). The UB occurs before the <code class='backtick'>get_iterator</code> call (upon 
+accessing the pointer's value to supply to the function), but it was felt that the precondition served as a warning 
+to the user to the best of my recollection.
+</p></li>
+<li><p>
+(b) given that the above is the case, the same conditions should apply to <code class='backtick'>T*</code> pointers to elements within other container 
+instances, <code class='backtick'>hive</code> or otherwise
+</p></li>
+</ol>
+<p>
+I feel that this is a mistake because:
+</p>
+<ol>
+<li><p>
+It potentially leads to diverging implementation behaviours (and people may come to rely on that implementation behaviour, 
+even though they shouldn't)
+</p></li>
+<li><p>
+It's inconsistent with how we deal with this situation in other containers. In most implementations of <code class='backtick'>vector</code> the iterator 
+is a pointer and expanding the vector memory block invalidates it. But <code class='backtick'>erase()</code> doesn't require that the iterator point to 
+an element within <code class='backtick'>*this</code> in the preconditions, and returns <code class='backtick'>end()</code> if it doesn't, as per 23.2.4 <a href="https://timsong-cpp.github.io/cppwp/sequence.reqmts">[sequence.reqmts]</a> p45. 
+Unlike <code class='backtick'>get::iterator</code>, the access of the pointer occurs within <code class='backtick'>erase()</code>, but there's no prevention of UB. Same stuff applies 
+for <code class='backtick'>erase()</code> in the other containers.
+</p></li>
+<li><p>
+The pointer-zap rule may get changed at some point to make accessing a pointer to a non-allocated address defined behaviour, 
+in which case that concern may not exist.
+</p></li>
+<li><p>
+It is easy in all the implementation styles I've seen to date or can imagine, for an implementation to detect whether or not 
+a given pointer points to a value within <code class='backtick'>*this</code>.
+</p></li>
+<li><p>
+The precondition obviates better and more productive <i>Returns</i> behaviour, namely: returning <code class='backtick'>end()</code> when <code class='backtick'>p</code> doesn't point 
+to an element in <code class='backtick'>*this</code>. This is more useful to developers in the context of bug-fixing a scenario where a pointer to an element 
+in another container instance is accidentally supplied to <code>this-&gt;get_iterator</code>. The developer can see clearly what 
+is at fault, rather than getting a random crash, termination or other behaviour. If the pointer-zap rule is relaxed, the latter 
+could also be used in multithreaded access to <code class='backtick'>hive</code> in terms of determining whether or not a given element is 'live'.
+</p></li>
+<li><p>
+It is inappropriate for a precondition to primarily be something which is protecting against behaviour occuring outside of that 
+function i.e. during the pointer access. This makes the standard less durable via blurred inter-thing responsibility.
+</p></li>
+</ol>
+<p>
+Points against removing the precondition that I can think of:
+</p>
+<ol>
+<li><p>
+Pointer-zap rule may never be relaxed, but this has no impact on the inconsistency with the standard nor the use-case when the 
+<code class='backtick'>T*</code> points into a different container.
+</p></li>
+<li><p>
+Forcing implementations to check whether or not the element pointed to by <code class='backtick'>p</code> is erased, could potentially obviate better 
+performance in some hypothetical scenario (I can't imagine a scenario, but even my imagination is not without limits :). 
+I say this because minor alterations to <code class='backtick'>erase</code>, range-<code class='backtick'>erase</code> and <code class='backtick'>splice</code> are required in the reference implementation, 
+for this to take place. Those changes do not result in a performance difference. 
+</p></li>
+</ol>
+<p>
+If there is no change, at the very least this gives an opportunity for a record of why we decided not to do so.
+</p>
+
+
+<p id="res-4600"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 23.3.9.5 <a href="https://timsong-cpp.github.io/cppwp/hive.operations">[hive.operations]</a> as indicated:</p>
+
+<blockquote>
+<pre>
+iterator get_iterator(const_pointer p) noexcept;
+const_iterator get_iterator(const_pointer p) const noexcept;
+</pre>
+<blockquote>
+<p>
+<del>-17- <i>Preconditions</i>: <code class='backtick'>p</code> points to an element in <code class='backtick'>*this</code>.</del>
+<p/>
+-18- <i>Returns</i>: An <code class='backtick'>iterator</code> or <code class='backtick'>const_iterator</code> pointing to the same element as <code class='backtick'>p</code>.
+<ins>If no such element exists, <code class='backtick'>end()</code> is returned.</ins>
+<p/>
+-19- <i>Complexity</i>: Linear in the number of active blocks in <code class='backtick'>*this</code>.
+</p>
+</blockquote>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>

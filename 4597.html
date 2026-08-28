@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Issue 4597: Unnecessary constraint for join_view/join_with_view to be common_range</title>
+<meta property="og:title" content="Issue 4597: Unnecessary constraint for join_view/join_with_view to be common_range">
+<meta property="og:description" content="C++ library issue. Status: New">
+<meta property="og:url" content="https://timsong-cpp.github.io/lwg-issues/4597.html">
+<meta property="og:type" content="website">
+<meta property="og:image" content="http://cplusplus.github.io/LWG/images/cpp_logo.png">
+<meta property="og:image:alt" content="C++ logo">
+<style>
+  p {text-align:justify}
+  li {text-align:justify}
+  pre code.backtick::before { content: "`" }
+  pre code.backtick::after { content: "`" }
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
+  {
+    background-color: #E0E0E0;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+  ins {background-color:#A0FFA0}
+  del {background-color:#FFA0A0}
+  table.issues-index { border: 1px solid; border-collapse: collapse; }
+  table.issues-index th { text-align: center; padding: 4px; border: 1px solid; }
+  table.issues-index td { padding: 4px; border: 1px solid; }
+  table.issues-index td:nth-child(1) { text-align: right; }
+  table.issues-index td:nth-child(2) { text-align: left; }
+  table.issues-index td:nth-child(3) { text-align: left; }
+  table.issues-index td:nth-child(4) { text-align: left; }
+  table.issues-index td:nth-child(5) { text-align: center; }
+  table.issues-index td:nth-child(6) { text-align: center; }
+  table.issues-index td:nth-child(7) { text-align: left; }
+  table.issues-index td:nth-child(5) span.no-pr { color: red; }
+  @media (prefers-color-scheme: dark) {
+     html {
+        color: #ddd;
+        background-color: black;
+     }
+     ins {
+        background-color: #225522
+     }
+     del {
+        background-color: #662222
+     }
+     a {
+        color: #6af
+     }
+     a:visited {
+        color: #6af
+     }
+     blockquote.note, details.superseded[open]::details-content {
+        background-color: rgba(255, 255, 255, .10)
+     }
+  }
+</style>
+</head>
+<body>
+<hr>
+<p><em>This page is a snapshot from the LWG issues list, see the <a href="lwg-active.html">Library Active Issues List</a> for more information and the meaning of <a href="lwg-active.html#New">New</a> status.</em></p>
+<h3 id="4597"><a href="lwg-active.html#4597">4597</a>. Unnecessary constraint for <code>join_view</code>/<code>join_with_view</code> to be <code>common_range</code></h3>
+<p><b>Section:</b> 25.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, 25.7.15.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.view">[range.join.with.view]</a> <b>Status:</b> <a href="lwg-active.html#New">New</a>
+ <b>Submitter:</b> Hewill Kang <b>Opened:</b> 2026-06-16 <b>Last modified:</b> 2026-06-21</p>
+<p><b>Priority: </b>Not Prioritized
+</p>
+<p><b>View other</b> <a href="lwg-index-open.html#range.join.view">active issues</a> in [range.join.view].</p>
+<p><b>View all other</b> <a href="lwg-index.html#range.join.view">issues</a> in [range.join.view].</p>
+<p><b>View all issues with</b> <a href="lwg-status.html#New">New</a> status.</p>
+<p><b>Discussion:</b></p>
+<p>
+Currently, <code class='backtick'>join_view</code> will only be <code class='backtick'>common_range</code>
+if the following five constraints are met:
+</p>
+<blockquote><pre>
+constexpr auto end() {
+  if constexpr (forward_range&lt;V&gt; &amp;&amp;
+                is_reference_v&lt;InnerRng&gt; &amp;&amp; forward_range&lt;InnerRng&gt; &amp;&amp;
+                common_range&lt;V&gt; &amp;&amp; common_range&lt;InnerRng&gt;)
+    return <i>iterator</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;{*this, ranges::end(<i>base_</i>)};
+  else
+    return <i>sentinel</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;{*this};
+ }
+</pre></blockquote>
+
+<p>
+The first three are reasonable, since those are necessary conditions for
+<code>join_view::<i>iterator</i></code> being a
+<code class='backtick'>forward_iterator</code>: the iterator of both base and inner range should be
+<code class='backtick'>forward_iterator</code>,
+and the inner range should
+be a reference type to guarantees the multi-pass during the iteration, so that
+<code>join_view::<i>iterator</i></code> can synthesize
+the
+following
+<code class='backtick'>operator==</code>:
+</p>
+   <pre>
+   friend constexpr bool operator==(const <i>iterator</i>&amp; x, const <i>iterator</i>&amp; y)
+     requires <i>ref-is-glvalue</i> &amp;&amp; forward_range&lt;Base&gt; &amp;&amp;
+              equality_comparable&lt;iterator_t&lt;range_reference_t&lt;Base&gt;&gt;&gt; {
+     return x.<i>outer_</i> == y.<i>outer_</i> &amp;&amp; x.<i>inner_</i> == y.<i>inner_</i>;
+   }</pre>
+<p>
+Where <i><code class='backtick'>outer_</code></i> is the iterator of base,
+and <i><code class='backtick'>inner_</code></i> is the iterator of inner range wrapped in <code class='backtick'>optional</code>.
+The constraints in the function signature match the corresponding first
+three constraints.</p>
+<p>
+The fourth, requiring the base range to be <code class='backtick'>common_range</code>,
+is also reasonable because we construct <code>join_view::<i>iterator</i></code>
+via <code>ranges::end(<i>base_</i>)</code>,
+which is stored in its <i><code class='backtick'>outer_</code></i> member,
+which need to be the same type as <code>ranges::begin(<i>base_</i>)</code>.
+</p>
+<p>
+However, the last one, requiring the inner range to be a <code class='backtick'>common range</code>,
+is not very meaningful.
+Because we don't store the end iterator of the inner range in
+<code>join_view::<i>iterator</i></code>,
+the <code><i>inner_</i></code> member is just an <code class='backtick'>optional</code> with no value.
+When we call <code><i>satisfy</i>()</code> in the constructor
+(to skip over empty inner ranges), such a constraint serves no purpose
+if we examine <code><i>satisfy</i>()</code> closely:
+</p>
+<blockquote><pre>
+constexpr void satisfy() {
+  auto update_inner = [this](const iterator_t&lt;<i>Base</i>&gt;&amp; x) -> auto&amp;&amp; {
+  if constexpr (<i>ref-is-glvalue</i>)     // <i>*x is a reference</i>
+    return *x;
+  else
+    return <i>parent_</i>-&gt;<i>inner_</i>.<i>emplace-deref</i>(x);
+  };
+
+  for (; <i>outer</i>() != ranges::end(<i>parent_</i>-&gt;<i>base_</i>); ++<i>outer</i>()) {
+    auto&amp;&amp; inner = update_inner(<i>outer</i>());
+    <i>inner_</i> = ranges::begin(inner);
+    if (*<i>inner_</i> != ranges::end(inner))
+      return;
+  }
+  if constexpr (<i>ref-is-glvalue</i>)
+    <i>inner_</i>.reset();
+  }</pre></blockquote>
+<p>
+The call of <code class='backtick'>ranges::end(inner)</code> is only used to compare whether
+<i><code class='backtick'>inner_</code></i> has reached the end of the inner range,
+which has nothing to do with whether the inner range is a <code class='backtick'>common_range</code>.
+The only place where this condition is need is in the function body of
+<code class='backtick'>operator--</code>,
+which already imposes a constraint of
+<code>common_range&lt;range_reference_t&lt;Base&gt;&gt;</code>.
+</p>
+<p>
+As a result, this unnecessary constraint prevents some reasonable cases where
+<code class='backtick'>join_view</code> can be a <code class='backtick'>common_range</code>, for example:
+</p>
+   <pre>
+   vector&lt;simd::vec&lt;int&gt;&gt; v;
+   auto j = v | views::join;</pre>
+<p>
+As above, <code class='backtick'>simd::vec</code> is <code class='backtick'>random_access_range</code>,
+but since it is not <code class='backtick'>common_range</code>,
+its role as the inner range makes the <code class='backtick'>join_view</code> no longer <code class='backtick'>common_range</code>.
+This means we cannot directly pass <code class='backtick'>j.begin()</code> and <code class='backtick'>j.end()</code>
+into the legacy algorithm which is unsatisfactory.
+</p>
+<p>
+Note that <code class='backtick'>join_with_view</code> has the similar issue for being a <code class='backtick'>common_range</code>.
+</p>
+
+
+<p id="res-4597"><b>Proposed resolution:</b></p>
+<p>
+This wording is relative to <a href="https://wg21.link/N5046" title=" Working Draft, Programming Languages — C++">N5046</a>.
+</p>
+
+<ol>
+<li>
+<p>Modify 25.7.14.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.view">[range.join.view]</a>, class template <code class='backtick'>join_view</code> synopsis,
+as indicated:
+</p>
+<blockquote>
+<pre>
+namespace std::ranges {
+  template&lt;input_range V&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;
+  class join_view : public view_interface&lt;join_view&lt;V&gt;&gt; {
+    [&hellip;]
+    constexpr auto end() {
+      if constexpr (forward_range&lt;V&gt; &amp;&amp;
+                    is_reference_v&lt;InnerRng&gt; &amp;&amp; forward_range&lt;InnerRng&gt; &amp;&amp;
+                    common_range&lt;V&gt; <del>&amp;&amp; common_range&lt;InnerRng&gt;</del>)
+        return <i>iterator</i>&lt;<i>simple-view</i>&lt;V&gt;&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return sentinel&lt;<i>simple-view</i>&lt;V&gt;&gt;{*this};
+    }
+
+    constexpr auto end() const
+      requires forward_range&lt;const V&gt; &amp;&amp;
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;
+               input_range&lt;range_reference_t&lt;const V&gt;&gt; {
+      if constexpr (forward_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;
+                    common_range&lt;const V&gt; <del>&amp;&amp;</del>
+                    <del>common_range&lt;range_reference_t&lt;const V&gt;&gt;</del>)
+        return <i>iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return <i>sentinel</i>&lt;true&gt;{*this};
+    }
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+
+</li>
+<li>
+<p>Modify 25.7.15.2 <a href="https://timsong-cpp.github.io/cppwp/range.join.with.view">[range.join.with.view]</a> as indicated:</p>
+<blockquote>
+<pre>
+namespace std::ranges {
+  [&hellip;]
+  template&lt;input_range V, forward_range Pattern&gt;
+    requires view&lt;V&gt; &amp;&amp; input_range&lt;range_reference_t&lt;V&gt;&gt;
+          &amp;&amp; view&lt;Pattern&gt;
+          &amp;&amp; <i>concatable</i>&lt;range_reference_t&lt;V&gt;, Pattern&gt;
+  class join_with_view : public view_interface&lt;join_with_view&lt;V, Pattern&gt;&gt; {
+    [&hellip;]
+    constexpr auto end() {
+      if constexpr (forward_range&lt;V&gt; &amp;&amp;
+                    is_reference_v&lt;InnerRng&gt; &amp;&amp; forward_range&lt;InnerRng&gt; &amp;&amp;
+                    common_range&lt;V&gt; <del>&amp;&amp; common_range&lt;InnerRng&gt;</del>)
+        return <i>iterator</i>&lt;<i>simple-view</i>&lt;V&gt; &amp;&amp; <i>simple-view</i>&lt;Pattern&gt;&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return <i>sentinel</i>&lt;<i>simple-view</i>&lt;V&gt; &amp;&amp; <i>simple-view</i>&lt;Pattern&gt;&gt;{*this};
+    }
+    constexpr auto end() const
+      requires forward_range&lt;const V&gt; &amp;&amp; forward_range&lt;const Pattern&gt; &amp;&amp;
+               is_reference_v&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;
+               input_range&lt;range_reference_t&lt;const V&gt;&gt; &amp;&amp;
+               <i>concatable</i>&lt;range_reference_t&lt;const V&gt;, const Pattern&gt; {
+      using InnerConstRng = range_reference_t&lt;const V&gt;;
+      if constexpr (forward_range&lt;InnerConstRng&gt; &amp;&amp;
+                    common_range&lt;const V&gt; <del>&amp;&amp; common_range&lt;InnerConstRng&gt;</del>)
+        return <i>iterator</i>&lt;true&gt;{*this, ranges::end(<i>base_</i>)};
+      else
+        return <i>sentinel</i>&lt;true&gt;{*this};
+    }
+  };
+  [&hellip;]
+}
+</pre>
+</blockquote>
+</li>
+</ol>
+
+
+
+
+
+</body>
+</html>
