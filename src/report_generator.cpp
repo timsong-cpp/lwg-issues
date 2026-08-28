@@ -1,3 +1,10 @@
+//        Copyright the C++ Library Working Group
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+//
+// SPDX-License-Identifier: BSL-1.0
+
 #ifdef _MSC_VER
 # define _CRT_SECURE_NO_WARNINGS
 #endif
@@ -182,9 +189,14 @@ R"(<!DOCTYPE html>
   li {text-align:justify}
   pre code.backtick::before { content: "`" }
   pre code.backtick::after { content: "`" }
-  blockquote.note
+  details.superseded { border-left: solid grey 2px; }
+  details.superseded > summary { font-weight: bold; cursor: pointer; padding: 0px 5px;}
+  details.superseded > summary::after { font-weight: normal; color: grey; }
+  details.superseded[open] > summary::after { content: " <click to hide>"; }
+  details.superseded:not([open]) > summary::after { content: " <click to show>"; }
+  blockquote.note, details.superseded[open]::details-content
   {
-    background-color:#E0E0E0;
+    background-color: #E0E0E0;
     padding-left: 15px;
     padding-right: 15px;
     padding-top: 1px;
@@ -220,8 +232,7 @@ R"(<!DOCTYPE html>
      a:visited {
         color: #6af
      }
-     blockquote.note
-     {
+     blockquote.note, details.superseded[open]::details-content {
         background-color: rgba(255, 255, 255, .10)
      }
   }

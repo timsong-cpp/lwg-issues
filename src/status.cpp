@@ -1,3 +1,10 @@
+//        Copyright the C++ Library Working Group
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+//
+// SPDX-License-Identifier: BSL-1.0
+
 #ifdef _MSC_VER
 # define _CRT_SECURE_NO_WARNINGS
 #endif
@@ -31,6 +38,7 @@ auto lwg::filename_for_status(std::string_view stat) -> std::string_view {
         : (stat == "C++17")         ? LWG_DEFECTS
         : (stat == "C++20")         ? LWG_DEFECTS
         : (stat == "C++23")         ? LWG_DEFECTS
+        : (stat == "C++26")         ? LWG_DEFECTS
         : (stat == "WP")            ? LWG_DEFECTS
         : (stat == "Resolved")      ? LWG_DEFECTS
         : (stat == "DR")            ? LWG_DEFECTS
@@ -154,6 +162,7 @@ auto lwg::get_status_priority(std::string_view stat) noexcept -> std::ptrdiff_t 
       "NAD Future",
       "DR",
       "WP",
+      "C++26",
       "C++23",
       "C++20",
       "C++17",

@@ -1,3 +1,10 @@
+//        Copyright the C++ Library Working Group
+// Distributed under the Boost Software License, Version 1.0.
+//    (See accompanying file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+//
+// SPDX-License-Identifier: BSL-1.0
+
 // This program reads all the issues in the issues directory passed as the first command line argument.
 // If all documents are successfully parsed, it will generate the standard LWG Issues List documents
 // for an ISO SC22 WG21 mailing.
@@ -33,6 +40,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <ranges>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -212,9 +220,9 @@ namespace
          { "duplicate", {} },
          { "note", { "<p><i>[", "]</i></p>\n"} },
          { "superseded",
-            { "<p><strong>Previous resolution [SUPERSEDED]:</strong></p>\n"
-               "<blockquote class=\"note\">\n",
-               "</blockquote>" } },
+            { "<details class='superseded'>"
+              "<summary>Previous resolution [SUPERSEDED]</summary>\n",
+              "</details>" } },
    };
 }
 
